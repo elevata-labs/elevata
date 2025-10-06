@@ -1,0 +1,2 @@
+-r base.txt
+dbt-duckdb>=1.7.0

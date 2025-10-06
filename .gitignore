@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg
+*.egg-info/
+*.eggs/
+dist/
+build/
+*.log
+
+# Virtual environments
+.env
+.venv
+env/
+venv/
+ENV/
+*.sqlite
+
+# Jupyter Notebooks
+.ipynb_checkpoints
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# dbt
+target/
+dbt_packages/
+logs/
+
+# Local configs (do not share secrets)
+profiles.yml
+.envrc
+*.env
+
+# IDEs
+.vscode/
+.idea/
+*.swp
