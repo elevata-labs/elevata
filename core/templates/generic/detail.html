@@ -1,0 +1,62 @@
+<!--
+elevata – Metadata-driven Data Platform Framework
+Copyright © 2025 Ilona Tag
+SPDX-License-Identifier: AGPL-3.0-only
+-->
+{% extends "base.html" %}
+{% load attr %}
+
+{% block title %}{{ object }} · elevata{% endblock %}
+
+{% block content %}
+  <div class="d-flex align-items-center justify-content-between mb-3">
+    <h1 class="h4 mb-0">{{ title|default:object }}</h1>
+    <a class="btn btn-secondary" href="{% url model_name|add:'_list' %}">Back</a>
+  </div>
+
+  <table class="table table-striped align-middle mb-4">
+    <tbody>
+      {% for field in fields %}
+        <tr>
+          <th style="width: 25%;">{{ field.verbose_name|capfirst }}</th>
+          <td>{{ object|attr:field.name }}</td>
+        </tr>
+      {% endfor %}
+
+      {% for field in many_to_many %}
+        <tr>
+          <th style="width: 25%;">{{ field.verbose_name|capfirst }}</th>
+          <td>
+            {% with rel_mgr=object|attr:field.name %}
+              {% for rel_obj in rel_mgr.all %}
+                {{ rel_obj }}{% if not forloop.last %}, {% endif %}
+              {% empty %}
+                <span class="text-muted">–</span>
+              {% endfor %}
+            {% endwith %}
+          </td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  {% if related_objects %}
+    <h5 class="mt-4 mb-3">Related Data</h5>
+    {% for label, items in related_objects %}
+      <div class="mb-3">
+        <strong>{{ label }}</strong>
+        {% if items %}
+          <ul class="mb-0">
+            {% for item in items %}
+              <li>{{ item }}</li>
+            {% empty %}
+              <li><em>No related records</em></li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <p class="text-muted mb-0">–</p>
+        {% endif %}
+      </div>
+    {% endfor %}
+  {% endif %}
+{% endblock %}

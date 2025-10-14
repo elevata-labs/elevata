@@ -1,0 +1,13 @@
+<!--
+elevata – Metadata-driven Data Platform Framework
+Copyright © 2025 Ilona Tag
+SPDX-License-Identifier: AGPL-3.0-only
+-->
+{% extends "base.html" %}
+{% block title %}Logged out{% endblock %}
+{% block content %}
+  <div class="alert alert-info mt-4">
+    <p>You have been logged out.</p>
+    <p><a href="{% url 'login' %}">Sign in again</a></p>
+  </div>
+{% endblock %}

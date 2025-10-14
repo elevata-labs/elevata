@@ -3,10 +3,65 @@
 All notable changes to this project will be documented in this file.  
 This project adheres to [Semantic Versioning](https://semver.org/) and [Keep a Changelog](https://keepachangelog.com/).
 
+---
+
 ## [Unreleased]
 
-- Ongoing development
-- Experimental features under design
+### Planned (Short-term)
+- UI refinements and improved layout consistency
+- Table pagination and sorting for large metadata sets
+- Support for **PostgreSQL** as an alternative to SQLite  
+- Import functions for external **source-system metadata**
+
+### Planned (Mid-term)
+- Automated generation of **dbt models** based on stored metadata
+- **Ingestion** of relational databases and other sources
+- Built-in **core transformations** and data-engineering **best practices**
+
+### Planned (Long-term)
+- Support for additional platforms (Microsoft Fabric, Snowflake, BigQuery, Databricks, SQL Server)
+- Optional REST / GraphQL API for external metadata integration
+
+---
+
+💡 *elevata is evolving towards a metadata-driven, open framework for modern data platforms — one small release at a time.*
+
+---
+
+## [0.1.0] - 2025-10-14
+
+### 🧩 *Metadata Management Comes Alive*
+
+#### Overview  
+This release marks a major milestone:  
+**elevata** now provides a fully functional, metadata-driven web interface for managing your data platform’s core structures — built with **Django**, **HTMX**, and a clean **Bootstrap 5** theme.  
+
+It’s the first end-to-end usable version:  
+from user login → to inline editing → to audit tracking — all running securely and responsively out of the box.
+
+---
+
+#### 🚀 Highlights  
+
+- **Complete Metadata Management Module**  
+  - Inline CRUD with audit fields and user tracking  
+  - Automatic URL & view generation for all models  
+
+- **Modern UI & UX**  
+  - Responsive elevata theme (Bootstrap 5.3)  
+  - Autofocus & usability improvements for inline editing  
+  - Unified form and grid styling  
+
+- **Security & Reliability**  
+  - Integrated authentication (login, logout, password change)  
+  - Safe CSRF handling for all HTMX requests  
+
+- **Developer Experience**  
+  - Default SQLite backend for easy setup  
+  - Clean folder structure: `core/`, `metadata/`, `dbt_project/`  
+  - Ready for future extensions (PostgreSQL, dbt, etc.)
+
+---
 
 ## [0.0.1] - 2025-10-06
 
@@ -18,6 +73,3 @@ This project adheres to [Semantic Versioning](https://semver.org/) and [Keep a C
 - Placeholder `requirements/base.txt`
 - Initial backend support for **DuckDB** (`requirements/duckdb.txt`)
 - Base `dbt_project/` folder
-
-### Planned
-- Support for Microsoft Fabric, Snowflake, BigQuery, Databricks, and SQL Server

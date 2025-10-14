@@ -1,0 +1,39 @@
+<!--
+elevata – Metadata-driven Data Platform Framework
+Copyright © 2025 Ilona Tag
+SPDX-License-Identifier: AGPL-3.0-only
+-->
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Home · elevata{% endblock %}
+
+{% block content %}
+<div class="text-center my-5">
+  <img src="{% static 'logo.png' %}" alt="elevata logo" width="128" class="mb-3">
+  <h1 class="h4">Welcome to elevata</h1>
+</div>
+<!-- <h1 class="h4 mb-3">Welcome to elevata</h1> -->
+  <p class="text-muted">Choose a section to start working with your metadata.</p>
+
+  {# If MAIN_MENU is provided by your context processor, render quick links #}
+  {% if MAIN_MENU %}
+    <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-3">
+      {% for item in MAIN_MENU %}
+        <div class="col">
+          <div class="card h-100">
+            <div class="card-body d-flex flex-column">
+              <h2 class="h6 card-title mb-2">{{ item.label }}</h2>
+              <p class="card-text text-muted mb-3">Manage {{ item.label|lower }}.</p>
+              <div class="mt-auto">
+                <a class="btn btn-primary btn-sm" href="{% url item.url_name %}">Open</a>
+              </div>
+            </div>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="alert alert-info">No menu items yet. Add models or configure the menu.</div>
+  {% endif %}
+{% endblock %}

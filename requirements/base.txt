@@ -1,1 +1,12 @@
-pandas>=2.0.0
+"""
+elevata - Metadata-driven Data Platform Framework
+Copyright © 2025 Ilona Tag
+
+License: AGPL-3.0-only
+
+This file lists runtime dependencies for elevata.
+It is not code, but part of the build configuration.
+"""
+
+django
+django-crum

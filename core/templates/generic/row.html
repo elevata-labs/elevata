@@ -1,0 +1,36 @@
+<!--
+elevata – Metadata-driven Data Platform Framework
+Copyright © 2025 Ilona Tag
+SPDX-License-Identifier: AGPL-3.0-only
+-->
+{% load attr %}
+{# Renders a single display <tr> for an object (read-only row) #}
+<tr id="row-{{ object.pk }}"{% if highlight %} class="highlight"{% endif %}>
+  {% for f in fields %}
+    {% if forloop.first %}
+      <td>
+        <a href="{% url model_name|add:'_detail' object.pk %}" class="text-decoration-none">
+          {{ object|attr:f.name }}
+        </a>
+      </td>
+    {% else %}
+      <td>{{ object|attr:f.name }}</td>
+    {% endif %}
+  {% endfor %}
+  <td class="text-end">
+    <div class="btn-group btn-group-sm" role="group">
+      <a class="btn btn-outline-secondary"
+         hx-get="{% url model_name|add:'_row_edit' object.pk %}"
+         hx-target="#row-{{ object.pk }}"
+         hx-swap="outerHTML">Edit</a>
+
+      <button class="btn btn-outline-danger"
+              hx-delete="{% url model_name|add:'_row_delete' object.pk %}"
+              hx-target="#row-{{ object.pk }}"
+              hx-swap="outerHTML swap:1s"
+              hx-confirm="Delete this record?">
+        Delete
+      </button>
+    </div>
+  </td>
+</tr>

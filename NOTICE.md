@@ -4,22 +4,45 @@ This project includes third-party software components that are licensed under th
 
 ## Included Components
 
-### dbt Core
+### Django
+- License: [BSD 3-Clause License](https://opensource.org/licenses/BSD-3-Clause)
+- Copyright © Django Software Foundation
+- Source: [https://www.djangoproject.com/](https://www.djangoproject.com/)
+
+### django-crum
+- License: [GNU Affero General Public License v3.0](https://www.gnu.org/licenses/agpl-3.0.html)
+- Copyright © 2013–present, Robert Townley and contributors
+- Source: [https://github.com/ninemoreminutes/django-crum](https://github.com/ninemoreminutes/django-crum)
+
+### dbt-core
 - License: [Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0)  
-- Copyright © Fishtown Analytics, dbt Labs, Inc.
+- Copyright © dbt Labs, Inc. and contributors  
+- Source: [https://github.com/dbt-labs/dbt-core](https://github.com/dbt-labs/dbt-core)
+
+### dbt-duckdb
+- License: [Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0)  
+- Copyright © Jeremy Cohen and contributors  
+- Source: [https://github.com/jwills/dbt-duckdb](https://github.com/jwills/dbt-duckdb)
+
+### Inter Font
+- License: [SIL Open Font License 1.1](https://scripts.sil.org/OFL)
+- Copyright © 2016–2024 Rasmus Andersson
+- Source: [https://github.com/rsms/inter](https://github.com/rsms/inter)
+
+### Other Python Packages
+- **pandas** – BSD License  
 
 ---
 
 ## License Compatibility
 This project as a whole is licensed under the **GNU Affero General Public License v3 (AGPLv3)**.  
 
-The integration of dbt Core (Apache 2.0) with this project is permitted, as the Apache 2.0 license is compatible with the AGPLv3.  
-As a result:
-- dbt Core remains licensed under Apache 2.0.  
-- elevata’s original code is licensed under AGPLv3.  
-- The combined distribution is governed by the AGPLv3 license terms.  
+- All included third-party components remain under their original licenses.  
+- The combination is permitted because each license (BSD, MIT, Apache 2.0, LGPL, PostgreSQL, Public Domain) is compatible with AGPLv3.  
+- elevata’s original source code is governed by AGPLv3.  
 
 ---
 
 ## Additional Components
-If further third-party libraries are added, their license information will be listed here.
+Future features of elevata may integrate further third-party libraries.  
+Once included in the codebase, their license information will be documented here.

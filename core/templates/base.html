@@ -1,0 +1,123 @@
+<!--
+elevata – Metadata-driven Data Platform Framework
+Copyright © 2025 Ilona Tag
+SPDX-License-Identifier: AGPL-3.0-only
+-->
+{% load static %}
+<!DOCTYPE html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8">
+    <title>{% block title %}elevata{% endblock %}</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="{% static 'css/elevata-theme.css' %}">
+    <!-- HTMX for inline edit/create -->
+  </head>
+  <script>
+    // Focus helper: find first focusable in a container
+    function focusFirst(container) {
+      if (!container) return;
+      const el =
+        container.querySelector('[autofocus]') ||
+        container.querySelector('input:not([type="hidden"]):not([disabled]), textarea:not([disabled]), select:not([disabled])');
+      if (el) {
+        el.focus({ preventScroll: true });
+        if (typeof el.select === 'function') el.select();
+      }
+    }
+
+    // On initial page load: focus first field in full-page forms
+    document.addEventListener('DOMContentLoaded', () => {
+      const fullForm = document.querySelector('.elevata-form');
+      focusFirst(fullForm);
+    });
+
+    // After HTMX swaps: focus first field in the swapped region (inline forms)
+    document.body.addEventListener('htmx:afterSwap', (e) => {
+      // Prefer the target element of the swap; fall back to the event target
+      const root = e.detail && e.detail.target ? e.detail.target : e.target;
+      // If a table row form was swapped, use that; otherwise use root
+      const container = root.closest('tr[id^="row-"]') || root;
+      focusFirst(container);
+    });
+  </script>
+  <body class="p-3">
+    <form style="display:none;">{% csrf_token %}</form>
+    <!-- Navbar with logo -->
+    <nav class="navbar navbar-expand mb-3">
+      <a class="navbar-brand d-flex align-items-center fw-semibold me-3" href="{% url 'home' %}">
+        <!-- The logo image -->
+        <img src="{% static 'logo.png' %}" alt="elevata logo" height="56" class="me-2">
+      </a>
+
+      <!-- Navigation items -->
+      <ul class="navbar-nav">
+        {% for item in MAIN_MENU %}
+          <li class="nav-item">
+            <a class="nav-link" href="{% url item.url_name %}">{{ item.label }}</a>
+          </li>
+        {% endfor %}
+      </ul>
+
+      <ul class="navbar-nav ms-auto align-items-center">
+        {% if request.user.is_authenticated %}
+          <li class="nav-item me-2">
+            <span class="nav-link disabled text-white-50">Hi, {{ request.user.username }}</span>
+          </li>
+
+          <li class="nav-item dropdown">
+            <a class="nav-link dropdown-toggle" href="#" role="button"
+              data-bs-toggle="dropdown" aria-expanded="false">
+              Account
+            </a>
+            <ul class="dropdown-menu dropdown-menu-end">
+              <li>
+                <a class="dropdown-item" href="{% url 'password_change' %}">Change password</a>
+              </li>
+              <li><hr class="dropdown-divider"></li>
+              <li>
+                <form method="post" action="{% url 'logout' %}?next=/accounts/login/" class="m-0">
+                  {% csrf_token %}
+                  <button type="submit" class="dropdown-item">Logout</button>
+                </form>
+              </li>
+            </ul>
+          </li>
+        {% else %}
+          <li class="nav-item">
+            <a class="nav-link" href="{% url 'login' %}?next={{ request.path }}">Login</a>
+          </li>
+        {% endif %}
+      </ul>
+    </nav>
+
+    <!-- Page content -->
+    <main id="app" class="container-xxxl">
+      {% block content %}{% endblock %}
+    </main>
+  <!-- ensure CSRF cookie exists on every page -->
+  <form style="display:none;">{% csrf_token %}</form>
+
+  <!-- HTMX + global CSRF header hook -->
+  <script src="https://unpkg.com/htmx.org@2.0.3"></script>
+  <script>
+    // Attach X-CSRFToken to every HTMX request
+    document.addEventListener("htmx:configRequest", function (e) {
+      // 1) hidden input (if present)
+      const input = document.querySelector('input[name="csrfmiddlewaretoken"]');
+      let token = input && input.value;
+
+      // 2) fallback: csrftoken cookie
+      if (!token) {
+        const row = document.cookie.split('; ')
+          .find(r => r.startsWith('csrftoken='));
+        if (row) token = row.split('=')[1];
+      }
+
+      if (token) e.detail.headers['X-CSRFToken'] = token;
+    });
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

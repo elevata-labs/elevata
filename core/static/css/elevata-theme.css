@@ -1,0 +1,244 @@
+/*
+elevata – Metadata-driven Data Platform Framework
+Copyright © 2025 Ilona Tag
+SPDX-License-Identifier: AGPL-3.0-only
+*/
+
+/* Color palette */
+:root {
+  --elevata-primary: #006d7e;
+  --elevata-accent:  #00b5ad;
+  --elevata-dark:    #013a4a;
+  --elevata-light:   #f9fafa;
+  --elevata-text:    #202124;
+}
+
+/* General layout */
+body {
+  background-color: var(--elevata-light);
+  color: var(--elevata-text);
+  font-family: "Inter", "Segoe UI", Roboto, sans-serif;
+}
+
+/* Navbar styling */
+.navbar {
+  background-color: var(--elevata-dark) !important;
+  border-bottom: 3px solid var(--elevata-accent);
+}
+
+/* make nav-link buttons align like anchors */
+.navbar .btn.nav-link {
+  padding: .5rem 0;
+  line-height: 1.5;
+  vertical-align: middle;
+}
+
+.navbar-brand img {
+  margin-left: 10px; /* subtle indent for the logo */
+  height: 56px;
+}
+
+.navbar-brand,
+.nav-link {
+  color: #fff !important;
+}
+
+.nav-link:hover {
+  color: var(--elevata-accent) !important;
+}
+
+/* Buttons */
+.btn-primary {
+  background-color: var(--elevata-primary);
+  border-color: var(--elevata-primary);
+}
+
+.btn-primary:hover {
+  background-color: var(--elevata-accent);
+  border-color: var(--elevata-accent);
+}
+
+.btn-outline-primary {
+  color: var(--elevata-primary);
+  border-color: var(--elevata-primary);
+}
+
+.btn-outline-primary:hover {
+  background-color: var(--elevata-primary);
+  color: #fff;
+}
+
+/* Cards and tables */
+.card {
+  border: 1px solid #dee2e6;
+  border-radius: 10px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.table-striped > tbody > tr:nth-of-type(odd) {
+  background-color: #f4f8f8;
+}
+
+/* Form fields */
+.form-label {
+  font-weight: 500;
+}
+
+form input,
+form select,
+form textarea {
+  border-radius: 6px;
+  border: 1px solid #ccc;
+  padding: 6px 8px;
+  width: 100%;
+  max-width: 500px;
+}
+
+form input:focus,
+form select:focus,
+form textarea:focus {
+  border-color: var(--elevata-accent);
+  box-shadow: 0 0 0 0.2rem rgba(0, 181, 173, 0.25);
+}
+
+/* === Scoped form styling: affects only .elevata-form === */
+
+.elevata-form {
+  max-width: 720px;           /* keep readable width */
+  margin-left: 0;             /* align with container left */
+}
+
+/* Each row = stacked label + input */
+.elevata-form .form-row {
+  display: flex;
+  flex-direction: column;     /* label above input */
+  align-items: flex-start;    /* left-align both */
+  margin-bottom: 1rem;
+}
+
+/* Make sure labels are always above and not bottom-aligned */
+.elevata-form label {
+  display: block;
+  font-weight: 500;
+  text-align: left;
+  margin-bottom: 0.35rem;     /* small gap above input */
+  line-height: 1.1;
+}
+
+.elevata-form input[type="text"],
+.elevata-form input[type="email"] {
+  width: auto;
+  min-width: 25ch;
+}
+
+.elevata-form input[type="number"] {
+  width: 10ch;
+}
+
+.elevata-form input[type="date"] {
+  width: auto;
+}
+
+.elevata-form select {
+  width: auto;
+  min-width: 16ch;
+}
+
+.elevata-form textarea {
+  width: 100%;
+  min-height: 6rem;
+}
+
+/* Focus highlight in brand color */
+.elevata-form input:focus,
+.elevata-form select:focus,
+.elevata-form textarea:focus {
+  border-color: var(--elevata-accent, #00b5ad);
+  box-shadow: 0 0 0 0.2rem rgba(0, 181, 173, 0.25);
+  outline: none;
+}
+
+/* Help and error text */
+.elevata-form .help { color:#6c757d; font-size:.9rem; margin-top:.25rem; }
+.elevata-form .error { color:#c1121f; font-size:.9rem; margin-top:.25rem; }
+
+/* Inline edit/create forms inside table cells */
+.elevata-form-inline .form-row {
+  display: flex;
+  flex-direction: column;   /* label above input */
+  align-items: flex-start;  /* left align */
+  margin-bottom: 0.8rem;
+}
+
+.elevata-form-inline label {
+  display: block;
+  font-weight: 500;
+  margin-bottom: 0.3rem;
+  text-align: left;
+  line-height: 1.15;
+}
+
+.elevata-form-inline input,
+.elevata-form-inline select,
+.elevata-form-inline textarea {
+  display: block;
+  width: auto;              /* natural width */
+  min-width: 20ch;          /* not too tiny */
+  max-width: 100%;          /* no overflow */
+  padding: 6px 8px;
+  border: 1px solid #ccd0d5;
+  border-radius: 6px;
+  background: #fff;
+  box-sizing: border-box;
+}
+
+.elevata-form-inline textarea {
+  width: 100%;
+  min-height: 6rem;
+}
+
+.elevata-form-inline input:focus,
+.elevata-form-inline select:focus,
+.elevata-form-inline textarea:focus {
+  outline: none;
+  border-color: var(--elevata-accent, #00b5ad);
+  box-shadow: 0 0 0 0.2rem rgba(0,181,173,.25);
+}
+
+/* tiny spacing for help/error */
+.elevata-form-inline .help { color:#6c757d; font-size:.9rem; margin-top:.25rem; }
+.elevata-form-inline .error { color:#c1121f; font-size:.9rem; margin-top:.25rem; }
+
+@keyframes elevata-highlight {
+  0%   { background-color: #d2f4ea; }
+  100% { background-color: transparent; }
+}
+
+/* animate table cells of highlighted row */
+tr.highlight > td {
+  animation: elevata-highlight 1.8s ease-out;
+}
+
+tr.htmx-swapping td {
+  opacity: 0;
+  transition: opacity 0.5s ease-out;
+}
+
+.container-xxxl {
+  width: 80%;
+  margin-inline: auto;
+  padding-inline: 1rem;
+}
+
+@media (max-width: 768px) {
+  .container-xxxl {
+    width: 95%;
+  }
+}
+
+.invalid-feedback {
+  font-size: 0.875rem;
+}
+.form-row label {
+  font-weight: 500;
+}

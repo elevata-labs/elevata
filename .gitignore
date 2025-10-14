@@ -1,6 +1,9 @@
 # Python
 __pycache__/
 *.py[cod]
+*.pyo
+*.pyd
+*.so
 *.egg
 *.egg-info/
 *.eggs/
@@ -14,7 +17,13 @@ build/
 env/
 venv/
 ENV/
-*.sqlite
+.envrc
+
+# Django migrations cache
+migrations/
+
+# SQLite database
+*.sqlite*
 
 # Jupyter Notebooks
 .ipynb_checkpoints
@@ -27,13 +36,10 @@ Thumbs.db
 target/
 dbt_packages/
 logs/
-
-# Local configs (do not share secrets)
 profiles.yml
-.envrc
-*.env
 
 # IDEs
 .vscode/
 .idea/
 *.swp
+*.swo

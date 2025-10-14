@@ -1,0 +1,41 @@
+<!--
+elevata – Metadata-driven Data Platform Framework
+Copyright © 2025 Ilona Tag
+SPDX-License-Identifier: AGPL-3.0-only
+-->
+{# Inline edit form for a single existing object, wrapped in one <tr> #}
+<tr id="row-{{ object.pk }}" class="table-warning">
+  <td colspan="{{ fields|length|add:'1' }}">
+    <form method="post"
+          class="elevata-form elevata-form-inline"
+          hx-post="{% url model_name|add:'_row_edit' object.pk %}"
+          hx-target="#row-{{ object.pk }}"
+          hx-swap="outerHTML"
+          hx-disabled-elt="button[type=submit]">
+      {% csrf_token %}
+      {% for field in form %}
+        <div class="form-row">
+          <label for="{{ field.id_for_label }}">{{ field.label }}
+          {% if field.field.required %}
+            <span class="text-danger" aria-label="Required" title="Required">*</span>
+          {% endif %}
+          </label>
+          {{ field }}
+          {% if field.help_text %}
+            <div class="help">{{ field.help_text }}</div>
+          {% endif %}
+          {% for error in field.errors %}
+            <div class="error">{{ error }}</div>
+          {% endfor %}
+        </div>
+      {% endfor %}
+      <div class="mt-2 d-flex gap-2">
+        <button type="submit" class="btn btn-primary btn-sm">Save</button>
+        <a class="btn btn-secondary btn-sm"
+           hx-get="{% url model_name|add:'_row' object.pk %}"
+           hx-target="#row-{{ object.pk }}"
+           hx-swap="outerHTML">Cancel</a>
+      </div>
+    </form>
+  </td>
+</tr>

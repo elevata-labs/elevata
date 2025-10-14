@@ -1,0 +1,25 @@
+<!--
+elevata – Metadata-driven Data Platform Framework
+Copyright © 2025 Ilona Tag
+SPDX-License-Identifier: AGPL-3.0-only
+-->
+{% extends "base.html" %}
+{% block title %}Sign in · elevata{% endblock %}
+{% block content %}
+<h1 class="h4 mb-3">Sign in</h1>
+<form method="post" class="elevata-form" novalidate>
+  {% csrf_token %}
+  <div class="form-row">
+    <label for="id_username">Username</label>
+    <input type="text" name="username" required id="id_username" autofocus>
+  </div>
+  <div class="form-row">
+    <label for="id_password">Password</label>
+    <input type="password" name="password" required id="id_password">
+  </div>
+  {% if form.errors %}
+    <div class="error mt-2">Invalid credentials</div>
+  {% endif %}
+  <button class="btn btn-primary mt-2" type="submit">Sign in</button>
+</form>
+{% endblock %}
