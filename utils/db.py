@@ -20,25 +20,19 @@ along with elevata. If not, see <https://www.gnu.org/licenses/>.
 Contact: <https://github.com/elevata-labs/elevata>.
 """
 
-"""
-ASGI config for elevata_site project.
-
-It exposes the ASGI callable as a module-level variable named ``application``.
-
-For more information on this file, see
-https://docs.djangoproject.com/en/5.2/howto/deployment/asgi/
-"""
-
 import os
-import sys
 from pathlib import Path
-from django.core.asgi import get_asgi_application
 
-# Ensure repo root is on sys.path (for uvicorn/daphne)
-REPO_ROOT = Path(__file__).resolve().parents[2]
-if str(REPO_ROOT) not in sys.path:
-  sys.path.insert(0, str(REPO_ROOT))
-
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'elevata_site.settings')
-
-application = get_asgi_application()
+def build_metadata_database_url(base_dir: Path) -> str:
+  """Build DATABASE_URL from DB_* env vars with sane defaults."""
+  engine = os.getenv("DB_ENGINE", "sqlite").strip().lower()
+  if engine == "sqlite":
+    return f"sqlite:///{(base_dir / 'db.sqlite3').as_posix()}"
+  user = os.getenv("DB_USER", "")
+  password = os.getenv("DB_PASSWORD", "")
+  host = os.getenv("DB_HOST", "localhost")
+  port = os.getenv("DB_PORT", "5432")
+  name = os.getenv("DB_NAME", "")
+  auth = f"{user}:{password}@" if user or password else ""
+  port_part = f":{port}" if port else ""
+  return f"{engine}://{auth}{host}{port_part}/{name}"

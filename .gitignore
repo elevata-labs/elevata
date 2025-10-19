@@ -1,3 +1,13 @@
+# ======================================================
+# elevata - Metadata-driven Data Platform Framework
+# Copyright © 2025 Ilona Tag
+#
+# SPDX-License-Identifier: AGPL-3.0-only
+#
+# This file defines example environment variables for elevata.
+# It is not code, but part of the build and configuration setup.
+# ======================================================
+
 # Python
 __pycache__/
 *.py[cod]
@@ -11,7 +21,7 @@ dist/
 build/
 *.log
 
-# Virtual environments
+# Virtual environments and environment files
 .env
 .venv
 env/

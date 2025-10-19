@@ -8,7 +8,4 @@
 # It is not code, but part of the build and configuration setup.
 # ======================================================
 
-django
-django-crum
-python-dotenv
-dj-database-url
+psycopg[binary]

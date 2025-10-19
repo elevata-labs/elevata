@@ -1,5 +1,5 @@
 elevata:
-  target: dev
+  target: "{{ env_var('DBT_TARGET') }}"
   outputs:
     dev:
       type: duckdb

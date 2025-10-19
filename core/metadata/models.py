@@ -92,7 +92,7 @@ class Person(AuditFields):
   class Meta:
     db_table = "person"
     ordering = ["email"]
-    verbose_name_plural = "Persons"
+    verbose_name_plural = "People"
 
   def __str__(self):
     return self.email

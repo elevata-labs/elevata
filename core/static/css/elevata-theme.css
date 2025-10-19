@@ -205,7 +205,51 @@ form textarea:focus {
   box-shadow: 0 0 0 0.2rem rgba(0,181,173,.25);
 }
 
-/* tiny spacing for help/error */
+.elevata-form .form-row input[type="checkbox"],
+.elevata-form-inline .form-row input[type="checkbox"],
+.elevata-form .form-row input[type="radio"],
+.elevata-form-inline .form-row input[type="radio"] {
+  width: auto;
+  min-width: 0;
+  display: inline-block;
+}
+
+.elevata-form .form-row input[type="checkbox"],
+.elevata-form-inline .form-row input[type="checkbox"] {
+  margin-top: .35rem;
+  cursor: pointer;
+}
+
+.elevata-form .form-row input[type="checkbox"].form-check-input,
+.elevata-form-inline .form-row input[type="checkbox"].form-check-input {
+  float: none; 
+  margin-left: 0;
+}
+
+/* Modern hover/focus feedback for checkboxes and radios */
+.elevata-form input[type="checkbox"],
+.elevata-form-inline input[type="checkbox"],
+.elevata-form input[type="radio"],
+.elevata-form-inline input[type="radio"] {
+  accent-color: var(--bs-primary); /* nutzt deine Bootstrap-Primärfarbe */
+  transition: transform 0.1s ease-in-out, box-shadow 0.15s ease-in-out;
+}
+
+.elevata-form input[type="checkbox"]:hover,
+.elevata-form-inline input[type="checkbox"]:hover,
+.elevata-form input[type="radio"]:hover,
+.elevata-form-inline input[type="radio"]:hover {
+  transform: scale(1.05);
+}
+
+.elevata-form input[type="checkbox"]:focus-visible,
+.elevata-form-inline input[type="checkbox"]:focus-visible,
+.elevata-form input[type="radio"]:focus-visible,
+.elevata-form-inline input[type="radio"]:focus-visible {
+  box-shadow: 0 0 0 3px rgba(var(--bs-primary-rgb), 0.25);
+  outline: none;
+}
+
 .elevata-form-inline .help { color:#6c757d; font-size:.9rem; margin-top:.25rem; }
 .elevata-form-inline .error { color:#c1121f; font-size:.9rem; margin-top:.25rem; }
 
@@ -241,4 +285,30 @@ tr.htmx-swapping td {
 }
 .form-row label {
   font-weight: 500;
+}
+
+/* soft Hover effect for cards */
+.hover-lift {
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.hover-lift:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 0.75rem 1.25rem rgba(0, 0, 0, 0.08);
+}
+
+/* colored title when hover */
+.hover-lift:hover .card-title-hover {
+  color: var(--bs-primary);
+  transition: color 0.2s ease;
+}
+
+/* soft button-glow with hover */
+.hover-glow {
+  transition: box-shadow 0.2s ease, filter 0.2s ease;
+}
+
+.hover-glow:hover {
+  box-shadow: 0 0.25rem 0.75rem rgba(var(--bs-primary-rgb), 0.4);
+  filter: brightness(1.07);
 }

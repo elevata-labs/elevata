@@ -20,75 +20,25 @@ along with elevata. If not, see <https://www.gnu.org/licenses/>.
 Contact: <https://github.com/elevata-labs/elevata>.
 """
 
-from django.urls import reverse_lazy
-from generic import GenericCRUDView
-from .models import Team, Person, PartialLoad, SourceSystem, SourceDataset, SourceDatasetOwnership, SourceColumn, TargetDataset, TargetDatasetOwnership, TargetColumn, TargetDatasetReference
+from django.apps import apps
+from core.generic import GenericCRUDView
 
-# ------------------------------------------------------------
-# CRUD views for the models
-# ------------------------------------------------------------
-class TeamCRUDView(GenericCRUDView):
-  model = Team
-  template_list = "generic/list.html"
-  template_form = "generic/form.html"
-  template_confirm_delete = "generic/confirm_delete.html"
+def make_crud_view(model):
+  """Dynamically create a CRUD view for a given model."""
+  return type(
+    f"{model.__name__}CRUDView",
+    (GenericCRUDView,),
+    {
+      "model": model,
+      "template_list": "generic/list.html",
+      "template_form": "generic/form.html",
+      "template_confirm_delete": "generic/confirm_delete.html",
+    },
+  )
 
-class PersonCRUDView(GenericCRUDView):
-  model = Person
-  template_list = "generic/list.html"
-  template_form = "generic/form.html"
-  template_confirm_delete = "generic/confirm_delete.html"
-
-class PartialLoadCRUDView(GenericCRUDView):
-  model = PartialLoad
-  template_list = "generic/list.html"
-  template_form = "generic/form.html"
-  template_confirm_delete = "generic/confirm_delete.html"
-
-class SourceSystemCRUDView(GenericCRUDView):
-  model = SourceSystem
-  template_list = "generic/list.html"
-  template_form = "generic/form.html"
-  template_confirm_delete = "generic/confirm_delete.html"
-
-class SourceDatasetCRUDView(GenericCRUDView):
-  model = SourceDataset
-  template_list = "generic/list.html"
-  template_form = "generic/form.html"
-  template_confirm_delete = "generic/confirm_delete.html"
-
-class SourceDatasetOwnershipCRUDView(GenericCRUDView):
-  model = SourceDatasetOwnership
-  template_list = "generic/list.html"
-  template_form = "generic/form.html"
-  template_confirm_delete = "generic/confirm_delete.html"
-
-class SourceColumnCRUDView(GenericCRUDView):
-  model = SourceColumn
-  template_list = "generic/list.html"
-  template_form = "generic/form.html"
-  template_confirm_delete = "generic/confirm_delete.html"
-
-class TargetDatasetCRUDView(GenericCRUDView):
-  model = TargetDataset
-  template_list = "generic/list.html"
-  template_form = "generic/form.html"
-  template_confirm_delete = "generic/confirm_delete.html"
-
-class TargetDatasetOwnershipCRUDView(GenericCRUDView):
-  model = TargetDatasetOwnership
-  template_list = "generic/list.html"
-  template_form = "generic/form.html"
-  template_confirm_delete = "generic/confirm_delete.html"
-
-class TargetColumnCRUDView(GenericCRUDView):
-  model = TargetColumn
-  template_list = "generic/list.html"
-  template_form = "generic/form.html"
-  template_confirm_delete = "generic/confirm_delete.html"
-
-class TargetDatasetReferenceCRUDView(GenericCRUDView):
-  model = TargetDatasetReference
-  template_list = "generic/list.html"
-  template_form = "generic/form.html"
-  template_confirm_delete = "generic/confirm_delete.html"
+# Dynamisch alle Models im metadata-App zu CRUD-Views machen
+metadata_models = apps.get_app_config("metadata").get_models()
+globals().update({
+  f"{model.__name__}CRUDView": make_crud_view(model)
+  for model in metadata_models
+})

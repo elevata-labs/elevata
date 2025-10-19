@@ -33,6 +33,8 @@ def app_menu(request):
   order = cfg.get("order", [])
   exclude = set(cfg.get("exclude", []))
   prefix = cfg.get("prefix", "")
+  descriptions = cfg.get("descriptions", {})
+  icons = cfg.get("icons", {})
 
   items = []
   try:
@@ -58,6 +60,8 @@ def app_menu(request):
     model_name = model._meta.model_name # lowercase
     label = f"{prefix}{model._meta.verbose_name_plural.title()}"
     url_name = f"{model_name}_list"
-    items.append({"label": label, "url_name": url_name})
+    desc = descriptions.get(model.__name__, f"Manage {label.lower()}")
+    icon = icons.get(model.__name__, "folder")
+    items.append({"label": label, "url_name": url_name, "card_text": desc, "icon": icon})
 
   return {"MAIN_MENU": items}

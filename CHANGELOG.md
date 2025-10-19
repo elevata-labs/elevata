@@ -5,26 +5,53 @@ This project adheres to [Semantic Versioning](https://semver.org/) and [Keep a C
 
 ---
 
-## [Unreleased]
+## 🧭 Roadmap  
 
-### Planned (Short-term)
-- UI refinements and improved layout consistency
-- Table pagination and sorting for large metadata sets
-- Support for **PostgreSQL** as an alternative to SQLite  
+### Up Next
 - Import functions for external **source-system metadata**
+- Table pagination and sorting for large metadata sets
 
-### Planned (Mid-term)
+### Planned Mid-term
 - Automated generation of **dbt models** based on stored metadata
 - **Ingestion** of relational databases and other sources
 - Built-in **core transformations** and data-engineering **best practices**
 
-### Planned (Long-term)
+### Planned Long-term
 - Support for additional platforms (Microsoft Fabric, Snowflake, BigQuery, Databricks, SQL Server)
 - Optional REST / GraphQL API for external metadata integration
 
 ---
 
-💡 *elevata is evolving towards a metadata-driven, open framework for modern data platforms — one small release at a time.*
+🧾 Licensed under the **AGPL-v3** — free to use, extend, and share.  
+💡 *elevata keeps evolving — one small, meaningful release at a time.*
+
+---
+## [0.1.1] - 2025-10-19
+
+### 🪶 *UI Polish & PostgreSQL Power*
+
+#### Overview  
+A refinement release that makes **elevata** smoother and more flexible:  
+a polished Django UI meets full **PostgreSQL** support — available via Docker or your own setup.  
+Better visuals, faster workflows, and real database choice.
+
+---
+
+#### ✨ Improvements  
+
+- **UI & UX Enhancements**  
+  - Polished Django interface with cleaner layouts and spacing  
+  - Improved responsiveness and overall visual consistency  
+  - Optimized inline interactions and usability tweaks  
+
+- **Database Support**  
+  - Full PostgreSQL backend support  
+  - Works with Docker Compose or a user-provided instance  
+  - Updated settings for seamless configuration and migrations  
+
+- **Developer Experience**  
+  - Simplified environment setup (SQLite or PostgreSQL)  
+  - Improved local testing through Docker Compose  
 
 ---
 

@@ -1,12 +1,12 @@
-"""
-elevata - Metadata-driven Data Platform Framework
-Copyright © 2025 Ilona Tag
-
-License: AGPL-3.0-only
-
-This file lists runtime dependencies for elevata.
-It is not code, but part of the build configuration.
-"""
+# ======================================================
+# elevata - Metadata-driven Data Platform Framework
+# Copyright © 2025 Ilona Tag
+#
+# SPDX-License-Identifier: AGPL-3.0-only
+#
+# This file defines example environment variables for elevata.
+# It is not code, but part of the build and configuration setup.
+# ======================================================
 
 -r base.txt
 dbt-duckdb

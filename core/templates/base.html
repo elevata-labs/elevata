@@ -42,6 +42,7 @@ SPDX-License-Identifier: AGPL-3.0-only
       focusFirst(container);
     });
   </script>
+  <script src="https://unpkg.com/lucide@latest"></script>
   <body class="p-3">
     <form style="display:none;">{% csrf_token %}</form>
     <!-- Navbar with logo -->
@@ -55,7 +56,7 @@ SPDX-License-Identifier: AGPL-3.0-only
       <ul class="navbar-nav">
         {% for item in MAIN_MENU %}
           <li class="nav-item">
-            <a class="nav-link" href="{% url item.url_name %}">{{ item.label }}</a>
+            <a class="nav-link" href="{% url item.url_name %}"><i data-lucide="{{ item.icon }}" class="text-primary"></i> {{ item.label }}</a>
           </li>
         {% endfor %}
       </ul>
@@ -117,6 +118,9 @@ SPDX-License-Identifier: AGPL-3.0-only
 
       if (token) e.detail.headers['X-CSRFToken'] = token;
     });
+  </script>
+  <script>
+    lucide.createIcons();
   </script>
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>

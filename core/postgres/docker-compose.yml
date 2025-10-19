@@ -1,0 +1,30 @@
+# ======================================================
+# elevata - Metadata-driven Data Platform Framework
+# Copyright © 2025 Ilona Tag
+#
+# SPDX-License-Identifier: AGPL-3.0-only
+#
+# This file defines example environment variables for elevata.
+# It is not code, but part of the build and configuration setup.
+# ======================================================
+
+services:
+  db:
+    image: postgres:17
+    env_file:
+      - ../../.env
+    environment:
+      POSTGRES_USER: ${DB_USER:-elevata}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-elevata}
+      POSTGRES_DB: ${DB_NAME:-elevata}
+    ports: 
+      - "${DB_PORT:-5432}:5432"
+    volumes: 
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U elevata -d elevata"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+volumes:
+  pg_data:

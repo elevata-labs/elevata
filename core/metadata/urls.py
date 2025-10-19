@@ -27,15 +27,19 @@ from django.views.generic import RedirectView
 from django.utils.text import slugify
 from generic import GenericCRUDView
 
+# ------------------------------------------------------------
+# Configuration (optional, read from settings.ELEVATA_CRUD)
+# ------------------------------------------------------------
 CFG = getattr(settings, "ELEVATA_CRUD", {}).get("metadata", {})
 ORDER = CFG.get("order", [])
 EXCLUDE = set(CFG.get("exclude", []))
 PATHS = CFG.get("paths", {})
 
-app_config = apps.get_app_config("metadata")
-
+# ------------------------------------------------------------
+# Helper functions
+# ------------------------------------------------------------
 def make_view(model):
-  # Build a CRUD view class for this model
+  """Dynamically create a CRUD view class for the given model."""
   attrs = {
     "model": model,
     "template_list": "generic/list.html",
@@ -45,11 +49,12 @@ def make_view(model):
   return type(f"{model.__name__}CRUDView", (GenericCRUDView,), attrs)
 
 def path_segment_for(model):
-  # Pretty segment from settings or slugified verbose_name_plural
+  """Derive URL segment from config or model verbose_name_plural."""
   custom = PATHS.get(model.__name__)
   return custom.strip("/") if custom else slugify(model._meta.verbose_name_plural)
 
 def sort_models(models):
+  """Return models sorted by ORDER, then alphabetically, excluding EXCLUDE."""
   by_name = {m.__name__: m for m in models if m.__name__ not in EXCLUDE}
   ordered = [by_name[n] for n in ORDER if n in by_name]
   remaining = sorted(
@@ -58,35 +63,53 @@ def sort_models(models):
   )
   return ordered + remaining
 
+# ------------------------------------------------------------
+# Build urlpatterns dynamically
+# ------------------------------------------------------------
+app_config = apps.get_app_config("metadata")
+models_sorted = sort_models(list(app_config.get_models()))
+
 urlpatterns = []
 
-models = list(app_config.get_models())
-models_sorted = sort_models(models)
-
-# Redirect '/metadata/' to the first model's list view
+# Optional redirect: /metadata → first model
 if models_sorted:
   first_model_name = models_sorted[0]._meta.model_name
   urlpatterns.append(
-    path("", RedirectView.as_view(pattern_name=f"{first_model_name}_list", permanent=False), name="metadata_index")
+    path(
+      "",
+      RedirectView.as_view(pattern_name=f"{first_model_name}_list", permanent=False),
+      name="metadata_index",
+    )
   )
 
-# Generate CRUD routes per model
+# CRUD + HTMX routes per model
 for model in models_sorted:
-  view_cls = make_view(model)
   model_name = model._meta.model_name
   seg = path_segment_for(model)
+  view_cls = make_view(model)
+
   urlpatterns += [
+    # Standard CRUD
     path(f"{seg}/", view_cls.as_view(action="list"), name=f"{model_name}_list"),
     path(f"{seg}/new/", view_cls.as_view(action="edit"), name=f"{model_name}_create"),
     path(f"{seg}/<int:pk>/edit/", view_cls.as_view(action="edit"), name=f"{model_name}_edit"),
     path(f"{seg}/<int:pk>/delete/", view_cls.as_view(action="delete"), name=f"{model_name}_delete"),
 
-    # inline row endpoints (HTMX)
+    # Inline (HTMX)
     path(f"{seg}/<int:pk>/row/", view_cls.as_view(action="row"), name=f"{model_name}_row"),
-    path(f"{seg}/<int:pk>/row_edit/", view_cls.as_view(action="row_edit"), name=f"{model_name}_row_edit"),
-    path(f"{seg}/row_new/", view_cls.as_view(action="row_new"), name=f"{model_name}_row_new"),
-    path(f"{seg}/row_create/", view_cls.as_view(action="row_create"), name=f"{model_name}_row_create"),
-    path(f"{seg}/<int:pk>/row_delete/", view_cls.as_view(action="row_delete"), name=f"{model_name}_row_delete"),
+    path(f"{seg}/<int:pk>/row-edit/", view_cls.as_view(action="row_edit"), name=f"{model_name}_row_edit"),
+    path(f"{seg}/row-new/", view_cls.as_view(action="row_new"), name=f"{model_name}_row_new"),
+    path(f"{seg}/row-create/", view_cls.as_view(action="row_create"), name=f"{model_name}_row_create"),
+    path(f"{seg}/<int:pk>/row-delete/", view_cls.as_view(action="row_delete"), name=f"{model_name}_row_delete"),
 
+    # Detail
     path(f"{seg}/<int:pk>/detail/", view_cls.as_view(action="detail"), name=f"{model_name}_detail"),
   ]
+
+# ------------------------------------------------------------
+# Debug: log models on startup
+# ------------------------------------------------------------
+print(
+  f"[elevata] Registered CRUD routes for: "
+  + ", ".join([m.__name__ for m in models_sorted])
+)

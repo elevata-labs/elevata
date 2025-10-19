@@ -1,8 +1,25 @@
 <!--
-elevata – Metadata-driven Data Platform Framework
+elevata - Metadata-driven Data Platform Framework
 Copyright © 2025 Ilona Tag
-SPDX-License-Identifier: AGPL-3.0-only
+
+This file is part of elevata.
+
+elevata is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of
+the License, or (at your option) any later version.
+
+elevata is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with elevata. If not, see <https://www.gnu.org/licenses/>.
+
+Contact: <https://github.com/elevata-labs/elevata>.
 -->
+
 {# Inline edit form for a single existing object, wrapped in one <tr> #}
 <tr id="row-{{ object.pk }}" class="table-warning">
   <td colspan="{{ fields|length|add:'1' }}">
@@ -13,6 +30,7 @@ SPDX-License-Identifier: AGPL-3.0-only
           hx-swap="outerHTML"
           hx-disabled-elt="button[type=submit]">
       {% csrf_token %}
+
       {% for field in form %}
         <div class="form-row">
           <label for="{{ field.id_for_label }}">{{ field.label }}
@@ -29,6 +47,7 @@ SPDX-License-Identifier: AGPL-3.0-only
           {% endfor %}
         </div>
       {% endfor %}
+      
       <div class="mt-2 d-flex gap-2">
         <button type="submit" class="btn btn-primary btn-sm">Save</button>
         <a class="btn btn-secondary btn-sm"

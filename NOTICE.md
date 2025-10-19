@@ -29,6 +29,14 @@ This project includes third-party software components that are licensed under th
 - Copyright © 2016–2024 Rasmus Andersson
 - Source: [https://github.com/rsms/inter](https://github.com/rsms/inter)
 
+### Lucide Icons
+- Project: Lucide (https://lucide.dev)
+- License: [ISC License](https://lucide.dev/license)
+- Copyright: © 2022 Lucide Contributors
+- Source: [https://github.com/lucide-icons/lucide](https://github.com/lucide-icons/lucide)
+- Usage: Icon set used in the elevata web interface (navigation and UI elements)
+
+
 ### Other Python Packages
 - **pandas** – BSD License  
 

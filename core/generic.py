@@ -292,7 +292,7 @@ class GenericCRUDView(LoginRequiredMixin, View):
       "model_name": self.model._meta.model_name,
     }
     return render(request, "generic/row_form_new.html", context)
-
+  
   def row_create(self, request):
     if request.method != "POST":
       raise Http404("POST required")
@@ -303,6 +303,11 @@ class GenericCRUDView(LoginRequiredMixin, View):
       user = get_current_user() or request.user
       self._set_audit_fields(instance, user, is_new=True)
       instance.save()
+
+      # Save ManyToMany relationships explicitly
+      if hasattr(form, "save_m2m"):
+        form.save_m2m()
+
       context = {
         "model": self.model,
         "meta": self.model._meta,

@@ -33,9 +33,15 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
 from pathlib import Path
+import os
+from dotenv import load_dotenv, find_dotenv 
+import dj_database_url
+from utils.env import env_bool, env_list, env_str, env_int
+from utils.db import build_metadata_database_url
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+load_dotenv(find_dotenv(filename=".env", raise_error_if_not_found=False))
 
 STATIC_URL = "static/"
 
@@ -48,12 +54,13 @@ STATICFILES_DIRS = [
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-9djmsb%o6t9_nx780w#d+#d-51p9p**(5qu@9*=^c9w@ot*asq'
+SECRET_KEY = os.getenv("SECRET_KEY", "dev-only-unsafe")
+
+ALLOWED_HOSTS = env_list("ALLOWED_HOSTS", [])
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
-
-ALLOWED_HOSTS = ["localhost", "127.0.0.1"]
+DEBUG = env_bool("DEBUG", False)
+SECRET_KEY = env_str("SECRET_KEY", "dev-only-insecure")
 
 # Application definition
 
@@ -86,7 +93,7 @@ ROOT_URLCONF = 'elevata_site.urls'
 TEMPLATES = [
   {
     "BACKEND": "django.template.backends.django.DjangoTemplates",
-    "DIRS": [BASE_DIR / "templates"],  # core/templates
+    "DIRS": [BASE_DIR / "templates"],
     "APP_DIRS": True,
     "OPTIONS": {
       "context_processors": [
@@ -106,13 +113,15 @@ WSGI_APPLICATION = 'elevata_site.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
-DATABASES = {
-  'default': {
-    'ENGINE': 'django.db.backends.sqlite3',
-    'NAME': BASE_DIR / 'db.sqlite3',
-  }
-}
+DATABASE_URL = build_metadata_database_url(BASE_DIR)
 
+DATABASES = {
+  "default": dj_database_url.parse(
+    DATABASE_URL,
+    conn_max_age=env_int("DB_CONN_MAX_AGE", 60),
+    ssl_require=env_bool("DB_SSL_REQUIRE", False),
+  )
+}
 
 # Password validation
 # https://docs.djangoproject.com/en/5.2/ref/settings/#auth-password-validators
@@ -157,7 +166,45 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 ELEVATA_CRUD = {
   "metadata": {
-    "order": ["Team", "Person", "PartialLoad", "SourceSystem", "SourceDataset", "SourceDatasetOwnership", "SourceColumn", "TargetDataset", "TargetDatasetOwnership", "TargetColumn", "TargetDatasetReference"],
+    "order": [
+      "Team", 
+      "Person", 
+      "PartialLoad", 
+      "SourceSystem", 
+      "SourceDataset", 
+      "SourceDatasetOwnership", 
+      "SourceColumn", 
+      "TargetDataset", 
+      "TargetDatasetOwnership", 
+      "TargetColumn", 
+      "TargetDatasetReference"
+      ],
+    "descriptions": {
+      "Team": "Organize data teams, functional groups.",
+      "Person": "Track users and their relation to the teams within your data organization.",
+      "PartialLoad": "Define additional loads to process subsets of your datasets in individual frequencies.",
+      "SourceSystem": "Register and describe upstream systems providing raw data to the platform.",
+      "SourceDataset": "Define datasets extracted from source systems — the entry point for ingestion.",
+      "SourceDatasetOwnership": "Assign accountability for source datasets and document responsibilities.",
+      "SourceColumn": "Capture technical metadata and profiling details for each source column.",
+      "TargetDataset": "Design target datasets for your platform and map them to the source datasets.",
+      "TargetDatasetOwnership": "Assign ownership and stewardship for target datasets across teams.",
+      "TargetColumn": "Define business-ready columns and maintain data quality at the attribute level.",
+      "TargetDatasetReference": "Specify relations between the target datasets to generate appropriate foreign surrogate keys.",
+    },
+    "icons": {
+      "Team": "users",
+      "Person": "user",
+      "PartialLoad": "timer",
+      "SourceSystem": "database",
+      "SourceDataset": "file",
+      "SourceDatasetOwnership": "shield-check",
+      "SourceColumn": "grid-2x2",
+      "TargetDataset": "file-check-2",
+      "TargetDatasetOwnership": "shield-check",
+      "TargetColumn": "grid-2x2-check",
+      "TargetDatasetReference": "arrow-left-right",
+    },
     "exclude": [""],
     "paths": {      
     },
@@ -167,3 +214,4 @@ ELEVATA_CRUD = {
 LOGIN_URL = "/accounts/login/"
 LOGIN_REDIRECT_URL = "/"
 LOGOUT_REDIRECT_URL = "/accounts/login/"
+PASSWORD_CHANGE_REDIRECT_URL = "/"

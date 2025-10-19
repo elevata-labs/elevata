@@ -1,8 +1,25 @@
 <!--
-elevata – Metadata-driven Data Platform Framework
+elevata - Metadata-driven Data Platform Framework
 Copyright © 2025 Ilona Tag
-SPDX-License-Identifier: AGPL-3.0-only
+
+This file is part of elevata.
+
+elevata is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of
+the License, or (at your option) any later version.
+
+elevata is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with elevata. If not, see <https://www.gnu.org/licenses/>.
+
+Contact: <https://github.com/elevata-labs/elevata>.
 -->
+
 {% extends "base.html" %}
 {% load static %}
 
@@ -21,12 +38,15 @@ SPDX-License-Identifier: AGPL-3.0-only
     <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-3">
       {% for item in MAIN_MENU %}
         <div class="col">
-          <div class="card h-100">
+          <div class="card h-100 border-0 shadow-sm rounded-3 hover-lift">
             <div class="card-body d-flex flex-column">
-              <h2 class="h6 card-title mb-2">{{ item.label }}</h2>
-              <p class="card-text text-muted mb-3">Manage {{ item.label|lower }}.</p>
+              <h2 class="h6 fw-semibold mb-2 card-title-hover">{{ item.label }}</h2>
+              <p class="card-text text-muted mb-3">{{ item.card_text }}.</p>
               <div class="mt-auto">
-                <a class="btn btn-primary btn-sm" href="{% url item.url_name %}">Open</a>
+                <a class="btn btn-primary btn-sm px-3 hover-glow" href="{% url item.url_name %}">
+                  <i data-lucide="{{ item.icon }}"></i>
+                  Open
+                </a>
               </div>
             </div>
           </div>
