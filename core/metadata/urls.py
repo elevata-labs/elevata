@@ -26,6 +26,11 @@ from django.conf import settings
 from django.views.generic import RedirectView
 from django.utils.text import slugify
 from generic import GenericCRUDView
+# HTMX views for the import
+from . import views
+from metadata.models import SourceDataset, SourceSystem
+
+# app_name = "metadata"
 
 # ------------------------------------------------------------
 # Configuration (optional, read from settings.ELEVATA_CRUD)
@@ -104,7 +109,17 @@ for model in models_sorted:
 
     # Detail
     path(f"{seg}/<int:pk>/detail/", view_cls.as_view(action="detail"), name=f"{model_name}_detail"),
+    path("source-type-hint/", views.source_type_hint, name="source_type_hint"),
   ]
+
+# Custom import endpoints (UI-Buttons → HTMX POST)
+ds_seg = path_segment_for(SourceDataset)
+sys_seg = path_segment_for(SourceSystem)
+
+urlpatterns += [
+  path(f"{ds_seg}/<int:pk>/import/", views.import_dataset_metadata, name="sourcedataset_import_metadata"),
+  path(f"{sys_seg}/<int:pk>/import/", views.import_system_metadata, name="sourcesystem_import_metadata"),
+]
 
 # ------------------------------------------------------------
 # Debug: log models on startup

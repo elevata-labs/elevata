@@ -22,6 +22,31 @@ Contact: <https://github.com/elevata-labs/elevata>.
 
 from django.apps import apps
 from django.conf import settings
+from django.urls import reverse, NoReverseMatch
+from metadata.constants import (
+  SUPPORTED_SQLALCHEMY, BETA_SQLALCHEMY, MANUAL_TYPES,
+  TYPE_SUPPORT_LABEL, TYPE_BADGE_CLASS, classify_type,
+)
+
+def type_support(request):
+  """
+  Inject support info into templates.
+  """
+  return {
+    "SUPPORTED_SQLALCHEMY": sorted(SUPPORTED_SQLALCHEMY),
+    "BETA_SQLALCHEMY": sorted(BETA_SQLALCHEMY),
+    "MANUAL_TYPES": sorted(MANUAL_TYPES),
+    "TYPE_SUPPORT_LABEL": TYPE_SUPPORT_LABEL,
+    "TYPE_BADGE_CLASS": TYPE_BADGE_CLASS,
+  }
+
+def _safe_reverse(name: str) -> str:
+  for candidate in (name, f"metadata:{name}"):
+    try:
+      return reverse(candidate)
+    except NoReverseMatch:
+      continue
+  return ""
 
 def app_menu(request):
   """
@@ -57,11 +82,20 @@ def app_menu(request):
 
   # Generate menu items
   for model in models_sorted:
-    model_name = model._meta.model_name # lowercase
+    model_name = model._meta.model_name
     label = f"{prefix}{model._meta.verbose_name_plural.title()}"
     url_name = f"{model_name}_list"
+    href = _safe_reverse(url_name)
+    if not href:
+      continue
     desc = descriptions.get(model.__name__, f"Manage {label.lower()}")
     icon = icons.get(model.__name__, "folder")
-    items.append({"label": label, "url_name": url_name, "card_text": desc, "icon": icon})
+    items.append({
+      "label": label,
+      "url_name": url_name,
+      "href": href,
+      "card_text": desc,
+      "icon": icon,
+    })
 
   return {"MAIN_MENU": items}

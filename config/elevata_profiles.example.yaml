@@ -1,0 +1,36 @@
+# ======================================================
+# elevata - Metadata-driven Data Platform Framework
+# Copyright © 2025 Ilona Tag
+#
+# SPDX-License-Identifier: AGPL-3.0-only
+#
+# This file defines example environment variables for elevata.
+# It is not code, but part of the build and configuration setup.
+# ======================================================
+
+active_profile: ${ELEVATA_PROFILE:-dev}
+
+profiles:
+  dev:
+    secret_ref_template: "sec/{profile}/conn/{type}/{short_name}"
+    providers:
+      - type: env
+    security:
+      pepper_ref: "sec/{profile}/pepper"
+  test:
+    secret_ref_template: "kv://sec/{profile}/conn/{type}/{short_name}"  # purely naming; provider determines access
+    providers:
+      - type: azure_key_vault
+        vault_url: https://kv-elevata-test.vault.azure.net/
+      - type: env  # fallback for emergencies
+    security:
+      pepper_ref: "sec/{profile}/pepper"
+  prod:
+    secret_ref_template: "kv://sec/{profile}/conn/{type}/{short_name}"
+    overrides:
+      erp: "sec/prod/conn/mssql/erp-core-01" # maps short_name 'erp' to different secret id
+    providers:
+      - type: azure_key_vault
+        vault_url: https://kv-elevata.vault.azure.net/
+    security:
+      pepper_ref: "sec/{profile}/pepper"

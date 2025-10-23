@@ -56,11 +56,13 @@ SPDX-License-Identifier: AGPL-3.0-only
       <ul class="navbar-nav">
         {% for item in MAIN_MENU %}
           <li class="nav-item">
-            <a class="nav-link" href="{% url item.url_name %}"><i data-lucide="{{ item.icon }}" class="text-primary"></i> {{ item.label }}</a>
+            <a class="nav-link" href="{{ item.href }}">
+              <i data-lucide="{{ item.icon }}" class="text-primary"></i> {{ item.label }}
+            </a>
           </li>
         {% endfor %}
       </ul>
-
+      
       <ul class="navbar-nav ms-auto align-items-center">
         {% if request.user.is_authenticated %}
           <li class="nav-item me-2">

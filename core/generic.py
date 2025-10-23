@@ -36,8 +36,16 @@ from django.contrib.auth.mixins import LoginRequiredMixin
 # Utility helper
 # ------------------------------------------------------------
 def display_key(*parts):
-  """Join parts with dot, skipping None or empty strings."""
-  return ".".join(p for p in parts if p)
+  """Build a human-friendly composite key; ignores empty parts and casts to str."""
+  cleaned = []
+  for p in parts:
+    if p is None:
+      continue
+    s = str(p).strip()
+    if s:
+      cleaned.append(s)
+  return " · ".join(cleaned)
+
 
 
 # ------------------------------------------------------------

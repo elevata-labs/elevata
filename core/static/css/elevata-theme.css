@@ -312,3 +312,50 @@ tr.htmx-swapping td {
   box-shadow: 0 0.25rem 0.75rem rgba(var(--bs-primary-rgb), 0.4);
   filter: brightness(1.07);
 }
+
+/* Brand base */
+:root {
+  --brand: #006d7e;
+  --pk-bg: #004f59;       /* darker brand for PK */
+  --pk-fg: #fff;
+  --int-bg: #d8f3f7;      /* light brand tint for integrate */
+  --int-fg: #004f59;
+  --pii-bg: #fff4e5;      /* optional: PII hint */
+  --pii-fg: #8a4b00;
+  --brand: #006d7e; 
+  --pk-row: #cfe7ea;
+  --int-row: #e8f6f7;
+  --pk-chip-bg:#006d7e;  --pk-chip-fg:#fff;
+  --int-chip-bg:#d8f3f7; --int-chip-fg:#004f59;
+}
+
+/* Chips */
+.ec-chip{display:inline-block;font-size:.75rem;line-height:1;padding:.2rem .45rem;border-radius:999px;border:1px solid transparent;vertical-align:middle}
+.ec-chip--pk{background:var(--pk-chip-bg);color:var(--pk-chip-fg)}
+.ec-chip--integrate{background:var(--int-chip-bg);color:var(--int-chip-fg);border-color:var(--brand)}
+td .ec-chip + .ec-chip{margin-left:.35rem}
+
+/* background color each row */
+tr.ec-row--pk > td{ background-color: var(--pk-row); }
+tr.ec-row--integrate > td{ background-color: var(--int-row); }
+
+/* Keep actions and badges on one line, right-aligned */
+td .ec-actions{
+  display:inline-flex;
+  align-items:center;
+  justify-content:flex-end;
+  gap:.5rem;
+  flex-wrap:nowrap;
+  white-space:nowrap;
+  margin-left:.5rem; /* Distance to badges */
+}
+
+td .ec-badges{
+  display:inline-flex;
+  align-items:center;
+  gap:.35rem;
+  white-space:nowrap;
+}
+
+/* Prevent the Bootstrap btn-group from stretching/wrapping */
+td .btn-group{ flex: none; }

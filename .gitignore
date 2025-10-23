@@ -28,6 +28,7 @@ env/
 venv/
 ENV/
 .envrc
+elevata_profiles.y*
 
 # Django migrations cache
 migrations/

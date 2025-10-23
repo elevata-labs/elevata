@@ -21,13 +21,24 @@ Contact: <https://github.com/elevata-labs/elevata>.
 -->
 
 {% extends "base.html" %}
-{% load attr %}
+{% load attr support_extras %}
 
 {% block title %}{{ object }} · elevata{% endblock %}
 
 {% block content %}
   <div class="d-flex align-items-center justify-content-between mb-3">
-    <h1 class="h4 mb-0">{{ title|default:object }}</h1>
+    <div class="d-flex align-items-center gap-2">
+      <h1 class="h4 mb-0">{{ title|default:object }}</h1>
+      {# Summary badges for SourceColumn #}
+      {% if object and model_name == 'sourcecolumn' %}
+        {% if object.primary_key_column %}
+          <span class="ec-chip ec-chip--pk ms-2" title="Primary key">PK</span>
+        {% endif %}
+        {% if object.integrate %}
+          <span class="ec-chip ec-chip--integrate ms-1" title="Marked for integration">Integrate</span>
+        {% endif %}
+      {% endif %}
+    </div>
     <a class="btn btn-secondary" href="{% url model_name|add:'_list' %}">Back</a>
   </div>
 
@@ -36,7 +47,45 @@ Contact: <https://github.com/elevata-labs/elevata>.
       {% for field in fields %}
         <tr>
           <th style="width: 25%;">{{ field.verbose_name|capfirst }}</th>
-          <td>{{ object|attr:field.name }}</td>
+
+          {# Special rendering for the 'type' field (on SourceSystem): show value + support badge + hint #}
+          {% if field.name == "type" %}
+            <td>
+              {{ object|attr:field.name }}
+              {% with level=object.type|support_level %}
+                <span class="badge {{ level|support_badge_class }} ms-1">
+                  {{ level|support_label }}
+                </span>
+              {% endwith %}
+
+              <div id="type-hint"
+                   class="small text-muted mt-1"
+                   hx-get="{% url 'source_type_hint' %}"
+                   hx-trigger="load"
+                   hx-vals='{"type":"{{ object.type|default_if_none:"" }}"}'>
+              </div>
+            </td>
+
+          {# For SourceColumn fields: render booleans with chips in-line for clarity #}
+          {% elif model_name == 'sourcecolumn' and field.name == "primary_key_column" %}
+            <td>
+              {{ object|attr:field.name }}
+              {% if object.primary_key_column %}
+                <span class="ec-chip ec-chip--pk ms-2" title="Primary key">PK</span>
+              {% endif %}
+            </td>
+
+          {% elif model_name == 'sourcecolumn' and field.name == "integrate" %}
+            <td>
+              {{ object|attr:field.name }}
+              {% if object.integrate %}
+                <span class="ec-chip ec-chip--integrate ms-2" title="Marked for integration">Integrate</span>
+              {% endif %}
+            </td>
+
+          {% else %}
+            <td>{{ object|attr:field.name }}</td>
+          {% endif %}
         </tr>
       {% endfor %}
 
@@ -56,6 +105,66 @@ Contact: <https://github.com/elevata-labs/elevata>.
       {% endfor %}
     </tbody>
   </table>
+
+  {# --- Import button for SourceDataset detail --- #}
+  {% if object and model_name == 'sourcedataset' %}
+    <hr>
+    {% if object.source_system.type|is_import_supported %}
+      <form class="mt-3 d-inline">
+        {% csrf_token %}
+        <label class="me-2"><input type="checkbox" name="autointegrate_pk" checked> auto-integrate PK</label>
+        <label class="me-2"><input type="checkbox" name="reset_flags"> reset flags</label>
+
+        <button
+          type="button"
+          class="btn btn-primary"
+          hx-post="{% url 'sourcedataset_import_metadata' object.id %}"
+          hx-include="closest form"
+          hx-target="#feedback-{{ object.id }}"
+          hx-swap="innerHTML"
+          hx-on::before-request="this.setAttribute('disabled','disabled')"
+          hx-on::after-request="this.removeAttribute('disabled')"
+        >
+          Import metadata
+        </button>
+      </form>
+    {% else %}
+      <div class="alert alert-secondary mt-3 mb-0">
+        Manual source type — automated import is not available for <strong>{{ object.source_system.type }}</strong>.
+      </div>
+    {% endif %}
+    <div id="feedback-{{ object.id }}" class="mt-3"></div>
+  {% endif %}
+
+  {# --- Import button for SourceSystem detail --- #}
+  {% if object and model_name == 'sourcesystem' %}
+    <hr>
+    {% if object.type|is_import_supported %}
+      <form class="mt-3 d-inline">
+        {% csrf_token %}
+        <label class="me-2"><input type="checkbox" name="autointegrate_pk" checked> auto-integrate PK</label>
+        <label class="me-2"><input type="checkbox" name="reset_flags"> reset flags</label>
+
+        <button
+          type="button"
+          class="btn btn-primary"
+          hx-post="{% url 'sourcesystem_import_metadata' object.id %}"
+          hx-include="closest form"
+          hx-target="#system-feedback"
+          hx-swap="innerHTML"
+          hx-on::before-request="this.setAttribute('disabled','disabled')"
+          hx-on::after-request="this.removeAttribute('disabled')"
+        >
+          Import metadata for all datasets
+        </button>
+      </form>
+    {% else %}
+      <div class="alert alert-secondary mt-3 mb-0">
+        Manual source type — automated import is not available for <strong>{{ object.type }}</strong>.
+      </div>
+    {% endif %}
+    <div id="system-feedback" class="mt-3"></div>
+  {% endif %}
 
   {% if related_objects %}
     <h5 class="mt-4 mb-3">Related Data</h5>

@@ -12,3 +12,9 @@ django
 django-crum
 python-dotenv
 dj-database-url
+sqlalchemy
+pyodbc
+pyYAML
+# Azure Key Vault support
+azure-identity
+azure-keyvault-secrets

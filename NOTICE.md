@@ -24,6 +24,37 @@ This project includes third-party software components that are licensed under th
 - Copyright © Jeremy Cohen and contributors  
 - Source: [https://github.com/jwills/dbt-duckdb](https://github.com/jwills/dbt-duckdb)
 
+### SQLAlchemy
+- License: [MIT License](https://opensource.org/licenses/MIT)
+- Copyright © 2005–present, SQLAlchemy authors and contributors
+- Source: [https://www.sqlalchemy.org/](https://www.sqlalchemy.org/)
+- Usage: Database abstraction and metadata inspection
+
+### PyYAML
+- License: [MIT License](https://opensource.org/licenses/MIT)
+- Copyright © 2006–present, Kirill Simonov and contributors
+- Source: [https://pyyaml.org/](https://pyyaml.org/)
+- Usage: YAML configuration parsing
+
+### python-dotenv
+- License: [MIT License](https://opensource.org/licenses/MIT)
+- Copyright © 2014–present, Saurabh Kumar and contributors
+- Source: [https://github.com/theskumar/python-dotenv](https://github.com/theskumar/python-dotenv)
+- Usage: Environment variable management
+
+### dj-database-url
+- License: [BSD 3-Clause License](https://opensource.org/licenses/BSD-3-Clause)
+- Copyright © 2012–present, Kenneth Reitz and contributors
+- Source: [https://github.com/jacobian/dj-database-url](https://github.com/jacobian/dj-database-url)
+- Usage: Parse database URLs for Django settings
+
+### Azure SDK for Python
+- Components: `azure-identity`, `azure-keyvault-secrets`
+- License: [MIT License](https://opensource.org/licenses/MIT)
+- Copyright © Microsoft Corporation
+- Source: [https://learn.microsoft.com/en-us/python/api/overview/azure/](https://learn.microsoft.com/en-us/python/api/overview/azure/)
+- Usage: Secure secret resolution from Azure Key Vault
+
 ### Inter Font
 - License: [SIL Open Font License 1.1](https://scripts.sil.org/OFL)
 - Copyright © 2016–2024 Rasmus Andersson
@@ -36,9 +67,14 @@ This project includes third-party software components that are licensed under th
 - Source: [https://github.com/lucide-icons/lucide](https://github.com/lucide-icons/lucide)
 - Usage: Icon set used in the elevata web interface (navigation and UI elements)
 
-
 ### Other Python Packages
 - **pandas** – BSD License  
+
+### Optional Runtime Dependencies
+
+- **PostgreSQL** – used as an optional database backend.  
+  Not bundled with this software; distributed under the PostgreSQL License.  
+  See [https://www.postgresql.org/about/licence/](https://www.postgresql.org/about/licence/)  
 
 ---
 

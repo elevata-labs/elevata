@@ -19,3 +19,6 @@ Python dependencies:
 ```bash
 pip install -r requirements/duckdb.txt
 ```
+---
+
+*Last updated: October 2025*

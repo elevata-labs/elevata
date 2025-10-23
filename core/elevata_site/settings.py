@@ -43,12 +43,16 @@ from utils.db import build_metadata_database_url
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(find_dotenv(filename=".env", raise_error_if_not_found=False))
 
+ELEVATA_PROFILES_PATH = os.getenv("ELEVATA_PROFILES_PATH", str((BASE_DIR.parent / "config" / "elevata_profiles.yaml")))
+
 STATIC_URL = "static/"
 
 STATICFILES_DIRS = [
   BASE_DIR / "static", 
   BASE_DIR.parent / "docs",
 ]
+
+DOCS_BACKENDS_URL = "https://github.com/elevata-labs/elevata/blob/main/docs/source_backends.md"
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
@@ -102,10 +106,12 @@ TEMPLATES = [
         "django.contrib.auth.context_processors.auth",
         "django.contrib.messages.context_processors.messages",
         "elevata_site.context_processors.app_menu",
+        "elevata_site.context_processors.type_support",
       ],
     },
   },
 ]
+
 
 WSGI_APPLICATION = 'elevata_site.wsgi.application'
 

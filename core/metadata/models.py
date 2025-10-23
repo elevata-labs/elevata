@@ -25,19 +25,10 @@ from django.db import models
 from django.core.validators import RegexValidator
 from crum import get_current_user
 from generic import display_key
+from metadata.constants import TYPE_CHOICES, INGEST_CHOICES, LAYER_CHOICES, INTERVAL_CHOICES, DATATYPE_CHOICES, ROLE_CHOICES 
 
 NAME_VALIDATOR = RegexValidator(r"^[a-zA-Z0-9_.-]+$", "Only a–z, 0–9, _, ., - allowed.")
 SHORT_NAME_VALIDATOR = RegexValidator(r"^[a-z]+$", "Only a–z allowed.")
-TYPE_CHOICES     = [("csv", "CSV"), ("databricks", "Databricks"), ("fabric", "Fabric"), ("mysql", "MySQL"), ("oracle", "Oracle"), 
-                    ("postgres", "Postgres"), ("sap", "SAP"), ("sqlserver", "SQLServer"), ("other", "Other")]
-INGEST_CHOICES   = [("(none)", "None"), ("python", "Python"), ("theobald", "Theobald")]
-LAYER_CHOICES    = [("stage", "Stage"), ("raw", "Raw")]
-INTERVAL_CHOICES = [("year", "Year"), ("month", "Month"), ("day", "Day")]
-DATATYPE_CHOICES = [("boolean", "Boolean"), ("string", "String"), ("tinyint", "Tiny Integer"), ("smallint", "Small Integer"), 
-                    ("int", "Integer"), ("bigint", "Big Integer"), ("date", "Date"), ("datetime", "Datetime"), 
-                    ("decimal", "Decimal"), ("float", "Float"), ("binary", "Binary")]
-ROLE_CHOICES     = [("business", "Business Owner"), ("technical", "Technical Owner"), ("steward", "Data Steward")]
-
 
 class AuditFields(models.Model):
   created_at = models.DateTimeField(auto_now_add=True, db_index=True)

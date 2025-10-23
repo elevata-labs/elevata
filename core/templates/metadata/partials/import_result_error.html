@@ -1,4 +1,4 @@
-"""
+<!--
 elevata - Metadata-driven Data Platform Framework
 Copyright © 2025 Ilona Tag
 
@@ -18,12 +18,14 @@ You should have received a copy of the GNU Affero General Public License
 along with elevata. If not, see <https://www.gnu.org/licenses/>.
 
 Contact: <https://github.com/elevata-labs/elevata>.
-"""
+-->
 
-from django.contrib.auth.mixins import LoginRequiredMixin
-from django.views.generic import TemplateView
-
-class HomeView(LoginRequiredMixin, TemplateView):
-  """Simple landing page that shows the main menu."""
-  template_name = "home.html"
-  login_url = "/accounts/login/"
+<div class="alert alert-danger">
+  ⚠️ Error during metadata import
+  {% if scope == "dataset" %} for <strong>{{ dataset }}</strong>{% endif %}
+  {% if scope == "system" %} for <strong>{{ system }}</strong>{% endif %}.
+  <div class="small mt-1">{{ error }}</div>
+  {% if debug %}
+    <pre class="text-muted small mt-2">{{ debug }}</pre>
+  {% endif %}
+</div>

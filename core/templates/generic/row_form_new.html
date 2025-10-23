@@ -37,7 +37,22 @@ Contact: <https://github.com/elevata-labs/elevata>.
             <span class="text-danger" aria-label="Required" title="Required">*</span>
           {% endif %}
           </label>
-          {{ field }}
+
+          {# Show dynamic hint only for SourceSystem.type #}
+          {% if model_name == 'sourcesystem' and field.name == 'type' %}
+            {{ field }}
+            <div id="type-hint-inline"
+                class="small text-muted mt-1"
+                hx-get="{% url 'source_type_hint' %}"
+                hx-trigger="change from:[name='type']"
+                hx-include="[name='type']"
+                hx-target="this"
+                hx-swap="innerHTML">
+            </div>
+          {% else %}
+            {{ field }}
+          {% endif %}
+
           {% if field.help_text %}
             <div class="help">{{ field.help_text }}</div>
           {% endif %}

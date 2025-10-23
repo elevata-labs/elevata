@@ -20,9 +20,21 @@ along with elevata. If not, see <https://www.gnu.org/licenses/>.
 Contact: <https://github.com/elevata-labs/elevata>.
 -->
 
-{% load attr %}
-{# Renders a single display <tr> for an object (read-only row) #}
-<tr id="row-{{ object.pk }}"{% if highlight %} class="highlight"{% endif %}>
+{% load attr support_extras %}
+
+{# Render a single display <tr> for an object (read-only row) #}
+{# Special row classes for SourceColumn (tint PK / integrate) #}
+{% if model_name == 'sourcecolumn' %}
+  {% with pk=object.primary_key_column intg=object.integrate %}
+    <tr id="row-{{ object.pk }}"
+        {% if pk or intg %}
+          class="{% if pk %}ec-row--pk{% endif %}{% if intg %}{% if pk %} {% endif %}ec-row--integrate{% endif %}"
+        {% endif %}>
+  {% endwith %}
+{% else %}
+  <tr id="row-{{ object.pk }}"{% if highlight %} class="highlight"{% endif %}>
+{% endif %}
+
   {% for f in fields %}
     {% if forloop.first %}
       <td>
@@ -30,24 +42,66 @@ Contact: <https://github.com/elevata-labs/elevata>.
           {{ object|attr:f.name }}
         </a>
       </td>
+    {% elif f.name == "type" %}
+      <td>
+        {{ object|attr:f.name }}
+        {% with level=object.type|support_level %}
+          <span class="badge {{ level|support_badge_class }} ms-1">
+            {{ level|support_label }}
+          </span>
+        {% endwith %}
+      </td>
     {% else %}
       <td>{{ object|attr:f.name }}</td>
     {% endif %}
   {% endfor %}
-  <td class="text-end">
-    <div class="btn-group btn-group-sm" role="group">
-      <a class="btn btn-outline-secondary"
-         hx-get="{% url model_name|add:'_row_edit' object.pk %}"
-         hx-target="#row-{{ object.pk }}"
-         hx-swap="outerHTML">Edit</a>
 
-      <button class="btn btn-outline-danger"
-              hx-delete="{% url model_name|add:'_row_delete' object.pk %}"
-              hx-target="#row-{{ object.pk }}"
-              hx-swap="outerHTML swap:1s"
-              hx-confirm="Delete this record?">
-        Delete
-      </button>
-    </div>
+  <td class="text-end">
+    {% if model_name == 'sourcecolumn' %}
+      <span class="ec-badges">
+        {% if object.primary_key_column %}
+          <span class="ec-chip ec-chip--pk" title="Primary key">PK</span>
+        {% endif %}
+        {% if object.integrate %}
+          <span class="ec-chip ec-chip--integrate" title="Marked for integration">Integrate</span>
+        {% endif %}
+      </span>
+    {% endif %}
+
+    <span class="ec-actions">
+      <div class="btn-group btn-group-sm" role="group">
+        <button
+          type="button"
+          class="btn btn-outline-secondary"
+          hx-get="{% url model_name|add:'_row_edit' object.pk %}"
+          hx-target="#row-{{ object.pk }}"
+          hx-swap="outerHTML">Edit</button>
+
+        <button
+          type="button"
+          class="btn btn-outline-danger"
+          hx-delete="{% url model_name|add:'_row_delete' object.pk %}"
+          hx-target="#row-{{ object.pk }}"
+          hx-swap="outerHTML swap:1s"
+          hx-confirm="Delete this record?">Delete</button>
+
+        {% if model_name == 'sourcedataset' and object.source_system.type|is_import_supported %}
+          <form class="d-inline">
+            {% csrf_token %}
+            <button
+              type="button"
+              class="btn btn-outline-primary btn-sm"
+              hx-post="{% url 'sourcedataset_import_metadata' object.id %}"
+              hx-include="closest form"
+              hx-target="#feedback-{{ object.id }}"
+              hx-swap="innerHTML">Import</button>
+          </form>
+        {% endif %}
+      </div>
+    </span>
+
+    {% if model_name == 'sourcedataset' %}
+      <div id="feedback-{{ object.id }}"></div>
+    {% endif %}
   </td>
 </tr>
