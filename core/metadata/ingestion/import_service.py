@@ -45,6 +45,18 @@ def _materialize_with_related(datasets: Iterable) -> List:
     return list(datasets.select_related("source_system"))
   return list(datasets)
 
+def _clean_description(val):
+  """Normalize SQLAlchemy comment/description values."""
+  if isinstance(val, (tuple, list)):
+    val = val[0] if val else ""
+  if not isinstance(val, str):
+    return ""
+  val = val.strip()
+  if val.startswith("('") and val.endswith("',)"):
+    val = val[2:-3].strip()
+  elif val.startswith("(") and val.endswith(")"):
+    val = val[1:-1].strip("', ")
+  return val
 
 def import_metadata_for_datasets(
   datasets: Iterable,
@@ -107,6 +119,10 @@ def import_metadata_for_datasets(
     fk_map = meta.get("fk_map") or {}
     columns = meta.get("columns") or []
 
+    # Optionally reset user flags for this dataset before re-sync
+    if reset_flags:
+      ds.source_columns.update(integrate=False, pii_column=False, description="")
+
     # Current columns in DB (to detect create/update/remove)
     existing: Dict[str, SourceColumn] = {c.source_column: c for c in ds.source_columns.all()}
     seen_names = set()
@@ -115,14 +131,12 @@ def import_metadata_for_datasets(
     updated = 0
     removed = 0
 
-    # Optionally reset user flags for this dataset before re-sync
-    if reset_flags:
-      ds.source_columns.update(integrate=False, pii_column=False, description="")
-
     with transaction.atomic():
       for i, c in enumerate(columns, start=1):
         name = c["name"]
         sqla_type = c["type"]
+        comment = c.get("comment") or c.get("description")
+        desc = _clean_description(comment)
 
         nullable = bool(c.get("nullable", True))
         dtype, max_len, dec_prec, dec_scale = map_sql_type(engine.dialect.name, sqla_type)
@@ -136,12 +150,12 @@ def import_metadata_for_datasets(
             source_column=name,
             integrate=False,
             pii_column=False,
-            description="",
           )
           created += 1
 
         # Refresh technical fields from source on every sync
         sc.ordinal_position = i
+        sc.description=(desc or "")[:255]
         sc.datatype = dtype
         sc.max_length = max_len
         sc.decimal_precision = dec_prec

@@ -21,6 +21,7 @@ Contact: <https://github.com/elevata-labs/elevata>.
 -->
 
 {% extends "base.html" %}
+{% load static %}
 
 {% block title %}{{ title }} · elevata{% endblock %}
 
@@ -68,4 +69,7 @@ Contact: <https://github.com/elevata-labs/elevata>.
     <a class="btn btn-secondary" href="{{ cancel_url }}">Cancel</a>
   </div>
 </form>
+{% if model_name == "sourcedataset" %}
+  <script src="{% static 'js/elevata_autofill_stage.js' %}"></script>
+{% endif %}
 {% endblock %}

@@ -7,7 +7,7 @@
 
 ## 🎯 Objective
 
-elevata currently integrates with dbt Core for rendering and execution of SQL models.  
+elevata currently plans to integrate with dbt Core for rendering and execution of SQL models.  
 While dbt has served as a convenient engine during the early stages, the recent **merger of dbt Labs and Fivetran** and the strategic shift toward **dbt Fusion** make long-term reliance on dbt uncertain.
 
 Therefore, elevata will **gradually decouple** from dbt while **remaining compatible** for teams that still rely on it.  

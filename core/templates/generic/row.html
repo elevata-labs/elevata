@@ -51,6 +51,8 @@ Contact: <https://github.com/elevata-labs/elevata>.
           </span>
         {% endwith %}
       </td>
+    {% elif f.get_internal_type == "TextField" or f.name in "description,remark" %}
+      <td class="truncate">{{ object|attr:f.name }}</td>
     {% else %}
       <td>{{ object|attr:f.name }}</td>
     {% endif %}

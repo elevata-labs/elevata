@@ -359,3 +359,21 @@ td .ec-badges{
 
 /* Prevent the Bootstrap btn-group from stretching/wrapping */
 td .btn-group{ flex: none; }
+
+/* Limit width for long text columns (e.g., Description, Remark) */
+.table td.truncate {
+  max-width: 250px;         /* Adjust width as needed */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: middle;
+}
+
+.table td.truncate:hover {
+  white-space: normal;
+  overflow: visible;
+  background-color: #f8f9fa;
+  z-index: 2;
+  position: relative;
+  box-shadow: 0 0 4px rgba(0, 0, 0, 0.1);
+}

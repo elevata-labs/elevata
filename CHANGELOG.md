@@ -46,7 +46,16 @@ This section lists features and improvements currently under active development.
 💡 *elevata keeps evolving — one small, meaningful release at a time.*
 
 ---
-## [0.2.0] - 2025-10-XX
+
+## [0.2.1] – 2025-10-23
+### 🪶 Improved
+- Added truncation for long text fields (`Description`, `Remark`) in list views to improve readability.  
+- Full text now appears on hover for better UX.  
+- Refined visual highlighting for primary and integrate columns.  
+- Minor CSS polish and layout consistency fixes across metadata tables.  
+
+---
+## [0.2.0] - 2025-10-22
 
 ### 🧩 *Metadata Introspection & Profiles Integration*
 

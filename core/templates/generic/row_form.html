@@ -20,6 +20,8 @@ along with elevata. If not, see <https://www.gnu.org/licenses/>.
 Contact: <https://github.com/elevata-labs/elevata>.
 -->
 
+{% load static %}
+
 {# Inline edit form for a single existing object, wrapped in one <tr> #}
 <tr id="row-{{ object.pk }}" class="table-warning">
   <td colspan="{{ fields|length|add:'1' }}">
@@ -71,5 +73,8 @@ Contact: <https://github.com/elevata-labs/elevata>.
            hx-swap="outerHTML">Cancel</a>
       </div>
     </form>
+    {% if model_name == "sourcedataset" %}
+      <script src="{% static 'js/elevata_autofill_stage.js' %}"></script>
+    {% endif %}
   </td>
 </tr>
