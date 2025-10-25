@@ -22,8 +22,6 @@ Contact: <https://github.com/elevata-labs/elevata>.
 
 {% load attr support_extras %}
 
-{# Render a single display <tr> for an object (read-only row) #}
-{# Special row classes for SourceColumn (tint PK / integrate) #}
 {% if model_name == 'sourcecolumn' %}
   {% with pk=object.primary_key_column intg=object.integrate %}
     <tr id="row-{{ object.pk }}"
@@ -35,43 +33,118 @@ Contact: <https://github.com/elevata-labs/elevata>.
   <tr id="row-{{ object.pk }}"{% if highlight %} class="highlight"{% endif %}>
 {% endif %}
 
-  {% for f in fields %}
-    {% if forloop.first %}
-      <td>
-        <a href="{% url model_name|add:'_detail' object.pk %}" class="text-decoration-none">
-          {{ object|attr:f.name }}
-        </a>
-      </td>
-    {% elif f.name == "type" %}
-      <td>
-        {{ object|attr:f.name }}
-        {% with level=object.type|support_level %}
-          <span class="badge {{ level|support_badge_class }} ms-1">
-            {{ level|support_label }}
-          </span>
-        {% endwith %}
-      </td>
-    {% elif f.get_internal_type == "TextField" or f.name in "description,remark" %}
-      <td class="truncate">{{ object|attr:f.name }}</td>
-    {% else %}
-      <td>{{ object|attr:f.name }}</td>
-    {% endif %}
-  {% endfor %}
+  {# --- Columns / normal fields --- #}
+  {% with model_badges=BADGE_CLASSES|get:model_class_name %}
+    {% for f in fields %}
+      {% if forloop.first %}
+        <td>
+          <a href="{% url model_name|add:'_detail' object.pk %}" class="text-decoration-none">
+            {{ object|attr:f.name }}
+          </a>
+        </td>
 
+      {% elif f.name == "type" %}
+        <td>
+          {{ object|attr:f.name }}
+          {% with level=object.type|support_level %}
+            <span class="badge {{ level|support_badge_class }} ms-1">
+              {{ level|support_label }}
+            </span>
+          {% endwith %}
+        </td>
+
+      {% elif f.get_internal_type == "TextField" or f.name in "description,remark" %}
+        <td class="truncate">{{ object|attr:f.name }}</td>
+
+      {% else %}
+        {# generic badge logic per field #}
+        {% with field_badge_map=model_badges|get:f.name %}
+          {% if field_badge_map %}
+            {% with raw_val=object|attr:f.name %}
+              {% with badge_class=field_badge_map|get:raw_val %}
+                {% if badge_class %}
+                  <td>
+                    <span class="badge {{ badge_class|cut:'badge ' }}">{{ raw_val }}</span>
+                  </td>
+                {% else %}
+                  {% with default_class=field_badge_map|get:"default" %}
+                    {% if default_class %}
+                      <td>
+                        <span class="{{ default_class }}">{{ raw_val }}</span>
+                      </td>
+                    {% else %}
+                      <td>{{ raw_val }}</td>
+                    {% endif %}
+                  {% endwith %}
+                {% endif %}
+              {% endwith %}
+            {% endwith %}
+          {% else %}
+            <td>{{ object|attr:f.name }}</td>
+          {% endif %}
+        {% endwith %}
+      {% endif %}
+
+    {% endfor %}
+  {% endwith %}
+
+  {# --- Actions column --- #}
   <td class="text-end">
+
+    {# PK badge only for SourceColumn #}
     {% if model_name == 'sourcecolumn' %}
       <span class="ec-badges">
         {% if object.primary_key_column %}
           <span class="ec-chip ec-chip--pk" title="Primary key">PK</span>
-        {% endif %}
-        {% if object.integrate %}
-          <span class="ec-chip ec-chip--integrate" title="Marked for integration">Integrate</span>
         {% endif %}
       </span>
     {% endif %}
 
     <span class="ec-actions">
       <div class="btn-group btn-group-sm" role="group">
+
+        {# ---------- TOGGLE BUTTONS (0..n) ---------- #}
+        {% with toggle_cfgs=LIST_TOGGLE_FIELDS|get:model_class_name %}
+          {% if toggle_cfgs %}
+            {% for cfg in toggle_cfgs %}
+              {% with toggle_field=cfg|get:"field" %}
+                {% with label_on=cfg|get:"label_on" %}
+                  {% with label_off=cfg|get:"label_off" %}
+                    {% with toggle_title=cfg|get:"title" %}
+
+                      {% if toggle_field %}
+                        <form class="d-inline">
+                          {% csrf_token %}
+                          {% with current_val=object|attr:toggle_field %}
+                            <button
+                              type="button"
+                              class="btn btn-sm {% if current_val %}btn-success text-white{% else %}btn-outline-secondary{% endif %}"
+                              title="{{ toggle_title }}"
+                              hx-post="{% url model_name|add:'_row_toggle' object.pk %}"
+                              hx-include="closest form"
+                              hx-vals='{"field":"{{ toggle_field }}"}'
+                              hx-target="#row-{{ object.pk }}"
+                              hx-swap="outerHTML"
+                            >
+                              {% if current_val %}
+                                {{ label_on|default:"ON" }}
+                              {% else %}
+                                {{ label_off|default:"OFF" }}
+                              {% endif %}
+                            </button>
+                          {% endwith %}
+                        </form>
+                      {% endif %}
+
+                    {% endwith %}
+                  {% endwith %}
+                {% endwith %}
+              {% endwith %}
+            {% endfor %}
+          {% endif %}
+        {% endwith %}
+        {# ---------- /TOGGLE BUTTONS ---------- #}
+
         <button
           type="button"
           class="btn btn-outline-secondary"
@@ -99,11 +172,13 @@ Contact: <https://github.com/elevata-labs/elevata>.
               hx-swap="innerHTML">Import</button>
           </form>
         {% endif %}
+
       </div>
     </span>
 
     {% if model_name == 'sourcedataset' %}
       <div id="feedback-{{ object.id }}"></div>
     {% endif %}
+
   </td>
 </tr>

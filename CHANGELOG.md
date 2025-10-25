@@ -25,7 +25,6 @@ This section lists features and improvements currently under active development.
 - Flat-file and REST source adapters  
 - Extended metadata profiling and statistics  
 - Improved governance primitives (sensitivity classification, ownership, access intent)  
-- Reusable, filterable grid UI for large column sets (SourceColumn / TargetColumn)  
 
 ### Planned Mid-term
 - Native SQL rendering and execution layer directly from elevata metadata  
@@ -46,6 +45,21 @@ This section lists features and improvements currently under active development.
 
 🧾 Licensed under the **AGPL-v3** — free to use, extend, and share.  
 💡 *elevata keeps evolving — one small, meaningful release at a time.*
+
+---
+
+## [0.2.3] – 2025-10-25
+### 🪶 UI Comfort Release 
+
+**Highlights**
+- Added generic, reusable filter bar for all CRUD list views  
+- Added dynamic toggle buttons for boolean fields  
+- Improved badge rendering for PII & PK indicators  
+- Added sticky table headers for long datasets
+
+**Why it matters**  
+This release focuses purely on usability and governance visibility.  
+It lays the groundwork for 0.3.0 (TargetDataset automation and lineage features).
 
 ---
 

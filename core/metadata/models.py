@@ -25,7 +25,7 @@ from django.db import models
 from django.core.validators import RegexValidator
 from crum import get_current_user
 from generic import display_key
-from metadata.constants import TYPE_CHOICES, INGEST_CHOICES, LAYER_CHOICES, INTERVAL_CHOICES, DATATYPE_CHOICES, ROLE_CHOICES 
+from metadata.constants import TYPE_CHOICES, INGEST_CHOICES, LAYER_CHOICES, INTERVAL_CHOICES, DATATYPE_CHOICES, PII_LEVEL_CHOICES, ROLE_CHOICES 
 
 NAME_VALIDATOR = RegexValidator(r"^[a-zA-Z0-9_.-]+$", "Only a–z, 0–9, _, ., - allowed.")
 SHORT_NAME_VALIDATOR = RegexValidator(r"^[a-z]+$", "Only a–z allowed.")
@@ -165,7 +165,7 @@ class SourceColumn(AuditFields):
   referenced_source_dataset = models.CharField(max_length=100, blank=True, null=True)
   description = models.CharField(max_length=255, blank=True, null=True)
   integrate = models.BooleanField(default=False)
-  pii_column = models.BooleanField(default=False)
+  pii_level = models.CharField(max_length=30, choices=PII_LEVEL_CHOICES, default="none")
   remark = models.CharField(max_length=255, blank=True, null=True)
 
   class Meta:

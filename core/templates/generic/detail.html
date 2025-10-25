@@ -34,9 +34,6 @@ Contact: <https://github.com/elevata-labs/elevata>.
         {% if object.primary_key_column %}
           <span class="ec-chip ec-chip--pk ms-2" title="Primary key">PK</span>
         {% endif %}
-        {% if object.integrate %}
-          <span class="ec-chip ec-chip--integrate ms-1" title="Marked for integration">Integrate</span>
-        {% endif %}
       {% endif %}
     </div>
     <a class="btn btn-secondary" href="{% url model_name|add:'_list' %}">Back</a>
@@ -64,23 +61,6 @@ Contact: <https://github.com/elevata-labs/elevata>.
                    hx-trigger="load"
                    hx-vals='{"type":"{{ object.type|default_if_none:"" }}"}'>
               </div>
-            </td>
-
-          {# SourceColumn booleans with badges #}
-          {% elif model_name == 'sourcecolumn' and field.name == "primary_key_column" %}
-            <td>
-              {{ object|attr:field.name }}
-              {% if object.primary_key_column %}
-                <span class="ec-chip ec-chip--pk ms-2" title="Primary key">PK</span>
-              {% endif %}
-            </td>
-
-          {% elif model_name == 'sourcecolumn' and field.name == "integrate" %}
-            <td>
-              {{ object|attr:field.name }}
-              {% if object.integrate %}
-                <span class="ec-chip ec-chip--integrate ms-2" title="Marked for integration">Integrate</span>
-              {% endif %}
             </td>
 
           {% else %}

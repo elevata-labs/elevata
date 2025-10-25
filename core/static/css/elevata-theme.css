@@ -392,3 +392,11 @@ td .btn-group{ flex: none; }
   gap: .5rem;
   font-size: 0.8rem;
 }
+
+/* Fix table header while scrolling */
+.table-fixed-header thead th {
+  position: sticky;
+  top: 0;
+  background-color: #f8f9fa;
+  z-index: 2;
+}

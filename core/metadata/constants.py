@@ -141,6 +141,12 @@ DATATYPE_CHOICES = sorted([
   ("JSON", "JSON")
 ], key=lambda x: x[1])
 
+PII_LEVEL_CHOICES = [
+  ("none", "No personal data"),
+  ("personal_data", "Personal data"),
+  ("special_category_data", "Special category personal data"),
+]
+
 ROLE_CHOICES = sorted([
   ("business", "Business Owner"), 
   ("technical", "Technical Owner"), 

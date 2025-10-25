@@ -22,10 +22,12 @@ Contact: <https://github.com/elevata-labs/elevata>.
 
 {% extends "base.html" %}
 {% load attr %}
+{% load support_extras %}
 
 {% block title %}{{ title }} · elevata{% endblock %}
 
 {% block content %}
+
   <div class="d-flex align-items-center justify-content-between mb-3">
     <h1 class="h4 mb-0">{{ title }}</h1>
 
@@ -38,25 +40,101 @@ Contact: <https://github.com/elevata-labs/elevata>.
     </button>
   </div>
 
-  <table class="table table-striped table-hover align-middle">
-    <thead class="table-light">
-      <tr>
-        {% for f in fields %}
-          <th scope="col">{{ f.verbose_name|capfirst }}</th>
-        {% endfor %}
-        <th scope="col" class="text-end">Actions</th>
-      </tr>
-    </thead>
+  {# Filter form: auto-generated from auto_filter_cfgs #}
+  {% if auto_filter_cfgs %}
+    <form method="get"
+          class="row g-2 align-items-end mb-3 border rounded p-2 bg-light">
 
-    <tbody id="grid-body">
-      {# Render one display row per object; each row is HTMX-swappable #}
-      {% for obj in objects %}
-        {% include "generic/row.html" with object=obj model=model meta=meta fields=fields model_name=model_name %}
-      {% empty %}
-        <tr>
-          <td colspan="99" class="text-center text-muted py-4">No records found.</td>
-        </tr>
+      {% for fcfg in auto_filter_cfgs %}
+        {% with field_path=fcfg.field_path %}
+        {% with param_name="filter__"|add:field_path %}
+          <div class="col-auto">
+            <label class="form-label small mb-1">{{ fcfg.label }}</label>
+
+            {% if fcfg.input_type == "text" %}
+              <input type="text" class="form-control form-control-sm"
+                     name="{{ param_name }}"
+                     value="{{ active_filters|get:param_name|default:'' }}">
+            {% endif %}
+
+            {% if fcfg.input_type == "number" %}
+              <input type="number" class="form-control form-control-sm"
+                     name="{{ param_name }}"
+                     value="{{ active_filters|get:param_name|default:'' }}">
+            {% endif %}
+
+            {% if fcfg.input_type == "boolean" %}
+              <select class="form-select form-select-sm" name="{{ param_name }}">
+                <option value="">-- any --</option>
+                <option value="1"
+                  {% if active_filters|get:param_name == "1" %}selected{% endif %}>Yes</option>
+                <option value="0"
+                  {% if active_filters|get:param_name == "0" %}selected{% endif %}>No</option>
+              </select>
+            {% endif %}
+
+            {% if fcfg.input_type == "choice" %}
+              <select class="form-select form-select-sm" name="{{ param_name }}">
+                <option value="">-- any --</option>
+                {% for pair in fcfg.choices %}
+                  {% with opt_val=pair.0 opt_label=pair.1 %}
+                    <option value="{{ opt_val }}"
+                      {% if active_filters|get:param_name == opt_val %}selected{% endif %}>
+                      {{ opt_label }}
+                    </option>
+                  {% endwith %}
+                {% endfor %}
+              </select>
+            {% endif %}
+
+            {% if fcfg.input_type == "foreignkey" %}
+              <select class="form-select form-select-sm" name="{{ param_name }}">
+                <option value="">-- any --</option>
+                {% for pair in fcfg.choices %}
+                  {% with opt_val=pair.0 opt_label=pair.1 %}
+                    <option value="{{ opt_val }}"
+                      {% if active_filters|get:param_name == opt_val %}selected{% endif %}>
+                      {{ opt_label }}
+                    </option>
+                  {% endwith %}
+                {% endfor %}
+              </select>
+            {% endif %}
+          </div>
+        {% endwith %}
+        {% endwith %}
       {% endfor %}
-    </tbody>
-  </table>
+
+      <div class="col-auto">
+        <button class="btn btn-primary btn-sm" type="submit">Apply</button>
+        <a class="btn btn-outline-secondary btn-sm" href=".">Clear</a>
+      </div>
+
+    </form>
+  {% endif %}
+
+  {# Scroll container for table with sticky header #}
+  <div style="max-height: 70vh; overflow-y: auto;">
+    <table class="table table-striped table-hover align-middle table-fixed-header">
+      <thead class="table-light">
+        <tr>
+          {% for f in fields %}
+            <th scope="col">{{ f.verbose_name|capfirst }}</th>
+          {% endfor %}
+          <th scope="col" class="text-end">Actions</th>
+        </tr>
+      </thead>
+
+      <tbody id="grid-body">
+        {% for obj in objects %}
+          {% include "generic/row.html" with object=obj model=model meta=meta fields=fields model_name=model_name %}
+        {% empty %}
+          <tr>
+            <td colspan="99" class="text-center text-muted py-4">No records found.</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
 {% endblock %}

@@ -46,7 +46,7 @@ urlpatterns = [
   path("admin/", admin.site.urls),
   path("accounts/", include("django.contrib.auth.urls")),
   path("accounts/logout/", LogoutView.as_view(next_page="/accounts/login/"), name="logout"),
-  path("metadata", include("metadata.urls")),
+  path("metadata/", include("metadata.urls")),
   # Root → Home (landing page)
   path("", HomeView.as_view(), name="home"),
 ]

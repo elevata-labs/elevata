@@ -99,3 +99,24 @@ def app_menu(request):
     })
 
   return {"MAIN_MENU": items}
+
+def crud_ui_config(request):
+  """
+  UI customization for generic CRUD tables.
+
+  We expose:
+  - LIST_TOGGLE_FIELDS: {"SourceColumn": "integrate", ...}
+    -> which boolean field can be toggled inline per model
+
+  - BADGE_CLASSES: {"SourceDataset": {"increment_interval": {...}}, ...}
+    -> optional mapping field->value->css class for pretty badges
+  """
+  cfg = getattr(settings, "ELEVATA_CRUD", {}).get("metadata", {})
+
+  list_toggle_fields = cfg.get("list_toggle_fields", {})
+  badge_classes = cfg.get("badges", {})
+
+  return {
+    "LIST_TOGGLE_FIELDS": list_toggle_fields,
+    "BADGE_CLASSES": badge_classes,
+  }

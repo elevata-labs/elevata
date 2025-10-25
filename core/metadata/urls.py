@@ -109,6 +109,11 @@ for model in models_sorted:
 
     # Detail
     path(f"{seg}/<int:pk>/detail/", view_cls.as_view(action="detail"), name=f"{model_name}_detail"),
+
+    # Toggle for given Boolean field (eg. Integrate)
+    path(f"{seg}/<int:pk>/row-toggle/", view_cls.as_view(action="row_toggle"), name=f"{model_name}_row_toggle"),
+
+    # Others
     path("source-type-hint/", views.source_type_hint, name="source_type_hint"),
   ]
 

@@ -30,7 +30,8 @@ from django.http import Http404, HttpResponse, HttpResponseNotFound
 from django.template.loader import render_to_string
 from crum import get_current_user
 from django.contrib.auth.mixins import LoginRequiredMixin
-
+from django.conf import settings
+from django.db import models
 
 # ------------------------------------------------------------
 # Utility helper
@@ -100,6 +101,9 @@ class GenericCRUDView(LoginRequiredMixin, View):
         return self.row_create(request)
       if self.action == "row_delete":
         return self.row_delete(request, pk)
+      # toggle a boolean field inline (HTMX)
+      if self.action == "row_toggle":
+        return self.row_toggle(request, pk)
 
     # Handle DELETE (for HTMX)
     if request.method == "DELETE" and self.action == "row_delete":
@@ -110,20 +114,227 @@ class GenericCRUDView(LoginRequiredMixin, View):
   # --------------------------------------------------
   # Utility helpers
   # --------------------------------------------------
+  def get_toggle_field_names(self):
+    """
+    Return a set of field names that are controlled by toggle buttons
+    for this model, based on settings.ELEVATA_CRUD["metadata"]["list_toggle_fields"].
+    """
+    cfg = getattr(settings, "ELEVATA_CRUD", {}).get("metadata", {})
+    toggle_cfg_all = cfg.get("list_toggle_fields", {})
+
+    toggle_field_names = set()
+
+    model_toggle_cfg = toggle_cfg_all.get(self.model.__name__)
+    if model_toggle_cfg:
+      for entry in model_toggle_cfg:
+        field_name = entry.get("field")
+        if field_name:
+          toggle_field_names.add(field_name)
+
+    return toggle_field_names
+
   def get_list_fields(self):
-    """Return model fields for the grid (excluding PK and audit)."""
+    """
+    Return model fields for list/grid view, excluding:
+    - auto_created / m2m / non-concrete fields
+    - anything in self.list_exclude
+    - toggle-only fields (those will be rendered as buttons in the action column)
+    """
     fields = []
+    toggle_field_names = self.get_toggle_field_names()
+
     for f in self.model._meta.get_fields():
+      # Skip non-real fields
       if getattr(f, "many_to_many", False):
         continue
       if getattr(f, "auto_created", False):
         continue
       if not getattr(f, "concrete", True):
         continue
-      if f.name in self.list_exclude:
+
+      # Skip anything explicitly excluded
+      if f.name in getattr(self, "list_exclude", []):
         continue
+
+      # Skip toggle fields (we'll show them via buttons instead of as columns)
+      if f.name in toggle_field_names:
+        continue
+
       fields.append(f)
+
     return fields
+  
+  def build_auto_filter_config(self):
+    """
+    Build filter definitions for:
+    - visible list fields
+    - toggle-only fields
+    - ForeignKeys (dropdown of related model instances)
+    """
+    cfgs = []
+    seen = set()
+
+    toggle_names = self.get_toggle_field_names()
+
+    # Collect relevant model fields (list + toggles)
+    base_fields = list(self.get_list_fields())
+    model_fields_by_name = {
+      f.name: f for f in self.model._meta.get_fields()
+      if getattr(f, "concrete", True)
+      and not getattr(f, "auto_created", False)
+      and not getattr(f, "many_to_many", False)
+    }
+    for name in toggle_names:
+      f = model_fields_by_name.get(name)
+      if f:
+        base_fields.append(f)
+
+    for f in base_fields:
+      if f.name in seen:
+        continue
+      seen.add(f.name)
+
+      internal_type = f.get_internal_type()
+
+      # --- Choice-like fields ---
+      if getattr(f, "choices", None):
+        choices_list = [(c[0], c[1]) for c in f.choices]
+        cfgs.append({
+          "field_path": f.name,
+          "label": f.verbose_name.title(),
+          "input_type": "choice",
+          "choices": choices_list,
+          "lookup": "exact",
+        })
+        continue
+
+      # --- ForeignKey fields ---
+      if isinstance(f, models.ForeignKey):
+        # Try to load all related objects (ordered by str)
+        related_model = f.related_model
+        try:
+          choices_list = [(str(o.pk), str(o)) for o in related_model.objects.all().order_by("pk")]
+        except Exception:
+          choices_list = []
+
+        cfgs.append({
+          "field_path": f.name,
+          "label": f.verbose_name.title(),
+          "input_type": "foreignkey",
+          "choices": choices_list,
+          "lookup": "exact",
+        })
+        continue
+
+      # --- Text-like fields ---
+      if internal_type in ("CharField", "TextField"):
+        cfgs.append({
+          "field_path": f.name,
+          "label": f.verbose_name.title(),
+          "input_type": "text",
+          "lookup": "icontains",
+        })
+        continue
+
+      # --- Boolean fields ---
+      if internal_type in ("BooleanField", "NullBooleanField"):
+        cfgs.append({
+          "field_path": f.name,
+          "label": f.verbose_name.title(),
+          "input_type": "boolean",
+          "lookup": "exact",
+        })
+        continue
+
+      # --- Numeric fields ---
+      if internal_type in (
+        "IntegerField", "BigIntegerField", "SmallIntegerField",
+        "PositiveIntegerField", "PositiveSmallIntegerField",
+        "AutoField", "BigAutoField", "DecimalField", "FloatField"
+      ):
+        cfgs.append({
+          "field_path": f.name,
+          "label": f.verbose_name.title(),
+          "input_type": "number",
+          "lookup": "exact",
+        })
+        continue
+
+    return cfgs
+
+  def apply_auto_filters(self, request, qs, auto_filter_cfgs):
+    """
+    Apply filters to queryset `qs` based on GET params from the filter form.
+    Returns (qs, active_filters) so the template can re-fill inputs.
+    """
+    active = {}
+
+    for fcfg in auto_filter_cfgs:
+      field_path = fcfg["field_path"]       # e.g. "name", "integrate"
+      lookup = fcfg["lookup"]               # e.g. "icontains", "exact"
+      input_type = fcfg["input_type"]       # "text", "boolean", ...
+      param_name = f"filter__{field_path}"  # GET param name
+
+      raw_val = request.GET.get(param_name)
+      if raw_val in (None, ""):
+        continue
+
+      # Store chosen value so we can show it back in the form
+      active[param_name] = raw_val
+
+      # Normalize booleans
+      if input_type == "boolean":
+        truthy = {"1","true","True","on","yes"}
+        falsy  = {"0","false","False","off","no"}
+        if raw_val in truthy:
+          value = True
+        elif raw_val in falsy:
+          value = False
+        else:
+          # invalid input, skip filter
+          continue
+        filter_expr = {f"{field_path}__{lookup}": value}
+      else:
+        # numeric, text, choice
+        filter_expr = {f"{field_path}__{lookup}": raw_val}
+
+      qs = qs.filter(**filter_expr)
+
+    return qs, active
+  
+  def list(self, request):
+    """
+    Render the list view with:
+    - dynamic filter config (visible fields + toggle fields)
+    - applied filters
+    - final queryset
+    """
+    # Build filter definition (fields in the grid + toggle fields)
+    auto_filter_cfgs = self.build_auto_filter_config()
+
+    # Base queryset
+    qs = self.get_queryset()
+
+    # Apply user-submitted filters from GET
+    qs, active_filters = self.apply_auto_filters(request, qs, auto_filter_cfgs)
+
+    # Default ordering (keep what you had)
+    qs = qs.order_by("id")
+
+    context = {
+      "model": self.model,
+      "objects": qs,
+      "fields": self.get_list_fields(),
+      "model_name": self.model._meta.model_name,
+      "model_class_name": self.model.__name__,
+      "meta": self.model._meta,
+      "title": self.model._meta.verbose_name_plural.title(),
+
+      # NEW: data for the filter toolbar
+      "auto_filter_cfgs": auto_filter_cfgs,
+      "active_filters": active_filters,
+    }
+    return render(request, self.template_list, context)
 
   def get_form_class(self):
     """Return a model form with improved widget defaults (for all models)."""
@@ -193,18 +404,6 @@ class GenericCRUDView(LoginRequiredMixin, View):
   # --------------------------------------------------
   # CRUD operations (standard)
   # --------------------------------------------------
-  def list(self, request):
-    objects = self.get_queryset().order_by("id")
-    context = {
-      "model": self.model,
-      "objects": objects,
-      "fields": self.get_list_fields(),
-      "model_name": self.model._meta.model_name,
-      "meta": self.model._meta,
-      "title": self.model._meta.verbose_name_plural.title(),
-    }
-    return render(request, self.template_list, context)
-
   def edit(self, request, pk=None):
     obj = get_object_or_404(self.model, pk=pk) if pk else None
     FormClass = self.get_form_class()
@@ -253,6 +452,7 @@ class GenericCRUDView(LoginRequiredMixin, View):
       "object": obj,
       "fields": self.get_list_fields(),
       "model_name": self.model._meta.model_name,
+      "model_class_name": self.model.__name__,
     }
     return render(request, "generic/row.html", context)
   
@@ -276,6 +476,7 @@ class GenericCRUDView(LoginRequiredMixin, View):
           "object": instance,
           "fields": self.get_list_fields(),
           "model_name": self.model._meta.model_name,
+          "model_class_name": self.model.__name__,
         }
         return render(request, "generic/row.html", context, status=200)
     else:
@@ -286,6 +487,7 @@ class GenericCRUDView(LoginRequiredMixin, View):
       "form": form,
       "object": obj,
       "model_name": self.model._meta.model_name,
+      "model_class_name": self.model.__name__,
     }
     return render(request, "generic/row_form.html", context)
 
@@ -298,6 +500,7 @@ class GenericCRUDView(LoginRequiredMixin, View):
       "form": form,
       "object": None,
       "model_name": self.model._meta.model_name,
+      "model_class_name": self.model.__name__,
     }
     return render(request, "generic/row_form_new.html", context)
   
@@ -322,6 +525,7 @@ class GenericCRUDView(LoginRequiredMixin, View):
         "object": instance,
         "fields": self.get_list_fields(),
         "model_name": self.model._meta.model_name,
+        "model_class_name": self.model.__name__,
         "highlight": True,
       }
       return render(request, "generic/row.html", context, status=201)
@@ -331,6 +535,7 @@ class GenericCRUDView(LoginRequiredMixin, View):
       "form": form,
       "object": None,
       "model_name": self.model._meta.model_name,
+      "model_class_name": self.model.__name__,
     }
     return render(request, "generic/row_form_new.html", context, status=400)
 
@@ -342,6 +547,49 @@ class GenericCRUDView(LoginRequiredMixin, View):
     obj.delete()
     html = f'<tr id="row-{obj_id}" hx-swap-oob="delete"></tr>'
     return HttpResponse(html, status=200)
+
+  def row_toggle(self, request, pk):
+    """
+    Toggle a boolean field on this row, e.g. 'integrate'.
+    Expects POST with 'field' parameter.
+    Returns updated <tr> HTML fragment via the existing row() template.
+    """
+    if request.method != "POST":
+      return HttpResponse(status=405)
+
+    field_name = request.POST.get("field")
+    if not field_name:
+      return HttpResponse("Missing field", status=400)
+
+    obj = get_object_or_404(self.model, pk=pk)
+
+    # Check that the field exists and is boolean-like
+    if not hasattr(obj, field_name):
+      return HttpResponse("Invalid field", status=400)
+
+    current_val = getattr(obj, field_name)
+    if not isinstance(current_val, bool):
+      return HttpResponse("Field not toggleable", status=400)
+
+    # Flip it
+    setattr(obj, field_name, not current_val)
+
+    # audit fields
+    user = get_current_user() or request.user
+    self._set_audit_fields(obj, user, is_new=False)
+
+    obj.save()
+
+    # Re-render just the row so HTMX can swap it
+    context = {
+      "model": self.model,
+      "meta": self.model._meta,
+      "object": obj,
+      "fields": self.get_list_fields(),
+      "model_name": self.model._meta.model_name,
+      "model_class_name": self.model.__name__,
+    }
+    return render(request, "generic/row.html", context, status=200)
 
   # ------------------------------------------------------------
   # Read-only detail view

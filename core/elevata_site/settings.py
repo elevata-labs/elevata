@@ -107,6 +107,7 @@ TEMPLATES = [
         "django.contrib.messages.context_processors.messages",
         "elevata_site.context_processors.app_menu",
         "elevata_site.context_processors.type_support",
+        "elevata_site.context_processors.crud_ui_config",
       ],
     },
   },
@@ -214,6 +215,26 @@ ELEVATA_CRUD = {
     "exclude": [""],
     "paths": {      
     },
+    "list_toggle_fields": {
+      "SourceColumn": [
+        {
+          "field": "integrate",
+          "label_on": "Integrate",
+          "label_off": "Integrate",
+          "title": "Mark column for integration"
+        },
+      ],
+    },
+    "badges": {
+      "SourceColumn": {
+        "pii_level": {
+          "special_category_data": "badge bg-danger text-light",
+          "personal_data": "badge bg-warning text-dark",
+          "none": "badge bg-secondary text-light",
+          "default": "badge bg-secondary text-light",
+        }
+      }
+    }
   }
 }
 
