@@ -7,7 +7,7 @@ This project adheres to [Semantic Versioning](https://semver.org/) and [Keep a C
 
 ## [Unreleased]
 
-### 🧩 *Work in Progress & Upcoming Enhancements*
+### 🧩 Work in Progress & Upcoming Enhancements
 
 #### Overview  
 This section lists features and improvements currently under active development.
@@ -16,34 +16,57 @@ This section lists features and improvements currently under active development.
 
 ## 🧭 Roadmap  
 
-### Next Milestone (0.3.x Roadmap Teaser)
+### Next Milestone (0.3.x Focus)
 
 - Automated generation of `TargetDataset` and `TargetColumn` structures  
   derived from imported metadata (including PK propagation and surrogate key creation)  
 - Surrogate key hashing with runtime-loaded pepper for DSGVO compliance  
-- Target references and automatic join generation for data lineage  
+- Target references and automatic join hints for lineage / relationship tracking  
 - Flat-file and REST source adapters  
 - Extended metadata profiling and statistics  
-- Enhanced governance and access control
+- Improved governance primitives (sensitivity classification, ownership, access intent)  
+- Reusable, filterable grid UI for large column sets (SourceColumn / TargetColumn)  
 
 ### Planned Mid-term
-- Automated generation of **dbt models** based on stored metadata
-- Gradual decoupling from **dbt** — elevata remains compatible, but offers a native rendering and execution engine for full independence
-- **Ingestion** of relational databases and other sources
-- Built-in **core transformations** and data-engineering **best practices**
+- Native SQL rendering and execution layer directly from elevata metadata  
+  (dbt compatibility remains possible as an integration, not as a runtime dependency)  
+- Cross-system **ingestion** and unification of multiple source systems  
+- Built-in **core transformation** patterns and **best practices**  
 - Environment-aware **metadata validation** (Dev/Test/Prod consistency checks)  
 
 ### Planned Long-term  
+- Declarative deployment of **target objects** to physical schemas  
+- Automated lineage graph and impact analysis across datasets  
+- Extended **governance and access control** (dataset-level access policies)  
+- Optional REST / GraphQL API for external metadata integration  
 - Support for additional data platforms  
   *(Microsoft Fabric, Snowflake, BigQuery, Databricks, SQL Server)*  
-- Declarative deployment of **target objects** to physical schemas  
-- Extended **security and governance layer** (dataset-level access policies)  
-- Optional REST / GraphQL API for external metadata integration  
 
----  
+---
 
 🧾 Licensed under the **AGPL-v3** — free to use, extend, and share.  
 💡 *elevata keeps evolving — one small, meaningful release at a time.*
+
+---
+
+## [0.2.2] – 2025-10-25
+### 🧹 Maintenance Release — dbt Dependency Cleanup
+
+#### Summary
+This minor maintenance release removes all remaining dbt-related artefacts and clarifies elevata’s independent direction ahead of the 0.3.x milestone.
+
+#### 🔧 Changes
+- Removed unused `dbt_project/` folder from repository.
+- Deleted all `DBT_*` variables from `.env` and example configuration files.
+- Removed dbt references from `NOTICE.md` and documentation.
+- Updated `README.md` and `dbt_decoupling.md` to reflect full **runtime independence**.
+- Adjusted Roadmap and strategy wording in `CHANGELOG.md` (dbt now optional adapter, not dependency).
+- Minor documentation clean-ups and license consistency fixes (MIT → AGPL v3 in trademark notice).
+
+#### 💡 Notes
+This release does **not** introduce new features but marks an important architectural boundary:
+elevata ≥ 0.2.2 operates entirely without dbt or its configuration files.  
+The foundation for native rendering and execution begins with v0.3.x.
 
 ---
 
@@ -55,13 +78,13 @@ This section lists features and improvements currently under active development.
 - Minor CSS polish and layout consistency fixes across metadata tables.  
 
 ---
+
 ## [0.2.0] - 2025-10-22
 
-### 🧩 *Metadata Introspection & Profiles Integration*
+### 🧩 Metadata Introspection & Profiles Integration
 
 #### Overview  
-This release marks a major milestone - **elevata** now connects to relational sources via **SQLAlchemy** and imports full schema metadata directly into its core models. The new profile and secret management architecture 
-lays the foundation for secure, declarative, and environment-aware metadata operations.
+This release marks a major milestone – elevata now connects to relational sources via SQLAlchemy and imports full schema metadata directly into its core models. The new profile and secret management architecture lays the foundation for secure, declarative, and environment-aware metadata operations.
 
 ---
 

@@ -48,7 +48,7 @@ Contact: <https://github.com/elevata-labs/elevata>.
         <tr>
           <th style="width: 25%;">{{ field.verbose_name|capfirst }}</th>
 
-          {# Special rendering for the 'type' field (on SourceSystem): show value + support badge + hint #}
+          {# Special rendering for 'type' with dialect badge + hint #}
           {% if field.name == "type" %}
             <td>
               {{ object|attr:field.name }}
@@ -66,7 +66,7 @@ Contact: <https://github.com/elevata-labs/elevata>.
               </div>
             </td>
 
-          {# For SourceColumn fields: render booleans with chips in-line for clarity #}
+          {# SourceColumn booleans with badges #}
           {% elif model_name == 'sourcecolumn' and field.name == "primary_key_column" %}
             <td>
               {{ object|attr:field.name }}
@@ -112,28 +112,44 @@ Contact: <https://github.com/elevata-labs/elevata>.
     {% if object.source_system.type|is_import_supported %}
       <form class="mt-3 d-inline">
         {% csrf_token %}
-        <label class="me-2"><input type="checkbox" name="autointegrate_pk" checked> auto-integrate PK</label>
-        <label class="me-2"><input type="checkbox" name="reset_flags"> reset flags</label>
+        <label class="me-2">
+          <input type="checkbox" name="autointegrate_pk" checked> auto-integrate PK
+        </label>
+        <label class="me-2">
+          <input type="checkbox" name="reset_flags"> reset flags
+        </label>
 
         <button
           type="button"
-          class="btn btn-primary"
+          class="btn btn-primary hx-trigger-btn"
           hx-post="{% url 'sourcedataset_import_metadata' object.id %}"
           hx-include="closest form"
           hx-target="#feedback-{{ object.id }}"
           hx-swap="innerHTML"
           hx-on::before-request="this.setAttribute('disabled','disabled')"
           hx-on::after-request="this.removeAttribute('disabled')"
+          hx-indicator="#loading-dataset-{{ object.id }}"
         >
           Import metadata
         </button>
       </form>
+
+      <!-- Indicator for this dataset import -->
+      <div id="loading-dataset-{{ object.id }}"
+           class="htmx-indicator mt-2"
+           style="display:none;">
+        <div class="spinner-border spinner-border-sm text-info me-2" role="status"></div>
+        <span class="text-muted small">Import running, please wait …</span>
+      </div>
+
+      <!-- Import result -->
+      <div id="feedback-{{ object.id }}" class="mt-2"></div>
     {% else %}
       <div class="alert alert-secondary mt-3 mb-0">
-        Manual source type — automated import is not available for <strong>{{ object.source_system.type }}</strong>.
+        Manual source type — automated import is not available for
+        <strong>{{ object.source_system.type }}</strong>.
       </div>
     {% endif %}
-    <div id="feedback-{{ object.id }}" class="mt-3"></div>
   {% endif %}
 
   {# --- Import button for SourceSystem detail --- #}
@@ -142,28 +158,44 @@ Contact: <https://github.com/elevata-labs/elevata>.
     {% if object.type|is_import_supported %}
       <form class="mt-3 d-inline">
         {% csrf_token %}
-        <label class="me-2"><input type="checkbox" name="autointegrate_pk" checked> auto-integrate PK</label>
-        <label class="me-2"><input type="checkbox" name="reset_flags"> reset flags</label>
+        <label class="me-2">
+          <input type="checkbox" name="autointegrate_pk" checked> auto-integrate PK
+        </label>
+        <label class="me-2">
+          <input type="checkbox" name="reset_flags"> reset flags
+        </label>
 
         <button
           type="button"
-          class="btn btn-primary"
+          class="btn btn-primary hx-trigger-btn"
           hx-post="{% url 'sourcesystem_import_metadata' object.id %}"
           hx-include="closest form"
           hx-target="#system-feedback"
           hx-swap="innerHTML"
           hx-on::before-request="this.setAttribute('disabled','disabled')"
           hx-on::after-request="this.removeAttribute('disabled')"
+          hx-indicator="#loading-system-{{ object.id }}"
         >
           Import metadata for all datasets
         </button>
       </form>
+
+      <!-- Indicator for this system import -->
+      <div id="loading-system-{{ object.id }}"
+           class="htmx-indicator mt-2"
+           style="display:none;">
+        <div class="spinner-border spinner-border-sm text-info me-2" role="status"></div>
+        <span class="text-muted small">Import running, please wait …</span>
+      </div>
+
+      <!-- Import result -->
+      <div id="system-feedback" class="mt-3"></div>
     {% else %}
       <div class="alert alert-secondary mt-3 mb-0">
-        Manual source type — automated import is not available for <strong>{{ object.type }}</strong>.
+        Manual source type — automated import is not available for
+        <strong>{{ object.type }}</strong>.
       </div>
     {% endif %}
-    <div id="system-feedback" class="mt-3"></div>
   {% endif %}
 
   {% if related_objects %}

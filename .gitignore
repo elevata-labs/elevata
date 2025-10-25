@@ -43,12 +43,6 @@ migrations/
 .DS_Store
 Thumbs.db
 
-# dbt
-target/
-dbt_packages/
-logs/
-profiles.yml
-
 # IDEs
 .vscode/
 .idea/

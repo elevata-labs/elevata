@@ -2,6 +2,8 @@
 
 This project includes third-party software components that are licensed under their own respective terms.  
 
+---
+
 ## Included Components
 
 ### Django
@@ -13,16 +15,6 @@ This project includes third-party software components that are licensed under th
 - License: [GNU Affero General Public License v3.0](https://www.gnu.org/licenses/agpl-3.0.html)
 - Copyright © 2013–present, Robert Townley and contributors
 - Source: [https://github.com/ninemoreminutes/django-crum](https://github.com/ninemoreminutes/django-crum)
-
-### dbt-core
-- License: [Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0)  
-- Copyright © dbt Labs, Inc. and contributors  
-- Source: [https://github.com/dbt-labs/dbt-core](https://github.com/dbt-labs/dbt-core)
-
-### dbt-duckdb
-- License: [Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0)  
-- Copyright © Jeremy Cohen and contributors  
-- Source: [https://github.com/jwills/dbt-duckdb](https://github.com/jwills/dbt-duckdb)
 
 ### SQLAlchemy
 - License: [MIT License](https://opensource.org/licenses/MIT)
@@ -63,30 +55,41 @@ This project includes third-party software components that are licensed under th
 ### Lucide Icons
 - Project: Lucide (https://lucide.dev)
 - License: [ISC License](https://lucide.dev/license)
-- Copyright: © 2022 Lucide Contributors
+- Copyright © 2022 Lucide Contributors
 - Source: [https://github.com/lucide-icons/lucide](https://github.com/lucide-icons/lucide)
 - Usage: Icon set used in the elevata web interface (navigation and UI elements)
 
 ### Other Python Packages
 - **pandas** – BSD License  
+- **HTMX** – BSD 2-Clause License  
+- **Bootstrap 5** – MIT License  
 
 ### Optional Runtime Dependencies
-
-- **PostgreSQL** – used as an optional database backend.  
-  Not bundled with this software; distributed under the PostgreSQL License.  
-  See [https://www.postgresql.org/about/licence/](https://www.postgresql.org/about/licence/)  
+- **PostgreSQL** – optional database backend  
+  (not bundled with this software; distributed under the PostgreSQL License)  
+  See [https://www.postgresql.org/about/licence/](https://www.postgresql.org/about/licence/)
 
 ---
 
 ## License Compatibility
+
 This project as a whole is licensed under the **GNU Affero General Public License v3 (AGPLv3)**.  
 
 - All included third-party components remain under their original licenses.  
-- The combination is permitted because each license (BSD, MIT, Apache 2.0, LGPL, PostgreSQL, Public Domain) is compatible with AGPLv3.  
+- The combination is permitted because each license (BSD, MIT, ISC, OFL, PostgreSQL, Public Domain) is compatible with AGPLv3.  
 - elevata’s original source code is governed by AGPLv3.  
 
 ---
 
+## Removed Components (as of v0.2.2)
+
+In earlier experimental stages, a placeholder for a `dbt_project/` folder and related configuration variables existed.  
+These artefacts have been removed as of version **0.2.2**.  
+elevata is now fully independent of dbt or any other external transformation runtime.  
+
+---
+
 ## Additional Components
+
 Future features of elevata may integrate further third-party libraries.  
 Once included in the codebase, their license information will be documented here.

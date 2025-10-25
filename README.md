@@ -13,27 +13,23 @@ Metadata-driven. Best practices included. Easy to use.
 [![Built with Django](https://img.shields.io/badge/Built%20with-Django-092E20?logo=django)](https://www.djangoproject.com/)
 [![Frontend: HTMX](https://img.shields.io/badge/Frontend-HTMX-3366CC?logo=htmx)](https://htmx.org/)
 [![UI: Bootstrap 5](https://img.shields.io/badge/UI-Bootstrap%205-7952B3?logo=bootstrap)](https://getbootstrap.com/)
-<!-- Planned for v0.2.0:
-[![dbt-DuckDB](https://img.shields.io/badge/dbt--DuckDB-FF694B?logo=dbt&logoColor=white)](https://docs.getdbt.com/docs/core/connect-data-platform/duckdb)
--->
 
 ---
 
 ## What is elevata?
 
 **elevata** is an open-source framework for building consistent, metadata-driven data & analytics platforms.  
-It provides a structured foundation for **source ingestion**, **metadata governance**, **data transformation** and **lineage-driven orchestration support from source to target** — independent of specific vendors or tools.
+It provides a structured foundation for **source ingestion**, **metadata governance**, **data transformation planning** and **lineage-aware target modeling** — without depending on any specific commercial or external transformation engine.  
 
 The goal is to let teams design and operate data platforms with minimal effort – following the principle:  
 **metadata in → best practices out.**
-
 
 ## 🧠 Core Concept
 
 elevata follows three design principles:
 
 | Principle | Meaning |
-|------------|----------|
+|-----------|---------|
 | **Metadata first** | All logic (ingestion, mapping, lineage) is controlled by metadata models. |
 | **Single Point of Truth** | Source definitions and technical metadata are centrally maintained. |
 | **Environment abstraction** | Profiles manage credentials and connections per environment. |
@@ -42,13 +38,16 @@ elevata follows three design principles:
 
 ## 🧩 Interoperability and Independence
 
-**elevata** integrates smoothly with existing **dbt projects** but remains fully functional **without dbt**.  
-All core capabilities — metadata management, rendering, and execution — are implemented natively within elevata.
+**elevata** is built to stand on its own:  
+all core capabilities — metadata management, model generation, lineage context, and execution planning — live natively inside elevata.
 
-This approach ensures long-term flexibility and technical independence, even as the data-transformation landscape evolves.  
-Users can continue to run dbt models where convenient or adopt elevata’s built-in rendering engine for a fully self-contained workflow.
+At the same time, elevata is designed to interoperate with external transformation frameworks (for example dbt) when teams want that.  
+That integration is treated as an optional adapter, not a hard dependency. You do not need a dbt project or a dbt runtime to use elevata.
 
-For architectural strategy details, see [docs/strategy/dbt_decoupling.md](./docs/strategy/dbt_decoupling.md).
+This approach ensures long-term flexibility and technical independence.  
+You stay in control of metadata and execution strategy, and you are not locked into a single downstream tool.
+
+For architectural direction around this independence, see [docs/strategy/dbt_decoupling.md](./docs/strategy/dbt_decoupling.md).
 
 ---
 
@@ -281,10 +280,12 @@ The project is published under the AGPL v3 license and open for use by any organ
 
 ---
 
-## Trademark Notice
+## 🧾 License & Notices
 
-© 2025 Ilona Tag.  
-elevata™ is an open-source software project for data and analytics innovation.  
+© 2025 Ilona Tag — All rights reserved.  
+**elevata™** is an open-source software project for data & analytics innovation.  
 The name *elevata* is a pending trademark registration at the German Patent and Trade Mark Office (DPMA).  
-Other product names, logos, and brands mentioned here are property of their respective owners.  
-The software is released under the MIT License.
+Other product names, logos, and brands mentioned here are property of their respective owners.
+
+Released under the **GNU Affero General Public License v3 (AGPL-3.0)**.  
+See [`LICENSE`](LICENSE) for terms and [`NOTICE.md`](NOTICE.md) for third-party license information.

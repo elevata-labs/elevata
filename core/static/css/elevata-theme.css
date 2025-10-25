@@ -377,3 +377,18 @@ td .btn-group{ flex: none; }
   position: relative;
   box-shadow: 0 0 4px rgba(0, 0, 0, 0.1);
 }
+
+/* HTMX loading indicator behavior:
+   - HTMX will add 'htmx-request' to the indicator element itself during the request.
+   - We just show it when that happens.
+*/
+.htmx-indicator {
+  display: none;
+}
+
+.htmx-indicator.htmx-request {
+  display: inline-flex !important;
+  align-items: center;
+  gap: .5rem;
+  font-size: 0.8rem;
+}

@@ -124,7 +124,7 @@ class SourceDataset(AuditFields):
   interval_length_prod = models.PositiveIntegerField(blank=True, null=True)
   manual_maintained_model = models.BooleanField(default=False)
   distinct_select = models.BooleanField(default=False)
-  owner = models.ManyToManyField(Person, through="SourceDatasetOwnership", related_name="source_datasets")
+  owner = models.ManyToManyField(Person, blank=True, through="SourceDatasetOwnership", related_name="source_datasets")
 
   class Meta:
     db_table = "source_dataset"
@@ -188,7 +188,7 @@ class TargetDataset(AuditFields):
   distinct_select = models.BooleanField(default=False)
   data_filter = models.CharField(max_length=255, blank=True, null=True)
   partial_load = models.ManyToManyField("PartialLoad", blank=True, related_name="datasets", db_table="target_dataset_partial_load")
-  owner = models.ManyToManyField(Person, through="TargetDatasetOwnership", related_name="target_datasets")
+  owner = models.ManyToManyField(Person, blank=True, through="TargetDatasetOwnership", related_name="target_datasets")
 
   class Meta:
     db_table = "target_dataset"
