@@ -18,32 +18,45 @@ This section lists features and improvements currently under active development.
 
 ### Next Milestone (0.3.x Focus)
 
-- Automated generation of `TargetDataset` and `TargetColumn` structures  
-  derived from imported metadata (including PK propagation and surrogate key creation)  
-- Surrogate key hashing with runtime-loaded pepper for DSGVO compliance  
-- Target references and automatic join hints for lineage / relationship tracking  
-- Flat-file and REST source adapters  
-- Extended metadata profiling and statistics  
+#### Metadata Model Freeze & Automated Target Modeling
+- Introduction of **five-layer target architecture** (`raw`, `stage`, `rawcore`, `bizcore`, `serving`)  
+  with opinionated best-practice defaults for materialization, historization, and governance  
+- New model **`TargetSchema`** for layer definition and schema-wide configuration  
+- Automatic generation of **`TargetDataset`** and **`TargetColumn`** structures  
+  derived from imported metadata, including PK propagation and surrogate key creation  
+- **Deterministic, lookup-free surrogate key generation** with runtime-loaded pepper (DSGVO compliant)  
+- New **`TargetDatasetReference`** and **`TargetReferenceKeyComponent`** models  
+  for component-based FK mapping and automatic join hints for lineage  
+- Extended metadata profiling and statistics for quality & consistency checks  
 - Improved governance primitives (sensitivity classification, ownership, access intent)  
-
-### Planned Mid-term
-- Native SQL rendering and execution layer directly from elevata metadata  
-  (dbt compatibility remains possible as an integration, not as a runtime dependency)  
-- Cross-system **ingestion** and unification of multiple source systems  
-- Built-in **core transformation** patterns and **best practices**  
-- Environment-aware **metadata validation** (Dev/Test/Prod consistency checks)  
-
-### Planned Long-term  
-- Declarative deployment of **target objects** to physical schemas  
-- Automated lineage graph and impact analysis across datasets  
-- Extended **governance and access control** (dataset-level access policies)  
-- Optional REST / GraphQL API for external metadata integration  
-- Support for additional data platforms  
-  *(Microsoft Fabric, Snowflake, BigQuery, Databricks, SQL Server)*  
+- UI-assisted field mapping and automated column naming conventions (smart English naming + semantic suffixes)  
+- **Meta-SQL Logical Plan** foundation for platform-independent SQL rendering (preview mode)
 
 ---
 
-🧾 Licensed under the **AGPL-v3** — free to use, extend, and share.  
+### Planned Mid-term
+
+- Native SQL rendering and execution layer directly from elevata metadata  
+  (dbt compatibility remains possible as an integration, not as a runtime dependency)  
+- Cross-system **ingestion** and unification of multiple source systems via shared `target_short_name`  
+- Built-in **core transformation** patterns and **best-practice templates**  
+- Environment-aware **metadata validation** (Dev/Test/Prod consistency checks)  
+- Lineage visualization and impact analysis (field-level, dataset-level)
+
+---
+
+### Planned Long-term  
+
+- Declarative deployment of **target objects** to physical schemas  
+  with optional auto-materialization on target platform compute  
+- Extended **governance and access control** (dataset-level access policies, PII masking)  
+- Optional REST / GraphQL API for external metadata integration  
+- Cross-platform SQL rendering and deployment  
+  *(Microsoft Fabric, Snowflake, BigQuery, Databricks, SQL Server, and more)*  
+
+---
+
+🧾 Licensed under the **AGPL-v3** — open, governed, and community-driven.  
 💡 *elevata keeps evolving — one small, meaningful release at a time.*
 
 ---

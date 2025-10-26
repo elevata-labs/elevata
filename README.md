@@ -1,93 +1,126 @@
-# elevata – Metadata-driven Data Platform Framework
+# elevata
 
 <p align="center">
-  <img src="docs/logo.png" alt="elevata logo" width="200"/>
+  <img src="docs/logo.png" alt="elevata logo" width="260"/>
 </p>
 
 **elevata** is an open-source initiative on a mission to make building modern data platforms radically simpler.  
-Metadata-driven. Best practices included. Easy to use.
+It is meant to be a **Declarative Data Architecture & Metadata Framework**.  
+Automated, governed, and platform-agnostic.
 
 ## License & Dependencies
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
 [![Built with Django](https://img.shields.io/badge/Built%20with-Django-092E20?logo=django)](https://www.djangoproject.com/)
 [![Frontend: HTMX](https://img.shields.io/badge/Frontend-HTMX-3366CC?logo=htmx)](https://htmx.org/)
-[![UI: Bootstrap 5](https://img.shields.io/badge/UI-Bootstrap%205-7952B3?logo=bootstrap)](https://getbootstrap.com/)
+[![UI: Bootstrap 5](https://img.shields.io/badge/UI-Bootstrap%205-7952B3?logo=bootstrap)](https://getbootstrap.com/)  
 
 ---
 
-## What is elevata?
+## 🧭 What is elevata?
 
-**elevata** is an open-source framework for building consistent, metadata-driven data & analytics platforms.  
-It provides a structured foundation for **source ingestion**, **metadata governance**, **data transformation planning** and **lineage-aware target modeling** — without depending on any specific commercial or external transformation engine.  
+**elevata** transforms metadata into architecture.  
+It reads source system metadata, derives logical and physical target structures, and enforces consistent, privacy-compliant data models — automatically.
 
-The goal is to let teams design and operate data platforms with minimal effort – following the principle:  
-**metadata in → best practices out.**
+Where most tools stop at SQL generation, elevata goes further:  
+it defines **how a modern data architecture should look** — opinionated, governed, and reproducible.  
+*In other words: elevata brings structure, governance, and automation to modern data platforms — from metadata to SQL.*
 
-## 🧠 Core Concept
-
-elevata follows three design principles:
-
-| Principle | Meaning |
-|-----------|---------|
-| **Metadata first** | All logic (ingestion, mapping, lineage) is controlled by metadata models. |
-| **Single Point of Truth** | Source definitions and technical metadata are centrally maintained. |
-| **Environment abstraction** | Profiles manage credentials and connections per environment. |
+<p align="center">
+  <img src="docs/elevata_ui_preview.png" alt="elevata UI preview" width="700"/>
+</p>
 
 ---
 
-## 🧩 Interoperability and Independence
+## 💡 Philosophy & Design Principles
 
-**elevata** is built to stand on its own:  
-all core capabilities — metadata management, model generation, lineage context, and execution planning — live natively inside elevata.
+elevata is not a query builder — it is a **data architecture engine**.  
+Its purpose is to take what is usually scattered across SQL scripts, YAML files, and undocumented conventions — and make it **explicit, governed, and automatable**.
 
-At the same time, elevata is designed to interoperate with external transformation frameworks (for example dbt) when teams want that.  
-That integration is treated as an optional adapter, not a hard dependency. You do not need a dbt project or a dbt runtime to use elevata.
+| Principle | Description |
+|------------|--------------|
+| 🧭 **Opinionated by design** | elevata enforces clear best practices for how data platforms are structured — from `raw` to `serving`. It removes ambiguity, so every dataset has a defined place and purpose. |
+| 🧠 **Metadata drives everything** | All logic lives in the metadata — datasets, keys, lineage, governance. This makes data architectures reproducible, transparent, and explainable. |
+| 🧩 **Convention over configuration** | Instead of infinite options, elevata provides intelligent defaults. Teams can override them — but only when they truly need to. |
+| 🔐 **Privacy by architecture** | Surrogate keys are generated through deterministic, pepper-based hashing. No lookups, no stored secrets, full DSGVO compliance. |
+| 🧮 **Declarative, not imperative** | The user declares *what* should exist, not *how* to code it. elevata generates the optimal technical representation. |
+| 🌍 **Tool independence** | External engines (like dbt) can consume elevata’s metadata, but elevata does not depend on them. It stands on its own — portable, transparent, future-proof. |
 
-This approach ensures long-term flexibility and technical independence.  
-You stay in control of metadata and execution strategy, and you are not locked into a single downstream tool.
-
-For architectural direction around this independence, see [docs/strategy/dbt_decoupling.md](./docs/strategy/dbt_decoupling.md).
-
----
-
-## 🎬 Quick Glance
-
-![Screenshot of elevata metadata UI](docs/screenshot_metadata_ui.png)
-
----
-
-## ✨ What’s inside elevata today
-
-**elevata** already brings together the essentials for a modern, metadata-driven data platform —  
-all in one lightweight, open-source framework:
-
-- 🧩 **Metadata Management Made Simple**  
-  Manage your platform structures through a clean, responsive web interface.  
-  Inline edits, audit tracking, and user management built right in.
-
-- 🔍 **Smart Metadata Import** *(new in v0.2.0)*  
-  Automatically read table and column structures from your relational source systems via **SQLAlchemy** —  
-  including datatype mapping and key detection, all controlled by your central metadata profiles  
-  to accelerate setup and ensure full consistency across environments.
-
-- ⚙️ **Flexible Metadata Database Backend**  
-  Start instantly with SQLite — or go production-ready with PostgreSQL, via Docker or your own instance.
-
-- 💡 **Built for Builders**  
-  Clean Django + HTMX foundation, easy setup, and extensible architecture for future modules like ingestion and dbt-based transformations.
-
-- 🔒 **Secure by Default**  
-  Authentication, CSRF protection, and consistent form handling are already integrated.  
-  Connection details and credentials are resolved securely via `.env` or Key Vault — never stored in the database.
-
-- 🌍 **Open, Transparent, and Evolving**  
-  100 % open source under the **AGPL-v3** — growing step by step towards a full metadata-driven platform.
+> **In short:**  
+> elevata does for data architecture what version control did for code —  
+> it makes structure explicit, reproducible, and collaborative.
 
 ---
 
-## 🚀 Quickstart
+## 🚀 Key Capabilities
 
+- Automated generation of target datasets and columns  
+  from imported metadata, including PK propagation and surrogate key creation  
+- Deterministic, lookup-free surrogate keys (SHA-256 + runtime-loaded pepper)  
+- Full lineage model for datasets, columns, and relationships  
+- Multi-source unification via shared `target_short_name`  
+- Integrated governance (sensitivity, ownership, access intent)  
+- Optional SQL rendering layer (dbt-compatible, but not dependent)  
+- Complete metadata persistence via Django ORM  
+
+---
+
+## 🧩 Architectural Layers
+
+elevata defines and enforces a clean five-layer target architecture:
+
+| Layer | Purpose |
+|--------|----------|
+| **raw** | Original landing of data, 1:1 from source (audit & compliance) |
+| **stage** | Early technical normalization (flattening, type harmonization) |
+| **rawcore** | Technically harmonized core (surrogate keys, dedup, historization) |
+| **bizcore** | Business logic and truth layer — KPI-ready, regulated |
+| **serving** | Consumption layer for analytics, dashboards, and ML models |
+
+Each layer is represented as a `TargetSchema` with defined defaults for  
+materialization, historization, and governance.
+
+---
+
+## 🧮 Example: Deterministic Surrogate Key Generation  
+*Surrogate keys in elevata are not random — they are deterministic, governed, and fully reproducible across systems.*
+```
+MANDT~100|KUNNR~4711|null_replaced
+↓ (runtime pepper)
+SHA-256 = sap_customer_key
+```
+
+- Unique and stable across systems  
+- No lookup required for FK propagation  
+- Fully DSGVO-compliant (hashed with runtime pepper)
+
+---
+
+## 🧭 Roadmap
+
+### Milestone 0.3.x — Metadata Model Freeze & Automated Target Modeling
+- New `TargetSchema` model (raw → serving)  
+- Automatic `TargetDataset` / `TargetColumn` generation  
+- Surrogate key hashing with runtime-loaded pepper  
+- Deterministic FK mapping via key-component relationships  
+- Extended metadata profiling and sensitivity classification  
+- Logical Plan for platform-independent SQL generation  
+
+### Planned Mid-term
+- SQL rendering / execution layer (Snowflake, BigQuery, Databricks, Fabric)  
+- Multi-source unification (sap1/sap2 → sap)  
+- Environment-aware metadata validation  
+- Lineage visualization and impact analysis  
+
+### Planned Long-term
+- Declarative deployment to physical schemas  
+- Governance-driven access control  
+- REST / GraphQL API for metadata access  
+- Extended platform support  
+
+---
+
+## ⚙️ Quickstart
 Get elevata running locally
 
 ### ⚙️ Environment:
@@ -196,76 +229,6 @@ show a clear hint in those cases.
 Example `.env` entries see template file **elevata/.env.example**  
 Example `elevata_profiles` entries see template file **elevata/config/elevata_profiles.example.yaml**
 
-### 🧠 Supported Sources
-
-- ✅ PostgreSQL
-- ✅ DuckDB
-- ✅ Microsoft SQL Server
-- 🔜 Oracle, Snowflake, MySQL, BigQuery (under development)
-
-Flat files, REST APIs, and other sources will be added step by step.
-
----
-
-### 🧩 Example Usage
-
-After defining your `SourceSystems` and `SourceDatasets` in the UI:
-
-1. Click **“Import Metadata”** for the selected system or dataset.  
-2. elevata connects via SQLAlchemy using your configured secret reference.  
-3. It fetches all columns, datatypes, PKs, and nullable flags into `SourceColumn`.  
-4. Columns that are part of a primary key will be automatically marked as `integrate = True`.
-
----
-
-### 🔒 Security & Secrets Handling
-
-Secrets are never stored in the metadata database.  
-They are resolved at runtime via a secure lookup chain:
-
-1. `.env` → environment variable  
-2. (optional) Azure Key Vault  
-3. Fallback to `/etc/elevata/` (if configured)
-
-This mechanism ensures that sensitive data like connection strings or keys  
-are managed externally, independent of environment or deployment type.
-
----
-
-## Target Platform Support
-
-elevata is designed to support multiple backends for flexible data platform development.  
-
-First will be supported:
-- ✅ DuckDB
-
-Planned:
-- 🔜 Microsoft Fabric
-- 🔜 Snowflake
-- 🔜 BigQuery
-- 🔜 Databricks
-- 🔜 SQL Server
-
-Each backend has its own prerequisites.  
-See [docs/backends.md](docs/backends.md) for details.
-
----
-
-## 🧭 Versioning & Stability  
-
-**elevata** follows [Semantic Versioning](https://semver.org) — meaning that version numbers communicate stability and compatibility guarantees.  
-
-| Version type | Meaning |
-|---------------|----------|
-| **0.x.y** | Active development phase — architecture and APIs may still evolve. |
-| **1.0.0** | Marks architectural stability: core models, metadata logic, and CLI interfaces are reliable for production use. |
-| **MAJOR** | May introduce breaking changes (API or schema). |
-| **MINOR** | Adds new features in a backward-compatible way. |
-| **PATCH** | Fixes bugs or improves internal behavior without changing the interface. |
-
-➡ Expect several **0.x milestones** while the core modules (Metadata, Ingestion, Governance) are finalized and refined.  
-Once these are stable and consistent, **elevata 1.0.0** will be released to signal production readiness.
-
 ---
 
 ## Disclaimer
@@ -284,7 +247,7 @@ The project is published under the AGPL v3 license and open for use by any organ
 
 © 2025 Ilona Tag — All rights reserved.  
 **elevata™** is an open-source software project for data & analytics innovation.  
-The name *elevata* is a pending trademark registration at the German Patent and Trade Mark Office (DPMA).  
+The name *elevata* is currently under trademark registration with the German Patent and Trade Mark Office (DPMA).  
 Other product names, logos, and brands mentioned here are property of their respective owners.
 
 Released under the **GNU Affero General Public License v3 (AGPL-3.0)**.  

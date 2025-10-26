@@ -180,6 +180,7 @@ class SourceColumn(AuditFields):
 
 class TargetDataset(AuditFields):
   target_dataset = models.CharField(max_length=100, unique=True)
+  source_dataset = models.ManyToManyField("SourceDataset", blank=True, related_name="target_datasets", db_table="target_dataset_source_dataset")
   stage_dataset = models.CharField(max_length=100)
   handle_deletes = models.BooleanField(default=True)
   core_increment_filter = models.CharField(max_length=255, blank=True, null=True)

@@ -1,99 +1,54 @@
-# 🧩 Strategy Note — Runtime Independence and dbt Compatibility
+# 🧩 decoupling from dbt – strategic outline
 
-**Last updated:** 2025-10-25  
-**Applies from:** elevata 0.2.x onward
-
----
-
-## 🎯 Objective
-
-elevata defines, stores, and manages all platform-relevant metadata (sources, targets, lineage, keys, governance) natively.  
-This metadata is the single source of truth for how data should be shaped and moved.
-
-Transformation frameworks like dbt can consume that metadata — but they are no longer required to run elevata.
-
-In other words: elevata is designed to operate independently, while still being able to export or interoperate with external engines where teams already invested in them.
+**Last updated:** 2025-10-26  
+**Applies from:** elevata 0.2.3 onward
 
 ---
 
-## 🧱 Strategic Principles
+The original motivation behind elevata’s dbt compatibility was pragmatic:  
+re-use dbt’s SQL rendering and model execution capabilities without reinventing them.  
+But as elevata evolved, this dependency became limiting.
 
-1. **Independence by default**  
-   elevata ships without any runtime dependency on dbt.  
-   You do not need a dbt project, `profiles.yml`, or dbt CLI to use elevata.
+## why we decouple
 
-2. **Compatibility where useful**  
-   Teams with an existing dbt landscape can still generate dbt-friendly artefacts or run downstream in dbt if they choose to.  
-   This is provided as an adapter layer, not as core infrastructure.
+dbt focuses on compiling SQL models;  
+elevata focuses on defining *data architecture* — declaratively, governably, and platform-agnostically.
 
-3. **Metadata as the source of truth**  
-   All logic for datasets, columns, surrogate keys, lineage references, environment profiles, and sensitivity classification lives in elevata models.  
-   No dbt-specific duplication (YAML etc.) is required.
+While dbt excels at orchestrating transformations, elevata’s mission is higher-level:  
+to **generate governed SQL through architecture — not configuration**.
 
-4. **Replace piece by piece — but start from our side**  
-   Instead of “wrapping dbt”, elevata focuses on native capabilities first:  
-   - generate target structures, including PK and surrogate key propagation  
-   - define join relationships and lineage  
-   - attach governance/sensitivity information  
-   - plan execution using connection profiles  
-   External runners (like dbt) become consumers of that plan, not owners of it.
+## new direction
 
----
+elevata introduces a **Meta-SQL Layer** — a logical plan that captures *what* each dataset represents,  
+*how* it is derived, and *which relationships and keys* define it.  
+This layer is platform-neutral and can later be rendered into Snowflake SQL, BigQuery SQL, Databricks SQL, Fabric, or even dbt syntax — without binding elevata to any of them.
 
-## 🚀 Execution Roadmap
+> elevata can integrate with dbt — but does not depend on it.
 
-| Phase | Focus | Notes |
-|-------|-------|-------|
-| **0.3.x** | Native target model generation & lineage-aware relationships | Surrogate keys with pepper, FK references, sensitivity metadata |
-| **0.4.x** | Native SQL rendering & execution planning | SQL produced directly from elevata metadata; runs via SQLAlchemy |
-| **0.5.x** | Full runnable path without external tooling | Incremental/table/view materialization, scheduling hooks |
-| **1.0.0** | Stable, tool-independent runtime | dbt available only as an optional integration plugin |
+The decoupling allows elevata to control:
+- metadata generation and lineage tracking,
+- deterministic key and relationship management,
+- governance primitives (sensitivity, ownership, access intent),
+- and deployment across structured architecture layers (`raw`, `stage`, `rawcore`, `bizcore`, `serving`).
 
----
+## raw as first-class layer
 
-## 🔒 Communication Guidance
+In contrast to dbt’s generic “staging” concept, elevata defines an explicit `raw` layer:  
+a transparent landing zone that preserves source data 1:1 for auditability and re-loadability.  
+From there, the system generates technical cores (`rawcore`) and business models (`bizcore`) automatically.
 
-- **README:**  
-  Say: “elevata is fully functional on its own. External engines (for example dbt) are optional adapters.”
+This explicit layer separation provides:
+- clear lineage between ingestion and semantic models,
+- reproducibility of technical transformations,
+- and predictable governance behavior per layer.
 
-- **Changelog / Roadmap:**  
-  Frame milestones in terms of elevata-native features.  
-  Mention dbt only as a compatibility/export path, not as a core runtime.
+## long-term vision
 
-- **Env / Config:**  
-  No `DBT_*` variables, no bundled `dbt_project/` folder, no implication that dbt is required to start.
+elevata will:
+- maintain optional dbt compatibility for users who rely on its runner,
+- provide its own rendering layer for direct execution,
+- and evolve toward a **platform-independent metadata compiler** that can describe, generate, and govern complete data architectures.
 
----
-
-## ⚙️ Technical Direction
-
-- SQL rendering is driven by elevata metadata (`TargetDataset`, `TargetColumn`, lineage relationships, surrogate keys).
-- Execution planning is handled natively and can connect to relational systems via SQLAlchemy.
-- Connection / credential handling is resolved via `elevata_profiles.yaml` and environment variables (or Key Vault).
-- Sensitive data is explicitly classified, and surrogate key hashing with runtime-only pepper ensures compliance (e.g. DSGVO).
-- External adapters (e.g. dbt) can receive generated artefacts for teams that want to keep their established tooling, but elevata’s runtime does not depend on them.
-
----
-
-## 🧭 Rationale
-
-- Avoid vendor lock-in and sudden strategy shifts outside our control.
-- Keep elevata maintainable and sustainable as an open project.
-- Support mixed landscapes (relational DBs, flat files, REST sources) where dbt alone is not enough.
-- Make governance, lineage, and security first-class instead of bolted-on.
-
----
-
-## 🧾 Summary
-
-| Goal | Status |
-|------|--------|
-| Operate independently of dbt | Effective starting 0.2.x cleanup |
-| Keep optional compatibility | Yes, via adapter/export |
-| Native renderer and runner | Rolling out in 0.3.x / 0.4.x |
-| Full autonomy | 1.0.0 milestone |
-
----
-
-> In short: elevata runs on elevata.  
-> External engines are welcome guests — but not landlords.
+Ultimately, elevata’s goal is not to replace dbt —  
+but to **make dbt optional** by moving the intelligence where it belongs:  
+into metadata-driven, declarative architecture.
