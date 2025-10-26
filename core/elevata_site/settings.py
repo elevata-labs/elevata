@@ -226,15 +226,37 @@ ELEVATA_CRUD = {
       ],
     },
     "badges": {
-      "SourceColumn": {
-        "pii_level": {
-          "special_category_data": "badge bg-danger text-light",
-          "personal_data": "badge bg-warning text-dark",
-          "none": "badge bg-secondary text-light",
-          "default": "badge bg-secondary text-light",
-        }
-      }
-    }
+      "SourceColumn": [
+        {
+          "field": "primary_key_column", 
+          "class_map": {
+            "True": "badge badge-pk",
+            "False": "",
+            "default": "",
+          },
+          "label_map": {
+            "True": "PK",
+            "False": "",
+            "default": "",
+          },
+        },
+        {
+          "field": "pii_level",
+          "class_map": {
+            "special_category_data": "badge badge-pii-high",
+            "personal_data": "badge badge-pii-medium",
+            "none": "badge badge-pii-none",
+            "default": "badge badge-pii-none",
+          },
+          "label_map": {
+            "special_category_data": "Special",
+            "personal_data": "Personal",
+            "none": "",
+            "default": "",
+          },
+        },
+      ],
+    },
   }
 }
 

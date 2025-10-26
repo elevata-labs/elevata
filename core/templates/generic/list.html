@@ -121,6 +121,16 @@ Contact: <https://github.com/elevata-labs/elevata>.
           {% for f in fields %}
             <th scope="col">{{ f.verbose_name|capfirst }}</th>
           {% endfor %}
+
+          {# --- header for badges --- #}
+          {% with model_badges=BADGE_CLASSES|get:model_class_name %}
+            {% if model_badges %}
+              <th scope="col" class="text-center" title="Governance attributes">
+                <i class="bi bi-tags-fill"></i>
+              </th>
+            {% endif %}
+          {% endwith %}
+
           <th scope="col" class="text-end">Actions</th>
         </tr>
       </thead>

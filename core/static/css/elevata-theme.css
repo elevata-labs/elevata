@@ -400,3 +400,78 @@ td .btn-group{ flex: none; }
   background-color: #f8f9fa;
   z-index: 2;
 }
+
+/* elevata Governance UI Styling for PII / PK / Integration badges */
+
+/* Base badge reset */
+.badge {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  border-radius: 0.5rem;
+  padding: 0.35em 0.55em;
+  vertical-align: middle;
+}
+
+/* Governance column icon (bi-tags) */
+th i.bi-tags {
+  color: var(--bs-secondary-color);
+  font-size: 1rem;
+  opacity: 0.8;
+  transition: all 0.2s ease-in-out;
+}
+th i.bi-tags:hover {
+  opacity: 1;
+  color: var(--bs-primary);
+}
+
+/* PII badges hierarchy */
+.badge-pii-high {
+  background-color: var(--bs-danger);
+  color: #fff;
+}
+.badge-pii-medium {
+  background-color: var(--bs-warning);
+  color: #212529;
+}
+.badge-pii-low {
+  background-color: var(--bs-info);
+  color: #212529;
+}
+.badge-pii-none {
+  background-color: var(--bs-secondary);
+  color: #fff;
+}
+
+/* PK (Primary Key) badge */
+.badge-pk {
+  background-color: var(--bs-primary);
+  color: #fff;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}
+
+/* Integration toggle active state */
+.btn-success.text-white {
+  box-shadow: 0 0 0.25rem rgba(25, 135, 84, 0.4);
+}
+
+/* Optional hover feedback for toggles */
+.btn-outline-secondary:hover {
+  background-color: var(--bs-primary-bg-subtle);
+  color: var(--bs-primary-text);
+}
+
+/* Compact badge spacing in cell */
+td .badge {
+  margin-right: 0.25rem;
+}
+
+/* Optional: subtle divider line above Actions column */
+th.text-end {
+  border-left: 1px solid var(--bs-border-color);
+}
+
+td .badge + .badge {
+  margin-left: 0.2rem;
+}

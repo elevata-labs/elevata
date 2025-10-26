@@ -135,16 +135,41 @@ class GenericCRUDView(LoginRequiredMixin, View):
 
   def get_list_fields(self):
     """
-    Return model fields for list/grid view, excluding:
-    - auto_created / m2m / non-concrete fields
-    - anything in self.list_exclude
-    - toggle-only fields (those will be rendered as buttons in the action column)
-    """
-    fields = []
-    toggle_field_names = self.get_toggle_field_names()
+    Return the model fields that should appear as columns in the grid.
 
+    Rules:
+    - skip auto_created, m2m, non-concrete
+    - skip anything in self.list_exclude
+    - skip toggle fields (they render as buttons in the Actions column)
+    - skip badge fields (they render as badges in the Actions column)
+    """
+
+    meta_cfg = getattr(settings, "ELEVATA_CRUD", {}).get("metadata", {})
+
+    # 1. collect toggle fields for this model
+    toggle_cfg_all = meta_cfg.get("list_toggle_fields", {})
+    toggle_field_names = set()
+    model_toggle_cfg = toggle_cfg_all.get(self.model.__name__)
+    if model_toggle_cfg:
+      for entry in model_toggle_cfg:
+        field_name = entry.get("field")
+        if field_name:
+          toggle_field_names.add(field_name)
+
+    # 2. collect badge fields for this model
+    badge_cfg_all = meta_cfg.get("badges", {})
+    badge_field_names = set()
+    model_badge_cfg = badge_cfg_all.get(self.model.__name__)
+    if model_badge_cfg:
+      # new structure: list of dicts, each has "field": "<fieldname>"
+      for entry in model_badge_cfg:
+        field_name = entry.get("field")
+        if field_name:
+          badge_field_names.add(field_name)
+
+    fields = []
     for f in self.model._meta.get_fields():
-      # Skip non-real fields
+      # skip django internals
       if getattr(f, "many_to_many", False):
         continue
       if getattr(f, "auto_created", False):
@@ -152,12 +177,16 @@ class GenericCRUDView(LoginRequiredMixin, View):
       if not getattr(f, "concrete", True):
         continue
 
-      # Skip anything explicitly excluded
+      # explicit per-view excludes, if you use that
       if f.name in getattr(self, "list_exclude", []):
         continue
 
-      # Skip toggle fields (we'll show them via buttons instead of as columns)
+      # skip toggle fields (we render buttons instead)
       if f.name in toggle_field_names:
+        continue
+
+      # skip badge fields (we render badges instead)
+      if f.name in badge_field_names:
         continue
 
       fields.append(f)

@@ -57,48 +57,45 @@ Contact: <https://github.com/elevata-labs/elevata>.
         <td class="truncate">{{ object|attr:f.name }}</td>
 
       {% else %}
-        {# generic badge logic per field #}
-        {% with field_badge_map=model_badges|get:f.name %}
-          {% if field_badge_map %}
-            {% with raw_val=object|attr:f.name %}
-              {% with badge_class=field_badge_map|get:raw_val %}
-                {% if badge_class %}
-                  <td>
-                    <span class="badge {{ badge_class|cut:'badge ' }}">{{ raw_val }}</span>
-                  </td>
-                {% else %}
-                  {% with default_class=field_badge_map|get:"default" %}
-                    {% if default_class %}
-                      <td>
-                        <span class="{{ default_class }}">{{ raw_val }}</span>
-                      </td>
-                    {% else %}
-                      <td>{{ raw_val }}</td>
-                    {% endif %}
-                  {% endwith %}
-                {% endif %}
-              {% endwith %}
-            {% endwith %}
-          {% else %}
-            <td>{{ object|attr:f.name }}</td>
-          {% endif %}
-        {% endwith %}
+        <td>{{ object|attr:f.name }}</td>
       {% endif %}
 
     {% endfor %}
   {% endwith %}
 
+  {# --- Badges column (pii_level, PK etc.) --- #}
+  <td class="text-nowrap">
+    {% with model_badges=BADGE_CLASSES|get:model_class_name %}
+      {% if model_badges %}
+        {% for badge in model_badges %}
+          {% with field_name=badge|get:"field" %}
+            {% with raw_val=object|attr:field_name %}
+              {% with raw_val_s=raw_val|stringformat:"s" %}
+                {% with class_map=badge|get:"class_map" label_map=badge|get:"label_map" %}
+                  {% with bc_exact=class_map|get:raw_val_s bc_fallback=class_map|get:"default" %}
+                    {% with bl_exact=label_map|get:raw_val_s bl_fallback=label_map|get:"default" %}
+                      {% if bc_exact and bl_exact %}
+                        <span class="{{ bc_exact }} me-1">{{ bl_exact }}</span>
+                      {% elif bc_exact and bl_fallback %}
+                        <span class="{{ bc_exact }} me-1">{{ bl_fallback }}</span>
+                      {% elif bc_fallback and bl_exact %}
+                        <span class="{{ bc_fallback }} me-1">{{ bl_exact }}</span>
+                      {% elif bc_fallback and bl_fallback %}
+                        <span class="{{ bc_fallback }} me-1">{{ bl_fallback }}</span>
+                      {% endif %}
+                    {% endwith %}
+                  {% endwith %}
+                {% endwith %}
+              {% endwith %}
+            {% endwith %}
+          {% endwith %}
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+  </td>
+
   {# --- Actions column --- #}
   <td class="text-end">
-
-    {# PK badge only for SourceColumn #}
-    {% if model_name == 'sourcecolumn' %}
-      <span class="ec-badges">
-        {% if object.primary_key_column %}
-          <span class="ec-chip ec-chip--pk" title="Primary key">PK</span>
-        {% endif %}
-      </span>
-    {% endif %}
 
     <span class="ec-actions">
       <div class="btn-group btn-group-sm" role="group">
