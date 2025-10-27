@@ -22,16 +22,11 @@ Contact: <https://github.com/elevata-labs/elevata>.
 
 {% load attr support_extras %}
 
-{% if model_name == 'sourcecolumn' %}
-  {% with pk=object.primary_key_column intg=object.integrate %}
-    <tr id="row-{{ object.pk }}"
-        {% if pk or intg %}
-          class="{% if pk %}ec-row--pk{% endif %}{% if intg %}{% if pk %} {% endif %}ec-row--integrate{% endif %}"
-        {% endif %}>
-  {% endwith %}
-{% else %}
-  <tr id="row-{{ object.pk }}"{% if highlight %} class="highlight"{% endif %}>
-{% endif %}
+<tr
+  id="row-{{ object.pk }}"
+  {% if highlight %}class="highlight"{% endif %}
+  hx-on="htmx:afterSwap: setTimeout(function(){ elevataSyncEmptyPlaceholder(); }, 0)"
+>
 
   {# --- Columns / normal fields --- #}
   {% with model_badges=BADGE_CLASSES|get:model_class_name %}
@@ -59,7 +54,6 @@ Contact: <https://github.com/elevata-labs/elevata>.
       {% else %}
         <td>{{ object|attr:f.name }}</td>
       {% endif %}
-
     {% endfor %}
   {% endwith %}
 
@@ -155,7 +149,11 @@ Contact: <https://github.com/elevata-labs/elevata>.
           hx-delete="{% url model_name|add:'_row_delete' object.pk %}"
           hx-target="#row-{{ object.pk }}"
           hx-swap="outerHTML swap:1s"
-          hx-confirm="Delete this record?">Delete</button>
+          hx-confirm="Delete this record?"
+          hx-on="htmx:afterRequest: setTimeout(function(){ elevataSyncEmptyPlaceholder(); }, 0)"
+        >
+          Delete
+        </button>
 
         {% if model_name == 'sourcedataset' and object.source_system.type|is_import_supported %}
           <form class="d-inline">

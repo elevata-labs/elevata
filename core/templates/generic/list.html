@@ -139,12 +139,47 @@ Contact: <https://github.com/elevata-labs/elevata>.
         {% for obj in objects %}
           {% include "generic/row.html" with object=obj model=model meta=meta fields=fields model_name=model_name %}
         {% empty %}
-          <tr>
+          <tr id="no-records-row">
             <td colspan="99" class="text-center text-muted py-4">No records found.</td>
           </tr>
         {% endfor %}
       </tbody>
     </table>
   </div>
+
+<script>
+  function elevataSyncEmptyPlaceholder() {
+    const gridBody = document.getElementById("grid-body");
+    if (!gridBody) return;
+
+    // Alle Datensätze identifizieren: <tr id="row-123">
+    const realRows = Array.from(gridBody.querySelectorAll("tr"))
+      .filter(tr => tr.id && tr.id.startsWith("row-"));
+
+    const hasRealRows = realRows.length > 0;
+    let emptyRow = document.getElementById("no-records-row");
+
+    if (hasRealRows) {
+      // Falls wir Datensätze haben -> Placeholder entfernen, wenn vorhanden
+      if (emptyRow) {
+        emptyRow.remove();
+      }
+    } else {
+      // Falls wir KEINE Datensätze mehr haben -> Placeholder einfügen, falls nicht schon da
+      if (!emptyRow) {
+        emptyRow = document.createElement("tr");
+        emptyRow.id = "no-records-row";
+
+        const cell = document.createElement("td");
+        cell.colSpan = "99";
+        cell.className = "text-center text-muted py-4";
+        cell.textContent = "No records found.";
+
+        emptyRow.appendChild(cell);
+        gridBody.appendChild(emptyRow);
+      }
+    }
+  }
+</script>
 
 {% endblock %}

@@ -36,5 +36,20 @@ Contact: <https://github.com/elevata-labs/elevata>.
       ✅ Imported metadata for system <strong>{{ system }}</strong>.
     {% endif %}
     Datasets: {{ result.datasets|default:"?" }}, Columns: {{ result.columns_imported|default:"?" }}.
+
+    
+    {% if result.skipped_count %}
+      <div class="mt-2">
+        <span class="badge bg-warning text-dark">
+          {{ result.skipped_count }} dataset{{ result.skipped_count|pluralize }} skipped - check schema/name
+        </span>
+        <div class="small text-muted mt-1">
+          {{ result.skipped|join:", " }}
+        </div>
+      </div>
+    {% endif %}
+
+
+
   </div>
 {% endif %}

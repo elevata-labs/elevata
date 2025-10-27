@@ -22,36 +22,42 @@ Contact: <https://github.com/elevata-labs/elevata>.
 
 {% load static %}
 
-{# Inline edit form for a single existing object, wrapped in one <tr> #}
-<tr id="row-{{ object.pk }}" class="table-warning">
+{# Inline form for create OR edit (context var: is_new=True/False) #}
+<tr id="{% if is_new %}row-new{% else %}row-{{ object.pk }}{% endif %}"
+    class="{% if is_new %}table-info{% else %}table-warning{% endif %}">
   <td colspan="{{ fields|length|add:'1' }}">
     <form method="post"
           class="elevata-form elevata-form-inline"
-          hx-post="{% url model_name|add:'_row_edit' object.pk %}"
-          hx-target="#row-{{ object.pk }}"
-          hx-swap="outerHTML"
-          hx-disabled-elt="button[type=submit]">
+
+          {% if is_new %}
+            hx-post="{% url model_name|add:'_row_create' %}"
+            hx-target="#row-new"
+            hx-swap="outerHTML"
+          {% else %}
+            hx-post="{% url model_name|add:'_row_edit' object.pk %}"
+            hx-target="#row-{{ object.pk }}"
+            hx-swap="outerHTML"
+          {% endif %}
+    >
       {% csrf_token %}
 
       {% for field in form %}
         <div class="form-row">
-          <label for="{{ field.id_for_label }}">{{ field.label }}
-          {% if field.field.required %}
-            <span class="text-danger" aria-label="Required" title="Required">*</span>
-          {% endif %}
+          <label for="{{ field.id_for_label }}">
+            {{ field.label }}
+            {% if field.field.required %}
+              <span class="text-danger" aria-label="Required" title="Required">*</span>
+            {% endif %}
           </label>
 
-          {# Special handling: show a dynamic hint under SourceSystem.type #}
           {% if model_name == 'sourcesystem' and field.name == 'type' %}
             {{ field }}
-            <div id="type-hint-inline-edit"
-                class="small text-muted mt-1"
-                hx-get="{% url 'source_type_hint' %}"
-                hx-trigger="change from:[name='type']"
-                hx-include="[name='type']"
-                hx-target="this"
-                hx-swap="innerHTML">
-            </div>
+            <div class="small text-muted mt-1"
+                 hx-get="{% url 'source_type_hint' %}"
+                 hx-trigger="change from:[name='type']"
+                 hx-include="[name='type']"
+                 hx-target="this"
+                 hx-swap="innerHTML"></div>
           {% else %}
             {{ field }}
           {% endif %}
@@ -64,17 +70,33 @@ Contact: <https://github.com/elevata-labs/elevata>.
           {% endfor %}
         </div>
       {% endfor %}
-      
+
+      {% if form.non_field_errors %}
+        <div class="error">
+          {% for err in form.non_field_errors %}
+            <div class="error">{{ err }}</div>
+          {% endfor %}
+        </div>
+      {% endif %}
+
       <div class="mt-2 d-flex gap-2">
         <button type="submit" class="btn btn-primary btn-sm">Save</button>
-        <a class="btn btn-secondary btn-sm"
-           hx-get="{% url model_name|add:'_row' object.pk %}"
-           hx-target="#row-{{ object.pk }}"
-           hx-swap="outerHTML">Cancel</a>
+
+        {% if is_new %}
+          <button type="button"
+                  class="btn btn-secondary btn-sm"
+                  onclick="document.getElementById('row-new')?.remove()">
+            Cancel
+          </button>
+        {% else %}
+          <a class="btn btn-secondary btn-sm"
+             hx-get="{% url model_name|add:'_row' object.pk %}"
+             hx-target="#row-{{ object.pk }}"
+             hx-swap="outerHTML">
+            Cancel
+          </a>
+        {% endif %}
       </div>
     </form>
-    <!-- {% if model_name == "sourcedataset" %}
-      <script src="{% static 'js/elevata_autofill_stage.js' %}"></script>
-    {% endif %} -->
   </td>
 </tr>

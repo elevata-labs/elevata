@@ -20,6 +20,9 @@ along with elevata. If not, see <https://www.gnu.org/licenses/>.
 Contact: <https://github.com/elevata-labs/elevata>.
 """
 
+from sqlalchemy.exc import NoSuchTableError, SQLAlchemyError
+import logging
+
 from typing import Iterable, List, Dict, Any
 
 from django.db import transaction
@@ -35,6 +38,7 @@ from metadata.constants import SUPPORTED_SQLALCHEMY, BETA_SQLALCHEMY
 # Allow auto import for these types (stable + beta)
 ALLOWED_FOR_IMPORT = SUPPORTED_SQLALCHEMY | BETA_SQLALCHEMY
 
+log = logging.getLogger(__name__)
 
 def _materialize_with_related(datasets: Iterable) -> List:
   """
@@ -91,7 +95,16 @@ def import_metadata_for_datasets(
     return {"datasets": 0, "columns_imported": 0, "created": 0, "updated": 0, "removed": 0}
 
   engines = {}  # {source_system_id: engine}
-  totals = {"datasets": 0, "columns_imported": 0, "created": 0, "updated": 0, "removed": 0}
+  totals = {
+    "datasets": 0,
+    "columns_imported": 0,
+    "created": 0,
+    "updated": 0,
+    "removed": 0,
+  }
+
+  # track failed datasets
+  skipped: list[str] = []
 
   for ds in ds_list:
     ss = ds.source_system
@@ -103,7 +116,7 @@ def import_metadata_for_datasets(
         "You can still document it manually in elevata."
       )
 
-    # Create/reuse one engine per source system
+    # Reuse or create engine per source system
     if ss.id not in engines:
       try:
         engines[ss.id] = engine_for_source_system(system_type=system_type, short_name=ss.short_name)
@@ -113,8 +126,21 @@ def import_metadata_for_datasets(
         ) from e
     engine = engines[ss.id]
 
-    # Introspect table metadata
-    meta = read_table_metadata(engine, ds.schema_name, ds.source_dataset_name)
+    # --- TRY/EXCEPT around metadata introspection ---
+    try:
+      meta = read_table_metadata(engine, ds.schema_name, ds.source_dataset_name)
+    except NoSuchTableError:
+      msg = f"{ds.schema_name}.{ds.source_dataset_name}"
+      log.warning("Skipping dataset %s: table not found in source", msg)
+      skipped.append(msg)
+      continue
+    except SQLAlchemyError as e:
+      msg = f"{ds.schema_name}.{ds.source_dataset_name}"
+      log.error("Error introspecting %s: %s", msg, e)
+      skipped.append(msg + f" (error: {e})")
+      continue
+
+    # Normal flow
     pk_cols = set(meta.get("primary_key_cols") or [])
     fk_map = meta.get("fk_map") or {}
     columns = meta.get("columns") or []
@@ -125,7 +151,7 @@ def import_metadata_for_datasets(
         integrate=False,
         pii_level="none",
         description="",
-        primary_key_column=False
+        primary_key_column=False,
       )
 
     # Current columns in DB (to detect create/update/remove)
@@ -160,7 +186,7 @@ def import_metadata_for_datasets(
 
         # Refresh technical fields from source on every sync
         sc.ordinal_position = i
-        sc.description=(desc or "")[:255]
+        sc.description = (desc or "")[:255]
         sc.datatype = dtype
         sc.max_length = max_len
         sc.decimal_precision = dec_prec
@@ -176,7 +202,6 @@ def import_metadata_for_datasets(
         sc.save()
         if name in existing:
           updated += 1
-
         seen_names.add(name)
 
       # Remove columns that no longer exist in source
@@ -198,5 +223,9 @@ def import_metadata_for_datasets(
       eng.dispose()
     except Exception:
       pass
+
+  # skipped summary for UI feedback
+  totals["skipped"] = skipped
+  totals["skipped_count"] = len(skipped)
 
   return totals

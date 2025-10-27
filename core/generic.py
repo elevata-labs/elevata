@@ -488,6 +488,7 @@ class GenericCRUDView(LoginRequiredMixin, View):
   def row_edit(self, request, pk):
     obj = get_object_or_404(self.model, pk=pk)
     FormClass = self.get_form_class()
+
     if request.method == "POST":
       form = FormClass(request.POST, instance=obj)
       if form.is_valid():
@@ -495,6 +496,7 @@ class GenericCRUDView(LoginRequiredMixin, View):
         user = get_current_user() or request.user
         self._set_audit_fields(instance, user, is_new=False)
         instance.save()
+
         # Save ManyToMany relationships explicitly
         if hasattr(form, "save_m2m"):
           form.save_m2m()
@@ -506,45 +508,57 @@ class GenericCRUDView(LoginRequiredMixin, View):
           "fields": self.get_list_fields(),
           "model_name": self.model._meta.model_name,
           "model_class_name": self.model.__name__,
+          "highlight": True,
         }
         return render(request, "generic/row.html", context, status=200)
+
+      # if form is NOT valid, we fall through to render the form with errors
     else:
       form = FormClass(instance=obj)
+
+    # both GET and invalid POST end up here:
     context = {
       "model": self.model,
       "meta": self.model._meta,
-      "form": form,
+      "form": form, # bound form (with errors on invalid POST)
       "object": obj,
+      "fields": self.get_list_fields(), # needed for colspan calc
       "model_name": self.model._meta.model_name,
       "model_class_name": self.model.__name__,
+      "is_new": False,
     }
-    return render(request, "generic/row_form.html", context)
+    return render(request, "generic/row_form.html", context, status=200)
 
   def row_new(self, request):
     FormClass = self.get_form_class()
     form = FormClass()
+
     context = {
       "model": self.model,
       "meta": self.model._meta,
       "form": form,
       "object": None,
+      "fields": self.get_list_fields(), # for colspan
       "model_name": self.model._meta.model_name,
       "model_class_name": self.model.__name__,
+      "is_new": True,
     }
-    return render(request, "generic/row_form_new.html", context)
+    return render(request, "generic/row_form.html", context, status=200)
   
   def row_create(self, request):
     if request.method != "POST":
       raise Http404("POST required")
+
     FormClass = self.get_form_class()
     form = FormClass(request.POST)
+
     if form.is_valid():
       instance = form.save(commit=False)
       user = get_current_user() or request.user
       self._set_audit_fields(instance, user, is_new=True)
       instance.save()
 
-      # Save ManyToMany relationships explicitly
+      # Save ManyToMany explicitly
       if hasattr(form, "save_m2m"):
         form.save_m2m()
 
@@ -557,16 +571,21 @@ class GenericCRUDView(LoginRequiredMixin, View):
         "model_class_name": self.model.__name__,
         "highlight": True,
       }
+      # 201 Created is fine, HTMX will swap just like 200
       return render(request, "generic/row.html", context, status=201)
+
+    # invalid form -> re-render the form WITH ERRORS in create mode
     context = {
       "model": self.model,
       "meta": self.model._meta,
       "form": form,
       "object": None,
+      "fields": self.get_list_fields(),
       "model_name": self.model._meta.model_name,
       "model_class_name": self.model.__name__,
+      "is_new": True,
     }
-    return render(request, "generic/row_form_new.html", context, status=400)
+    return render(request, "generic/row_form.html", context, status=200)
 
   def row_delete(self, request, pk):
     obj = get_object_or_404(self.model, pk=pk)
