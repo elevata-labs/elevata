@@ -19,6 +19,15 @@
  * Contact: <https://github.com/elevata-labs/elevata>.
  */
 
+
+// NOTE (2025-10-26):
+// This used to prefill SourceDataset.stage_dataset.
+// The staging dataset is now modeled as TargetDataset (target_schema = 'stage').
+// This logic will be reused in the TargetDataset creation flow to suggest
+// a canonical target_dataset name for the generated staging table.
+// For now, this script is not actively invoked.
+
+
 /* elevata - autofill for SourceDataset.stage_dataset
  * - Works on full page forms and HTMX inline row forms
  * - Fills stage_dataset as 'stg_<schema>_<name>' (schema omitted if empty or default)

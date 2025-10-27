@@ -71,8 +71,8 @@ def import_metadata_for_datasets(
   --------
   - Refresh technical fields from the source:
     datatype, max_length, decimal_precision, decimal_scale,
-    nullable, primary_key_column, referenced_source_dataset, ordinal_position.
-  - Preserve user-maintained fields (description, integrate, pii_column),
+    nullable, primary_key_column, referenced_source_dataset_name, ordinal_position.
+  - Preserve user-maintained fields (description, integrate, pii_level),
     unless reset_flags=True → then reset to neutral defaults.
   - Optionally mark PK columns integrate=True (autointegrate_pk=True).
   - Columns that disappeared in the source are deleted.
@@ -114,14 +114,19 @@ def import_metadata_for_datasets(
     engine = engines[ss.id]
 
     # Introspect table metadata
-    meta = read_table_metadata(engine, ds.schema, ds.source_dataset)
+    meta = read_table_metadata(engine, ds.schema_name, ds.source_dataset_name)
     pk_cols = set(meta.get("primary_key_cols") or [])
     fk_map = meta.get("fk_map") or {}
     columns = meta.get("columns") or []
 
     # Optionally reset user flags for this dataset before re-sync
     if reset_flags:
-      ds.source_columns.update(integrate=False, pii_column=False, description="")
+      ds.source_columns.update(
+        integrate=False,
+        pii_level="none",
+        description="",
+        primary_key_column=False
+      )
 
     # Current columns in DB (to detect create/update/remove)
     existing: Dict[str, SourceColumn] = {c.source_column: c for c in ds.source_columns.all()}
@@ -149,7 +154,7 @@ def import_metadata_for_datasets(
             source_dataset=ds,
             source_column=name,
             integrate=False,
-            pii_column=False,
+            pii_level="none",
           )
           created += 1
 
@@ -162,7 +167,7 @@ def import_metadata_for_datasets(
         sc.decimal_scale = dec_scale
         sc.nullable = nullable
         sc.primary_key_column = is_pk
-        sc.referenced_source_dataset = fk_map.get(name) or None
+        sc.referenced_source_dataset_name = fk_map.get(name) or None
 
         # Auto-integrate PK columns if desired
         if autointegrate_pk and is_pk:

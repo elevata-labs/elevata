@@ -120,3 +120,8 @@ def crud_ui_config(request):
     "LIST_TOGGLE_FIELDS": list_toggle_fields,
     "BADGE_CLASSES": badge_classes,
   }
+
+def elevata_version(request):
+  """Expose current elevata framework version globally."""
+  from django.conf import settings
+  return {"ELEVATA_VERSION": getattr(settings, "ELEVATA_VERSION", "dev")}

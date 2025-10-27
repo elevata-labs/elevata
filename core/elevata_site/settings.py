@@ -43,6 +43,8 @@ from utils.db import build_metadata_database_url
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(find_dotenv(filename=".env", raise_error_if_not_found=False))
 
+ELEVATA_VERSION = "0.2.4"
+
 ELEVATA_PROFILES_PATH = os.getenv("ELEVATA_PROFILES_PATH", str((BASE_DIR.parent / "config" / "elevata_profiles.yaml")))
 
 STATIC_URL = "static/"
@@ -108,6 +110,7 @@ TEMPLATES = [
         "elevata_site.context_processors.app_menu",
         "elevata_site.context_processors.type_support",
         "elevata_site.context_processors.crud_ui_config",
+        "elevata_site.context_processors.elevata_version",
       ],
     },
   },
@@ -179,25 +182,25 @@ ELEVATA_CRUD = {
       "PartialLoad", 
       "SourceSystem", 
       "SourceDataset", 
-      "SourceDatasetOwnership", 
-      "SourceColumn", 
+      "SourceColumn",
+      "TargetSchema", 
       "TargetDataset", 
-      "TargetDatasetOwnership", 
       "TargetColumn", 
+      "SourceDatasetGroup",
       "TargetDatasetReference"
       ],
     "descriptions": {
-      "Team": "Organize data teams, functional groups.",
-      "Person": "Track users and their relation to the teams within your data organization.",
-      "PartialLoad": "Define additional loads to process subsets of your datasets in individual frequencies.",
-      "SourceSystem": "Register and describe upstream systems providing raw data to the platform.",
+      "Team": "Organize data teams and functional groups.",
+      "Person": "Track users and their association with data teams across the organization.",
+      "PartialLoad": "Define additional loads to process subsets of datasets at individual frequencies.",
+      "SourceSystem": "Register and describe upstream systems that provide raw data to the platform.",
       "SourceDataset": "Define datasets extracted from source systems — the entry point for ingestion.",
-      "SourceDatasetOwnership": "Assign accountability for source datasets and document responsibilities.",
       "SourceColumn": "Capture technical metadata and profiling details for each source column.",
-      "TargetDataset": "Design target datasets for your platform and map them to the source datasets.",
-      "TargetDatasetOwnership": "Assign ownership and stewardship for target datasets across teams.",
-      "TargetColumn": "Define business-ready columns and maintain data quality at the attribute level.",
-      "TargetDatasetReference": "Specify relations between the target datasets to generate appropriate foreign surrogate keys.",
+      "TargetSchema": "Model your platform’s architectural layers and their default behaviors.",
+      "TargetDataset": "Design target datasets and map them to their corresponding source inputs.",
+      "TargetColumn": "Define business-ready columns and manage data quality at the attribute level.",
+      "SourceDatasetGroup": "Group structurally similar source datasets to enable unified target generation.",
+      "TargetDatasetReference": "Define relationships between target datasets to generate consistent foreign surrogate keys."
     },
     "icons": {
       "Team": "users",
@@ -205,17 +208,34 @@ ELEVATA_CRUD = {
       "PartialLoad": "timer",
       "SourceSystem": "database",
       "SourceDataset": "file",
-      "SourceDatasetOwnership": "shield-check",
       "SourceColumn": "grid-2x2",
+      "TargetSchema": "layers",
       "TargetDataset": "file-check-2",
-      "TargetDatasetOwnership": "shield-check",
       "TargetColumn": "grid-2x2-check",
+      "SourceDatasetGroup": "merge",
       "TargetDatasetReference": "arrow-left-right",
     },
-    "exclude": [""],
+    "exclude": [
+      "SourceDatasetOwnership", 
+      "TargetDatasetOwnership", 
+      "SourceDatasetIncrementPolicy",
+      "SourceDatasetGroupMembership",
+      "TargetDatasetInput",
+      "IncrementFieldMap",
+      "TargetColumnInput",
+      "TargetDatasetReferenceComponent",
+    ],
     "paths": {      
     },
     "list_toggle_fields": {
+      "SourceDataset": [
+        {
+          "field": "integrate",
+          "label_on": "Integrate",
+          "label_off": "Integrate",
+          "title": "Mark dataset for integration"
+        },
+      ],
       "SourceColumn": [
         {
           "field": "integrate",
@@ -227,6 +247,36 @@ ELEVATA_CRUD = {
     },
     "badges": {
       "SourceColumn": [
+        {
+          "field": "primary_key_column", 
+          "class_map": {
+            "True": "badge badge-pk",
+            "False": "",
+            "default": "",
+          },
+          "label_map": {
+            "True": "PK",
+            "False": "",
+            "default": "",
+          },
+        },
+        {
+          "field": "pii_level",
+          "class_map": {
+            "special_category_data": "badge badge-pii-high",
+            "personal_data": "badge badge-pii-medium",
+            "none": "badge badge-pii-none",
+            "default": "badge badge-pii-none",
+          },
+          "label_map": {
+            "special_category_data": "Special",
+            "personal_data": "Personal",
+            "none": "",
+            "default": "",
+          },
+        },
+      ],
+      "TargetColumn": [
         {
           "field": "primary_key_column", 
           "class_map": {

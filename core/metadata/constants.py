@@ -110,20 +110,20 @@ DIALECT_HINTS = {
 }
 
 INGEST_CHOICES = [
-  ("NONE", "None"), 
-  ("PYTHON", "Python"), 
-  ("THEOBALD", "Theobald")
+  ("none", "None"), 
+  ("python", "Python"), 
+  ("theobald", "Theobald")
 ]
 
-LAYER_CHOICES = [
-  ("RAW", "Raw"),
-  ("STAGE", "Stage")
+INCREMENT_LAYER_CHOICES = [
+  ("raw", "Raw"),
+  ("stage", "Stage")
 ]
 
-INTERVAL_CHOICES = sorted([
-  ("YEAR", "Year"), 
-  ("MONTH", "Month"), 
-  ("DAY", "Day")
+INCREMENT_INTERVAL_CHOICES = sorted([
+  ("year", "Year"), 
+  ("month", "Month"), 
+  ("day", "Day")
 ], key=lambda x: x[1])
 
 DATATYPE_CHOICES = sorted([
@@ -147,11 +147,54 @@ PII_LEVEL_CHOICES = [
   ("special_category_data", "Special category personal data"),
 ]
 
+ACCESS_INTENT_CHOICES = [
+  ("internal_reporting", "Internal Reporting"),
+  ("analytics", "Analytics / BI"),
+  ("ml_training", "Machine Learning / AI"),
+  ("compliance", "Regulatory / Compliance"),
+  ("exploration", "Ad-hoc Exploration"),
+  ("integration", "System Integration"),
+]
+
 ROLE_CHOICES = sorted([
   ("business", "Business Owner"), 
   ("technical", "Technical Owner"), 
   ("steward", "Data Steward")
 ], key=lambda x: x[1])
+
+SENSITIVITY_CHOICES = [
+  ("public", "Public"),
+  ("internal", "Internal"),
+  ("confidential", "Confidential"),
+  ("highly_confidential", "Highly Confidential")
+]
+
+MATERIALIZATION_CHOICES=[
+  ("table", "table"),
+  ("view", "view"),
+  ("incremental", "incremental"),
+  ("external_passthrough", "external_passthrough"),
+]
+
+RELATIONSHIP_TYPE_CHOICES=[
+  ("n_to_1", "n to 1"),
+  ("1_to_n", "1 to n"),
+  ("1_to_1", "1 to 1"),
+  ("n_to_m", "n to m (future)"),
+]
+
+ENVIRONMENT_CHOICES=[
+  ("dev", "Development"),
+  ("test", "Test"),
+  ("prod", "Production"),
+]
+
+LINEAGE_ORIGIN_CHOICES=[
+  ("direct", "direct"),
+  ("derived", "derived"),
+  ("lookup_join", "lookup join"),
+  ("constant", "constant"),
+]
 
 # Auto import via SQLAlchemy (stable)
 SUPPORTED_SQLALCHEMY = {

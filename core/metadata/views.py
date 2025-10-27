@@ -77,11 +77,11 @@ def import_dataset_metadata(request, pk: int):
   autointegrate_pk = request.POST.get("autointegrate_pk", "on") == "on"
   reset_flags = request.POST.get("reset_flags") == "on"
 
-  qs = SourceDataset.objects.filter(pk=ds.pk, get_metadata=True)
+  qs = SourceDataset.objects.filter(pk=ds.pk)
   if not qs.exists():
     ctx = {"scope": "dataset", "dataset": ds, "empty": True, "result": {"datasets": 0, "columns_imported": 0}}
     return render(request, "metadata/partials/import_result.html", ctx) if _is_htmx(request) \
-      else HttpResponseBadRequest("Dataset not marked for metadata import (get_metadata=False).")
+      else HttpResponseBadRequest("Dataset not marked for metadata import.")
 
   try:
     result = import_metadata_for_datasets(qs, autointegrate_pk=autointegrate_pk, reset_flags=reset_flags)
@@ -117,11 +117,11 @@ def import_system_metadata(request, pk: int):
   autointegrate_pk = request.POST.get("autointegrate_pk", "on") == "on"
   reset_flags = request.POST.get("reset_flags") == "on"
 
-  qs = SourceDataset.objects.filter(source_system=system, get_metadata=True)
+  qs = SourceDataset.objects.filter(source_system=system)
   if not qs.exists():
     ctx = {"scope": "system", "system": system, "empty": True, "result": {"datasets": 0, "columns_imported": 0}}
     return render(request, "metadata/partials/import_result.html", ctx) if _is_htmx(request) \
-      else HttpResponseBadRequest("No datasets on this system are marked get_metadata=True.")
+      else HttpResponseBadRequest("No datasets on this system are stored.")
 
   try:
     result = import_metadata_for_datasets(qs, autointegrate_pk=autointegrate_pk, reset_flags=reset_flags)

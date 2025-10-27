@@ -18,48 +18,96 @@ This section lists features and improvements currently under active development.
 
 ### Next Milestone (0.3.x Focus)
 
-#### Metadata Model Freeze & Automated Target Modeling
-- Introduction of **five-layer target architecture** (`raw`, `stage`, `rawcore`, `bizcore`, `serving`)  
-  with opinionated best-practice defaults for materialization, historization, and governance  
-- New model **`TargetSchema`** for layer definition and schema-wide configuration  
-- Automatic generation of **`TargetDataset`** and **`TargetColumn`** structures  
-  derived from imported metadata, including PK propagation and surrogate key creation  
+#### Metadata Model Automation & Meta-SQL Layer
+- Automated generation of **TargetDataset** and **TargetColumn** structures derived from imported metadata  
 - **Deterministic, lookup-free surrogate key generation** with runtime-loaded pepper (DSGVO compliant)  
-- New **`TargetDatasetReference`** and **`TargetReferenceKeyComponent`** models  
-  for component-based FK mapping and automatic join hints for lineage  
-- Extended metadata profiling and statistics for quality & consistency checks  
+- New **TargetDatasetReference** and **TargetDatasetInput** models for component-based FK mapping and multi-source logic  
+- Layer-aware governance and historization defaults via **TargetSchema**  
+- Extended metadata profiling and statistics for data quality & consistency  
 - Improved governance primitives (sensitivity classification, ownership, access intent)  
-- UI-assisted field mapping and automated column naming conventions (smart English naming + semantic suffixes)  
-- **Meta-SQL Logical Plan** foundation for platform-independent SQL rendering (preview mode)
+- Foundation for **Meta-SQL Logical Plan** and platform-independent rendering layer (preview in 0.3.x)  
 
 ---
 
 ### Planned Mid-term
-
-- Native SQL rendering and execution layer directly from elevata metadata  
-  (dbt compatibility remains possible as an integration, not as a runtime dependency)  
-- Cross-system **ingestion** and unification of multiple source systems via shared `target_short_name`  
-- Built-in **core transformation** patterns and **best-practice templates**  
-- Environment-aware **metadata validation** (Dev/Test/Prod consistency checks)  
-- Lineage visualization and impact analysis (field-level, dataset-level)
+- Native SQL rendering and execution directly from elevata metadata  
+  (dbt compatibility remains optional)  
+- Built-in **core transformation** templates and best-practice automation  
+- Environment-aware metadata validation (Dev/Test/Prod consistency checks)  
+- Cross-system ingestion and unification via shared `target_short_name`  
+- Visual lineage and impact analysis (dataset & field level)
 
 ---
 
-### Planned Long-term  
-
+### Planned Long-term
 - Declarative deployment of **target objects** to physical schemas  
-  with optional auto-materialization on target platform compute  
-- Extended **governance and access control** (dataset-level access policies, PII masking)  
-- Optional REST / GraphQL API for external metadata integration  
-- Cross-platform SQL rendering and deployment  
-  *(Microsoft Fabric, Snowflake, BigQuery, Databricks, SQL Server, and more)*  
+- Automated lineage graph and access policy management  
+- REST / GraphQL API for external metadata integration  
+- Multi-platform support (Fabric, Snowflake, BigQuery, Databricks, SQL Server)  
 
 ---
 
 🧾 Licensed under the **AGPL-v3** — open, governed, and community-driven.  
 💡 *elevata keeps evolving — one small, meaningful release at a time.*
 
+
 ---
+
+## [0.2.5] — 2025-10-27  
+### 🧩 Metadata Model Finalization & UI Polish  
+
+**Core Enhancements**  
+- Completed redesign of the **core metadata model** — fully aligned with the 0.3.x architecture.  
+- Added **TargetSchema** as a first-class model defining platform layers (`raw`, `stage`, `rawcore`, `bizcore`, `serving`).  
+- Introduced **TargetDatasetInput** and **TargetColumnInput** for multi-source mappings and lineage tracking.  
+- Added lifecycle flags (`active`, `retired_at`) for controlled dataset and column deprecation.  
+- Simplified incremental-load logic (`increment_filter` placeholder on SourceDataset).  
+- Unified naming conventions (`*_schema_name`, `*_dataset_name`) across all models.  
+- Extended governance primitives (`sensitivity`, `access_intent`) and surrogate-key configuration per layer.  
+- Removed obsolete fields (`get_metadata`, `stage_dataset`, etc.) and harmonized field semantics.  
+
+**UI & Usability**  
+- Introduced **SourceDatasetGroup** for managing groups of structurally identical source tables.  
+- Added governance badges and toggles for better lineage and visibility cues.  
+- Revised navigation order for more natural workflows.  
+- Improved help texts, icons, and consistent color themes across all metadata entities.  
+
+**Impact**  
+This release finalizes the **metadata foundation** for elevata — stable enough for automation development in 0.3.x.  
+No breaking structural changes expected before 0.3.0.  
+
+---
+
+### 🪶 UI Comfort Continuation  
+
+- Unified color scheme for governance badges (`badge-pii-high`, `badge-pk`, …).  
+- Improved hover feedback and spacing in list views.  
+- All badges defined declaratively via `ELEVATA_CRUD` — no model-specific logic required.  
+- Updated `elevata-theme.css` for consistent badge geometry and hover states.  
+
+---
+
+**Why it matters**  
+Version 0.2.5 concludes the **“Model & Comfort”** milestone:  
+the framework now combines a stable metadata core, polished UI, and ready groundwork for automated target generation in 0.3.x. 🚀  
+
+---
+
+## [0.2.4] — 2025-10-26
+### Strategic Documentation & Architecture Alignment
+
+This release finalizes the strategic and architectural foundation for the upcoming **metadata model freeze (v0.3.x)**.  
+It does not yet include model changes — instead, it defines the *why* and *how* for the next major milestone.
+
+**Highlights**
+- New and refined **README** with philosophy, vision, and AGPLv3 licensing
+- Updated **roadmap** outlining the transition toward declarative architecture
+- Strategic **dbt decoupling paper**, defining the new “governed SQL through architecture” direction
+- Preparations for **TargetSchema**, **TargetDatasetReference**, and **deterministic key generation** to follow in v0.3.x
+
+**Why it matters**  
+This release marks the calm before the model storm — the documentation is ready, the vision is clear, and the next step is building it. 🚀
+
 
 ## [0.2.3] – 2025-10-25
 ### 🪶 UI Comfort Release 

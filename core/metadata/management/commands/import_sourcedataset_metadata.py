@@ -42,17 +42,13 @@ class Command(BaseCommand):
   help = "Imports SourceColumn metadata for selected SourceDatasets."
 
   def add_arguments(self, parser):
-    parser.add_argument("--all", action="store_true", help="Import all datasets with get_metadata=True")
+    parser.add_argument("--all", action="store_true", help="Import all datasets")
     parser.add_argument("--system", action="append", help="Filter by SourceSystem short_name (can be repeated)")
     parser.add_argument("--dataset", action="append", help="Filter by dataset key SYSTEM.SCHEMA.TABLE; can be repeated")
 
   def handle(self, *args, **options):
     qs = SourceDataset.objects.all().select_related("source_system")
     ds_filters_applied = False
-
-    if options["all"]:
-      qs = qs.filter(get_metadata=True)
-      ds_filters_applied = True
 
     systems = options.get("system") or []
     if systems:

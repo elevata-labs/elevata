@@ -103,6 +103,10 @@ SPDX-License-Identifier: AGPL-3.0-only
   <!-- ensure CSRF cookie exists on every page -->
   <form style="display:none;">{% csrf_token %}</form>
 
+  <footer class="text-muted small text-center mt-4 mb-3">
+    elevata <span class="fw-semibold">v{{ ELEVATA_VERSION }}</span> · © 2025 Ilona Tag
+  </footer>
+
   <!-- HTMX + global CSRF header hook -->
   <script src="https://unpkg.com/htmx.org@2.0.3"></script>
   <script>
