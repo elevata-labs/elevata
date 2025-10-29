@@ -36,8 +36,6 @@ Contact: <https://github.com/elevata-labs/elevata>.
       ✅ Imported metadata for system <strong>{{ system }}</strong>.
     {% endif %}
     Datasets: {{ result.datasets|default:"?" }}, Columns: {{ result.columns_imported|default:"?" }}.
-
-    
     {% if result.skipped_count %}
       <div class="mt-2">
         <span class="badge bg-warning text-dark">
@@ -48,8 +46,5 @@ Contact: <https://github.com/elevata-labs/elevata>.
         </div>
       </div>
     {% endif %}
-
-
-
   </div>
 {% endif %}

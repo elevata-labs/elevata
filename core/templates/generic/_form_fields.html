@@ -1,0 +1,65 @@
+<!--
+elevata - Metadata-driven Data Platform Framework
+Copyright © 2025 Ilona Tag
+
+This file is part of elevata.
+
+elevata is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of
+the License, or (at your option) any later version.
+
+elevata is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with elevata. If not, see <https://www.gnu.org/licenses/>.
+
+Contact: <https://github.com/elevata-labs/elevata>.
+-->
+
+{% for field in form %}
+  <div class="form-row">
+    <label for="{{ field.id_for_label }}">
+      {{ field.label }}
+      {% if field.field.required %}
+        <span class="text-danger" aria-label="Required" title="Required">*</span>
+      {% endif %}
+    </label>
+
+    {# Special handling for SourceSystem.type → live hint below the input #}
+    {% if model_name == 'sourcesystem' and field.name == 'type' %}
+      {{ field }}
+
+      <div class="small text-muted mt-1"
+           hx-get="{% url 'source_type_hint' %}"
+           hx-trigger="change from:[name='type']"
+           hx-include="[name='type']"
+           hx-target="this"
+           hx-swap="innerHTML">
+      </div>
+
+    {% else %}
+      {{ field }}
+    {% endif %}
+
+    {% if field.help_text %}
+      <div class="help">{{ field.help_text }}</div>
+    {% endif %}
+
+    {% for error in field.errors %}
+      <div class="error">{{ error }}</div>
+    {% endfor %}
+  </div>
+{% endfor %}
+
+{# Non-field errors (e.g. form.clean()) #}
+{% if form.non_field_errors %}
+  <div class="error">
+    {% for err in form.non_field_errors %}
+      <div class="error">{{ err }}</div>
+    {% endfor %}
+  </div>
+{% endif %}

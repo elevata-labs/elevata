@@ -22,10 +22,11 @@ Contact: <https://github.com/elevata-labs/elevata>.
 
 {% load static %}
 
-{# Inline form for create OR edit (context var: is_new=True/False) #}
 <tr id="{% if is_new %}row-new{% else %}row-{{ object.pk }}{% endif %}"
     class="{% if is_new %}table-info{% else %}table-warning{% endif %}">
+
   <td colspan="{{ fields|length|add:'1' }}">
+
     <form method="post"
           class="elevata-form elevata-form-inline"
 
@@ -38,46 +39,13 @@ Contact: <https://github.com/elevata-labs/elevata>.
             hx-target="#row-{{ object.pk }}"
             hx-swap="outerHTML"
           {% endif %}
+
+          hx-disabled-elt="button[type=submit]"
     >
       {% csrf_token %}
 
-      {% for field in form %}
-        <div class="form-row">
-          <label for="{{ field.id_for_label }}">
-            {{ field.label }}
-            {% if field.field.required %}
-              <span class="text-danger" aria-label="Required" title="Required">*</span>
-            {% endif %}
-          </label>
-
-          {% if model_name == 'sourcesystem' and field.name == 'type' %}
-            {{ field }}
-            <div class="small text-muted mt-1"
-                 hx-get="{% url 'source_type_hint' %}"
-                 hx-trigger="change from:[name='type']"
-                 hx-include="[name='type']"
-                 hx-target="this"
-                 hx-swap="innerHTML"></div>
-          {% else %}
-            {{ field }}
-          {% endif %}
-
-          {% if field.help_text %}
-            <div class="help">{{ field.help_text }}</div>
-          {% endif %}
-          {% for error in field.errors %}
-            <div class="error">{{ error }}</div>
-          {% endfor %}
-        </div>
-      {% endfor %}
-
-      {% if form.non_field_errors %}
-        <div class="error">
-          {% for err in form.non_field_errors %}
-            <div class="error">{{ err }}</div>
-          {% endfor %}
-        </div>
-      {% endif %}
+      {# shared field rendering #}
+      {% include "generic/_form_fields.html" %}
 
       <div class="mt-2 d-flex gap-2">
         <button type="submit" class="btn btn-primary btn-sm">Save</button>
@@ -97,6 +65,7 @@ Contact: <https://github.com/elevata-labs/elevata>.
           </a>
         {% endif %}
       </div>
+
     </form>
   </td>
 </tr>
