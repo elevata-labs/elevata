@@ -238,6 +238,15 @@ ELEVATA_CRUD = {
     "no_create": [
       "TargetSchema"
     ],
+    "dynamic_choices": {
+      "SourceDatasetGroup": {
+        "target_short_name": {
+          "model": "SourceSystem",              # from which model to pull values
+          "field": "target_short_name",         # which field to read distinct values from
+          "placeholder": "— choose target short name —"
+        }
+      }
+    },
     "list_toggle_fields": {
       "SourceDataset": [
         {

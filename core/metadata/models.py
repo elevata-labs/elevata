@@ -34,7 +34,7 @@ from metadata.constants import (
   ACCESS_INTENT_CHOICES, ROLE_CHOICES, SENSITIVITY_CHOICES, ENVIRONMENT_CHOICES, LINEAGE_ORIGIN_CHOICES)
 
 NAME_VALIDATOR = RegexValidator(r"^[a-zA-Z0-9_.-]+$", "Only a–z, 0–9, _, ., - allowed.")
-SHORT_NAME_VALIDATOR = RegexValidator(r"^[a-z]+$", "Only a–z allowed.")
+SHORT_NAME_VALIDATOR = RegexValidator(r"^[a-z]+[0-9]*$", "Only a–z + 0-9 allowed.")
 
 class AuditFields(models.Model):
   created_at = models.DateTimeField(auto_now_add=True, db_index=True)

@@ -33,6 +33,7 @@ from django.contrib.auth.mixins import LoginRequiredMixin
 from django.conf import settings
 from django.db import models
 from django import forms as djforms
+from django.apps import apps
 
 # ------------------------------------------------------------
 # Utility helper
@@ -491,6 +492,74 @@ class GenericCRUDView(LoginRequiredMixin, View):
     if is_new and hasattr(instance, "created_by"):
       instance.created_by = user
 
+  def enhance_dynamic_fields(self, form):
+    """
+    Turn configured CharFields into <select> dropdowns whose choices are
+    dynamically populated from another model's distinct values.
+
+    Driven by settings.ELEVATA_CRUD["metadata"]["dynamic_choices"]:
+
+    Example config:
+    "dynamic_choices": {
+      "SourceDatasetGroup": {
+        "target_short_name": {
+          "model": "SourceSystem",
+          "field": "target_short_name",
+          "placeholder": "— choose target short name —"
+        }
+      }
+    }
+    """
+
+    crud_cfg = getattr(settings, "ELEVATA_CRUD", {}).get("metadata", {})
+    dyn_cfg_all = crud_cfg.get("dynamic_choices", {})
+
+    model_name = self.model.__name__
+    field_cfg_map = dyn_cfg_all.get(model_name, {})
+
+    # nothing to enhance for this model
+    if not field_cfg_map:
+      return form
+
+    for field_name, cfg in field_cfg_map.items():
+      # only enhance if the field actually exists on the form
+      if field_name not in form.fields:
+        continue
+
+      source_model_name = cfg.get("model")
+      source_field_name = cfg.get("field")
+      placeholder = cfg.get("placeholder", None)
+
+      if not source_model_name or not source_field_name:
+        continue  # misconfigured, fail gracefully
+
+      # We assume all metadata models are in app 'metadata'.
+      SourceModel = apps.get_model("metadata", source_model_name)
+
+      # Query all distinct non-empty values
+      qs = (
+        SourceModel.objects
+        .exclude(**{f"{source_field_name}__isnull": True})
+        .exclude(**{f"{source_field_name}__exact": ""})
+        .values_list(source_field_name, flat=True)
+        .distinct()
+        .order_by(source_field_name)
+      )
+
+      values = list(qs)
+
+      # build (value, label) tuples
+      choices = [(v, v) for v in values]
+
+      # optional placeholder at top
+      if placeholder:
+        choices = [("", placeholder)] + choices
+
+      # replace widget with a Select
+      form.fields[field_name].widget = djforms.Select(choices=choices)
+
+    return form
+
   # --------------------------------------------------
   # CRUD operations (standard)
   # --------------------------------------------------
@@ -501,6 +570,7 @@ class GenericCRUDView(LoginRequiredMixin, View):
       form = FormClass(request.POST, instance=obj)
       # lock down if system-managed
       self.apply_system_managed_locking(form, obj)
+      form = self.enhance_dynamic_fields(form)
       if form.is_valid():
         instance = form.save(commit=False)
         user = get_current_user() or request.user
@@ -515,6 +585,7 @@ class GenericCRUDView(LoginRequiredMixin, View):
     else:
       form = FormClass(instance=obj)
       self.apply_system_managed_locking(form, obj)
+      form = self.enhance_dynamic_fields(form)
     context = {
       "form": form,
       "object": obj,
@@ -560,6 +631,7 @@ class GenericCRUDView(LoginRequiredMixin, View):
     if request.method == "POST":
       form = FormClass(request.POST, instance=obj)
       self.apply_system_managed_locking(form, obj)
+      form = self.enhance_dynamic_fields(form)
       if form.is_valid():
         instance = form.save(commit=False)
         user = get_current_user() or request.user
@@ -589,6 +661,7 @@ class GenericCRUDView(LoginRequiredMixin, View):
     else:
       form = FormClass(instance=obj)
       self.apply_system_managed_locking(form, obj)
+      form = self.enhance_dynamic_fields(form)
 
     # both GET and invalid POST end up here:
     context = {
@@ -617,6 +690,7 @@ class GenericCRUDView(LoginRequiredMixin, View):
 
     # hide is_system_managed etc.
     self.apply_system_managed_locking(form, instance=None)
+    form = self.enhance_dynamic_fields(form)
 
     context = {
       "model": self.model,
@@ -642,6 +716,7 @@ class GenericCRUDView(LoginRequiredMixin, View):
 
     # apply same hiding/locking so that is_system_managed doesn't get user-supplied
     self.apply_system_managed_locking(form, instance=None)
+    form = self.enhance_dynamic_fields(form)
 
     if form.is_valid():
       instance = form.save(commit=False)
