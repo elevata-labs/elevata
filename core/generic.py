@@ -32,6 +32,7 @@ from crum import get_current_user
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.conf import settings
 from django.db import models
+from django import forms as djforms
 
 # ------------------------------------------------------------
 # Utility helper
@@ -46,8 +47,6 @@ def display_key(*parts):
     if s:
       cleaned.append(s)
   return " · ".join(cleaned)
-
-
 
 # ------------------------------------------------------------
 # Generic CRUD base view
@@ -64,8 +63,8 @@ class GenericCRUDView(LoginRequiredMixin, View):
   success_url = None
   action = "list"
 
-  list_exclude = {"id", "created_at", "created_by", "updated_at", "updated_by"}
-  form_exclude = {"id", "created_at", "created_by", "updated_at", "updated_by"}
+  list_exclude = {"id", "created_at", "created_by", "updated_at", "updated_by", "is_system_managed"}
+  form_exclude = {"id", "created_at", "created_by", "updated_at", "updated_by", "is_system_managed"}
 
   # --------------------------------------------------
   # Dispatch routing
@@ -114,6 +113,68 @@ class GenericCRUDView(LoginRequiredMixin, View):
   # --------------------------------------------------
   # Utility helpers
   # --------------------------------------------------
+  def get_system_managed_locked_fields(self):
+    """
+    Returns a set of field names that should be read-only if this row is system-managed.
+    Defined in settings.ELEVATA_CRUD["metadata"]["system_managed"].
+    """
+    meta_cfg = getattr(settings, "ELEVATA_CRUD", {}).get("metadata", {})
+    sysman_cfg_all = meta_cfg.get("system_managed", {})
+
+    model_name = self.model.__name__
+    locked_list = sysman_cfg_all.get(model_name, [])
+    return set(locked_list)
+
+  def is_instance_system_managed(self, instance):
+    """
+    Returns True if this instance is marked as system-managed,
+    i.e. instance.is_system_managed == True.
+    If the field doesn't exist, returns False.
+    """
+    if not instance:
+      return False
+    return getattr(instance, "is_system_managed", False) is True
+
+  def apply_system_managed_locking(self, form, instance):
+    """
+    If instance is marked system-managed, disable editing for locked fields.
+    Also hide is_system_managed itself, if present.
+    """
+    locked_fields = self.get_system_managed_locked_fields()
+
+    if self.is_instance_system_managed(instance):
+      for fname in locked_fields:
+        if fname in form.fields:
+          form.fields[fname].disabled = True
+          # cosmetic: also set readonly attr so it *looks* uneditable
+          form.fields[fname].widget.attrs["readonly"] = True
+
+    # Hide is_system_managed itself from the form entirely
+    if "is_system_managed" in form.fields:
+      form.fields["is_system_managed"].widget = djforms.HiddenInput()
+
+  def is_creation_blocked_for_model(self):
+    """Evaluates if a model does not allow creation of new rows."""
+    meta_cfg = getattr(settings, "ELEVATA_CRUD", {}).get("metadata", {})
+    blocked = set(meta_cfg.get("no_create", []))
+    return self.model.__name__ in blocked
+
+  def enforce_system_managed_integrity(self, instance):
+    """
+    If instance is system-managed, restore locked fields to their original DB values
+    to prevent tampering via POST.
+    """
+    if not self.is_instance_system_managed(instance):
+      return
+
+    locked_fields = self.get_system_managed_locked_fields()
+    # Wenn das ein Update ist: alten DB-Wert lesen
+    if instance.pk:
+      original = self.model.objects.get(pk=instance.pk)
+      for fname in locked_fields:
+        # set instance.<fname> back to original.<fname>
+        setattr(instance, fname, getattr(original, fname))
+
   def get_toggle_field_names(self):
     """
     Return a set of field names that are controlled by toggle buttons
@@ -438,15 +499,22 @@ class GenericCRUDView(LoginRequiredMixin, View):
     FormClass = self.get_form_class()
     if request.method == "POST":
       form = FormClass(request.POST, instance=obj)
+      # lock down if system-managed
+      self.apply_system_managed_locking(form, obj)
       if form.is_valid():
         instance = form.save(commit=False)
         user = get_current_user() or request.user
         self._set_audit_fields(instance, user, pk is None)
+
+        # prevent tampering of locked fields
+        self.enforce_system_managed_integrity(instance)
+
         instance.save()
         messages.success(request, _("Saved successfully."))
         return redirect(self.get_success_url())
     else:
       form = FormClass(instance=obj)
+      self.apply_system_managed_locking(form, obj)
     context = {
       "form": form,
       "object": obj,
@@ -455,7 +523,7 @@ class GenericCRUDView(LoginRequiredMixin, View):
       "cancel_url": reverse_lazy(f"{self.model._meta.model_name}_list"),
     }
     return render(request, self.template_form, context)
-
+  
   def delete(self, request, pk):
     obj = get_object_or_404(self.model, pk=pk)
     if request.method == "POST":
@@ -484,17 +552,22 @@ class GenericCRUDView(LoginRequiredMixin, View):
       "model_class_name": self.model.__name__,
     }
     return render(request, "generic/row.html", context)
-  
+   
   def row_edit(self, request, pk):
     obj = get_object_or_404(self.model, pk=pk)
     FormClass = self.get_form_class()
 
     if request.method == "POST":
       form = FormClass(request.POST, instance=obj)
+      self.apply_system_managed_locking(form, obj)
       if form.is_valid():
         instance = form.save(commit=False)
         user = get_current_user() or request.user
         self._set_audit_fields(instance, user, is_new=False)
+
+        # prevent tampering of locked fields
+        self.enforce_system_managed_integrity(instance)
+
         instance.save()
 
         # Save ManyToMany relationships explicitly
@@ -515,6 +588,7 @@ class GenericCRUDView(LoginRequiredMixin, View):
       # if form is NOT valid, we fall through to render the form with errors
     else:
       form = FormClass(instance=obj)
+      self.apply_system_managed_locking(form, obj)
 
     # both GET and invalid POST end up here:
     context = {
@@ -530,8 +604,19 @@ class GenericCRUDView(LoginRequiredMixin, View):
     return render(request, "generic/row_form.html", context, status=200)
 
   def row_new(self, request):
+    # block creation for certain system-managed models
+    if self.is_creation_blocked_for_model():
+      context = {
+        "fields": self.get_list_fields(),
+      }
+      # Render small info row instead of empty response
+      return render(request, "generic/_row_form_blocked.html", context, status=200)
+
     FormClass = self.get_form_class()
     form = FormClass()
+
+    # hide is_system_managed etc.
+    self.apply_system_managed_locking(form, instance=None)
 
     context = {
       "model": self.model,
@@ -544,18 +629,33 @@ class GenericCRUDView(LoginRequiredMixin, View):
       "is_new": True,
     }
     return render(request, "generic/row_form.html", context, status=200)
-  
+      
   def row_create(self, request):
     if request.method != "POST":
       raise Http404("POST required")
 
+    if self.is_creation_blocked_for_model():
+      return HttpResponse(status=204)
+
     FormClass = self.get_form_class()
     form = FormClass(request.POST)
+
+    # apply same hiding/locking so that is_system_managed doesn't get user-supplied
+    self.apply_system_managed_locking(form, instance=None)
 
     if form.is_valid():
       instance = form.save(commit=False)
       user = get_current_user() or request.user
       self._set_audit_fields(instance, user, is_new=True)
+
+      # Security: if is_system_managed came somewhere from POST (DevTools hack),
+      # we set it to false again. New objects are NEVER automatically "managed".
+      if hasattr(instance, "is_system_managed"):
+        instance.is_system_managed = False
+
+      # prevent tampering of locked fields
+      self.enforce_system_managed_integrity(instance)
+
       instance.save()
 
       # Save ManyToMany explicitly
@@ -586,7 +686,7 @@ class GenericCRUDView(LoginRequiredMixin, View):
       "is_new": True,
     }
     return render(request, "generic/row_form.html", context, status=200)
-
+  
   def row_delete(self, request, pk):
     obj = get_object_or_404(self.model, pk=pk)
     if request.method not in ("DELETE", "POST"):

@@ -227,6 +227,17 @@ ELEVATA_CRUD = {
     ],
     "paths": {      
     },
+    "system_managed": {
+      "TargetSchema": [
+        "short_name",
+        "display_name",
+        "description",
+        "is_user_visible",
+      ],
+    },
+    "no_create": [
+      "TargetSchema"
+    ],
     "list_toggle_fields": {
       "SourceDataset": [
         {

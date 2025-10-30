@@ -491,6 +491,12 @@ class TargetSchema(AuditFields):
     help_text="Default usage intent for governance purposes: analytics, finance_reporting, operations, ml_feature_store, etc."
   )
   # Surrogate key policy for this layer
+  surrogate_keys_enabled = models.BooleanField(default=True,
+    help_text=(
+      "If True, this layer is expected to generate deterministic surrogate keys "
+      "for its primary entities. If False, natural keys from the source are kept."
+    )
+  )
   surrogate_key_algorithm = models.CharField(max_length=20, default="sha256",
     help_text="Hash algorithm used for deterministic surrogate keys in this layer."
   )
@@ -505,6 +511,9 @@ class TargetSchema(AuditFields):
   )
   pepper_strategy = models.CharField(max_length=50, default="runtime_pepper",
     help_text="How pepper is injected at runtime. No pepper value is stored in metadata."
+  )
+  is_system_managed = models.BooleanField(default=False,
+    help_text="If True, this schema is managed by the system and core attributes are locked."
   )
 
   class Meta:
