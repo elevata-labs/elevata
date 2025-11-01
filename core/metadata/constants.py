@@ -111,13 +111,8 @@ DIALECT_HINTS = {
 
 INGEST_CHOICES = [
   ("none", "None"), 
-  ("python", "Python"), 
-  ("theobald", "Theobald")
-]
-
-INCREMENT_LAYER_CHOICES = [
-  ("raw", "Raw"),
-  ("stage", "Stage")
+  ("external", "External"), 
+  ("native", "Native")
 ]
 
 INCREMENT_INTERVAL_CHOICES = sorted([
@@ -190,10 +185,19 @@ ENVIRONMENT_CHOICES=[
 ]
 
 LINEAGE_ORIGIN_CHOICES=[
-  ("direct", "direct"),
-  ("derived", "derived"),
-  ("lookup_join", "lookup join"),
-  ("constant", "constant"),
+  ("direct", "Direct"),
+  ("derived", "Derived"),
+  ("lookup_join", "Lookup Join"),
+  ("constant", "Constant"),
+  ("surrogate_key", "Surrogate Key"),
+  ("foreign_key", "Foreign Key"),
+]
+
+TARGET_DATASET_INPUT_ROLE_CHOICES = [
+  ("primary", "Primary (golden source)"),
+  ("enrichment", "Enrichment (same entity, more attributes)"),
+  ("reference_lookup", "Reference Lookup / Code table"),
+  ("audit_only", "Audit / Technical Metadata only"),
 ]
 
 # Auto import via SQLAlchemy (stable)

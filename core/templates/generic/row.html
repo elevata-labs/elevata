@@ -22,24 +22,52 @@ Contact: <https://github.com/elevata-labs/elevata>.
 
 {% load attr support_extras %}
 
+<!-- Precompute row action URLs (edit, delete, toggle).
+We support two modes:
+- global list (no parent_pk)
+- scoped list (parent_pk is set)
+
+In scoped mode we must include parent_pk in URLs.
+We intentionally do NOT build a detail_url for scoped rows,
+because there is no *_detail route under a parent. -->
+
+{% if parent_pk %}
+  {# scoped mode: /.../<parent_pk>/.../<pk>/row-xxx/ #}
+  {% url model_name|add:'_row_edit' parent_pk object.pk as edit_url %}
+  {% url model_name|add:'_row_delete' parent_pk object.pk as delete_url %}
+  {% url model_name|add:'_row_toggle' parent_pk object.pk as toggle_url %}
+{% else %}
+  {# global mode: /.../<pk>/row-xxx/ #}
+  {% url model_name|add:'_row_edit' object.pk as edit_url %}
+  {% url model_name|add:'_row_delete' object.pk as delete_url %}
+  {% url model_name|add:'_row_toggle' object.pk as toggle_url %}
+  {% url model_name|add:'_detail'   object.pk as detail_url %}
+{% endif %}
+
 <tr
   id="row-{{ object.pk }}"
   {% if highlight %}class="highlight"{% endif %}
   hx-on="htmx:afterSwap: setTimeout(function(){ elevataSyncEmptyPlaceholder(); }, 0)"
 >
 
-  {# --- Columns / normal fields --- #}
+  {# -------- DATA COLUMNS ----------------------------------------- #}
   {% with model_badges=BADGE_CLASSES|get:model_class_name %}
     {% for f in fields %}
+
       {% if forloop.first %}
-        <td>
-          <a href="{% url model_name|add:'_detail' object.pk %}" class="text-decoration-none">
+        <td class="align-middle">
+          {# Only link to detail in global mode, not in scoped mode #}
+          {% if parent_pk %}
             {{ object|attr:f.name }}
-          </a>
+          {% else %}
+            <a href="{{ detail_url }}" class="text-decoration-none">
+              {{ object|attr:f.name }}
+            </a>
+          {% endif %}
         </td>
 
       {% elif f.name == "type" %}
-        <td>
+        <td class="align-middle">
           {{ object|attr:f.name }}
           {% with level=object.type|support_level %}
             <span class="badge {{ level|support_badge_class }} ms-1">
@@ -49,16 +77,17 @@ Contact: <https://github.com/elevata-labs/elevata>.
         </td>
 
       {% elif f.get_internal_type == "TextField" or f.name in "description,remark" %}
-        <td class="truncate">{{ object|attr:f.name }}</td>
+        <td class="align-middle truncate">{{ object|attr:f.name }}</td>
 
       {% else %}
-        <td>{{ object|attr:f.name }}</td>
+        <td class="align-middle">{{ object|attr:f.name }}</td>
       {% endif %}
+
     {% endfor %}
   {% endwith %}
 
-  {# --- Badges column (pii_level, PK etc.) --- #}
-  <td class="text-nowrap">
+  {# -------- BADGE COLUMN (classifications, flags) ---------------- #}
+  <td class="text-nowrap align-middle">
     {% with model_badges=BADGE_CLASSES|get:model_class_name %}
       {% if model_badges %}
         {% for badge in model_badges %}
@@ -88,88 +117,90 @@ Contact: <https://github.com/elevata-labs/elevata>.
     {% endwith %}
   </td>
 
-  {# --- Actions column --- #}
-  <td class="text-end">
+  {# -------- ACTIONS COLUMN --------------------------------------- #}
+  <td class="text-end align-middle">
 
-    <span class="ec-actions">
-      <div class="btn-group btn-group-sm" role="group">
-
-        {# ---------- TOGGLE BUTTONS (0..n) ---------- #}
-        {% with toggle_cfgs=LIST_TOGGLE_FIELDS|get:model_class_name %}
-          {% if toggle_cfgs %}
-            {% for cfg in toggle_cfgs %}
-              {% with toggle_field=cfg|get:"field" %}
-                {% with label_on=cfg|get:"label_on" %}
-                  {% with label_off=cfg|get:"label_off" %}
-                    {% with toggle_title=cfg|get:"title" %}
-
-                      {% if toggle_field %}
-                        <form class="d-inline">
-                          {% csrf_token %}
-                          {% with current_val=object|attr:toggle_field %}
-                            <button
-                              type="button"
-                              class="btn btn-sm {% if current_val %}btn-success text-white{% else %}btn-outline-secondary{% endif %}"
-                              title="{{ toggle_title }}"
-                              hx-post="{% url model_name|add:'_row_toggle' object.pk %}"
-                              hx-include="closest form"
-                              hx-vals='{"field":"{{ toggle_field }}"}'
-                              hx-target="#row-{{ object.pk }}"
-                              hx-swap="outerHTML"
-                            >
-                              {% if current_val %}
-                                {{ label_on|default:"ON" }}
-                              {% else %}
-                                {{ label_off|default:"OFF" }}
-                              {% endif %}
-                            </button>
-                          {% endwith %}
-                        </form>
-                      {% endif %}
-
-                    {% endwith %}
+    <div class="btn-group btn-group-sm" role="group">
+      {# ----- TOGGLE BUTTONS (0..n toggle fields per model) ----- #}
+      {% with toggle_cfgs=LIST_TOGGLE_FIELDS|get:model_class_name %}
+        {% if toggle_cfgs %}
+          {% for cfg in toggle_cfgs %}
+            {% with toggle_field=cfg|get:"field" %}
+              {% with label_on=cfg|get:"label_on" %}
+                {% with label_off=cfg|get:"label_off" %}
+                  {% with toggle_title=cfg|get:"title" %}
+                    {% if toggle_field %}
+                         <!-- We attach hx-post directly to the button.
+                         We also send {"field": "<fieldname>"} so the server knows which boolean to flip.
+                         toggle_url already includes parent_pk (scoped) or not (global). -->
+                      <form class="d-inline">
+                        {% csrf_token %}
+                        {% with current_val=object|attr:toggle_field %}
+                          <button
+                            type="button"
+                            class="btn btn-sm {% if current_val %}btn-success text-white{% else %}btn-outline-secondary{% endif %}"
+                            title="{{ toggle_title }}"
+                            hx-post="{{ toggle_url }}"
+                            hx-include="closest form"
+                            hx-vals='{"field":"{{ toggle_field }}"}'
+                            hx-target="#row-{{ object.pk }}"
+                            hx-swap="outerHTML"
+                          >
+                            {% if current_val %}
+                              {{ label_on|default:"ON" }}
+                            {% else %}
+                              {{ label_off|default:"OFF" }}
+                            {% endif %}
+                          </button>
+                        {% endwith %}
+                      </form>
+                    {% endif %}
                   {% endwith %}
                 {% endwith %}
               {% endwith %}
-            {% endfor %}
-          {% endif %}
-        {% endwith %}
-        {# ---------- /TOGGLE BUTTONS ---------- #}
-
-        <button
-          type="button"
-          class="btn btn-outline-secondary"
-          hx-get="{% url model_name|add:'_row_edit' object.pk %}"
-          hx-target="#row-{{ object.pk }}"
-          hx-swap="outerHTML">Edit</button>
-
-        <button
-          type="button"
-          class="btn btn-outline-danger"
-          hx-delete="{% url model_name|add:'_row_delete' object.pk %}"
-          hx-target="#row-{{ object.pk }}"
-          hx-swap="outerHTML swap:1s"
-          hx-confirm="Delete this record?"
-          hx-on="htmx:afterRequest: setTimeout(function(){ elevataSyncEmptyPlaceholder(); }, 0)"
-        >
-          Delete
-        </button>
-
-        {% if model_name == 'sourcedataset' and object.source_system.type|is_import_supported %}
-          <form class="d-inline">
-            {% csrf_token %}
-            <button
-              type="button"
-              class="btn btn-outline-primary btn-sm"
-              hx-post="{% url 'sourcedataset_import_metadata' object.id %}"
-              hx-include="closest form"
-              hx-target="#feedback-{{ object.id }}"
-              hx-swap="innerHTML">Import</button>
-          </form>
+            {% endwith %}
+          {% endfor %}
         {% endif %}
+      {% endwith %}
+      {# ----- /TOGGLE BUTTONS ----- #}
 
-      </div>
-    </span>
+      <button
+        type="button"
+        class="btn btn-outline-secondary"
+        hx-get="{{ edit_url }}"
+        hx-target="#row-{{ object.pk }}"
+        hx-swap="outerHTML">
+        Edit
+      </button>
+
+      <button
+        type="button"
+        class="btn btn-outline-danger"
+        hx-delete="{{ delete_url }}"
+        hx-target="#row-{{ object.pk }}"
+        hx-swap="outerHTML swap:1s"
+        hx-confirm="Delete this record?"
+        hx-on="htmx:afterRequest: setTimeout(function(){ elevataSyncEmptyPlaceholder(); }, 0)"
+      >
+        Delete
+      </button>
+
+      {# Optional custom action: Import metadata on SourceDataset rows #}
+      {% if model_name == 'sourcedataset' and object.source_system.type|is_import_supported %}
+        <form class="d-inline">
+          {% csrf_token %}
+          <button
+            type="button"
+            class="btn btn-outline-primary btn-sm"
+            hx-post="{% url 'sourcedataset_import_metadata' object.id %}"
+            hx-include="closest form"
+            hx-target="#feedback-{{ object.id }}"
+            hx-swap="innerHTML">
+            Import
+          </button>
+        </form>
+      {% endif %}
+    </div>
 
     {% if model_name == 'sourcedataset' %}
       <div id="feedback-{{ object.id }}"></div>

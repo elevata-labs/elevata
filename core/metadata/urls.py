@@ -133,3 +133,103 @@ print(
   f"[elevata] Registered CRUD routes for: "
   + ", ".join([m.__name__ for m in models_sorted])
 )
+
+# --------------------------------------------------------------------
+# Scoped Views for Source and Target Metadata (auto-generated patterns)
+# --------------------------------------------------------------------
+
+from django.urls import path
+from .views_scoped import (
+  # Target side
+  TargetDatasetInputScopedView,
+  TargetDatasetColumnScopedView,
+  TargetDatasetReferenceScopedView,
+  TargetColumnInputScopedView,
+  # Source side
+  SourceSystemDatasetScopedView,
+  SourceDatasetColumnScopedView,
+  SourceDatasetGroupMembershipScopedView,
+)
+
+scoped_views = {
+  "targetdataset/<int:parent_pk>/inputs/": (
+    TargetDatasetInputScopedView,
+    "targetdatasetinput",
+  ),
+  "targetdataset/<int:parent_pk>/columns/": (
+    TargetDatasetColumnScopedView,
+    "targetcolumn",
+  ),
+  "targetdataset/<int:parent_pk>/references/": (
+    TargetDatasetReferenceScopedView,
+    "targetdatasetreference",
+  ),
+  "targetcolumn/<int:parent_pk>/inputs/": (
+    TargetColumnInputScopedView,
+    "targetcolumninput",
+  ),
+  "sourcesystem/<int:parent_pk>/datasets/": (
+    SourceSystemDatasetScopedView,
+    "sourcedataset",
+  ),
+  "sourcedataset/<int:parent_pk>/columns/": (
+    SourceDatasetColumnScopedView,
+    "sourcecolumn",
+  ),
+  "sourcedatasetgroup/<int:parent_pk>/memberships/": (
+    SourceDatasetGroupMembershipScopedView,
+    "sourcedatasetgroupmembership",
+  ),
+}
+
+for base_path, (view, prefix) in scoped_views.items():
+  urlpatterns += [
+    # Liste der Child-Objekte für einen bestimmten Parent
+    path(
+      base_path,
+      view.as_view(action="list"),
+      name=f"{prefix}_list",
+    ),
+
+    # Inline-"Add Row": Formular-Zeile holen
+    path(
+      base_path + "row-new/",
+      view.as_view(action="row_new"),
+      name=f"{prefix}_row_new",
+    ),
+
+    # Inline-"Save New Row": Formular absenden
+    path(
+      base_path + "row-create/",
+      view.as_view(action="row_create"),
+      name=f"{prefix}_row_create",
+    ),
+
+    # Inline edit bestehender Zeile
+    path(
+      base_path + "<int:pk>/row-edit/",
+      view.as_view(action="row_edit"),
+      name=f"{prefix}_row_edit",
+    ),
+
+    # Inline delete bestehender Zeile
+    path(
+      base_path + "<int:pk>/row-delete/",
+      view.as_view(action="row_delete"),
+      name=f"{prefix}_row_delete",
+    ),
+
+    # Toggle (boolean switches)
+    path(
+      base_path + "<int:pk>/row-toggle/",
+      view.as_view(action="row_toggle"),
+      name=f"{prefix}_row_toggle",
+    ),
+
+    path(
+      base_path + "<int:pk>/row/",
+      view.as_view(action="row"),
+      name=f"{prefix}_row",
+    ),
+
+  ]

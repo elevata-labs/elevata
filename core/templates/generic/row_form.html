@@ -22,6 +22,41 @@ Contact: <https://github.com/elevata-labs/elevata>.
 
 {% load static %}
 
+<!-- Compute the correct hx-post target URL for the form submit.
+- If is_new=True  -> post to *_row_create
+- If is_new=False -> post to *_row_edit
+In scoped mode (parent_pk set) we include parent_pk in the URL. -->
+
+{% if is_new %}
+  {# creating a new row #}
+  {% if parent_pk %}
+    {% url model_name|add:'_row_create' parent_pk as form_post_url %}
+  {% else %}
+    {% url model_name|add:'_row_create' as form_post_url %}
+  {% endif %}
+{% else %}
+  {# editing an existing row #}
+  {% if parent_pk %}
+    {% url model_name|add:'_row_edit' parent_pk object.pk as form_post_url %}
+  {% else %}
+    {% url model_name|add:'_row_edit' object.pk as form_post_url %}
+  {% endif %}
+{% endif %}
+
+<!-- Also compute the "Cancel" URL. For editing an existing row,
+Cancel should reload the static row view (not the full page).
+So we GET the *_row route for that object.
+For a brand new row (is_new=True), Cancel just removes the
+temporary <tr> in JS. -->
+
+{% if not is_new %}
+  {% if parent_pk %}
+    {% url model_name|add:'_row' parent_pk object.pk as cancel_url %}
+  {% else %}
+    {% url model_name|add:'_row' object.pk as cancel_url %}
+  {% endif %}
+{% endif %}
+
 <tr id="{% if is_new %}row-new{% else %}row-{{ object.pk }}{% endif %}"
     class="{% if is_new %}table-info{% else %}table-warning{% endif %}">
 
@@ -29,36 +64,33 @@ Contact: <https://github.com/elevata-labs/elevata>.
 
     <form method="post"
           class="elevata-form elevata-form-inline"
-
-          {% if is_new %}
-            hx-post="{% url model_name|add:'_row_create' %}"
-            hx-target="#row-new"
-            hx-swap="outerHTML"
-          {% else %}
-            hx-post="{% url model_name|add:'_row_edit' object.pk %}"
-            hx-target="#row-{{ object.pk }}"
-            hx-swap="outerHTML"
-          {% endif %}
-
+          hx-post="{{ form_post_url }}"
+          hx-target="{% if is_new %}#row-new{% else %}#row-{{ object.pk }}{% endif %}"
+          hx-swap="outerHTML"
           hx-disabled-elt="button[type=submit]"
     >
       {% csrf_token %}
 
-      {# shared field rendering #}
+      {# Render the fields in a compact inline layout #}
       {% include "generic/_form_fields.html" %}
 
       <div class="mt-2 d-flex gap-2">
         <button type="submit" class="btn btn-primary btn-sm">Save</button>
 
         {% if is_new %}
+          <!-- For a new row that hasn't been saved yet:
+          we can just drop the temporary row from the DOM. -->
           <button type="button"
                   class="btn btn-secondary btn-sm"
                   onclick="document.getElementById('row-new')?.remove()">
             Cancel
           </button>
         {% else %}
+          <!-- For editing an existing row:
+          We want to re-fetch the static row HTML via HTMX,
+          not navigate away and not reload the page. -->
           <a class="btn btn-secondary btn-sm"
-             hx-get="{% url model_name|add:'_row' object.pk %}"
+             hx-get="{{ cancel_url }}"
              hx-target="#row-{{ object.pk }}"
              hx-swap="outerHTML">
             Cancel

@@ -112,6 +112,7 @@ TEMPLATES = [
         "elevata_site.context_processors.crud_ui_config",
         "elevata_site.context_processors.elevata_version",
       ],
+      "string_if_invalid": "",
     },
   },
 ]
@@ -230,22 +231,51 @@ ELEVATA_CRUD = {
     "system_managed": {
       "TargetSchema": [
         "short_name",
-        "display_name",
-        "description",
-        "is_user_visible",
+        "database_name",
+        "schema_name",
+        "default_materialization_type",
+        "surrogate_keys_enabled",
+        "surrogate_key_algorithm",
+        "surrogate_key_null_token",
+        "surrogate_key_pair_separator",
+        "surrogate_key_component_separator",
+        "pepper_strategy",
+      ],
+      "TargetDataset": [
+        "target_schema",
+        "target_dataset_name",
+        "incremental_source",
+        "handle_deletes",
+        "historize",
+        "distinct_select",
+        "materialization_type",
+        "manual_model",
+      ],
+      "TargetColumn": [
+        "target_dataset",
+        "target_column_name",
+        "ordinal_position",
+        "datatype",
+        "max_length",
+        "decimal_precision",
+        "decimal_scale",
+        "nullable",
+        "primary_key_column",
+        "artificial_column",
+        "lineage_origin",
       ],
     },
     "no_create": [
       "TargetSchema"
     ],
     "dynamic_choices": {
-      "SourceDatasetGroup": {
-        "target_short_name": {
-          "model": "SourceSystem",              # from which model to pull values
-          "field": "target_short_name",         # which field to read distinct values from
-          "placeholder": "— choose target short name —"
-        }
-      }
+      # "<dataset name, on which the dynamic choice field will be applied on>": {
+      #   "<field on which the choice should be applied on>": {
+      #     "model": "<from which model to pull values>",
+      #     "field": "<which field to read distinct values from>",
+      #     "placeholder": "— choose xy —"
+      #   }
+      # }
     },
     "list_toggle_fields": {
       "SourceDataset": [

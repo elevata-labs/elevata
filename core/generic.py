@@ -841,13 +841,24 @@ class GenericCRUDView(LoginRequiredMixin, View):
     """Display a read-only detail view for one record."""
     obj = get_object_or_404(self.model, pk=pk)
     excluded = {"id", "created_at", "created_by", "updated_at", "updated_by"}
+
+    # build cleaned field/value pairs for display
+    clean_rows = []
+    for f in self.model._meta.fields:
+      if f.name not in excluded:
+        raw_value = getattr(obj, f.name, "")
+        display_value = "" if raw_value is None else raw_value
+        clean_rows.append((f, display_value))
+
     context = {
       "object": obj,
       "model": self.model,
       "model_name": self.model._meta.model_name,
       "title": f"{self.model._meta.verbose_name.title()} Details",
       "fields": [f for f in self.model._meta.fields if f.name not in excluded],
+      "rows": clean_rows, 
       "many_to_many": [f for f in self.model._meta.many_to_many if f.name not in excluded],
       "related_objects": self.get_related_objects(obj),
     }
     return render(request, "generic/detail.html", context)
+  

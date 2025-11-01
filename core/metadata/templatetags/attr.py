@@ -26,5 +26,6 @@ register = template.Library()
 
 @register.filter
 def attr(obj, name):
-  # Return attribute value by name; empty string if missing
-  return getattr(obj, name, "")
+  """Return attribute value by name; empty string if missing or None."""
+  value = getattr(obj, name, "")
+  return "" if value is None else value

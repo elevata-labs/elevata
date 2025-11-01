@@ -29,12 +29,22 @@ from django.core.validators import RegexValidator
 from crum import get_current_user
 from generic import display_key
 from metadata.constants import (
-  TYPE_CHOICES, INGEST_CHOICES, INCREMENT_LAYER_CHOICES, INCREMENT_INTERVAL_CHOICES, 
-  DATATYPE_CHOICES, MATERIALIZATION_CHOICES, RELATIONSHIP_TYPE_CHOICES, PII_LEVEL_CHOICES, 
+  TYPE_CHOICES, INGEST_CHOICES, INCREMENT_INTERVAL_CHOICES, DATATYPE_CHOICES, 
+  MATERIALIZATION_CHOICES, RELATIONSHIP_TYPE_CHOICES, PII_LEVEL_CHOICES, TARGET_DATASET_INPUT_ROLE_CHOICES,
   ACCESS_INTENT_CHOICES, ROLE_CHOICES, SENSITIVITY_CHOICES, ENVIRONMENT_CHOICES, LINEAGE_ORIGIN_CHOICES)
 
-NAME_VALIDATOR = RegexValidator(r"^[a-zA-Z0-9_.-]+$", "Only a–z, 0–9, _, ., - allowed.")
-SHORT_NAME_VALIDATOR = RegexValidator(r"^[a-z]+[0-9]*$", "Only a–z + 0-9 allowed.")
+SHORT_NAME_VALIDATOR = RegexValidator(regex=r"^[a-z][a-z0-9]{0,9}$", 
+  message=(
+    "Must start with a lowercase letter and contain only lowercase letters and digits. "
+    "Max length 10."
+  )
+)
+TARGET_IDENTIFIER_VALIDATOR = RegexValidator(regex=r'^[a-z][a-z0-9_]{0,62}$',
+  message=(
+    "Must start with a lowercase letter and contain only lowercase letters, "
+    "digits, and underscores. Max length 63."
+  )
+)
 
 class AuditFields(models.Model):
   created_at = models.DateTimeField(auto_now_add=True, db_index=True)
@@ -101,7 +111,7 @@ class Person(AuditFields):
   email = models.EmailField(unique=True,
     help_text="Email address. Used as the unique identifier of this person."
   )
-  name = models.CharField(max_length=200, unique=True,
+  name = models.CharField(max_length=200,
     help_text="Full name of the person"
   )
   team = models.ManyToManyField(Team, blank=True, related_name="persons", db_table="team_person",
@@ -132,13 +142,6 @@ class SourceSystem(AuditFields):
   type = models.CharField(max_length=20, choices=TYPE_CHOICES,
     help_text="System type / backend technology. Used for import and adapter logic."
   )
-  target_short_name = models.CharField(max_length=10, validators=[SHORT_NAME_VALIDATOR],
-    help_text=(
-      "Logical consolidation key. Multiple SourceSystems can share the same target_short_name "
-      "to unify into one logical target model. "
-      "Ex: sap1, sap2, sap3 -> all 'sap'."
-    )
-  )
   include_ingest = models.CharField(max_length=20, choices=INGEST_CHOICES, default="none",
     help_text="How/if this source participates in ingestion pipelines."
   )
@@ -147,15 +150,6 @@ class SourceSystem(AuditFields):
       "Default policy: create raw landing tables (TargetDatasets in schema 'raw') "
       "for all SourceDatasets in this SourceSystem."
     )
-  )
-  raw_database = models.CharField(max_length=100, default='"{{ target.database }}"',
-    help_text="Default destination database/catalog for raw landing."
-  )
-  raw_schema_name = models.CharField(max_length=30, default="raw",
-    help_text="Default destination schema/namespace for raw landing."
-  )
-  increment_layer = models.CharField(max_length=5, choices=INCREMENT_LAYER_CHOICES, default="stage",
-    help_text="Default layer used for incremental loading logic."
   )
   active = models.BooleanField(default=True, 
     help_text="System is still considered a live data source."
@@ -309,21 +303,23 @@ class SourceDatasetGroup(AuditFields):
   target_short_name = models.CharField(max_length=10, validators=[SHORT_NAME_VALIDATOR],
     help_text="Short code used to derive the unified target table prefix."
   )
-  business_entity = models.CharField(max_length=50,
-    help_text="Business entity name (e.g. customer, order, invoice_line)."
+  unified_source_name = models.CharField(max_length=128,
+    help_text="Unified name of the source object. May be one of the source datasets which participate in this group."
   )
-  description = models.CharField(max_length=255, blank=True, null=True)
+  description = models.CharField(max_length=255, blank=True, null=True,
+    help_text="Optional description why the group was established." 
+  )
   owner = models.ManyToManyField(Person, blank=True, related_name="source_dataset_groups",
     help_text="Optional governance owner definition. May be used as default owner for generated TargetDatasets."
   )
 
   class Meta:
     db_table = "source_dataset_group"
-    ordering = ["target_short_name", "business_entity"]
+    ordering = ["target_short_name", "unified_source_name"]
     verbose_name_plural = "Source Dataset Groups"
 
   def __str__(self):
-    return f"{self.target_short_name}_{self.business_entity}"
+    return f"{self.target_short_name}_{self.unified_source_name}"
 
 # -------------------------------------------------------------------
 # SourceDatasetGroupMembership
@@ -336,17 +332,13 @@ class SourceDatasetGroupMembership(AuditFields):
     help_text="The dataset to be assigned to the group."
   )
   is_primary_system = models.BooleanField(default=False,
-    help_text="Which one is the 'golden' source?"
-  )
-  include_in_unified_model = models.BooleanField(default=True,
-    help_text="If True, the dataset will be included in the harmonization"
+    help_text="True if this dataset is considered the 'golden' / leading source for this group."
   )
 
   class Meta:
     db_table = "source_dataset_group_membership"
     constraints = [models.UniqueConstraint(fields=["group", "source_dataset"], name="unique_group_membership")]
-    ordering = ["group", "is_primary_system", "source_dataset"]
-
+    ordering = ["-is_primary_system", "group", "source_dataset"] # - means descending
 
 # -------------------------------------------------------------------
 # SourceDatasetOwnership
@@ -450,7 +442,7 @@ class SourceColumn(AuditFields):
 # TargetSchema
 # -------------------------------------------------------------------
 class TargetSchema(AuditFields):
-  short_name = models.CharField(max_length=30, validators=[SHORT_NAME_VALIDATOR], unique=True,
+  short_name = models.CharField(max_length=10, validators=[SHORT_NAME_VALIDATOR], unique=True,
     help_text=(
       "Logical layer identifier. Examples: 'raw', 'stage', 'rawcore', 'bizcore', 'serving'. "
       "Defines architectural intent and default behavior."
@@ -528,13 +520,13 @@ class TargetSchema(AuditFields):
 # TargetDataset
 # -------------------------------------------------------------------
 class TargetDataset(AuditFields):
-  # Logical / business-facing name of the dataset in the target platform
-  target_dataset_name = models.CharField(max_length=100, unique=True,
-    help_text="Final dataset (table/view) name, snake_case. Ex: 'sap_customer', 'sap_sales_order'."
-  )
   # Which layer / schema this dataset belongs to
-  target_schema_name = models.ForeignKey(TargetSchema, on_delete=models.PROTECT, related_name="target_datasets",
+  target_schema = models.ForeignKey(TargetSchema, on_delete=models.PROTECT, related_name="target_datasets",
     help_text="Defines physical DB/schema, default materialization and governance expectations."
+  )
+  # Logical / business-facing name of the dataset in the target platform
+  target_dataset_name = models.CharField(max_length=63, validators=[TARGET_IDENTIFIER_VALIDATOR],
+    help_text="Final dataset (table/view) name, snake_case. Ex: 'sap_customer', 'sap_sales_order'."
   )
   # Incremental / historization behavior
   handle_deletes = models.BooleanField(default=True, 
@@ -601,9 +593,18 @@ class TargetDataset(AuditFields):
       "Automatically set when active becomes False."
     )
   )
+  is_system_managed = models.BooleanField(default=False,
+    help_text="If True, this dataset is managed by the system and core attributes are locked."
+  )
 
   class Meta:
     db_table = "target_dataset"
+    constraints = [
+      models.UniqueConstraint(
+        fields=["target_schema", "target_dataset_name"],
+        name="unique_target_dataset_per_schema",
+      )
+    ]
     ordering = ["target_dataset_name"]
     verbose_name_plural = "Target Datasets"
 
@@ -623,11 +624,9 @@ class TargetDataset(AuditFields):
     qs = (
       self.target_columns
       .filter(primary_key_column=True)
-      .values_list("target_column", flat=True)
+      .values_list("target_column_name", flat=True)
     )
     return sorted(list(qs))
-
-
 
   def build_natural_key_string(self, record_dict):
     """
@@ -638,15 +637,18 @@ class TargetDataset(AuditFields):
     "customer_id~4711 | mandant~100"
     """
     null_token = self.target_schema.surrogate_key_null_token  # e.g. "null_replaced"
+    pair_sep = self.target_schema.surrogate_key_pair_separator
+    comp_sep = f" {self.target_schema.surrogate_key_component_separator} "
+
     parts = []
     for field in self.natural_key_fields:
       value = record_dict.get(field, null_token)
       if value is None:
         value = null_token
-      parts.append(f"{field}~{value}")
+      parts.append(f"{field}{pair_sep}{value}")
     # join components using ' | '
-    return " | ".join(parts)
-
+    return comp_sep.join(parts)
+  
   def get_runtime_pepper(self):
     """
     Load the runtime pepper. Pepper is NOT stored in metadata,
@@ -701,9 +703,14 @@ class TargetDatasetInput(AuditFields):
   source_dataset = models.ForeignKey(SourceDataset, on_delete=models.CASCADE, related_name="output_links",
     help_text="The source dataset contributing to this target dataset."
   )
-  role = models.CharField(max_length=50, blank=True, null=True,
-    help_text="Optional semantic role of this source in the merge (e.g. 'primary', 'enrichment', 'finance_only')."
+  role = models.CharField(max_length=50, choices=TARGET_DATASET_INPUT_ROLE_CHOICES,
+    help_text=(
+      "How this source contributes to the target: "
+      "primary (golden source), enrichment (same entity extra attrs), "
+      "reference_lookup (dim/code join), or audit_only (technical metadata)."
+    ),
   )
+
   integration_mode = models.CharField(max_length=20, blank=True, null=True,
     help_text="How this source is integrated: 'union_all', 'merge_on_keys', 'lookup_enrichment', etc."
   )
@@ -763,7 +770,7 @@ class TargetColumn(AuditFields):
   target_dataset = models.ForeignKey(TargetDataset, on_delete=models.CASCADE, related_name="target_columns",
     help_text="The dataset this column belongs to."
   )
-  target_column = models.CharField(max_length=100,
+  target_column_name = models.CharField(max_length=63, validators=[TARGET_IDENTIFIER_VALIDATOR],
     help_text="Final column name in snake_case. Ex: 'customer_name', 'order_created_tms'."
   )
   ordinal_position = models.PositiveIntegerField(
@@ -839,12 +846,15 @@ class TargetColumn(AuditFields):
       "Automatically set when active becomes False."
     )
   )
+  is_system_managed = models.BooleanField(default=False,
+    help_text="If True, this column is managed by the system and core attributes are locked."
+  )
 
   class Meta:
     db_table = "target_column"
     constraints = [
       models.UniqueConstraint(
-        fields=["target_dataset", "target_column"],
+        fields=["target_dataset", "target_column_name"],
         name="unique_target_column"
       ),
       models.UniqueConstraint(
@@ -856,7 +866,7 @@ class TargetColumn(AuditFields):
     verbose_name_plural = "Target Columns"
 
   def __str__(self):
-    return display_key(self.target_dataset, self.target_column)
+    return display_key(self.target_dataset, self.target_column_name)
 
   def save(self, *args, **kwargs):
     # handle retired_at
@@ -898,14 +908,14 @@ class TargetColumnInput(models.Model):
     constraints = [
       models.UniqueConstraint(
         fields=["target_column", "source_column"],
-        name="unique_source_per_target_column"
+        name="unique_target_column_input_source"
       )
     ]
     ordering = ["target_column", "ordinal_position"]
 
   def __str__(self):
     return f"{self.source_column} -> {self.target_column} (#{self.ordinal_position})"
-
+  
 # -------------------------------------------------------------------
 # IncrementFieldMap
 # -------------------------------------------------------------------
@@ -941,7 +951,7 @@ class IncrementFieldMap(AuditFields):
     ]
 
   def __str__(self):
-    return f"{self.target_dataset}.{self.source_field_name} -> {self.target_column.target_column}"
+    return f"{self.target_dataset}.{self.source_field_name} -> {self.target_column.target_column_name}"
 
 # -------------------------------------------------------------------
 # TargetDatasetReference
@@ -953,7 +963,7 @@ class TargetDatasetReference(AuditFields):
   referenced_dataset = models.ForeignKey(TargetDataset, on_delete=models.CASCADE, related_name="incoming_references",
     help_text="Parent dataset that defines the business entity / surrogate PK."
   )
-  reference_prefix = models.CharField(max_length=30, blank=True, null=True, validators=[SHORT_NAME_VALIDATOR],
+  reference_prefix = models.CharField(max_length=10, blank=True, null=True, validators=[SHORT_NAME_VALIDATOR],
     help_text=(
       "If provided, forms the FK name in the child as <prefix>_<referenced_dataset>_key. "
       "Example: prefix 'billing' + referenced 'sap_customer' -> 'billing_sap_customer_key'."
@@ -1012,4 +1022,4 @@ class TargetDatasetReferenceComponent(AuditFields):
     verbose_name_plural = "Target Reference Components"
 
   def __str__(self):
-    return f"{self.reference.referencing_dataset}.{self.from_column.target_column} -> {self.reference.referenced_dataset}.{self.to_column.target_column} (#{self.ordinal_position})"
+    return f"{self.reference.referencing_dataset}.{self.from_column.target_column_name} -> {self.reference.referenced_dataset}.{self.to_column.target_column_name} (#{self.ordinal_position})"

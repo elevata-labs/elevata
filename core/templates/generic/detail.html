@@ -29,6 +29,35 @@ Contact: <https://github.com/elevata-labs/elevata>.
   <div class="d-flex align-items-center justify-content-between mb-3">
     <div class="d-flex align-items-center gap-2">
       <h1 class="h4 mb-0">{{ title|default:object }}</h1>
+
+      {% if object and model_name == 'sourcesystem' or model_name == 'sourcedataset' or model_name == 'sourcedatasetgroup' or model_name == 'targetdataset' %}
+        <nav class="subnav mb-3">
+          {% if model_name == 'sourcesystem' %}
+            <a href="{% url 'sourcedataset_list' object.pk %}" class="btn btn-sm btn-outline-primary">
+              <i class="bi bi-table"></i> Datasets
+            </a>
+          {% elif model_name == 'sourcedataset' %}
+            <a href="{% url 'sourcecolumn_list' object.pk %}" class="btn btn-sm btn-outline-primary">
+              <i class="bi bi-columns"></i> Columns
+            </a>
+          {% elif model_name == 'sourcedatasetgroup' %}
+            <a href="{% url 'sourcedatasetgroupmembership_list' object.pk %}" class="btn btn-sm btn-outline-primary">
+              <i class="bi bi-diagram-3"></i> Memberships
+            </a>
+          {% elif model_name == 'targetdataset' %}
+            <a href="{% url 'targetdatasetinput_list' object.pk %}" class="btn btn-sm btn-outline-primary">
+              <i class="bi bi-box-arrow-in-right"></i> Inputs
+            </a>
+            <a href="{% url 'targetcolumn_list' object.pk %}" class="btn btn-sm btn-outline-primary">
+              <i class="bi bi-columns"></i> Columns
+            </a>
+            <a href="{% url 'targetdatasetreference_list' object.pk %}" class="btn btn-sm btn-outline-primary">
+              <i class="bi bi-link-45deg"></i> References
+            </a>
+          {% endif %}
+        </nav>
+      {% endif %}
+
       {# Summary badges for SourceColumn #}
       {% if object and model_name == 'sourcecolumn' %}
         {% if object.primary_key_column %}
