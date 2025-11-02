@@ -40,6 +40,9 @@ Contact: <https://github.com/elevata-labs/elevata>.
             <a href="{% url 'sourcecolumn_list' object.pk %}" class="btn btn-sm btn-outline-primary">
               <i class="bi bi-columns"></i> Columns
             </a>
+            <a href="{% url 'sourcedatasetownership_list' object.pk %}" class="btn btn-sm btn-outline-primary">
+              <i class="bi bi-person-badge"></i> Ownership
+            </a>
           {% elif model_name == 'sourcedatasetgroup' %}
             <a href="{% url 'sourcedatasetgroupmembership_list' object.pk %}" class="btn btn-sm btn-outline-primary">
               <i class="bi bi-diagram-3"></i> Memberships
@@ -53,6 +56,9 @@ Contact: <https://github.com/elevata-labs/elevata>.
             </a>
             <a href="{% url 'targetdatasetreference_list' object.pk %}" class="btn btn-sm btn-outline-primary">
               <i class="bi bi-link-45deg"></i> References
+            </a>
+            <a href="{% url 'targetdatasetownership_list' object.pk %}" class="btn btn-sm btn-outline-primary">
+              <i class="bi bi-person-badge"></i> Ownership
             </a>
           {% endif %}
         </nav>

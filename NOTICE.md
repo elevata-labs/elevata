@@ -63,6 +63,7 @@ This project includes third-party software components that are licensed under th
 - **pandas** – BSD License  
 - **HTMX** – BSD 2-Clause License  
 - **Bootstrap 5** – MIT License  
+- **pytest** (MIT License) – used for automated testing
 
 ### Optional Runtime Dependencies
 - **PostgreSQL** – optional database backend  

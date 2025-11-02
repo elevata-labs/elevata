@@ -294,6 +294,22 @@ ELEVATA_CRUD = {
           "title": "Mark column for integration"
         },
       ],
+      "sourcedatasetownership": [
+        {
+          "field": "is_primary_owner",
+          "label_on": "PRIMARY",
+          "label_off": "SECONDARY",
+          "title": "Primary accountable owner",
+        },
+      ],
+      "targetdatasetownership": [
+        {
+          "field": "is_primary_owner",
+          "label_on": "PRIMARY",
+          "label_off": "SECONDARY",
+          "title": "Primary accountable owner",
+        },
+      ],
     },
     "badges": {
       "SourceColumn": [

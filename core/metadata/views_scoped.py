@@ -29,6 +29,7 @@ from .models import (
   TargetDataset,
   TargetDatasetInput,
   TargetColumn,
+  TargetDatasetOwnership,
   TargetDatasetReference,
   TargetColumnInput,
   # Source-side
@@ -37,6 +38,7 @@ from .models import (
   SourceColumn,
   SourceDatasetGroup,
   SourceDatasetGroupMembership,
+  SourceDatasetOwnership
 )
 
 class _ScopedChildView(GenericCRUDView):
@@ -100,6 +102,27 @@ class _ScopedChildView(GenericCRUDView):
       ctx["parent"] = parent_obj
 
     return ctx
+  
+  def _remove_parent_fk_from_form(self, form):
+    """
+    For scoped views: remove the FK field that points to the parent model
+    from the visible form fields so the user can't re-parent or choose
+    the wrong parent when creating.
+    """
+    if not self.parent_model:
+      return form
+
+    # find FK field(s) that point to parent_model
+    for f in self.model._meta.fields:
+      if getattr(f, "is_relation", False) and getattr(f, "remote_field", None):
+        if f.remote_field.model is self.parent_model:
+          parent_fk_name = f.name
+          # If that field is in the form, drop it from user input
+          if parent_fk_name in form.fields:
+            form.fields.pop(parent_fk_name, None)
+          break
+
+    return form
 
   def list(self, request):
     """
@@ -132,6 +155,9 @@ class _ScopedChildView(GenericCRUDView):
     # Apply system-managed field locking
     self.apply_system_managed_locking(form, instance=None)
     form = self.enhance_dynamic_fields(form)
+
+    # Hide/remove parent FK field from the form
+    form = self._remove_parent_fk_from_form(form)
 
     ctx = {
       "model": self.model,
@@ -171,6 +197,9 @@ class _ScopedChildView(GenericCRUDView):
     # lock system-managed fields before validation
     self.apply_system_managed_locking(form, instance=None)
     form = self.enhance_dynamic_fields(form)
+
+    # Hide/remove parent FK field from the form
+    form = self._remove_parent_fk_from_form(form)
 
     if form.is_valid():
       instance = form.save(commit=False)
@@ -250,6 +279,9 @@ class _ScopedChildView(GenericCRUDView):
       self.apply_system_managed_locking(form, instance=instance)
       form = self.enhance_dynamic_fields(form)
 
+      # Hide/remove parent FK field from the form
+      form = self._remove_parent_fk_from_form(form)
+
       ctx = {
         "model": self.model,
         "meta": self.model._meta,
@@ -273,6 +305,9 @@ class _ScopedChildView(GenericCRUDView):
 
       self.apply_system_managed_locking(form, instance=instance)
       form = self.enhance_dynamic_fields(form)
+
+      # Hide/remove parent FK field from the form
+      form = self._remove_parent_fk_from_form(form)
 
       if form.is_valid():
         updated = form.save(commit=False)
@@ -541,4 +576,40 @@ class SourceDatasetGroupMembershipScopedView(_ScopedChildView):
   def get_context_data(self, **kwargs):
     ctx = super().get_context_data(**kwargs)
     ctx["group"] = self.get_parent_object()
+    return ctx
+
+class SourceDatasetOwnershipScopedView(_ScopedChildView):
+  model = SourceDatasetOwnership
+  parent_model = SourceDataset
+  route_name = "sourcedatasetownership_list"
+
+  def get_queryset(self):
+    return (
+      self.model.objects
+      .filter(source_dataset_id=self.get_parent_pk())
+      .select_related("source_dataset", "person")
+      .order_by("-is_primary_owner", "person__name")
+    )
+
+  def get_context_data(self, **kwargs):
+    ctx = super().get_context_base(self.request) if hasattr(self, "request") else {}
+    ctx["dataset"] = self.get_parent_object()
+    return ctx
+
+class TargetDatasetOwnershipScopedView(_ScopedChildView):
+  model = TargetDatasetOwnership
+  parent_model = TargetDataset
+  route_name = "targetdatasetownership_list"
+
+  def get_queryset(self):
+    return (
+      self.model.objects
+      .filter(target_dataset_id=self.get_parent_pk())
+      .select_related("target_dataset", "person")
+      .order_by("-is_primary_owner", "person__name")
+    )
+
+  def get_context_data(self, **kwargs):
+    ctx = super().get_context_base(self.request) if hasattr(self, "request") else {}
+    ctx["dataset"] = self.get_parent_object()
     return ctx

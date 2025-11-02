@@ -25,26 +25,13 @@ import hashlib
 from django.conf import settings
 from django.db import models
 from django.utils import timezone
-from django.core.validators import RegexValidator
 from crum import get_current_user
 from generic import display_key
 from metadata.constants import (
   TYPE_CHOICES, INGEST_CHOICES, INCREMENT_INTERVAL_CHOICES, DATATYPE_CHOICES, 
   MATERIALIZATION_CHOICES, RELATIONSHIP_TYPE_CHOICES, PII_LEVEL_CHOICES, TARGET_DATASET_INPUT_ROLE_CHOICES,
   ACCESS_INTENT_CHOICES, ROLE_CHOICES, SENSITIVITY_CHOICES, ENVIRONMENT_CHOICES, LINEAGE_ORIGIN_CHOICES)
-
-SHORT_NAME_VALIDATOR = RegexValidator(regex=r"^[a-z][a-z0-9]{0,9}$", 
-  message=(
-    "Must start with a lowercase letter and contain only lowercase letters and digits. "
-    "Max length 10."
-  )
-)
-TARGET_IDENTIFIER_VALIDATOR = RegexValidator(regex=r'^[a-z][a-z0-9_]{0,62}$',
-  message=(
-    "Must start with a lowercase letter and contain only lowercase letters, "
-    "digits, and underscores. Max length 63."
-  )
-)
+from metadata.generation.validators import SHORT_NAME_VALIDATOR, TARGET_IDENTIFIER_VALIDATOR
 
 class AuditFields(models.Model):
   created_at = models.DateTimeField(auto_now_add=True, db_index=True)
@@ -112,7 +99,7 @@ class Person(AuditFields):
     help_text="Email address. Used as the unique identifier of this person."
   )
   name = models.CharField(max_length=200,
-    help_text="Full name of the person"
+    help_text="Full name of the person."
   )
   team = models.ManyToManyField(Team, blank=True, related_name="persons", db_table="team_person",
     help_text="The team(s) the person is assigned to."
@@ -131,7 +118,7 @@ class Person(AuditFields):
 # -------------------------------------------------------------------
 class SourceSystem(AuditFields):
   short_name = models.CharField(max_length=10, validators=[SHORT_NAME_VALIDATOR], unique=True,
-    help_text="Physical / concrete system identifier. Ex: 'sap1', 'sap2', 'crm', 'ga4'."
+    help_text="Physical / concrete system identifier. eg. 'sap', 'nav', 'crm', 'ga4'."
   )
   name = models.CharField(max_length=50,
     help_text="Identifying name of the source system. Does not have technical consequences."
@@ -143,7 +130,10 @@ class SourceSystem(AuditFields):
     help_text="System type / backend technology. Used for import and adapter logic."
   )
   include_ingest = models.CharField(max_length=20, choices=INGEST_CHOICES, default="none",
-    help_text="How/if this source participates in ingestion pipelines."
+    help_text=(
+      "How/if this source participates in ingestion pipelines. "
+      "If None, it is expected that the data are delivered through an alternative way."
+    )
   )
   generate_raw_tables = models.BooleanField(default=False,
     help_text=(
@@ -155,7 +145,7 @@ class SourceSystem(AuditFields):
     help_text="System is still considered a live data source."
   )
   retired_at = models.DateTimeField(blank=True, null=True, 
-    help_text="Automatically set when active becomes False."
+    help_text="Automatically set when active is unchecked."
   )
 
   class Meta:
@@ -183,7 +173,7 @@ class SourceDataset(AuditFields):
     help_text="The source system this dataset comes from."
   )
   schema_name = models.CharField(max_length=50, blank=True, null=True,
-    help_text="The schema name this dataset resides on. Can be left empty if it is a default schema (eg. dbo in SQLServer)"
+    help_text="The schema name this dataset resides on. Can be left empty if it is a default schema (eg. dbo in SQLServer)."
   )
   source_dataset_name = models.CharField(max_length=100,
     help_text="Original name of the source dataset."
@@ -195,13 +185,13 @@ class SourceDataset(AuditFields):
     help_text=(
       "Controls whether this source dataset is in scope for integration into the target platform "
       "(stage/rawcore/bizcore/etc.). "
-      "Set to False if the dataset is documented here but not yet ready or intentionally excluded "
+      "Uncheck if the dataset is documented here but not yet ready or intentionally excluded "
       "from automated target generation."
     )
   )
   incremental = models.BooleanField(default=False,
     help_text=(
-      "If True, an incremental load strategy will be applied. "
+      "If checked, an incremental load strategy will be applied. "
       "In this case, appropriate increment parameters have to be provided."
     )
   )
@@ -210,34 +200,34 @@ class SourceDataset(AuditFields):
       "Template WHERE clause for incremental extraction. "
       "Use the placeholder {{DELTA_CUTOFF}} for the dynamic cutoff timestamp/date. "
       "Example: (last_update_ts >= {{DELTA_CUTOFF}} OR created_at >= {{DELTA_CUTOFF}}) "
-      "AND is_deleted_flag = 0"
+      "AND is_deleted_flag = 0."
     )
   )
   manual_model = models.BooleanField(default=False,
-    help_text="If True: dataset is manually maintained, not fully auto-generated."
+    help_text="If checked: dataset is manually maintained, not fully auto-generated."
   )
   distinct_select = models.BooleanField(default=False,
-    help_text="If True: SELECT DISTINCT is enforced during generation."
+    help_text="If checked: SELECT DISTINCT is enforced during generation."
   )
   owner = models.ManyToManyField("Person", blank=True, through="SourceDatasetOwnership", related_name="source_datasets",
     help_text="Declared business / technical owners with roles."
   )
   generate_raw_table = models.BooleanField(default=None, null=True,
     help_text=(
-      "If True: force creation of a raw landing TargetDataset for this SourceDataset. "
-      "If False: suppress raw landing. "
-      "If None: inherit SourceSystem.generate_raw_tables."
+      "If Unknown: inherit the setting on SourceSystem level. "
+      "If Yes: force creation of a raw landing TargetDataset for this SourceDataset. "
+      "If No: suppress creation of a raw landing TargetDataset."
     )
   )
   active = models.BooleanField(default=True, 
     help_text=(
       "Indicates whether this dataset is still considered an active source in the originating system. "
-      "If set to False, the dataset is treated as retired (no new loads expected) but it remains "
+      "If unchecked, the dataset is treated as retired (no new loads expected) but it remains "
       "in metadata for lineage, audit, and historical reference."
     )
   )
   retired_at = models.DateTimeField(blank=True, null=True,
-    help_text="Auto-set when active becomes False. Used for lineage and audit."
+    help_text="Auto-set when active is unchecked. Used for lineage and audit."
   )
 
   class Meta:
@@ -252,7 +242,7 @@ class SourceDataset(AuditFields):
     verbose_name_plural = "Source Datasets"
 
   def __str__(self):
-    return f"{display_key(self.schema_name, self.source_dataset_name)} ({self.source_system})"
+    return f"({self.source_system}) {display_key(self.schema_name, self.source_dataset_name)}"
 
   def save(self, *args, **kwargs):
     # Automatically set retired_at when a row becomes inactive
@@ -301,7 +291,10 @@ class SourceDatasetIncrementPolicy(AuditFields):
 # -------------------------------------------------------------------
 class SourceDatasetGroup(AuditFields):
   target_short_name = models.CharField(max_length=10, validators=[SHORT_NAME_VALIDATOR],
-    help_text="Short code used to derive the unified target table prefix."
+    help_text=(
+      "Short code used to derive the unified target table prefix. "
+      "eg. sap for grouping sap1 and sap2."
+    )
   )
   unified_source_name = models.CharField(max_length=128,
     help_text="Unified name of the source object. May be one of the source datasets which participate in this group."
@@ -326,13 +319,13 @@ class SourceDatasetGroup(AuditFields):
 # -------------------------------------------------------------------
 class SourceDatasetGroupMembership(AuditFields):
   group = models.ForeignKey(SourceDatasetGroup, on_delete=models.CASCADE, related_name="memberships",
-    help_text="The source dataset group"
+    help_text="The source dataset group. Only necessary to store if more than one source datasets should be grouped together."
   )
   source_dataset = models.ForeignKey(SourceDataset, on_delete=models.CASCADE, related_name="dataset_groups",
     help_text="The dataset to be assigned to the group."
   )
   is_primary_system = models.BooleanField(default=False,
-    help_text="True if this dataset is considered the 'golden' / leading source for this group."
+    help_text="If checked, this dataset is considered the 'golden' / leading source for this group."
   )
 
   class Meta:
@@ -345,16 +338,16 @@ class SourceDatasetGroupMembership(AuditFields):
 # -------------------------------------------------------------------
 class SourceDatasetOwnership(models.Model):
   source_dataset = models.ForeignKey("SourceDataset", on_delete=models.CASCADE, related_name="source_dataset_ownerships",
-    help_text="The dataset for which an owner is declared"
+    help_text="The dataset for which an owner is declared."
   )
   person = models.ForeignKey("Person", on_delete=models.PROTECT, related_name="source_dataset_ownerships",
-    help_text="The person who is declared as owner of the dataset"
+    help_text="The person who is declared as owner of the dataset."
   )
   role = models.CharField(max_length=20, choices=ROLE_CHOICES,
-    help_text="The role which has ownership on the dataset"
+    help_text="The role which the person has on the dataset."
   )
-  is_primary = models.BooleanField(default=False,
-    help_text="If True, this is the primary ownership"
+  is_primary_owner = models.BooleanField(default=False,
+    help_text="If checked, this is the primary ownership."
   )
   since = models.DateField(blank=True, null=True,
     help_text="The date from which the ownership will start."
@@ -363,12 +356,12 @@ class SourceDatasetOwnership(models.Model):
     help_text="The date on which the ownership will end."
   )
   remark = models.CharField(max_length=255, blank=True, null=True,
-    help_text="Optional remarks concerning the ownership"
+    help_text="Optional remarks concerning the ownership."
   )
 
   class Meta:
     constraints = [models.UniqueConstraint(fields=["source_dataset", "person", "role"], name="unique_source_dataset_ownership")]
-    ordering = ["source_dataset", "role", "since"]
+    ordering = ["-is_primary_owner", "source_dataset", "role", "since"]
 
   def __str__(self):
     return f"{self.source_dataset} · {self.person} ({self.role})"
@@ -393,23 +386,24 @@ class SourceColumn(AuditFields):
     help_text="How many characters the field may have."
   )
   decimal_precision = models.PositiveIntegerField(blank=True, null=True,
-    help_text="The decimal precision of the column."
+    help_text="If datatype decimal, the decimal precision of the column."
   )
   decimal_scale = models.PositiveIntegerField(blank=True, null=True,
-    help_text="The number of decimals places of the column."
+    help_text="If datatype decimal, the number of decimal places of the column."
   )
   nullable = models.BooleanField(default=True,
-    help_text="Whether this column can be NULL in the source dataset."
+    help_text="If checked, this column can be NULL in the source dataset."
   )
   primary_key_column = models.BooleanField(default=False,
-    help_text="True if this column is part of the natural/business key (not the surrogate key)."
+    help_text="If checked, this column is part of the natural/business key (not the surrogate key)."
   )
   referenced_source_dataset_name = models.CharField(max_length=100, blank=True, null=True,
     help_text=(
       "Name of the upstream source object this column refers to "
       "(e.g. table 'customer_master', API 'GET /customers'). "
-      "Does not have to be modeled as a SourceDataset yet. "
-      "Used for lineage suggestions and future FK generation."
+      "Serves for information purposes, does not necessarily have "
+      "to be integrated/modeled as a SourceDataset. "
+      "Used for lineage suggestions and probable future FK generation."
     )
   )
   description = models.CharField(max_length=255, blank=True, null=True,
@@ -418,7 +412,7 @@ class SourceColumn(AuditFields):
   integrate = models.BooleanField(default=False,
     help_text= (
       "Controls whether this source column is in scope for integration into the target model. "
-      "Set to False if the column is not (yet) chosen for integration."
+      "Uncheck, if the column is not (yet) chosen for integration."
     )
   )
   pii_level = models.CharField(max_length=30, choices=PII_LEVEL_CHOICES, default="none",
@@ -455,10 +449,10 @@ class TargetSchema(AuditFields):
     help_text="Purpose of this layer and what transformations are allowed here."
   )
   # Physical placement on the target platform
-  database_name = models.CharField(max_length=100, 
+  database_name = models.CharField(max_length=100, validators=[TARGET_IDENTIFIER_VALIDATOR],
     help_text="Target database / catalog on the destination platform."
   )
-  schema_name = models.CharField(max_length=50, 
+  schema_name = models.CharField(max_length=50, validators=[SHORT_NAME_VALIDATOR],
     help_text= (
       "Physical schema / namespace on the destination platform. "
       "Defaults to short_name, but can differ if platform naming conventions require it."
@@ -466,7 +460,7 @@ class TargetSchema(AuditFields):
   )
   # Whether end users can actively model new datasets in this layer
   is_user_visible = models.BooleanField(default=True, 
-    help_text="If False, this layer is internal/technical and hidden in normal UIs."
+    help_text="If unchecked, this layer is internal/technical and hidden in normal UIs."
   )
   # Default technical behavior for datasets in this schema
   default_materialization_type = models.CharField(max_length=30, choices=MATERIALIZATION_CHOICES, default="table",
@@ -485,8 +479,8 @@ class TargetSchema(AuditFields):
   # Surrogate key policy for this layer
   surrogate_keys_enabled = models.BooleanField(default=True,
     help_text=(
-      "If True, this layer is expected to generate deterministic surrogate keys "
-      "for its primary entities. If False, natural keys from the source are kept."
+      "If checked, this layer is expected to generate deterministic surrogate keys "
+      "for its primary entities. If unchecked, no surrogate keys will be generated."
     )
   )
   surrogate_key_algorithm = models.CharField(max_length=20, default="sha256",
@@ -505,7 +499,7 @@ class TargetSchema(AuditFields):
     help_text="How pepper is injected at runtime. No pepper value is stored in metadata."
   )
   is_system_managed = models.BooleanField(default=False,
-    help_text="If True, this schema is managed by the system and core attributes are locked."
+    help_text="If checked, this schema is managed by the system and core attributes are locked."
   )
 
   class Meta:
@@ -526,7 +520,7 @@ class TargetDataset(AuditFields):
   )
   # Logical / business-facing name of the dataset in the target platform
   target_dataset_name = models.CharField(max_length=63, validators=[TARGET_IDENTIFIER_VALIDATOR],
-    help_text="Final dataset (table/view) name, snake_case. Ex: 'sap_customer', 'sap_sales_order'."
+    help_text="Final dataset (table/view) name, snake_case. eg. 'sap_customer', 'sap_sales_order'."
   )
   # Incremental / historization behavior
   handle_deletes = models.BooleanField(default=True, 
@@ -549,10 +543,10 @@ class TargetDataset(AuditFields):
     )
   )
   manual_model = models.BooleanField(default=False,
-    help_text="If True: dataset is manually maintained, not fully auto-generated."
+    help_text="If checked: dataset is manually maintained, not fully auto-generated."
   )
   distinct_select = models.BooleanField(default=False,
-    help_text="If True: SELECT DISTINCT is enforced during generation."
+    help_text="If checked: SELECT DISTINCT is enforced during generation."
   )
   data_filter = models.CharField(max_length=255, blank=True, null=True,
     help_text="Optional row-level filter to restrict records."
@@ -583,18 +577,18 @@ class TargetDataset(AuditFields):
   )
   active = models.BooleanField(default=True, 
     help_text=(
-      "If false, this dataset is deprecated. It remains in metadata for lineage "
+      "If unchecked, this dataset is deprecated. It remains in metadata for lineage "
       "and documentation but should not be generated, deployed, or used for new models."
     )
   )
   retired_at = models.DateTimeField(blank=True, null=True,
     help_text=(
       "Optional timestamp when this dataset was marked as inactive. "
-      "Automatically set when active becomes False."
+      "Automatically set when active gets unchecked."
     )
   )
   is_system_managed = models.BooleanField(default=False,
-    help_text="If True, this dataset is managed by the system and core attributes are locked."
+    help_text="If checked, this dataset is managed by the system and core attributes are locked."
   )
 
   class Meta:
@@ -619,7 +613,7 @@ class TargetDataset(AuditFields):
   @property
   def natural_key_fields(self):
     """
-    Returns sorted list of target_column names that are marked as primary_key_column=True.
+    Returns sorted list of target_column names that are marked as primary_key_column.
     """
     qs = (
       self.target_columns
@@ -715,7 +709,7 @@ class TargetDatasetInput(AuditFields):
     help_text="How this source is integrated: 'union_all', 'merge_on_keys', 'lookup_enrichment', etc."
   )
   active = models.BooleanField(default=True,
-    help_text="If false, this mapping is retained for lineage/audit but is no longer used for load."
+    help_text="If unchecked, this mapping is retained for lineage/audit but is no longer used for load."
   )
 
   class Meta:
@@ -735,16 +729,16 @@ class TargetDatasetInput(AuditFields):
 # -------------------------------------------------------------------
 class TargetDatasetOwnership(models.Model):
   target_dataset = models.ForeignKey("TargetDataset", on_delete=models.CASCADE, related_name="target_dataset_ownerships",
-    help_text="The dataset for which an owner is declared"
+    help_text="The dataset for which an owner is declared."
   )
   person = models.ForeignKey("Person", on_delete=models.PROTECT, related_name="target_dataset_ownerships",
-    help_text="The person who has the ownership for the dataset"
+    help_text="The person who has the ownership for the dataset."
   )
   role = models.CharField(max_length=20, choices=ROLE_CHOICES,
-    help_text="The role which has ownership on the dataset"
+    help_text="The role which the person has on the dataset."
   )
-  is_primary = models.BooleanField(default=False,
-    help_text="If True, this is the primary ownership"
+  is_primary_owner = models.BooleanField(default=False,
+    help_text="If checked, this is the primary ownership."
   )
   since = models.DateField(blank=True, null=True,
     help_text="The date from which the ownership will start."
@@ -753,12 +747,12 @@ class TargetDatasetOwnership(models.Model):
     help_text="The date on which the ownership will end."
   )
   remark = models.CharField(max_length=255, blank=True, null=True,
-    help_text="Optional remarks concerning the ownership"
+    help_text="Optional remarks concerning the ownership."
   )
 
   class Meta:
     constraints = [models.UniqueConstraint(fields=["target_dataset", "person", "role"], name="unique_target_dataset_ownership")]
-    ordering = ["target_dataset", "role", "since"]
+    ordering = ["-is_primary_owner", "target_dataset", "role", "since"]
 
   def __str__(self):
     return f"{self.target_dataset} · {self.person} ({self.role})"
@@ -771,7 +765,7 @@ class TargetColumn(AuditFields):
     help_text="The dataset this column belongs to."
   )
   target_column_name = models.CharField(max_length=63, validators=[TARGET_IDENTIFIER_VALIDATOR],
-    help_text="Final column name in snake_case. Ex: 'customer_name', 'order_created_tms'."
+    help_text="Final column name in snake_case. eg. 'customer_name', 'order_created_tms'."
   )
   ordinal_position = models.PositiveIntegerField(
     help_text="Column order within the dataset."
@@ -786,10 +780,10 @@ class TargetColumn(AuditFields):
     help_text="How many characters the field may have."
   )
   decimal_precision = models.PositiveIntegerField(blank=True, null=True,
-    help_text="The decimal precision of the column."
+    help_text="If datatype decimal The decimal precision of the column."
   )
   decimal_scale = models.PositiveIntegerField(blank=True, null=True,
-    help_text="The number of decimals places of the column."
+    help_text="If datatype decimal, the number of decimal places of the column."
   )
   nullable = models.BooleanField(default=True,
     help_text="Whether this column can be NULL in the final target dataset."
@@ -797,11 +791,11 @@ class TargetColumn(AuditFields):
   # Important: this is NOT the surrogate PK.
   # This flags business key components or domain-identifying columns.
   primary_key_column = models.BooleanField(default=False,
-    help_text="True if this column is part of the natural/business key (not the surrogate key)."
+    help_text="If checked, this column is part of the natural/business key (not the surrogate key)."
   )
   artificial_column = models.BooleanField(default=False,
     help_text=(
-      "True if this column does not directly exist in any single source, "
+      "If checked, this column does not directly exist in any single source, "
       "but is computed / harmonized / derived."
     )
   )
@@ -830,24 +824,25 @@ class TargetColumn(AuditFields):
   )
   profiling_stats = models.JSONField(blank=True, null=True, 
     help_text=(
-      "Optional summarized profiling statistics for this column. "
-      "Intended for descriptive metadata only (e.g., null rate, distinct count, top values)."
+      "Optional summarized profiling statistics for this column, stored as JSON. "
+      "Use valid JSON syntax (key-value pairs). Example: "
+      '{"null_rate": 0.02, "distinct_count": 123, "top_values": ["A", "B", "C"]}'
     )
   )
   active = models.BooleanField(default=True, 
     help_text=(
-      "If false, this column is deprecated. It remains in metadata for lineage "
+      "If unchecked, this column is deprecated. It remains in metadata for lineage "
       "and documentation but should not be generated, deployed, or used for new models."
     )
   )
   retired_at = models.DateTimeField(blank=True, null=True,
     help_text=(
       "Optional timestamp when this column was marked as inactive. "
-      "Automatically set when active becomes False."
+      "Automatically set when active is unchecked."
     )
   )
   is_system_managed = models.BooleanField(default=False,
-    help_text="If True, this column is managed by the system and core attributes are locked."
+    help_text="If checked, this column is managed by the system and core attributes are locked."
   )
 
   class Meta:
@@ -900,7 +895,7 @@ class TargetColumnInput(models.Model):
     )
   )
   active = models.BooleanField(default=True,
-    help_text="If false, kept for lineage/history but ignored going forward."
+    help_text="If unchecked, kept for lineage/history but ignored going forward."
   )
 
   class Meta:

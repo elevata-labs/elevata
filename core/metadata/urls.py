@@ -145,10 +145,12 @@ from .views_scoped import (
   TargetDatasetColumnScopedView,
   TargetDatasetReferenceScopedView,
   TargetColumnInputScopedView,
+  TargetDatasetOwnershipScopedView,
   # Source side
   SourceSystemDatasetScopedView,
   SourceDatasetColumnScopedView,
   SourceDatasetGroupMembershipScopedView,
+  SourceDatasetOwnershipScopedView
 )
 
 scoped_views = {
@@ -168,6 +170,10 @@ scoped_views = {
     TargetColumnInputScopedView,
     "targetcolumninput",
   ),
+  "targetdataset/<int:parent_pk>/ownerships/": (
+    TargetDatasetOwnershipScopedView,
+    "targetdatasetownership",
+  ),
   "sourcesystem/<int:parent_pk>/datasets/": (
     SourceSystemDatasetScopedView,
     "sourcedataset",
@@ -180,6 +186,10 @@ scoped_views = {
     SourceDatasetGroupMembershipScopedView,
     "sourcedatasetgroupmembership",
   ),
+  "sourcedataset/<int:parent_pk>/ownerships/": (
+    SourceDatasetOwnershipScopedView,
+    "sourcedatasetownership",
+  )
 }
 
 for base_path, (view, prefix) in scoped_views.items():
