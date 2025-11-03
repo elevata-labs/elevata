@@ -45,6 +45,10 @@ from django.http import JsonResponse, HttpResponseBadRequest
 from sqlalchemy.exc import SQLAlchemyError
 import traceback
 
+from metadata.generation.target_generation_service import TargetGenerationService
+from metadata.generation.security import get_runtime_pepper
+from metadata.generation import rules
+
 def make_crud_view(model):
   """Dynamically create a CRUD view for a given model."""
   return type(
@@ -168,3 +172,46 @@ def source_type_hint(request):
   )
 
   return HttpResponse(html, content_type="text/html")
+
+
+@login_required
+@permission_required("metadata.change_targetdataset", raise_exception=True)
+@require_POST
+def generate_targets(request):
+  try:
+    pepper = get_runtime_pepper()
+    svc = TargetGenerationService(pepper=pepper)
+
+    schemas = svc.get_target_schemas_in_scope()
+
+    total_generated = 0
+    messages = []
+
+    for schema in schemas:
+      eligible = svc.get_eligible_source_datasets_for_schema(schema)
+      if not eligible:
+        continue
+
+      result_text = svc.apply_all(eligible, schema)
+      messages.append(f"{schema.physical_prefix}: {result_text}")
+
+      # Try extracting the number of datasets from result_text ("X target datasets ...")
+      try:
+        total_generated += int(result_text.split(" ")[0])
+      except Exception:
+        pass
+
+    # Rückgabe ans UI
+    return HttpResponse(
+      '<div class="alert alert-success py-1 px-2 mb-0 small">'
+      f'Generated {total_generated} target datasets.'
+      '</div>'
+    )
+
+  except Exception as e:
+    return HttpResponse(
+      '<div class="alert alert-danger py-1 px-2 mb-0 small">'
+      f'Generation failed: {e}'
+      '</div>',
+      status=500
+    )

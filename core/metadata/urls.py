@@ -115,6 +115,7 @@ for model in models_sorted:
 
     # Others
     path("source-type-hint/", views.source_type_hint, name="source_type_hint"),
+    path("generate-targets/", views.generate_targets, name="generate_targets"),
   ]
 
 # Custom import endpoints (UI-Buttons → HTMX POST)

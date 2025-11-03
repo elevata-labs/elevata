@@ -32,45 +32,34 @@ def group_is_eligible_for_generation(group) -> bool:
 
 def dataset_creates_raw_object(dataset) -> bool:
   """
-  Determines whether a Raw object (table) should be created for a given SourceDataset.
+  Decide if this SourceDataset should get a RAW table.
+
   Rules:
-  - integrate must be True
-  - generate_raw_table must be True (either on dataset or inherited)
+  1. integrate must be True on the dataset itself.
+     - integrate=False  → never
+     - integrate=None   → treat as False (must be explicit True)
+
+  2. effective_generate_raw_table must be True:
+     - if dataset.generate_raw_table is True → True
+     - elif dataset.generate_raw_table is False → False
+     - elif dataset.generate_raw_table is None → inherit from dataset.source_system.generate_raw_tables
   """
-  if not getattr(dataset, "integrate", False):
+
+  # 1. integrate must be explicitly True
+  if getattr(dataset, "integrate", None) is not True:
     return False
 
-  # Check dataset flag
-  if getattr(dataset, "generate_raw_table", False):
-    return True
+  # 2. resolve generate_raw_table effective flag
+  ds_flag = getattr(dataset, "generate_raw_table", None)
 
-  # Optional inheritance: group or system default
-  group = getattr(dataset, "group", None)
-  system = getattr(dataset, "source_system", None)
+  if ds_flag is True:
+    eff_generate = True
+  elif ds_flag is False:
+    eff_generate = False
+  else:
+    # None → inherit from source_system
+    src_sys = getattr(dataset, "source_system", None)
+    eff_generate = bool(getattr(src_sys, "generate_raw_tables", False))
 
-  if group and getattr(group, "generate_raw_table", False):
-    return True
+  return eff_generate is True
 
-  if system and getattr(system, "generate_raw_table", False):
-    return True
-
-  return False
-
-
-def default_is_system_managed_for_layer(layer_name: str) -> bool:
-  """
-  Business rule Iteration 1:
-  - Introduction of is_system_managed (from layer rawcore onwards = False by default)
-  Interpretation:
-    raw      -> True (System fully controls ingestion layer)
-    stage    -> True (System transforms from raw)
-    rawcore  -> False (starting from rawcore, data is 'owned' / curated)
-  To be extended if we later add more layers.
-  """
-  layer_name = (layer_name or "").lower()
-  if layer_name in ("raw", "stage"):
-    return True
-  if layer_name in ("rawcore"):
-    return False
-  # default fallback
-  return False

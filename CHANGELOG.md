@@ -16,40 +16,70 @@ This section lists features and improvements currently under active development.
 
 ## 🧭 Roadmap  
 
-### Next Milestone (0.3.x Focus)
-
-#### Metadata Model Automation & Meta-SQL Layer
+### ✅ Already delivered in v0.2.6
 - Automated generation of **TargetDataset** and **TargetColumn** structures derived from imported metadata  
-- **Deterministic, lookup-free surrogate key generation** with runtime-loaded pepper (DSGVO compliant)  
-- New **TargetDatasetReference** and **TargetDatasetInput** models for component-based FK mapping and multi-source logic  
-- Layer-aware governance and historization defaults via **TargetSchema**  
-- Extended metadata profiling and statistics for data quality & consistency  
-- Improved governance primitives (sensitivity classification, ownership, access intent)  
-- Foundation for **Meta-SQL Logical Plan** and platform-independent rendering layer (preview in 0.3.x)  
+- **Deterministic surrogate key generation** with runtime-loaded pepper  
+- Layer-aware naming and governance defaults via **TargetSchema**  
+- Foundation for the upcoming **Meta-SQL rendering layer** (to extend `TargetGenerationService`)  
 
 ---
 
-### Planned Mid-term
+### 🚧 Next Milestone (v0.3.x Focus)
+#### Meta-SQL Layer & Logical Plan
+- Implement **Meta-SQL Logical Plan** to translate metadata into vendor-neutral SQL  
+- Introduce **TargetDatasetReference** and **TargetDatasetInput** models for joins and multi-source logic  
+- Extend **historization and governance defaults** for business-layer automation  
+- Add metadata-driven **filter and join semantics**  
+- Preview of the **SQL rendering engine** and expression resolver  
+
+---
+
+### 📅 Planned Mid-term
 - Native SQL rendering and execution directly from elevata metadata  
   (dbt compatibility remains optional)  
-- Built-in **core transformation** templates and best-practice automation  
+- Built-in **core transformation templates** for staging, rawcore, and bizcore  
 - Environment-aware metadata validation (Dev/Test/Prod consistency checks)  
-- Cross-system ingestion and unification via shared `target_short_name`  
+- Cross-system ingestion and unification via `target_short_name` logic  
 - Visual lineage and impact analysis (dataset & field level)
 
 ---
 
-### Planned Long-term
+### 🌐 Planned Long-term
 - Declarative deployment of **target objects** to physical schemas  
 - Automated lineage graph and access policy management  
 - REST / GraphQL API for external metadata integration  
-- Multi-platform support (Fabric, Snowflake, BigQuery, Databricks, SQL Server)  
+- Multi-platform support (Fabric, Snowflake, BigQuery, Databricks, SQL Server)
 
 ---
 
 🧾 Licensed under the **AGPL-v3** — open, governed, and community-driven.  
 💡 *elevata keeps evolving — one small, meaningful release at a time.*
 
+---
+
+## [0.2.6] — 2025-11-03
+### ⚙️ Target Generation & Surrogate Key Implementation
+
+**Core Features**
+- Introduced fully automated `TargetDataset` and `TargetColumn` generation service (`TargetGenerationService`).
+- Deterministic surrogate key creation using SHA-256 and runtime-loaded pepper.
+- Added `business_key_column` and `surrogate_key_column` flags to differentiate logical vs. physical keys.
+- Layer-aware naming now based on `TargetSchema.physical_prefix` (no hardcoded prefixes).
+- Integrated filtering: only `integrate=True` columns included across all layers.
+
+**UI Enhancements**
+- Added **“Generate Targets”** button to SourceDataset list with progress spinner & success message.
+- Improved error feedback and runtime validation for pepper and target schema scope.
+- Consistent Bootstrap iconography (`bi-lightning-charge`) and visual feedback for active operations.
+
+**Technical Refinements**
+- Surrogate key expressions persisted in metadata for transparency and traceability.
+- Environment-based pepper resolution via `.env` and `get_runtime_pepper()`.
+- Refactored naming logic (`naming.py`, `rules.py`, `mappers.py`) for consistent layer-specific conventions.
+
+**Impact**  
+This release completes the **Target Automation foundation** for elevata —  
+paving the way for v0.3.0’s Meta-SQL and rendering engine. 🚀
 
 ---
 

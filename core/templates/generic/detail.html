@@ -64,14 +64,14 @@ Contact: <https://github.com/elevata-labs/elevata>.
         </nav>
       {% endif %}
 
-      {# Summary badges for SourceColumn #}
+      <!-- Summary badges for SourceColumn -->
       {% if object and model_name == 'sourcecolumn' %}
         {% if object.primary_key_column %}
           <span class="ec-chip ec-chip--pk ms-2" title="Primary key">PK</span>
         {% endif %}
       {% endif %}
     </div>
-    <a class="btn btn-secondary" href="{% url model_name|add:'_list' %}">Back</a>
+    <a class="btn btn-secondary" href="{% url model_name|add:'_list' %}"><i class="bi bi-arrow-left"></i> Back</a>
   </div>
 
   <table class="table table-striped align-middle mb-4">
@@ -80,7 +80,7 @@ Contact: <https://github.com/elevata-labs/elevata>.
         <tr>
           <th style="width: 25%;">{{ field.verbose_name|capfirst }}</th>
 
-          {# Special rendering for 'type' with dialect badge + hint #}
+          <!-- Special rendering for 'type' with dialect badge + hint -->
           {% if field.name == "type" %}
             <td>
               {{ object|attr:field.name }}
@@ -121,7 +121,7 @@ Contact: <https://github.com/elevata-labs/elevata>.
     </tbody>
   </table>
 
-  {# --- Import button for SourceDataset detail --- #}
+  <!-- Import button for SourceDataset detail -->
   {% if object and model_name == 'sourcedataset' %}
     <hr>
     {% if object.source_system.type|is_import_supported %}
@@ -145,6 +145,7 @@ Contact: <https://github.com/elevata-labs/elevata>.
           hx-on::after-request="this.removeAttribute('disabled')"
           hx-indicator="#loading-dataset-{{ object.id }}"
         >
+          <i class="bi bi-arrow-repeat"></i>
           Import metadata
         </button>
       </form>
@@ -167,7 +168,7 @@ Contact: <https://github.com/elevata-labs/elevata>.
     {% endif %}
   {% endif %}
 
-  {# --- Import button for SourceSystem detail --- #}
+  <!-- Import button for SourceSystem detail -->
   {% if object and model_name == 'sourcesystem' %}
     <hr>
     {% if object.type|is_import_supported %}
@@ -191,6 +192,7 @@ Contact: <https://github.com/elevata-labs/elevata>.
           hx-on::after-request="this.removeAttribute('disabled')"
           hx-indicator="#loading-system-{{ object.id }}"
         >
+          <i class="bi bi-arrow-repeat"></i>
           Import metadata for all datasets
         </button>
       </form>

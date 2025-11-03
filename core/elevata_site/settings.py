@@ -43,7 +43,7 @@ from utils.db import build_metadata_database_url
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(find_dotenv(filename=".env", raise_error_if_not_found=False))
 
-ELEVATA_VERSION = "0.2.5"
+ELEVATA_VERSION = "0.2.6"
 
 ELEVATA_PROFILES_PATH = os.getenv("ELEVATA_PROFILES_PATH", str((BASE_DIR.parent / "config" / "elevata_profiles.yaml")))
 
@@ -233,6 +233,7 @@ ELEVATA_CRUD = {
         "short_name",
         "database_name",
         "schema_name",
+        "physical_prefix",
         "default_materialization_type",
         "surrogate_keys_enabled",
         "surrogate_key_algorithm",
@@ -260,22 +261,23 @@ ELEVATA_CRUD = {
         "decimal_precision",
         "decimal_scale",
         "nullable",
-        "primary_key_column",
+        "surrogate_key_column",
         "artificial_column",
         "lineage_origin",
+        "surrogate_expression",
       ],
     },
     "no_create": [
       "TargetSchema"
     ],
     "dynamic_choices": {
-      # "<dataset name, on which the dynamic choice field will be applied on>": {
-      #   "<field on which the choice should be applied on>": {
-      #     "model": "<from which model to pull values>",
-      #     "field": "<which field to read distinct values from>",
-      #     "placeholder": "— choose xy —"
-      #   }
-      # }
+      "SourceDatasetGroup": {
+        "target_short_name": {
+          "model": "SourceSystem",
+          "field": "target_short_name",
+          "placeholder": "— choose a target —"
+        }
+      }
     },
     "list_toggle_fields": {
       "SourceDataset": [

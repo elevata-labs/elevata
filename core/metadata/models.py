@@ -129,6 +129,9 @@ class SourceSystem(AuditFields):
   type = models.CharField(max_length=20, choices=TYPE_CHOICES,
     help_text="System type / backend technology. Used for import and adapter logic."
   )
+  target_short_name = models.CharField(max_length=10, validators=[SHORT_NAME_VALIDATOR],
+    help_text="Stable business prefix for stage/rawcore naming (e.g. 'sap', 'crm', 'fi')."
+  )
   include_ingest = models.CharField(max_length=20, choices=INGEST_CHOICES, default="none",
     help_text=(
       "How/if this source participates in ingestion pipelines. "
@@ -296,7 +299,7 @@ class SourceDatasetGroup(AuditFields):
       "eg. sap for grouping sap1 and sap2."
     )
   )
-  unified_source_name = models.CharField(max_length=128,
+  unified_source_dataset_name = models.CharField(max_length=128,
     help_text="Unified name of the source object. May be one of the source datasets which participate in this group."
   )
   description = models.CharField(max_length=255, blank=True, null=True,
@@ -308,11 +311,11 @@ class SourceDatasetGroup(AuditFields):
 
   class Meta:
     db_table = "source_dataset_group"
-    ordering = ["target_short_name", "unified_source_name"]
+    ordering = ["target_short_name", "unified_source_dataset_name"]
     verbose_name_plural = "Source Dataset Groups"
 
   def __str__(self):
-    return f"{self.target_short_name}_{self.unified_source_name}"
+    return f"{self.target_short_name}_{self.unified_source_dataset_name}"
 
 # -------------------------------------------------------------------
 # SourceDatasetGroupMembership
@@ -452,11 +455,29 @@ class TargetSchema(AuditFields):
   database_name = models.CharField(max_length=100, validators=[TARGET_IDENTIFIER_VALIDATOR],
     help_text="Target database / catalog on the destination platform."
   )
-  schema_name = models.CharField(max_length=50, validators=[SHORT_NAME_VALIDATOR],
+  schema_name = models.CharField(max_length=10, validators=[SHORT_NAME_VALIDATOR],
     help_text= (
       "Physical schema / namespace on the destination platform. "
       "Defaults to short_name, but can differ if platform naming conventions require it."
     )
+  )
+  physical_prefix = models.CharField(max_length=10, validators=[SHORT_NAME_VALIDATOR], blank=True, null=True,
+    help_text=(
+      "Optional physical naming prefix for datasets in this schema, "
+      "eg. 'raw', 'stg', 'rc'. Will be prepended like '<prefix>_<sys>_<obj>'. "
+      "If empty, no prefix will be added."
+    )
+  )
+  generate_layer = models.BooleanField(
+    default=True,
+    help_text=(
+      "If checked, datasets for this layer are generated automatically "
+      "from source metadata (e.g. raw, stage, rawcore). "
+      "Uncheck for curated layers (e.g. bizcore, serving)."
+    )
+  )
+  consolidate_groups = models.BooleanField(default=False,
+    help_text="If true, datasets from multiple source systems may be merged/grouped into one physical dataset in this schema."
   )
   # Whether end users can actively model new datasets in this layer
   is_user_visible = models.BooleanField(default=True, 
@@ -521,6 +542,9 @@ class TargetDataset(AuditFields):
   # Logical / business-facing name of the dataset in the target platform
   target_dataset_name = models.CharField(max_length=63, validators=[TARGET_IDENTIFIER_VALIDATOR],
     help_text="Final dataset (table/view) name, snake_case. eg. 'sap_customer', 'sap_sales_order'."
+  )
+  description = models.CharField(max_length=255, blank=True, null=True,
+    help_text="Business description / semantic meaning of the dataset."
   )
   # Incremental / historization behavior
   handle_deletes = models.BooleanField(default=True, 
@@ -645,16 +669,30 @@ class TargetDataset(AuditFields):
   
   def get_runtime_pepper(self):
     """
-    Load the runtime pepper. Pepper is NOT stored in metadata,
-    it must come from runtime config.
+    Return the runtime pepper for deterministic surrogate key hashing.
+    Priority:
+    1. Environment variable 'ELEVATA_PEPPER'
+    2. Profile-specific variable 'SEC_<PROFILE>_PEPPER'
+    3. Django settings fallback
     """
+    # 1. direct runtime override
     pepper = os.environ.get("ELEVATA_PEPPER")
+
+    # 2. support profile-specific style (e.g. SEC_DEV_PEPPER)
+    if not pepper:
+      profile = os.environ.get("ELEVATA_PROFILE", "DEV").upper()
+      env_key = f"SEC_{profile}_PEPPER"
+      pepper = os.environ.get(env_key)
+
+    # 3. fallback to settings
     if not pepper and hasattr(settings, "ELEVATA_PEPPER"):
       pepper = settings.ELEVATA_PEPPER
+
     if not pepper:
       raise ValueError(
-        "No runtime pepper configured. Set ELEVATA_PEPPER in env or settings."
+        "No runtime pepper configured. Set ELEVATA_PEPPER or SEC_<PROFILE>_PEPPER in environment."
       )
+
     return pepper
 
   def preview_surrogate_key(self, record_dict):
@@ -788,10 +826,11 @@ class TargetColumn(AuditFields):
   nullable = models.BooleanField(default=True,
     help_text="Whether this column can be NULL in the final target dataset."
   )
-  # Important: this is NOT the surrogate PK.
-  # This flags business key components or domain-identifying columns.
-  primary_key_column = models.BooleanField(default=False,
-    help_text="If checked, this column is part of the natural/business key (not the surrogate key)."
+  business_key_column = models.BooleanField(default=False,
+    help_text="If checked, this column is part of the logical/business key."
+  )
+  surrogate_key_column = models.BooleanField(default=False,
+    help_text="If checked, this column is the system-generated surrogate key."
   )
   artificial_column = models.BooleanField(default=False,
     help_text=(
@@ -821,6 +860,9 @@ class TargetColumn(AuditFields):
   )
   lineage_origin = models.CharField(max_length=20, choices=LINEAGE_ORIGIN_CHOICES, default="direct",
     help_text="How this column is derived: direct source field, derived calculation, lookup join, constant, etc."
+  )
+  surrogate_expression = models.TextField(blank=True, null=True,
+    help_text="Platform-neutral expression used to generate the surrogate key (e.g. hash256)."
   )
   profiling_stats = models.JSONField(blank=True, null=True, 
     help_text=(

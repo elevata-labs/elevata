@@ -22,8 +22,8 @@ Contact: <https://github.com/elevata-labs/elevata>.
 
 import re
 import unicodedata
-
-from .validators import validate_or_raise
+from metadata.generation.validators import validate_or_raise
+from metadata.models import SourceDatasetGroupMembership
 
 def _normalize_umlauts(value: str) -> str:
   """
@@ -43,6 +43,7 @@ def _normalize_umlauts(value: str) -> str:
   for src, tgt in replacements.items():
     value = value.replace(src, tgt)
   return value
+
 
 def sanitize_name(raw: str) -> str:
   """
@@ -88,39 +89,83 @@ def sanitize_name(raw: str) -> str:
   return cleaned
 
 
-def build_raw_name(source_short_name: str, source_dataset_name: str) -> str:
+def resolve_dataset_group_context(source_dataset, target_schema):
   """
-  Raw Layer: raw_<source.short_name>_<sanitized source.name>
-  Example: raw_sap1_salesorder
+  Decide naming parts (short_name, base_name) for a dataset
+  in the context of a specific target_schema.
+
+  RAW layer case (consolidate_groups == False):
+    - Never merge systems.
+    - Use the physical system short name (e.g. 'sap1', 'sap2'),
+      NOT the harmonized target_short_name.
+    - Use the dataset's own source_dataset_name.
+
+    Result raw_*_*
+      short_name = source_dataset.source_system.short_name
+      base_name  = source_dataset.source_dataset_name
+
+  STAGE / RAWCORE case (consolidate_groups == True):
+    - Merging/grouping is allowed across systems that conceptually belong together.
+    - Try SourceDatasetGroupMembership first:
+        short_name = group.target_short_name
+        base_name  = group.unified_source_dataset_name
+      If no group:
+        short_name = source_system.target_short_name
+        base_name  = source_dataset.source_dataset_name
   """
-  left = sanitize_name(source_short_name)
-  right = sanitize_name(source_dataset_name)
-  candidate = f"raw_{left}_{right}"
-  validate_or_raise(candidate, context="raw_table_name")
-  return candidate
+  consolidate = getattr(target_schema, "consolidate_groups", False)
+
+  # RAW-like behavior: no consolidation
+  if not consolidate:
+    sys_obj = getattr(source_dataset, "source_system", None)
+    short_raw = getattr(sys_obj, "short_name", "")  # IMPORTANT: physical system short_name (sap1, sap2)
+    base_raw  = getattr(source_dataset, "source_dataset_name", "")
+    return dict(
+      group=None,
+      short_name=sanitize_name(short_raw),
+      base_name=sanitize_name(base_raw),
+    )
+
+  # STAGE / RAWCORE behavior: consolidation allowed
+  group = None
+  membership = (
+    SourceDatasetGroupMembership.objects
+    .filter(source_dataset=source_dataset)
+    .select_related("group")
+    .first()
+  )
+  if membership and membership.group:
+    group = membership.group
+
+  if group:
+    short_raw = getattr(group, "target_short_name", "")                  # e.g. "sap"
+    base_raw  = getattr(group, "unified_source_dataset_name", "")        # e.g. "kna1"
+  else:
+    sys_obj = getattr(source_dataset, "source_system", None)
+    short_raw = getattr(sys_obj, "target_short_name", "")                # e.g. "sap"
+    base_raw  = getattr(source_dataset, "source_dataset_name", "")       # e.g. "kna1"
+
+  return dict(
+    group=group,
+    short_name=sanitize_name(short_raw),
+    base_name=sanitize_name(base_raw),
+  )
 
 
-def build_stage_name(target_short_name: str, source_dataset_name: str) -> str:
+def build_physical_dataset_name(target_schema, source_dataset) -> str:
   """
-  Stage Layer: stg_<target_short_name>_<sanitized source.name>
-  Example: stg_sap_salesorder
+  Build final physical table name for (source_dataset in target_schema),
+  using target_schema.physical_prefix and the schema's consolidation policy.
   """
-  left = sanitize_name(target_short_name)
-  right = sanitize_name(source_dataset_name)
-  candidate = f"stg_{left}_{right}"
-  validate_or_raise(candidate, context="stage_table_name")
-  return candidate
+  prefix_raw = getattr(target_schema, "physical_prefix", "") or ""
+  prefix = sanitize_name(prefix_raw)
 
+  ctx = resolve_dataset_group_context(source_dataset, target_schema)
+  short_part = ctx["short_name"]
+  base_part  = ctx["base_name"]
 
-def build_rawcore_name(target_short_name: str, target_name: str) -> str:
-  """
-  Rawcore Layer: <target_short_name>_<target.name>
-  Example: dwh_customer
-  """
-  left = sanitize_name(target_short_name)
-  right = sanitize_name(target_name)
-  candidate = f"{left}_{right}"
-  validate_or_raise(candidate, context="rawcore_table_name")
+  candidate = f"{prefix}_{short_part}_{base_part}"
+  validate_or_raise(candidate, context="target_dataset_name")
   return candidate
 
 
@@ -139,8 +184,10 @@ def build_surrogate_key_name(target_dataset_name: str) -> str:
   # <target_dataset_name>_key
   """
   Returns the name for the surrogate key field of a target dataset.
-  Example: 'sap_customer' -> 'sap_customer_key'
+  Convention: <target_dataset_name>_key 
+  Example: 'rc_sap_customer' -> 'rc_sap_customer_key'
   """  
-  candidate = f"{sanitize_name(target_dataset_name)}_key"
+  base = sanitize_name(target_dataset_name)
+  candidate = f"{base}_key"
   validate_or_raise(candidate, context="surrogate_key_name")
   return candidate
