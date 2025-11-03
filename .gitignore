@@ -30,9 +30,6 @@ ENV/
 .envrc
 elevata_profiles.y*
 
-# Django migrations cache
-migrations/
-
 # SQLite database
 *.sqlite*
 
