@@ -46,4 +46,4 @@ bridging semantics, governance, and automation in one ecosystem.
 
 ---
 
-_Last updated: {{ insert_date_here }}_
+_Last updated: 2025-11-12_
