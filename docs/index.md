@@ -1,6 +1,6 @@
-# 🧭 Elevata Documentation Index
+# 🧭 elevata Documentation Index
 
-Welcome to the **Elevata Labs Documentation Hub** —  
+Welcome to the **elevata Labs Documentation Hub** —  
 your single source of truth for metadata-driven data & analytics automation.
 
 ---
@@ -38,11 +38,11 @@ your single source of truth for metadata-driven data & analytics automation.
 
 ### 🧡 About
 
-Elevata Labs builds metadata-centric tooling for modern data platforms —  
+elevata Labs builds metadata-centric tooling for modern data platforms —  
 bridging semantics, governance, and automation in one ecosystem.  
 
 > Designed for engineers. Loved by analysts.  
-> **Elevata: clarity through metadata.**  
+> **elevata: clarity through metadata.**  
 
 ---
 

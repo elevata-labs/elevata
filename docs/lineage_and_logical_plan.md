@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document describes how Elevata models data lineage across datasets and columns
+This document describes how elevata models data lineage across datasets and columns
 and how that lineage is used to construct a logical plan for SQL preview generation.
 
 The lineage model ensures that every generated target dataset and column
@@ -82,7 +82,7 @@ This flag informs both the SQL preview and future optimization features
 Upcoming versions may extend the lineage model with:
 - Derived column transformations (expression templates)
 - Historical change tracking (temporal lineage)
-- Lineage visualization in the Elevata UI
+- Lineage visualization in the elevata UI
 
 ---
 

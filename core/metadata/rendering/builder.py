@@ -27,7 +27,7 @@ from metadata.rendering.expr import Expr, ColumnRef, RawSql
 
 def _looks_like_dsl(expr: str) -> bool:
   """
-  Heuristic: treat expressions containing {{ ... }} as Elevata DSL,
+  Heuristic: treat expressions containing {{ ... }} as elevata DSL,
   not as native SQL.
   """
   if expr is None:

@@ -2,7 +2,7 @@
 
 ## Overview
 
-The SQL Preview feature of Elevata provides an interactive view
+The SQL Preview feature of elevata provides an interactive view
 of how generated target datasets are derived from their upstream inputs.
 
 It leverages the lineage model to construct accurate,
@@ -18,7 +18,7 @@ across Raw, Stage, and Rawcore layers.
 | 1 | `TargetGenerationService` | Builds or updates lineage for all target datasets and columns. |
 | 2 | `LogicalPlanBuilder` | Resolves dataset and column dependencies. |
 | 3 | `SqlRenderer` | Translates logical plans into SQL syntax with formatting rules. |
-| 4 | `PreviewView` | Renders formatted SQL in the Elevata web interface. |
+| 4 | `PreviewView` | Renders formatted SQL in the elevata web interface. |
 
 ---
 
@@ -59,7 +59,7 @@ The SQL renderer applies consistent formatting rules:
 - Columns formatted as alias."column_name" AS target_column
 - Empty lines before major clauses for readability
 
-Rendered SQL is displayed in a light green box (`alert alert-success` style) in the Elevata UI.
+Rendered SQL is displayed in a light green box (`alert alert-success` style) in the elevata UI.
 
 ## 5. Future Enhancements
 

@@ -28,7 +28,7 @@ from your imported metadata — layer by layer.
 
 👉 [SQL Rendering Conventions](sql_rendering_conventions.md)  
 Explore the rendering layer and dialect adapters that translate  
-Elevata’s logical metadata into executable SQL.
+elevata’s logical metadata into executable SQL.
 
 👉 [Target Backends](target_backends.md)  
 Supported target backends (DuckDB, Snowflake, Databricks, etc.)  
@@ -39,7 +39,7 @@ and configuration guidelines.
 ## 🧰 Source System Integration
 
 👉 [Source Backends](source_backends.md)  
-Learn how Elevata imports and standardizes metadata from diverse data sources.
+Learn how elevata imports and standardizes metadata from diverse data sources.
 
 ---
 
@@ -53,7 +53,7 @@ of the metadata generation platform and enables confident releases.
 
 ## 🧭 Roadmap & Contribution
 
-The Elevata core evolves iteratively.  
+The elevata core evolves iteratively.  
 For upcoming milestones and progress, check the main repository’s  
 [CHANGELOG.md](changelog_ref.md) and [README.md](readme_ref.md).
 
@@ -63,9 +63,9 @@ For upcoming milestones and progress, check the main repository’s
 
 > If you’re exploring the metadata model for the first time,  
 > start with **Generation Logic**, then look at **SQL Rendering**  
-> — they form the heart of the Elevata pipeline.
+> — they form the heart of the elevata pipeline.
 
 ---
 
-© 2025 Elevata Labs  
+© 2025 elevata Labs  
 Built with purpose. Rendered with precision. 🪶

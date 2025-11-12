@@ -917,7 +917,7 @@ class TargetColumn(AuditFields):
   manual_expression = models.TextField(blank=True, null=True,
     help_text=(
       "Optional expression for deriving this column.\n"
-      "- If you use Elevata DSL, wrap it in {{ ... }}, e.g. {{ UPPER(customer_name) }}.\n"
+      "- If you use elevata DSL, wrap it in {{ ... }}, e.g. {{ UPPER(customer_name) }}.\n"
       "- If you enter plain SQL without {{ }}, it is treated as target-specific SQL and "
       "used directly in generated SQL / SQL preview.\n"
       "This default applies to all inputs unless overridden at source level."
@@ -1027,7 +1027,7 @@ class TargetColumnInput(AuditFields):
   manual_expression = models.TextField(blank=True, null=True,
     help_text=(
       "Optional expression that applies ONLY when using this specific source column.\n"
-      "- Prefer Elevata DSL wrapped in {{ ... }} for generation.\n"
+      "- Prefer elevata DSL wrapped in {{ ... }} for generation.\n"
       "- If you enter plain SQL without {{ }}, it may be used directly in SQL preview "
       "for this input.\n"
       "If empty, the TargetColumn.manual_expression (or a direct column reference) is used."
