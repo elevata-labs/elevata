@@ -244,3 +244,11 @@ for base_path, (view, prefix) in scoped_views.items():
     ),
 
   ]
+
+urlpatterns.append(
+  path(
+    "target-datasets/<int:pk>/sql-preview/",
+    views.targetdataset_sql_preview,
+    name="targetdataset_sql_preview",
+  )
+)

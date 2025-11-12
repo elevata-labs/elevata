@@ -30,7 +30,8 @@ from generic import display_key
 from metadata.constants import (
   TYPE_CHOICES, INGEST_CHOICES, INCREMENT_INTERVAL_CHOICES, DATATYPE_CHOICES, 
   MATERIALIZATION_CHOICES, RELATIONSHIP_TYPE_CHOICES, PII_LEVEL_CHOICES, TARGET_DATASET_INPUT_ROLE_CHOICES,
-  ACCESS_INTENT_CHOICES, ROLE_CHOICES, SENSITIVITY_CHOICES, ENVIRONMENT_CHOICES, LINEAGE_ORIGIN_CHOICES)
+  ACCESS_INTENT_CHOICES, ROLE_CHOICES, SENSITIVITY_CHOICES, ENVIRONMENT_CHOICES, LINEAGE_ORIGIN_CHOICES,
+  TARGET_COMBINATION_MODE_CHOICES)
 from metadata.generation.validators import SHORT_NAME_VALIDATOR, TARGET_IDENTIFIER_VALIDATOR
 
 class AuditFields(models.Model):
@@ -339,7 +340,7 @@ class SourceDatasetGroupMembership(AuditFields):
 # -------------------------------------------------------------------
 # SourceDatasetOwnership
 # -------------------------------------------------------------------
-class SourceDatasetOwnership(models.Model):
+class SourceDatasetOwnership(AuditFields):
   source_dataset = models.ForeignKey("SourceDataset", on_delete=models.CASCADE, related_name="source_dataset_ownerships",
     help_text="The dataset for which an owner is declared."
   )
@@ -376,7 +377,7 @@ class SourceColumn(AuditFields):
   source_dataset = models.ForeignKey(SourceDataset, on_delete=models.CASCADE, related_name="source_columns",
     help_text="The dataset this column belongs to."
   )
-  source_column = models.CharField(max_length=100,
+  source_column_name = models.CharField(max_length=100,
     help_text="Original source column name, eg. 'MANDT', 'VBELN'."
   )
   ordinal_position = models.PositiveIntegerField(
@@ -427,13 +428,13 @@ class SourceColumn(AuditFields):
 
   class Meta:
     db_table = "source_column"
-    constraints = [models.UniqueConstraint(fields=["source_dataset", "source_column"], name="unique_source_column"),
+    constraints = [models.UniqueConstraint(fields=["source_dataset", "source_column_name"], name="unique_source_column"),
                    models.UniqueConstraint(fields=["source_dataset", "ordinal_position"], name="unique_source_column_position")]
     ordering = ["source_dataset", "ordinal_position"]
     verbose_name_plural = "Source Columns"
 
   def __str__(self):
-    return display_key(self.source_dataset, self.source_column)
+    return display_key(self.source_dataset, self.source_column_name)
   
 # -------------------------------------------------------------------
 # TargetSchema
@@ -553,11 +554,26 @@ class TargetDataset(AuditFields):
   historize = models.BooleanField(default=True,
     help_text="Track slowly changing state / valid_from / valid_to, etc."
   )
-  source_datasets = models.ManyToManyField(SourceDataset, through="TargetDatasetInput", related_name="target_datasets", blank=True,
+  source_datasets = models.ManyToManyField(SourceDataset, through="TargetDatasetInput", 
+    through_fields=("target_dataset", "source_dataset"), related_name="target_datasets", blank=True,
     help_text=(
       "Which source datasets feed this target dataset. "
       "Used for multi-source consolidation, staging, rawcore integration, etc."
     )
+  )
+  upstream_datasets = models.ManyToManyField("self", through="TargetDatasetInput",
+    through_fields=("target_dataset", "upstream_target_dataset"), symmetrical=False,
+    related_name="downstream_datasets", blank=True,
+    help_text=(
+      "Which other target dataset feed this target dataset as upstream "
+      "instead of source datasets."
+    )
+  )
+  combination_mode = models.CharField(max_length=20, choices=TARGET_COMBINATION_MODE_CHOICES, default="single",
+    help_text=(
+      "How multiple upstream datasets are combined in the pipeline. "
+      "'single' = one upstream, 'union' = append all upstreams."
+    ),
   )
   incremental_source = models.ForeignKey(SourceDataset, on_delete=models.SET_NULL, null=True, blank=True, related_name="incremental_targets",
     help_text=(
@@ -593,12 +609,6 @@ class TargetDataset(AuditFields):
   access_intent = models.CharField(max_length=30, choices=ACCESS_INTENT_CHOICES, blank=True, null=True,
     help_text="Intended usage for governance purposes, e.g. analytics, finance_reporting, ml_feature_store."
   )
-  derived_from = models.ManyToManyField("self", blank=True, symmetrical=False, related_name="downstream_derivations",
-    help_text=(
-      "Upstream TargetDatasets that conceptually feed this dataset "
-      "(e.g. rawcore entity tables feeding this bizcore table)."
-    )
-  )
   active = models.BooleanField(default=True, 
     help_text=(
       "If unchecked, this dataset is deprecated. It remains in metadata for lineage "
@@ -610,6 +620,13 @@ class TargetDataset(AuditFields):
       "Optional timestamp when this dataset was marked as inactive. "
       "Automatically set when active gets unchecked."
     )
+  )
+  lineage_key = models.CharField(max_length=255, null=True, blank=True, db_index=True,
+    help_text=(
+      "Stable technical key used by the generator to identify this dataset "
+      "by its source lineage instead of its physical name. "
+      "Ensures that renaming target_dataset_name does not create duplicates."
+    ),
   )
   is_system_managed = models.BooleanField(default=False,
     help_text="If checked, this dataset is managed by the system and core attributes are locked."
@@ -717,13 +734,43 @@ class TargetDataset(AuditFields):
     return hash_func(key_with_pepper.encode("utf-8")).hexdigest()
   
   def save(self, *args, **kwargs):
+    """
+    Override save to keep surrogate key column names in sync with
+    target_dataset_name for this dataset.
+
+    If the dataset name changes, automatically rename all surrogate key
+    columns in this dataset to "<target_dataset_name>_key".
+    """
     # Automatically set retired_at when a row becomes inactive
     if not self.active and self.retired_at is None:
       self.retired_at = timezone.now()
     elif self.active:
       # If reactivated, clear retired_at
       self.retired_at = None
+
+    old_name = None
+    if self.pk:
+      try:
+        old = TargetDataset.objects.get(pk=self.pk)
+        old_name = old.target_dataset_name
+      except TargetDataset.DoesNotExist:
+        old_name = None
+
+    # normal save first
     super().save(*args, **kwargs)
+
+    # if the dataset has been renamed, update surrogate key columns
+    if old_name and old_name != self.target_dataset_name:
+      # build new surrogate key name
+      from metadata.generation import naming
+      new_sk_name = naming.build_surrogate_key_name(self.target_dataset_name)
+
+      # Update all surrogate key columns of this dataset
+      TargetColumn.objects.filter(
+        target_dataset=self,
+        surrogate_key_column=True,
+      ).update(target_column_name=new_sk_name)
+
 
 # -------------------------------------------------------------------
 # TargetDatasetInput
@@ -732,8 +779,11 @@ class TargetDatasetInput(AuditFields):
   target_dataset = models.ForeignKey(TargetDataset, on_delete=models.CASCADE, related_name="input_links",
     help_text="The stage/rawcore/bizcore dataset being built."
   )
-  source_dataset = models.ForeignKey(SourceDataset, on_delete=models.CASCADE, related_name="output_links",
+  source_dataset = models.ForeignKey(SourceDataset, null=True, blank=True, related_name="output_links", on_delete=models.PROTECT, 
     help_text="The source dataset contributing to this target dataset."
+  )
+  upstream_target_dataset = models.ForeignKey(TargetDataset, null=True, blank=True, related_name="downstream_input_links", on_delete=models.PROTECT,
+    help_text="If set, this target dataset is used as upstream instead of a source dataset."
   )
   role = models.CharField(max_length=50, choices=TARGET_DATASET_INPUT_ROLE_CHOICES,
     help_text=(
@@ -741,10 +791,6 @@ class TargetDatasetInput(AuditFields):
       "primary (golden source), enrichment (same entity extra attrs), "
       "reference_lookup (dim/code join), or audit_only (technical metadata)."
     ),
-  )
-
-  integration_mode = models.CharField(max_length=20, blank=True, null=True,
-    help_text="How this source is integrated: 'union_all', 'merge_on_keys', 'lookup_enrichment', etc."
   )
   active = models.BooleanField(default=True,
     help_text="If unchecked, this mapping is retained for lineage/audit but is no longer used for load."
@@ -754,18 +800,39 @@ class TargetDatasetInput(AuditFields):
     db_table = "target_dataset_input"
     constraints = [
       models.UniqueConstraint(
-        fields=["target_dataset", "source_dataset"],
+        fields=["target_dataset", "source_dataset", "upstream_target_dataset"],
         name="unique_source_per_target_dataset",
+      ),
+      models.CheckConstraint(
+        name="td_input_exactly_one_upstream",
+        condition=(
+          models.Q(source_dataset__isnull=False, upstream_target_dataset__isnull=True) |
+          models.Q(source_dataset__isnull=True, upstream_target_dataset__isnull=False)
+        ),
       )
     ]
 
   def __str__(self):
-    return f"{self.source_dataset} -> {self.target_dataset}"
+    """
+    Human-readable representation of this dataset-level lineage.
+
+    - If we have a source_dataset, show that.
+    - Otherwise, if we have an upstream_target_dataset, show that.
+    - Otherwise, show a dash.
+    """
+    if getattr(self, "source_dataset_id", None):
+      src_label = str(self.source_dataset)
+    elif hasattr(self, "upstream_target_dataset") and getattr(self, "upstream_target_dataset_id", None):
+      src_label = str(self.upstream_target_dataset)
+    else:
+      src_label = "—"
+
+    return f"{src_label} -> {self.target_dataset}"
 
 # -------------------------------------------------------------------
 # TargetDatasetOwnership
 # -------------------------------------------------------------------
-class TargetDatasetOwnership(models.Model):
+class TargetDatasetOwnership(AuditFields):
   target_dataset = models.ForeignKey("TargetDataset", on_delete=models.CASCADE, related_name="target_dataset_ownerships",
     help_text="The dataset for which an owner is declared."
   )
@@ -808,8 +875,17 @@ class TargetColumn(AuditFields):
   ordinal_position = models.PositiveIntegerField(
     help_text="Column order within the dataset."
   )
-  source_columns = models.ManyToManyField("SourceColumn", through="TargetColumnInput", related_name="mapped_target_columns", blank=True,
+  source_columns = models.ManyToManyField("SourceColumn", through="TargetColumnInput", 
+    through_fields=("target_column", "source_column"), related_name="mapped_target_columns", blank=True,
     help_text="Which source columns contribute to this target column."
+  )
+  upstream_columns = models.ManyToManyField("self", through="TargetColumnInput",
+    through_fields=("target_column", "upstream_target_column"), symmetrical=False,
+    related_name="downstream_columns", blank=True,
+    help_text=(
+      "Which other target columns feed this target column as upstream "
+      "instead of source columns."
+    )
   )
   datatype = models.CharField(max_length=20, choices=DATATYPE_CHOICES,
     help_text="Logical / normalized datatype."
@@ -840,10 +916,11 @@ class TargetColumn(AuditFields):
   )
   manual_expression = models.TextField(blank=True, null=True,
     help_text=(
-      "Default platform-neutral expression (elevata DSL) for deriving this column. "
-      "Example: {{ UPPER(customer_name) }}, {{ DATE_ADD('day', order_date, 7) }}, "
-      "{{ COALESCE(a, b, 'fallback') }}. "
-      "This applies to all inputs unless overridden at source level."
+      "Optional expression for deriving this column.\n"
+      "- If you use Elevata DSL, wrap it in {{ ... }}, e.g. {{ UPPER(customer_name) }}.\n"
+      "- If you enter plain SQL without {{ }}, it is treated as target-specific SQL and "
+      "used directly in generated SQL / SQL preview.\n"
+      "This default applies to all inputs unless overridden at source level."
     )
   )
   description = models.CharField(max_length=255, blank=True, null=True,
@@ -883,6 +960,13 @@ class TargetColumn(AuditFields):
       "Automatically set when active is unchecked."
     )
   )
+  lineage_key = models.CharField(max_length=255, null=True, blank=True, db_index=True,
+    help_text=(
+      "Stable technical key used by the generator to identify this column "
+      "by its source lineage instead of its physical name. "
+      "Ensures that renaming target_column_name does not create duplicates."
+    ),
+  )
   is_system_managed = models.BooleanField(default=False,
     help_text="If checked, this column is managed by the system and core attributes are locked."
   )
@@ -906,29 +990,48 @@ class TargetColumn(AuditFields):
     return display_key(self.target_dataset, self.target_column_name)
 
   def save(self, *args, **kwargs):
+    # Only set an ordinal_position if neither pk exists nor a value is set.
+    if not self.pk and not self.ordinal_position:
+      from django.db.models import Max
+      max_ord = (
+        TargetColumn.objects
+        .filter(target_dataset=self.target_dataset)
+        .aggregate(m=Max("ordinal_position"))
+        .get("m") or 0
+      )
+      self.ordinal_position = max_ord + 1
+
     # handle retired_at
     if not self.active and self.retired_at is None:
       self.retired_at = timezone.now()
     elif self.active:
       self.retired_at = None
+
     super().save(*args, **kwargs)
 
 # -------------------------------------------------------------------
 # TargetColumnInput
 # -------------------------------------------------------------------
-class TargetColumnInput(models.Model):
+class TargetColumnInput(AuditFields):
   target_column = models.ForeignKey(TargetColumn, on_delete=models.CASCADE, related_name="input_links",
     help_text="The target column being populated."
   )
-  source_column = models.ForeignKey(SourceColumn, on_delete=models.PROTECT, related_name="output_links",
-    help_text="The specific source column feeding this target column."
+  # Either a direct source column...
+  source_column = models.ForeignKey(SourceColumn, on_delete=models.PROTECT, null=True, blank=True, related_name="output_links",
+    help_text="The original source column feeding this target column."
+  )
+  # ...or an upstream target column (Raw -> Stage -> Rawcore).
+  upstream_target_column = models.ForeignKey(TargetColumn, on_delete=models.PROTECT, null=True, blank=True, related_name="downstream_column_inputs",
+    help_text="If set, this target column is fed from another target column instead of a raw source column."
   )
   manual_expression = models.TextField(blank=True, null=True,
     help_text=(
-      "Optional platform-neutral expression (elevata DSL) that applies "
-      "ONLY when using this specific source column. "
-      "If empty, the TargetColumn.manual_expression is used."
-    )
+      "Optional expression that applies ONLY when using this specific source column.\n"
+      "- Prefer Elevata DSL wrapped in {{ ... }} for generation.\n"
+      "- If you enter plain SQL without {{ }}, it may be used directly in SQL preview "
+      "for this input.\n"
+      "If empty, the TargetColumn.manual_expression (or a direct column reference) is used."
+    ),
   )
   ordinal_position = models.PositiveIntegerField(default=1, 
     help_text=(
@@ -944,15 +1047,36 @@ class TargetColumnInput(models.Model):
     db_table = "target_column_input"
     constraints = [
       models.UniqueConstraint(
-        fields=["target_column", "source_column"],
+        fields=["target_column", "source_column", "upstream_target_column"],
         name="unique_target_column_input_source"
+      ),
+      models.CheckConstraint(
+        name="td_input_exactly_one_column_upstream",
+        condition=(
+          models.Q(source_column__isnull=False, upstream_target_column__isnull=True) |
+          models.Q(source_column__isnull=True, upstream_target_column__isnull=False)
+        ),
       )
     ]
     ordering = ["target_column", "ordinal_position"]
 
   def __str__(self):
-    return f"{self.source_column} -> {self.target_column} (#{self.ordinal_position})"
-  
+    """
+    Human-readable representation of this column-level lineage.
+
+    - If we have a source_column, show that.
+    - Otherwise, if we have an upstream_target_column, show that.
+    - Otherwise, show a dash.
+    """
+    if getattr(self, "source_column_id", None):
+      src_label = str(self.source_column)
+    elif getattr(self, "upstream_target_column_id", None):
+      src_label = str(self.upstream_target_column)
+    else:
+      src_label = "—"
+    return f"{src_label} -> {self.target_column}"
+
+
 # -------------------------------------------------------------------
 # IncrementFieldMap
 # -------------------------------------------------------------------

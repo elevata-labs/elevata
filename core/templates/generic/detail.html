@@ -26,12 +26,15 @@ Contact: <https://github.com/elevata-labs/elevata>.
 {% block title %}{{ object }} · elevata{% endblock %}
 
 {% block content %}
-  <div class="d-flex align-items-center justify-content-between mb-3">
-    <div class="d-flex align-items-center gap-2">
-      <h1 class="h4 mb-0">{{ title|default:object }}</h1>
+<div class="d-flex align-items-center justify-content-between mb-3">
+  <div class="d-flex align-items-center gap-2 flex-wrap">
+    <h1 class="h4 mb-0">{{ title|default:object }}</h1>
 
-      {% if object and model_name == 'sourcesystem' or model_name == 'sourcedataset' or model_name == 'sourcedatasetgroup' or model_name == 'targetdataset' %}
-        <nav class="subnav mb-3">
+    {# sauber verschachtelt, damit 'object' immer Voraussetzung ist #}
+    {% if object %}
+      {% if model_name == 'sourcesystem' or model_name == 'sourcedataset' or model_name == 'sourcedatasetgroup' or model_name == 'targetdataset' %}
+        {# WICHTIG: kein mb-3; nur ein kleiner linker Abstand zum Titel #}
+        <nav class="subnav ms-2">
           {% if model_name == 'sourcesystem' %}
             <a href="{% url 'sourcedataset_list' object.pk %}" class="btn btn-sm btn-outline-primary">
               <i class="bi bi-table"></i> Datasets
@@ -63,16 +66,21 @@ Contact: <https://github.com/elevata-labs/elevata>.
           {% endif %}
         </nav>
       {% endif %}
+    {% endif %}
 
-      <!-- Summary badges for SourceColumn -->
-      {% if object and model_name == 'sourcecolumn' %}
-        {% if object.primary_key_column %}
-          <span class="ec-chip ec-chip--pk ms-2" title="Primary key">PK</span>
-        {% endif %}
+    <!-- Summary badges for SourceColumn -->
+    {% if object and model_name == 'sourcecolumn' %}
+      {% if object.primary_key_column %}
+        <span class="ec-chip ec-chip--pk ms-2" title="Primary key">PK</span>
       {% endif %}
-    </div>
-    <a class="btn btn-secondary" href="{% url model_name|add:'_list' %}"><i class="bi bi-arrow-left"></i> Back</a>
+    {% endif %}
   </div>
+
+  <!-- top-align back button -->
+  <a class="btn btn-secondary btn-sm d-flex align-self-start" href="{% url model_name|add:'_list' %}">
+    <i class="bi bi-arrow-left"></i> Back
+  </a>
+</div>
 
   <table class="table table-striped align-middle mb-4">
     <tbody>
@@ -213,6 +221,38 @@ Contact: <https://github.com/elevata-labs/elevata>.
         <strong>{{ object.type }}</strong>.
       </div>
     {% endif %}
+  {% endif %}
+
+  <!-- SQL Preview for TargetDataset detail -->
+  {% if object and model_name == 'targetdataset' %}
+    <hr>
+
+    <div class="mt-3">
+      <button
+        type="button"
+        class="btn btn-primary btn-sm hx-trigger-btn"
+        hx-get="{% url 'targetdataset_sql_preview' object.id %}"
+        hx-target="#sql-preview"
+        hx-swap="innerHTML"
+        hx-on::before-request="this.setAttribute('disabled','disabled')"
+        hx-on::after-request="this.removeAttribute('disabled')"
+        hx-indicator="#loading-sql-{{ object.id }}"
+      >
+        <i class="bi bi-eyeglasses"></i>
+        SQL Preview
+      </button>
+
+      <!-- Loading indicator -->
+      <div id="loading-sql-{{ object.id }}"
+           class="htmx-indicator mt-2"
+           style="display:none;">
+        <div class="spinner-border spinner-border-sm text-info me-2" role="status"></div>
+        <span class="text-muted small">Building SQL, please wait …</span>
+      </div>
+
+      <!-- SQL Preview output -->
+      <div id="sql-preview" class="mt-3"></div>
+    </div>
   {% endif %}
 
   {% if related_objects %}

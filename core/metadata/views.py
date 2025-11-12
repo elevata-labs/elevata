@@ -20,11 +20,15 @@ along with elevata. If not, see <https://www.gnu.org/licenses/>.
 Contact: <https://github.com/elevata-labs/elevata>.
 """
 
+import re
+from django.core.management import call_command
 from django.apps import apps
 from django.conf import settings
 from generic import GenericCRUDView
 from django.http import HttpResponse
-from django.contrib.auth.decorators import login_required
+from django.contrib.auth.decorators import login_required, permission_required
+from django.core.management import call_command
+from io import StringIO
 from metadata.constants import DIALECT_HINTS
 
 # --- custom import views (HTMX-friendly) ---
@@ -33,7 +37,7 @@ from django.contrib.auth.decorators import login_required, permission_required
 from django.views.decorators.http import require_POST
 from django.shortcuts import get_object_or_404, render
 from django.http import JsonResponse, HttpResponseBadRequest
-from metadata.models import SourceDataset, SourceSystem
+from metadata.models import SourceDataset, SourceSystem, TargetDataset
 from metadata.ingestion.import_service import import_metadata_for_datasets
 from sqlalchemy.exc import SQLAlchemyError
 import traceback
@@ -42,12 +46,14 @@ from django.contrib.auth.decorators import permission_required
 from django.views.decorators.http import require_POST
 from django.shortcuts import get_object_or_404, render
 from django.http import JsonResponse, HttpResponseBadRequest
+from django.utils.html import escape, conditional_escape
 from sqlalchemy.exc import SQLAlchemyError
 import traceback
 
 from metadata.generation.target_generation_service import TargetGenerationService
 from metadata.generation.security import get_runtime_pepper
-from metadata.generation import rules
+from metadata.rendering.preview import build_sql_preview_for_target
+
 
 def make_crud_view(model):
   """Dynamically create a CRUD view for a given model."""
@@ -178,33 +184,52 @@ def source_type_hint(request):
 @permission_required("metadata.change_targetdataset", raise_exception=True)
 @require_POST
 def generate_targets(request):
+  """
+  Trigger target generation via the management command.
+
+  Returns a small HTML alert snippet (for HTMX) with a short summary.
+  """
+  buffer = StringIO()
+
   try:
-    pepper = get_runtime_pepper()
-    svc = TargetGenerationService(pepper=pepper)
+    # Run the management command; output is captured in buffer
+    call_command("generate_targets", stdout=buffer)
 
-    schemas = svc.get_target_schemas_in_scope()
+    raw_output = buffer.getvalue().strip()
 
-    total_generated = 0
-    messages = []
+    # Strip ANSI color codes (e.g. \x1b[32;1m ... \x1b[0m)
+    ansi_escape = re.compile(r"\x1b\[[0-9;]*m")
+    output = ansi_escape.sub("", raw_output)
 
-    for schema in schemas:
-      eligible = svc.get_eligible_source_datasets_for_schema(schema)
-      if not eligible:
-        continue
+    total_datasets = None
 
-      result_text = svc.apply_all(eligible, schema)
-      messages.append(f"{schema.physical_prefix}: {result_text}")
+    # Try to find the "Done. Total: X target datasets ..." line from the command
+    if output:
+      for line in output.splitlines():
+        line = line.strip()
+        if line.startswith("Done. Total:"):
+          # Expected format:
+          # "Done. Total: X target datasets and Y target columns generated/updated."
+          parts = line.split()
+          # parts[2] should be X (number of datasets)
+          if len(parts) >= 3:
+            try:
+              total_datasets = int(parts[2])
+            except ValueError:
+              pass
 
-      # Try extracting the number of datasets from result_text ("X target datasets ...")
-      try:
-        total_generated += int(result_text.split(" ")[0])
-      except Exception:
-        pass
+    if total_datasets is not None:
+      msg = f"Generated {total_datasets} target datasets."
+    else:
+      # Fallback: show last (clean) line of command output or a generic message
+      if output:
+        msg = output.splitlines()[-1]
+      else:
+        msg = "Target generation completed."
 
-    # Rückgabe ans UI
     return HttpResponse(
       '<div class="alert alert-success py-1 px-2 mb-0 small">'
-      f'Generated {total_generated} target datasets.'
+      f'{msg}'
       '</div>'
     )
 
@@ -213,5 +238,34 @@ def generate_targets(request):
       '<div class="alert alert-danger py-1 px-2 mb-0 small">'
       f'Generation failed: {e}'
       '</div>',
-      status=500
+      status=500,
+    )
+  
+
+@login_required
+@permission_required("metadata.view_targetdataset", raise_exception=True)
+def targetdataset_sql_preview(request, pk: int):
+  """
+  Build and return a SQL preview snippet for a single TargetDataset.
+
+  Intended to be called via HTMX from the UI.
+  """
+  dataset = get_object_or_404(TargetDataset, pk=pk)
+
+  try:
+    sql = build_sql_preview_for_target(dataset)
+    # Basic HTML-escaped <pre><code> block for readability
+    return HttpResponse(
+      '<div class="alert alert-success py-1 px-2 mb-0 small">'
+      '<pre class="mb-0" style="white-space: pre-wrap;">'
+      f'{sql}'
+      '</pre>'
+      '</div>'
+    )
+  except Exception as e:
+    return HttpResponse(
+      f'<div class="alert alert-danger py-1 px-2 mb-0 small">'
+      f'SQL preview failed: {escape(str(e))}'
+      f'</div>',
+      status=500,
     )

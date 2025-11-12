@@ -1,0 +1,147 @@
+/*
+elevata – Metadata-driven Data Platform Framework
+Copyright © 2025 Ilona Tag
+SPDX-License-Identifier: AGPL-3.0-only
+*/
+
+/* ---------- Brand base (light scheme) ---------- */
+:root {
+  /* Brand colors */
+  --elevata-primary:   #006d7e;
+  --elevata-dark:      #013a4a;
+  --elevata-accent:    #00b5ad;
+
+  /* Neutrals & surfaces (light) */
+  --elevata-text:        #1d2b2f;
+  --elevata-bg:          #f7fbfc;  /* page bg */
+  --elevata-surface:     #ffffff;  /* cards/blocks */
+  --elevata-surface-alt: #f3f6f7;  /* code/alt bg */
+  --elevata-border:      #e2e8ea;
+
+  /* Map to MkDocs Material tokens (light) */
+  --md-primary-fg-color:        var(--elevata-primary);
+  --md-primary-fg-color--light: var(--elevata-accent);
+  --md-primary-fg-color--dark:  var(--elevata-dark);
+  --md-accent-fg-color:         var(--elevata-accent);
+
+  --md-default-bg-color:        var(--elevata-bg);
+  --md-code-bg-color:           var(--elevata-surface-alt);
+  --md-typeset-color:           var(--elevata-text);
+
+  /* Optional: shadows/rounded */
+  --elevata-radius: 8px;
+  --elevata-shadow: 0 1px 2px rgba(0,0,0,.04), 0 4px 14px rgba(0,0,0,.06);
+}
+
+/* ---------- Dark scheme overrides ---------- */
+[data-md-color-scheme="slate"] {
+  /* Dark neutrals */
+  --elevata-text:        #e6f0f2;
+  --elevata-bg:          #0f171a;
+  --elevata-surface:     #111c1f;
+  --elevata-surface-alt: #0c1417;
+  --elevata-border:      #1f2a2e;
+
+  /* Keep brand hues; adjust mapping if desired */
+  --md-primary-fg-color:        var(--elevata-primary);
+  --md-primary-fg-color--light: var(--elevata-accent);
+  --md-primary-fg-color--dark:  var(--elevata-dark);
+  --md-accent-fg-color:         var(--elevata-accent);
+
+  --md-default-bg-color:        var(--elevata-bg);
+  --md-code-bg-color:           var(--elevata-surface-alt);
+  --md-typeset-color:           var(--elevata-text);
+}
+
+/* ---------- Global typography & links ---------- */
+.md-typeset a {
+  color: var(--elevata-accent);
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+  transition: color .15s ease, border-color .15s ease;
+}
+.md-typeset a:hover {
+  color: var(--elevata-primary);
+  border-bottom-color: currentColor;
+}
+
+/* ---------- Code & code blocks ---------- */
+.md-typeset code {
+  color: var(--elevata-dark);
+  background: var(--md-code-bg-color);
+  border-radius: 4px;
+  padding: .15em .35em;
+  border: 1px solid var(--elevata-border);
+}
+
+.md-typeset pre > code {
+  display: block;
+  border-radius: var(--elevata-radius);
+  padding: 1rem 1.1rem;
+  box-shadow: var(--elevata-shadow);
+  border: 1px solid var(--elevata-border);
+}
+
+/* Copy button feel a bit nicer */
+.md-clipboard {
+  border-radius: 6px;
+}
+
+/* ---------- Tables ---------- */
+.md-typeset table:not([class]) {
+  border: 1px solid var(--elevata-border);
+  border-radius: var(--elevata-radius);
+  overflow: hidden;
+  box-shadow: var(--elevata-shadow);
+}
+.md-typeset table:not([class]) th,
+.md-typeset table:not([class]) td {
+  border-color: var(--elevata-border);
+}
+.md-typeset table:not([class]) tr:nth-child(2n) {
+  background: var(--elevata-surface-alt);
+}
+
+/* ---------- Admonitions (notes, tips, etc.) ---------- */
+.md-typeset .admonition,
+.md-typeset details {
+  border-radius: var(--elevata-radius);
+  box-shadow: var(--elevata-shadow);
+}
+
+/* ---------- Buttons (if used via md-button) ---------- */
+.md-typeset .md-button {
+  border-radius: 999px;
+  border: 1px solid var(--elevata-border);
+  box-shadow: var(--elevata-shadow);
+}
+.md-typeset .md-button--primary {
+  background: var(--elevata-primary);
+}
+
+/* ---------- Headings spacing polish ---------- */
+.md-typeset h1, .md-typeset h2, .md-typeset h3 {
+  scroll-margin-top: 84px;
+}
+
+/* ---------- (Optional) SQL preview callout for docs ---------- */
+/* Use by wrapping SQL in a div.elevata-sql-preview > pre > code */
+.elevata-sql-preview {
+  background: #e8f6f3;              /* subtle greenish tint */
+  border: 1px solid #c1e7df;
+  border-radius: var(--elevata-radius);
+  padding: 1rem 1.1rem;
+  box-shadow: var(--elevata-shadow);
+  margin: 1rem 0;
+}
+[data-md-color-scheme="slate"] .elevata-sql-preview {
+  background: #0f201e;
+  border-color: #1e3a36;
+}
+.elevata-sql-preview code {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  box-shadow: none;
+  color: inherit;
+}

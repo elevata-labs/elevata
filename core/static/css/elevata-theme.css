@@ -328,6 +328,15 @@ tr.htmx-swapping td {
 .ec-chip--pk{background:var(--elevata-primary);color:var(--elevata-white)}
 td .ec-chip + .ec-chip{margin-left:.35rem}
 
+/* action column: prevent wrapping + subtle separator + tighter button spacing */
+.actions-cell {
+  white-space: nowrap;
+  border-left: 1px solid rgba(0,0,0,0.05);
+}
+.actions-cell .btn {
+  margin-left: 2px;
+}
+
 /* Keep actions and badges on one line, right-aligned */
 td .ec-actions{
   display:inline-flex;
@@ -425,8 +434,16 @@ th i.bi-tags:hover {
   color: var(--elevata-white);
 }
 
-/* PK (Primary Key) badge */
+/* BK (Business Key) badge */
 .badge-pk {
+  background-color: var(--bs-info);
+  color: var(--elevata-white);
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}
+
+/* SK (Surrogate Key) badge */
+.badge-sk {
   background-color: var(--bs-primary);
   color: var(--elevata-white);
   font-weight: 700;

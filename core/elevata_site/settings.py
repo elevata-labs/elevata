@@ -43,7 +43,7 @@ from utils.db import build_metadata_database_url
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(find_dotenv(filename=".env", raise_error_if_not_found=False))
 
-ELEVATA_VERSION = "0.2.6"
+ELEVATA_VERSION = "0.3.0"
 
 ELEVATA_PROFILES_PATH = os.getenv("ELEVATA_PROFILES_PATH", str((BASE_DIR.parent / "config" / "elevata_profiles.yaml")))
 
@@ -256,16 +256,64 @@ ELEVATA_CRUD = {
         "target_dataset",
         "target_column_name",
         "ordinal_position",
+        "source_columns",
+        "upstream_columns",
         "datatype",
         "max_length",
         "decimal_precision",
         "decimal_scale",
         "nullable",
+        "business_key_column",
         "surrogate_key_column",
         "artificial_column",
+        "manual_expression",
         "lineage_origin",
         "surrogate_expression",
+        "active",
+        "retired_at",
       ],
+      "schema_overrides": {
+        "raw": {
+          "TargetColumn": {
+            "unlock": [],
+          },
+        },
+        "stage": {
+          "TargetColumn": {
+            "unlock": [],
+          },
+        },
+        "rawcore": {
+          "TargetDataset": {
+            "unlock": [
+              "target_dataset_name",
+              "handle_deletes",
+              "historize",
+              "distinct_select",
+              "materialization_type",
+              "manual_model",
+            ],
+          },
+          "TargetColumn": {
+            "unlock": [
+              "target_column_name",
+              "datatype",
+              "max_length",
+              "decimal_precision",
+              "decimal_scale",
+              "nullable",
+              "artificial_column",
+              "manual_expression",
+              "ordinal_position",
+              "source_columns",
+              "upstream_columns",
+              "lineage_origin",
+              "active",
+              "retired_at",
+            ],
+          },
+        },
+      },
     },
     "no_create": [
       "TargetSchema"
@@ -318,7 +366,7 @@ ELEVATA_CRUD = {
         {
           "field": "primary_key_column", 
           "class_map": {
-            "True": "badge badge-pk",
+            "True": "badge badge-sk",
             "False": "",
             "default": "",
           },
@@ -346,14 +394,27 @@ ELEVATA_CRUD = {
       ],
       "TargetColumn": [
         {
-          "field": "primary_key_column", 
+          "field": "surrogate_key_column", 
+          "class_map": {
+            "True": "badge badge-sk",
+            "False": "",
+            "default": "",
+          },
+          "label_map": {
+            "True": "SK",
+            "False": "",
+            "default": "",
+          },
+        },
+        {
+          "field": "business_key_column", 
           "class_map": {
             "True": "badge badge-pk",
             "False": "",
             "default": "",
           },
           "label_map": {
-            "True": "PK",
+            "True": "BK",
             "False": "",
             "default": "",
           },

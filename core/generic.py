@@ -64,8 +64,8 @@ class GenericCRUDView(LoginRequiredMixin, View):
   success_url = None
   action = "list"
 
-  list_exclude = {"id", "created_at", "created_by", "updated_at", "updated_by", "is_system_managed"}
-  form_exclude = {"id", "created_at", "created_by", "updated_at", "updated_by", "is_system_managed"}
+  list_exclude = {"id", "created_at", "created_by", "updated_at", "updated_by", "is_system_managed", "lineage_key"}
+  form_exclude = {"id", "created_at", "created_by", "updated_at", "updated_by", "is_system_managed", "lineage_key"}
 
   # --------------------------------------------------
   # Dispatch routing
@@ -114,17 +114,99 @@ class GenericCRUDView(LoginRequiredMixin, View):
   # --------------------------------------------------
   # Utility helpers
   # --------------------------------------------------
-  def get_system_managed_locked_fields(self):
+  def get_system_managed_locked_fields(self, instance=None):
     """
     Returns a set of field names that should be read-only if this row is system-managed.
-    Defined in settings.ELEVATA_CRUD["metadata"]["system_managed"].
+
+    Base configuration comes from settings.ELEVATA_CRUD["metadata"]["system_managed"].
+    Optional schema-specific overrides can unlock or add locks based on
+    TargetSchema.short_name.
+
+    Special case:
+    - For TargetColumn rows that are marked as surrogate_key_column=True,
+      we always use the global lock list without schema-level unlocks.
+      This ensures that surrogate key column names (and related attributes)
+      follow strict system conventions even in rawcore.
     """
     meta_cfg = getattr(settings, "ELEVATA_CRUD", {}).get("metadata", {})
     sysman_cfg_all = meta_cfg.get("system_managed", {})
 
     model_name = self.model.__name__
-    locked_list = sysman_cfg_all.get(model_name, [])
-    return set(locked_list)
+
+    # Start with the global list of locked fields for this model
+    base_locked = set(sysman_cfg_all.get(model_name, []))
+
+    # If we have no instance or no schema context, return the base locks
+    if instance is None:
+      return base_locked
+
+    # Determine schema short name for this instance (if any)
+    schema_short_name = self._get_schema_short_name_for_instance(instance)
+
+    # ------------------------------------------------------------------
+    # Special case: surrogate key columns are always fully locked
+    # ------------------------------------------------------------------
+    if model_name == "TargetColumn" and getattr(instance, "surrogate_key_column", False):
+      # For surrogate key columns we ignore schema-specific unlock rules.
+      # They keep the full global lock set, just like in raw/stage.
+      return base_locked
+
+    # ------------------------------------------------------------------
+    # Schema-specific overrides (for non-surrogate columns)
+    # ------------------------------------------------------------------
+    if not schema_short_name:
+      return base_locked
+
+    schema_overrides = sysman_cfg_all.get("schema_overrides", {})
+    schema_cfg = schema_overrides.get(schema_short_name, {})
+    model_override = schema_cfg.get(model_name, {})
+
+    # Unlock: remove fields from the base locked set
+    unlock_fields = model_override.get("unlock", [])
+    base_locked.difference_update(unlock_fields)
+
+    # Lock extra: add fields that should be locked in addition to the base set
+    extra_fields = model_override.get("lock_extra", [])
+    base_locked.update(extra_fields)
+
+    return base_locked
+  
+  def _get_schema_short_name_for_instance(self, instance):
+    """
+    Try to determine the TargetSchema.short_name for a given instance.
+
+    - For TargetSchema -> use instance.short_name
+    - For TargetDataset -> use instance.target_schema.short_name
+    - For TargetColumn -> use instance.target_dataset.target_schema.short_name
+    """
+    if not instance:
+      return None
+
+    model_name = instance.__class__.__name__
+
+    # TargetSchema: instance itself is the schema
+    if model_name == "TargetSchema":
+      return getattr(instance, "short_name", None)
+
+    # TargetDataset: schema is instance.target_schema
+    if model_name == "TargetDataset":
+      schema = getattr(instance, "target_schema", None)
+      if schema is not None:
+        return getattr(schema, "short_name", None)
+      return None
+
+    # TargetColumn: schema is instance.target_dataset.target_schema
+    if model_name == "TargetColumn":
+      dataset = getattr(instance, "target_dataset", None)
+      if dataset is not None:
+        schema = getattr(dataset, "target_schema", None)
+        if schema is not None:
+          return getattr(schema, "short_name", None)
+      return None
+
+    # All other models either do not belong to a TargetSchema
+    # or share the same lock behavior regardless of schema.
+    return None
 
   def is_instance_system_managed(self, instance):
     """
@@ -141,7 +223,7 @@ class GenericCRUDView(LoginRequiredMixin, View):
     If instance is marked system-managed, disable editing for locked fields.
     Also hide is_system_managed itself, if present.
     """
-    locked_fields = self.get_system_managed_locked_fields()
+    locked_fields = self.get_system_managed_locked_fields(instance)
 
     if self.is_instance_system_managed(instance):
       for fname in locked_fields:
@@ -168,12 +250,12 @@ class GenericCRUDView(LoginRequiredMixin, View):
     if not self.is_instance_system_managed(instance):
       return
 
-    locked_fields = self.get_system_managed_locked_fields()
-    # Wenn das ein Update ist: alten DB-Wert lesen
+    locked_fields = self.get_system_managed_locked_fields(instance)
+
+    # If this is an update: load original DB values
     if instance.pk:
       original = self.model.objects.get(pk=instance.pk)
       for fname in locked_fields:
-        # set instance.<fname> back to original.<fname>
         setattr(instance, fname, getattr(original, fname))
 
   def get_toggle_field_names(self):
@@ -820,27 +902,41 @@ class GenericCRUDView(LoginRequiredMixin, View):
   def get_related_objects(self, instance):
     """Collect forward/reverse relations for display."""
     related = []
+    seen_labels = set()
+
     for f in instance._meta.get_fields():
       if f.many_to_many and not f.auto_created:
         label = getattr(f, "verbose_name", f.name).title()
+        if label in seen_labels:
+          continue
+        seen_labels.add(label)
         qs = getattr(instance, f.name).all()
         related.append((label, qs))
+
       elif f.one_to_many and f.auto_created:
         accessor = f.get_accessor_name()
         label = f.related_model._meta.verbose_name_plural.title()
+        if label in seen_labels:
+          continue
+        seen_labels.add(label)
         qs = getattr(instance, accessor).all()
         related.append((label, qs))
+
       elif f.many_to_many and f.auto_created:
         accessor = f.get_accessor_name()
         label = f.related_model._meta.verbose_name_plural.title()
+        if label in seen_labels:
+          continue
+        seen_labels.add(label)
         qs = getattr(instance, accessor).all()
         related.append((label, qs))
+
     return related
 
   def detail(self, request, pk):
     """Display a read-only detail view for one record."""
     obj = get_object_or_404(self.model, pk=pk)
-    excluded = {"id", "created_at", "created_by", "updated_at", "updated_by"}
+    excluded = {"id", "created_at", "created_by", "updated_at", "updated_by", "lineage_key"}
 
     # build cleaned field/value pairs for display
     clean_rows = []

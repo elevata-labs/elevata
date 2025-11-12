@@ -193,6 +193,13 @@ LINEAGE_ORIGIN_CHOICES=[
   ("foreign_key", "Foreign Key"),
 ]
 
+TARGET_COMBINATION_MODE_CHOICES=[
+  ("single", "Single upstream (no combination)"),
+  ("union", "Union of multiple upstream datasets"),
+  # later: ("join", "Join multiple upstream datasets"),
+  # later: ("manual", "Custom SQL defined by user"),  
+]
+
 TARGET_DATASET_INPUT_ROLE_CHOICES = [
   ("primary", "Primary (golden source)"),
   ("enrichment", "Enrichment (same entity, more attributes)"),

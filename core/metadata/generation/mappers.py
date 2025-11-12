@@ -32,9 +32,7 @@ class TargetDatasetDraft:
   Draft representation of a TargetDataset before DB save.
   """
   target_schema_id: int
-  target_schema_short_name: str  # if needed for UI/previews
   target_dataset_name: str
-  source_dataset_id: int
   description: Optional[str]
   is_system_managed: bool
   # surrogate_key_column_name is not stored on TargetDataset,
@@ -90,33 +88,11 @@ def map_source_to_target_dataset(source_dataset, target_schema) -> TargetDataset
 
 def map_source_column_to_target_column(source_column, ordinal: int) -> TargetColumnDraft:
   """
-  Produce a TargetColumnDraft from a SourceColumn.
-  """
-  # We take the physical name directly from source_column.source_column
-  # and run it through sanitize for consistency.
-  colname = naming.sanitize_name(source_column.source_column)
-
-  return TargetColumnDraft(
-    target_column_name=colname,
-    datatype=source_column.datatype,
-    max_length=source_column.max_length,
-    decimal_precision=source_column.decimal_precision,
-    decimal_scale=source_column.decimal_scale,
-    nullable=source_column.nullable,
-    primary_key_column=source_column.primary_key_column, 
-    lineage_origin="direct",
-    source_column_id=source_column.id,
-    ordinal_position=ordinal,
-  )
-
-
-def map_source_column_to_target_column(source_column, ordinal: int) -> TargetColumnDraft:
-  """
   Map a SourceColumn to a TargetColumnDraft.
   business_key_column is derived from SourceColumn.primary_key_column.
   surrogate_key_column is always False here (those are generated separately).
   """
-  colname = naming.sanitize_name(source_column.source_column)
+  colname = naming.sanitize_name(source_column.source_column_name)
 
   return TargetColumnDraft(
     target_column_name=colname,

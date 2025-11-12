@@ -20,58 +20,51 @@ along with elevata. If not, see <https://www.gnu.org/licenses/>.
 Contact: <https://github.com/elevata-labs/elevata>.
 """
 
+from __future__ import annotations
+from typing import List
+import hashlib
+
 import hashlib
 
 def build_surrogate_expression(
-    natural_key_cols: list[str],
-    pepper: str,
-    null_token: str,
-    pair_sep: str,
-    comp_sep: str,
+  natural_key_cols: list[str],
+  pepper: str,
+  null_token: str,
+  pair_sep: str,
+  comp_sep: str,
 ) -> str:
   """
   Build a generic, dialect-agnostic expression describing how
   the surrogate key should be computed later by the SQL renderer.
 
-  Rules:
-  - Columns are sorted alphabetically to ensure deterministic order.
-  - Each component has the form "<colname><pair_sep><value_or_null_token>".
-  - Components are concatenated using comp_sep and followed by the pepper.
-  - The whole string is wrapped in a generic hash256() call.
-
-  This expression is stored as metadata (TargetColumn.surrogate_expression)
-  and later rendered into platform-specific SQL.
+  The returned string is a *template* that uses {expr:<col>} placeholders.
+  The SQL renderer will bind those to the final value expressions of the
+  corresponding business/natural key columns.
   """
 
   # 1. Ensure deterministic ordering
   ordered_cols = sorted(natural_key_cols)
 
   # 2. Build per-column components
-  # Example: concat('customer_id','~',coalesce(customer_id,'NULLTOKEN'))
-  inner_parts = []
+  # Example: concat('customer_id','~',coalesce({expr:customer_id},'NULLTOKEN'))
+  inner_parts: list[str] = []
   for col in ordered_cols:
     part = (
       "concat("
       f"'{col}', '{pair_sep}', "
-      f"coalesce({col}, '{null_token}')"
+      f"coalesce({{expr:{col}}}, '{null_token}')"
       ")"
     )
     inner_parts.append(part)
 
   # 3. Join components with comp_sep and append the pepper
-  # Example:
-  # hash256(concat_ws(' | ',
-  #   concat('customer_id','~',coalesce(customer_id,'NULL')),
-  #   concat('mandant','~',coalesce(mandant,'NULL')),
-  #   'PEPPER'))
-  all_components = ", ".join(inner_parts + [f"'{pepper}'"])
+  # We pass each concat(...) as separate argument to concat_ws
+  # and add the pepper as the last argument.
+  inner_expression = ", ".join(inner_parts)
 
   expression = (
     "hash256("
-      "concat_ws("
-      f"'{comp_sep}', "
-      f"{all_components}"
-      ")"
+    f"concat_ws('{comp_sep}', {inner_expression}, '{pepper}')"
     ")"
   )
 

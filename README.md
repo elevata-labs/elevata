@@ -1,16 +1,18 @@
 # elevata
 
 <p align="center">
-  <img src="docs/logo.png" alt="elevata logo" width="260"/>
+  <img src="https://raw.githubusercontent.com/elevata-labs/elevata/main/docs/logo.png" alt="elevata logo" width="260"/>
 </p>
 
-**elevata** is an open-source initiative on a mission to make building modern data platforms radically simpler.  
-It is meant to be a **Declarative Data Architecture & Metadata Framework**.  
-Automated, governed, and platform-agnostic.
+**elevata** is an independent open-source project aiming to make modern data platforms radically simpler.  
+It’s designed as a **Declarative Data Architecture & Metadata Framework** — automated, governed, and platform-agnostic.
+
+Instead of manually crafting endless SQL and pipeline code, elevata lets metadata do the work.  
+By defining datasets, lineage, and transformation logic declaratively, you can generate consistent, auditable, and future-proof data models — ready to run on your preferred platform.
 
 ## License & Dependencies
 
-[![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
+[![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](https://github.com/elevata-labs/elevata/blob/main/LICENSE)
 [![Built with Django](https://img.shields.io/badge/Built%20with-Django-092E20?logo=django)](https://www.djangoproject.com/)
 [![Frontend: HTMX](https://img.shields.io/badge/Frontend-HTMX-3366CC?logo=htmx)](https://htmx.org/)
 [![UI: Bootstrap 5](https://img.shields.io/badge/UI-Bootstrap%205-7952B3?logo=bootstrap)](https://getbootstrap.com/)  
@@ -27,7 +29,7 @@ it defines **how a modern data architecture should look** — opinionated, gover
 *In other words: elevata brings structure, governance, and automation to modern data platforms — from metadata to SQL.*
 
 <p align="center">
-  <img src="docs/elevata_ui_v0_2_6.png" alt="elevata UI preview" width="700"/>
+  <img src="https://raw.githubusercontent.com/elevata-labs/elevata/main/docs/elevata_ui_v0_3_0.png" alt="elevata UI preview" width="700"/>
 </p>
 
 ---
@@ -45,6 +47,8 @@ Its purpose is to take what is usually scattered across SQL scripts, YAML files,
 | 🔐 **Privacy by architecture** | Surrogate keys are generated through deterministic, pepper-based hashing. No lookups, no stored secrets, full DSGVO compliance. |
 | 🧮 **Declarative, not imperative** | The user declares *what* should exist, not *how* to code it. elevata generates the optimal technical representation. |
 | 🌍 **Tool independence** | External engines (like dbt) can consume elevata’s metadata, but elevata does not depend on them. It stands on its own — portable, transparent, future-proof. |
+| 🪄 **Lineage as first-class metadata** | Relationships between datasets and columns are explicit — not inferred. This makes SQL generation explainable and auditable. |
+
 
 > **In short:**  
 > elevata does for data architecture what version control did for code —  
@@ -52,12 +56,17 @@ Its purpose is to take what is usually scattered across SQL scripts, YAML files,
 
 ---
 
-## 🚀 Key Capabilities
+## ⚙️ Key Features & Capabilities
 
-- Automated generation of target datasets and columns  
+- Automated generation of target datasets and columns 
   from imported metadata, including PK propagation and surrogate key creation  
 - Deterministic, lookup-free surrogate keys (SHA-256 + runtime-loaded pepper)  
 - Full lineage model for datasets, columns, and relationships  
+- Lineage-aware target generation with dataset-level and column-level lineage
+- Stable `lineage_key` across renames ensures idempotent regeneration
+- Layer-specific input handling (Raw → Stage → Rawcore)
+- Modular `apply_all()` generation with deterministic column ordering
+- True lineage-based SQL Preview (UNION across multiple sources, field-level alignment)
 - Multi-source unification via shared `target_short_name`  
 - Integrated governance (sensitivity, ownership, access intent)  
 - Optional SQL rendering layer (dbt-compatible, but not dependent)  
@@ -77,12 +86,15 @@ elevata defines and enforces a clean five-layer target architecture:
 | **bizcore** | Business logic and truth layer — KPI-ready, regulated |
 | **serving** | Consumption layer for analytics, dashboards, and ML models |
 
-Each layer is represented as a `TargetSchema` with defined defaults for  
-materialization, historization, and governance.
+Each layer is represented as a `TargetSchema` with defined defaults for materialization, historization, and governance and participates in a complete lineage chain.  
+From v0.3.0 onward, elevata maintains dataset- and column-level lineage between layers, forming the basis for its Logical SQL Preview engine.
+
+The following examples illustrate how elevata translates its metadata model into deterministic and auditable SQL.
 
 ---
 
-## 🧮 Example: Deterministic Surrogate Key Generation  
+## 🧮 Example: Deterministic Surrogate Key Generation (Privacy by Design)  
+
 *Surrogate keys in elevata are not random — they are deterministic, governed, and fully reproducible across systems.*
 ```
 MANDT~100|KUNNR~4711|null_replaced
@@ -96,138 +108,91 @@ SHA-256 = sap_customer_key
 
 ---
 
-## 🧭 Roadmap
+## 🧠 Example: Lineage-based SQL Preview
 
-### Milestone 0.3.x — Metadata Model Freeze & Automated Target Modeling
-- New `TargetSchema` model (raw → serving)  
-- Automatic `TargetDataset` / `TargetColumn` generation  
-- Surrogate key hashing with runtime-loaded pepper  
-- Deterministic FK mapping via key-component relationships  
-- Extended metadata profiling and sensitivity classification  
-- Logical Plan for platform-independent SQL generation  
+elevata automatically generates SQL reflecting real upstream lineage.
+For instance, a `stage` dataset combining two `raw` tables:
 
-### Planned Mid-term
-- SQL rendering / execution layer (Snowflake, BigQuery, Databricks, Fabric)  
-- Multi-source unification (sap1/sap2 → sap)  
-- Environment-aware metadata validation  
-- Lineage visualization and impact analysis  
+```sql
+SELECT
+  s1.businessentityid,
+  s1.firstname,
+  s1.middlename,
+  s1.lastname,
+  s1.title
+FROM "raw"."raw_aw1_person" AS s1
 
-### Planned Long-term
-- Declarative deployment to physical schemas  
-- Governance-driven access control  
-- REST / GraphQL API for metadata access  
-- Extended platform support  
+UNION ALL
+
+SELECT
+  s2.businessentityid,
+  s2.firstname,
+  NULL AS middlename,
+  s2.lastname,
+  s2.title
+FROM "raw"."raw_aw2_person" AS s2
+```  
+And a `rawcore` dataset built from the stage layer:
+
+```sql
+SELECT
+  hash256(concat_ws('|', concat('businessentityid', '~', coalesce(s."businessentityid", 'null_replaced')), 'supersecretpeppervalue')) AS rc_aw_person_key,
+  s."businessentityid" AS business_entity_id,
+  s."firstname" AS first_name,
+  s."lastname" AS last_name
+FROM "stage"."stg_aw_person" AS s
+```
 
 ---
 
-## ⚙️ Quickstart
-Get elevata running locally
+## 🚀 Roadmap
 
-### ⚙️ Environment:
-
-Install
-- Python 3.11+ (currently tested on 3.11)
-- Git
-
-Copy file .env.example in root folder and name it **.env**. This is the place where your environment variables are stored.
-
-```bash
-# 1. clone the repo
-git clone https://github.com/elevata-labs/elevata.git
-cd elevata
-
-# 2. create & activate a virtual environment
-py -3.11 -m venv .venv
-.venv\Scripts\activate # or source .venv/bin/activate on Linux
-
-# 3. install dependencies
-python -m pip install --upgrade pip 
-pip install -r requirements/base.txt
-```
-
-### 🛢️ Metadata Database:
-
-#### Step 1: Choose your database management system
-**Option A**: SQLite (default database):
-nothing to prepare. Continue with **Step 2**
-
-#### Option B: PostgreSQL: 
-For using this option, first update your .env file by DB_ENGINE=postgres.  
-Then install postgres extras: 
-```bash
-pip install -r requirements/postgres.txt
-```
-
-**Postgres Alternative 1**: You can run postgres (17) locally with docker:
-```bash
-docker compose -f core/postgres/docker-compose.yml up -d db
-```
-**Postgres Alternative 2**: Use your **own** PostgreSQL (no Docker):  
-If you already have a PostgreSQL server (managed or self-hosted), configure elevata to use it:
-Configure connection via discrete DB_* variables in your .env file.  
-Ensure role & database exist (if you need to create them):
-
-```bash
-create role elevata login password 'elevata';
-create database elevata owner elevata;
-```
-
-#### Step 2: Setup database
-
-```bash
-# 1. set up database and create an admin user
-cd core
-python manage.py migrate
-python manage.py createsuperuser
-
-# 2. run development server
-python manage.py runserver
-```
-Then open http://localhost:8000 in your browser and log in with your newly created superuser account.
+### 🎯 Short Term (v0.4.x)
+**Sharper insight and smarter previews**  
+- Dynamic SQL previews with joins, filters, and contextual logic  
+- Interactive lineage validation and graph exploration  
+- Optimized UI for large-scale metadata models  
+- First test suite for model generation and lineage integrity  
 
 ---
 
-## 🔐 Secure Metadata Connectivity (since v0.2.0)
-
-Starting with **elevata 0.2.0**, metadata for source systems can be imported directly from relational databases 
-via **SQLAlchemy** – fully parameterized through a unified connection profile.
-
-This makes it possible to automatically read table and column structures for any defined `SourceDataset`  
-and populate the `SourceColumn` model, including datatype mapping and primary-key detection.
-
-### How it works
-
-- elevata connects to your defined **SourceSystems** using credentials managed via a **profile configuration file**.
-- The default profile file is: **elevata/config/elevata_profiles.yaml**
-- Connection and security details (passwords, connection strings, Key Vault references)  
-are resolved dynamically through your local `.env` file or optionally through Azure Key Vault.
-
-The logic follows a strict **Single Point of Truth** principle:
-- Metadata is always read from the configured source system itself.
-- Environment-specific secrets are stored outside the database.
-- Profiles are shared across environments — only the `.env` (or Key Vault) differs.
-
-### Supported Sources
-
-For detailed database support and ready-to-copy SQLAlchemy URI examples,
-see **[docs/source_backends.md](docs/source_backends.md)**.
-
-*Note:* Some platforms can be selected and documented in elevata,
-but are not yet supported for automated metadata import. The UI will
-show a clear hint in those cases.
+### ⚙️ Mid-Term (v0.5–0.6)
+**From metadata to managed data**  
+- Support for major backends (BigQuery, Databricks, Fabric, Snowflake, …)  
+- Declarative export for CI/CD integration  
+- Role-based governance and fine-grained permissions  
+- Incremental refresh and data-change tracking for real workloads  
 
 ---
 
-### ⚙️ Configuration Overview
+### 🌌 Long Term (v1.0+)
+**From modeling to execution — elevata becomes a Lakehouse automation platform**  
+- Automatic generation of **fully orchestratable SQL pipelines** from lineage graphs  
+- Native orchestration via Airflow, Dagster, dbt-core, or the built-in elevata scheduler  
+- End-to-end dataset materialization with dependency awareness  
+- Metadata-driven optimization for cost, freshness, and reuse across the Lakehouse  
 
-| File | Purpose |
-|------|----------|
-| **.env** | Holds environment-specific variables like DB credentials or Azure Key Vault settings. |
-| **config/elevata_profiles.yaml** | Central definition of connection profiles and secret templates. |
-| **/etc/elevata/** *(optional)* | System-wide defaults for production or containerized deployments. |
+> **Vision:** elevata will bridge the gap between design and operation.  
+> It will not only describe data — it will make data *move*.
 
-Example `.env` entries see template file **elevata/.env.example**  
-Example `elevata_profiles` entries see template file **elevata/config/elevata_profiles.example.yaml**
+---
+
+📘 **More Documentation**
+See the [`/docs`](docs/) folder for in-depth setup and technical design notes:
+- [Getting Started Guide](docs/getting_started.md)
+- [SQL Rendering & Alias Conventions](docs/sql_rendering_conventions.md)
+- [Automatic Target Generation Logic](docs/generation_logic.md)
+- [Secure Metadata Connectivity](docs/secure_metadata_connectivity.md)
+- [Lineage Model & Logical Plan](docs/lineage_and_logical_plan.md)
+- [SQL Preview & Rendering Pipeline](docs/sql_preview_pipeline.md)
+- [Testing & Quality](docs/tests.md)
+
+---
+
+### 🚧 Note
+
+elevata is currently in an early preview phase (v0.x).
+Breaking changes may occur before the 1.0 release as the metadata model stabilizes.
 
 ---
 
@@ -251,4 +216,4 @@ The name *elevata* is currently under trademark registration with the German Pat
 Other product names, logos, and brands mentioned here are property of their respective owners.
 
 Released under the **GNU Affero General Public License v3 (AGPL-3.0)**.  
-See [`LICENSE`](LICENSE) for terms and [`NOTICE.md`](NOTICE.md) for third-party license information.
+See [`LICENSE`](https://github.com/elevata-labs/elevata/blob/main/LICENSE) for terms and [`NOTICE.md`](https://github.com/elevata-labs/elevata/blob/main/NOTICE.md) for third-party license information.

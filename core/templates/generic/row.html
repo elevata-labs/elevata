@@ -32,12 +32,12 @@ We intentionally do NOT build a detail_url for scoped rows,
 because there is no *_detail route under a parent. -->
 
 {% if parent_pk %}
-  {# scoped mode: /.../<parent_pk>/.../<pk>/row-xxx/ #}
+  <!-- scoped mode: /.../<parent_pk>/.../<pk>/row-xxx/ -->
   {% url model_name|add:'_row_edit' parent_pk object.pk as edit_url %}
   {% url model_name|add:'_row_delete' parent_pk object.pk as delete_url %}
   {% url model_name|add:'_row_toggle' parent_pk object.pk as toggle_url %}
 {% else %}
-  {# global mode: /.../<pk>/row-xxx/ #}
+  <!-- global mode: /.../<pk>/row-xxx/ -->
   {% url model_name|add:'_row_edit' object.pk as edit_url %}
   {% url model_name|add:'_row_delete' object.pk as delete_url %}
   {% url model_name|add:'_row_toggle' object.pk as toggle_url %}
@@ -50,13 +50,13 @@ because there is no *_detail route under a parent. -->
   hx-on="htmx:afterSwap: setTimeout(function(){ elevataSyncEmptyPlaceholder(); }, 0)"
 >
 
-  {# -------- DATA COLUMNS ----------------------------------------- #}
+  <!-- DATA COLUMNS -->
   {% with model_badges=BADGE_CLASSES|get:model_class_name %}
     {% for f in fields %}
 
       {% if forloop.first %}
         <td class="align-middle">
-          {# Only link to detail in global mode, not in scoped mode #}
+          <!-- Only link to detail in global mode, not in scoped mode -->
           {% if parent_pk %}
             {{ object|attr:f.name }}
           {% else %}
@@ -86,10 +86,10 @@ because there is no *_detail route under a parent. -->
     {% endfor %}
   {% endwith %}
 
-  {# -------- BADGE COLUMN (classifications, flags) ---------------- #}
-  <td class="text-nowrap align-middle">
-    {% with model_badges=BADGE_CLASSES|get:model_class_name %}
-      {% if model_badges %}
+  <!-- BADGE COLUMN (classifications, flags) -->
+  {% with model_badges=BADGE_CLASSES|get:model_class_name %}
+    {% if model_badges %}
+      <td class="text-nowrap align-middle">
         {% for badge in model_badges %}
           {% with field_name=badge|get:"field" %}
             {% with raw_val=object|attr:field_name %}
@@ -113,15 +113,15 @@ because there is no *_detail route under a parent. -->
             {% endwith %}
           {% endwith %}
         {% endfor %}
-      {% endif %}
-    {% endwith %}
-  </td>
+    </td>
+  {% endif %}
+{% endwith %}
 
-  {# -------- ACTIONS COLUMN --------------------------------------- #}
-  <td class="text-end align-middle">
+  <!-- ACTIONS COLUMN -->
+  <td class="text-end align-middle actions-cell">
 
     <div class="btn-group btn-group-sm" role="group">
-      {# ----- TOGGLE BUTTONS (0..n toggle fields per model) ----- #}
+      <!-- TOGGLE BUTTONS (0..n toggle fields per model) -->
       {% with toggle_cfgs=LIST_TOGGLE_FIELDS|get:model_class_name %}
         {% if toggle_cfgs %}
           {% for cfg in toggle_cfgs %}
@@ -162,7 +162,7 @@ because there is no *_detail route under a parent. -->
           {% endfor %}
         {% endif %}
       {% endwith %}
-      {# ----- /TOGGLE BUTTONS ----- #}
+      <!-- TOGGLE BUTTONS -->
 
       <button
         type="button"
@@ -185,7 +185,7 @@ because there is no *_detail route under a parent. -->
         Delete
       </button>
 
-      {# Optional custom action: Import metadata on SourceDataset rows #}
+      <!-- Optional custom action: Import metadata on SourceDataset rows -->
       {% if model_name == 'sourcedataset' and object.source_system.type|is_import_supported %}
         <form class="d-inline">
           {% csrf_token %}

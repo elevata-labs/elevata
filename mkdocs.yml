@@ -1,0 +1,65 @@
+# ======================================================
+# elevata - Metadata-driven Data Platform Framework
+# Copyright © 2025 Ilona Tag
+#
+# SPDX-License-Identifier: AGPL-3.0-only
+#
+# MkDocs Configuration
+# ======================================================
+
+site_name: elevata
+site_description: Declarative Data Architecture & Metadata Framework
+site_author: Ilona Tag
+
+theme:
+  name: material
+  language: en
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - content.code.copy
+    - content.tabs.link
+    - toc.integrate
+  palette:
+    - scheme: default
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - scheme: slate
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+
+extra_css:
+  - styles/elevata-theme.css
+
+plugins:
+  - include-markdown
+
+markdown_extensions:
+  - admonition
+  - toc:
+      permalink: true
+  - footnotes
+  - attr_list
+  - md_in_html
+
+nav:
+  - Home: index.md
+  - README: README_docs.md
+  - Getting Started: getting_started.md
+  - Generation Logic: generation_logic.md
+  - Source Backends: source_backends.md
+  - Target Backends: target_backends.md
+  - SQL Rendering Conventions: sql_rendering_conventions.md
+  - Lineage & Logical Plan: lineage_and_logical_plan.md
+  - SQL Preview Pipeline: sql_preview_pipeline.md
+  - Secure Metadata Connectivity: secure_metadata_connectivity.md
+  - Testing & Quality: tests.md
+  - dbt Decoupling: strategy/dbt_decoupling.md
+  - Main Project README: readme_ref.md
+  - Changelog: changelog_ref.md

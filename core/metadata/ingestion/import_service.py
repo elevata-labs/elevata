@@ -155,7 +155,7 @@ def import_metadata_for_datasets(
       )
 
     # Current columns in DB (to detect create/update/remove)
-    existing: Dict[str, SourceColumn] = {c.source_column: c for c in ds.source_columns.all()}
+    existing: Dict[str, SourceColumn] = {c.source_column_name: c for c in ds.source_columns.all()}
     seen_names = set()
 
     created = 0
@@ -178,7 +178,7 @@ def import_metadata_for_datasets(
           # New column → start with neutral defaults
           sc = SourceColumn(
             source_dataset=ds,
-            source_column=name,
+            source_column_name=name,
             integrate=False,
             pii_level="none",
           )

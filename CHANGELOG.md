@@ -7,53 +7,134 @@ This project adheres to [Semantic Versioning](https://semver.org/) and [Keep a C
 
 ## [Unreleased]
 
-### 🧩 Work in Progress & Upcoming Enhancements
+### 🧭 Roadmap Highlights
 
-#### Overview  
-This section lists features and improvements currently under active development.
-
----
-
-## 🧭 Roadmap  
-
-### ✅ Already delivered in v0.2.6
-- Automated generation of **TargetDataset** and **TargetColumn** structures derived from imported metadata  
-- **Deterministic surrogate key generation** with runtime-loaded pepper  
-- Layer-aware naming and governance defaults via **TargetSchema**  
-- Foundation for the upcoming **Meta-SQL rendering layer** (to extend `TargetGenerationService`)  
+- **Short Term:** Richer SQL previews, lineage validation, and first automated tests  
+- **Mid Term:** Support for multi-backend environments, CI/CD export, and governance model  
+- **Long Term:** elevata evolves into a **metadata-driven Lakehouse automation platform**,  
+  generating not just models — but executable SQL pipelines ready for orchestration  
+  with Airflow, Dagster, or dbt-core.
 
 ---
-
-### 🚧 Next Milestone (v0.3.x Focus)
-#### Meta-SQL Layer & Logical Plan
-- Implement **Meta-SQL Logical Plan** to translate metadata into vendor-neutral SQL  
-- Introduce **TargetDatasetReference** and **TargetDatasetInput** models for joins and multi-source logic  
-- Extend **historization and governance defaults** for business-layer automation  
-- Add metadata-driven **filter and join semantics**  
-- Preview of the **SQL rendering engine** and expression resolver  
-
----
-
-### 📅 Planned Mid-term
-- Native SQL rendering and execution directly from elevata metadata  
-  (dbt compatibility remains optional)  
-- Built-in **core transformation templates** for staging, rawcore, and bizcore  
-- Environment-aware metadata validation (Dev/Test/Prod consistency checks)  
-- Cross-system ingestion and unification via `target_short_name` logic  
-- Visual lineage and impact analysis (dataset & field level)
-
----
-
-### 🌐 Planned Long-term
-- Declarative deployment of **target objects** to physical schemas  
-- Automated lineage graph and access policy management  
-- REST / GraphQL API for external metadata integration  
-- Multi-platform support (Fabric, Snowflake, BigQuery, Databricks, SQL Server)
-
----
+📈 For the full roadmap, see [Project Roadmap](https://github.com/elevata-labs/elevata/blob/main/README.md)
 
 🧾 Licensed under the **AGPL-v3** — open, governed, and community-driven.  
 💡 *elevata keeps evolving — one small, meaningful release at a time.*
+
+---
+
+## [0.3.0] — 2025-11-12
+### Lineage-Aware Target Generation & SQL Preview
+
+#### 🚀 Core Features
+
+**Lineage-Driven Target Generation**
+- Added a stable `lineage_key` to both `TargetDataset` and `TargetColumn`:
+  - Enables fully **idempotent target generation**.
+  - Prevents duplicate targets after renaming (`lineage_key` is preserved).
+- `TargetGenerationService.apply_all()` refactored into modular steps:
+  - Existing datasets are now matched and updated via `lineage_key` instead of physical names.
+  - Clean dataset-level and column-level re-numbering during regeneration.
+
+**Three-Layer Data Lineage**
+- Explicit dataset-level lineage:
+  - `TargetDatasetInput` defines upstream relationships (`source_dataset` and/or `upstream_target_dataset`).
+  - `combination_mode` (`single` or `union`) indicates how multiple inputs are combined.
+
+- Explicit column-level lineage:
+  - `TargetColumnInput` mirrors the same relationships for individual columns.
+  - `upstream_columns` now correctly map transformations between layers.
+
+- Layer-specific rules:
+  - **Raw** = only `source_datasets`
+  - **Stage** = prefers Raw as upstream (or Source directly if `generate_raw_tables=False`)
+  - **Rawcore** = always built from Stage
+
+**Multi-Source Consolidation**
+- New `SourceDatasetGroup` + `SourceDatasetGroupMembership` model:
+  - Supports joining multiple SourceDatasets into a single Stage target.
+  - The “primary system” flag defines which source drives column order.
+- `TargetDatasetInput.role` classifies inputs as:
+  - `primary`, `enrichment`, `reference_lookup`, or `audit_only`.
+
+**Surrogate & Business Keys**
+- Surrogate key columns are automatically renamed when their dataset is renamed  
+  → e.g. renaming `rc_aw_productmodel` → `rc_aw_product_model` auto-renames the key column to `rc_aw_product_model_key`.
+- Surrogate key expressions now reference **upstream column names** (Raw or Stage), not renamed targets.
+- Deterministic column ordering:
+  1. Surrogate keys  
+  2. Business keys  
+  3. Integrated source columns  
+  4. Artificial columns
+
+**Column Generation Enhancements**
+- Automatic assignment of `ordinal_position` on save:
+  - Newly created columns append at the end in numeric sequence.
+  - Safe against manual reordering.
+- Integrated columns added after initial generation are correctly appended and re-numbered without violating unique constraints.
+
+---
+
+#### 🧠 Logical Query Model & SQL Preview
+
+**Logical Plan Layer**
+- New internal model (`logical_plan.py`) represents canonical SQL structure for a target dataset:
+  - Supports `LogicalSelect`, `LogicalUnion`, `LogicalExpression`, and lineage mapping.
+- `builder.py` now constructs expressions (Surrogate Key, BK, and regular fields) from `TargetColumnInput` lineage.
+- Dialect-specific type mapping handled cleanly via `map_logical_to_duckdb_type`.
+
+**SQL Preview 2.0**
+- SQL preview now generates **true lineage-based SELECT statements**, e.g.:
+  - **Stage:**  
+    ```sql
+    SELECT … FROM "raw"."raw_aw1_person"
+    UNION ALL
+    SELECT … FROM "raw"."raw_aw2_person"
+    ```
+  - **Rawcore:**  
+    ```sql
+    SELECT hash256(…) AS rc_aw_person_key, … 
+    FROM "stage"."stg_aw_person"
+    ```
+- Automatic field alignment:
+  - Columns missing in one upstream are rendered as `NULL AS <column>`.
+  - Integrated columns retain their target aliases.
+- Supports both `manual_expression` and templated (`{{ … }}`) syntax.
+- New visually distinct **green preview box** in UI with proper formatting:
+  - Keywords capitalized  
+  - Indentation after `SELECT`  
+  - Clean separation before `FROM`
+
+---
+
+#### 🧩 UI, Governance & Behavior
+
+- **Context-aware lineage display** in detail views:
+  - `Source Datasets` and `Upstream Datasets` shown based on layer.
+  - Input relations now read like:
+    ```
+    raw_aw1_person · businessentityid -> stg_aw_person · businessentityid
+    ```
+- **System-managed field handling** refined:
+  - Layer-specific read-only fields controlled by settings.
+  - `lineage_key` treated as an internal system field (hidden in forms and lists).
+  - Surrogate key names locked for user editing but updated automatically when renaming datasets.
+
+---
+
+#### 🧪 Testing & Quality
+
+**Structured Testing Foundation**
+- Introduced the first complete automated test framework for the metadata generation platform.
+- Added dedicated `runtests.py` launcher for reliable execution across environments.
+- Integrated **realistic DB-based lineage tests** (`Raw → Stage → Rawcore`).
+- Added **logic-only tests** for hashing, naming, and validators.
+- Prepared **SQL Preview test templates** for the future rendering pipeline.
+- New documentation: [🧪 Testing & Quality](docs/tests.md)
+
+**Impact**  
+This milestone establishes a solid foundation for test coverage,  
+ensuring safe refactoring, reproducibility, and confidence in every release.
 
 ---
 

@@ -1,0 +1,38 @@
+# ======================================================
+# elevata - Metadata-driven Data Platform Framework
+# Copyright © 2025 Ilona Tag
+#
+# SPDX-License-Identifier: AGPL-3.0-only
+#
+# Docs deployment Configuration
+# ======================================================
+
+name: 📘 Deploy Documentation
+
+on:
+  push:
+    tags:
+      - "v*"           # run on version tags like v0.3.0
+  workflow_dispatch:
+
+jobs:
+  build-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 🧩 Checkout repository
+        uses: actions/checkout@v4
+
+      - name: 🐍 Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: 📦 Install MkDocs
+        run: |
+          pip install mkdocs-material
+          pip install mkdocs-git-revision-date-localized-plugin
+          pip install mkdocs-simple-hooks
+
+      - name: 🏗️ Build and deploy to GitHub Pages
+        run: mkdocs gh-deploy --force
