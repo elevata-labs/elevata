@@ -11,6 +11,8 @@ site_name: elevata
 site_description: Declarative Data Architecture & Metadata Framework
 site_author: Ilona Tag
 
+docs_dir: docs
+
 theme:
   name: material
   language: en
@@ -38,6 +40,7 @@ extra_css:
   - styles/elevata-theme.css
 
 plugins:
+  - search
   - include-markdown
 
 markdown_extensions:
