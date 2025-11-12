@@ -66,14 +66,14 @@ Examples:
 
 ## Skipped SQL Preview Tests
 
-Files under `test_sql_preview_*` are **template tests** for your future SQL Preview pipeline.  
-They describe expected output patterns but are **currently skipped** until your preview or renderer implementation is complete.
+Files under `test_sql_preview_*` are **template tests** for the future SQL Preview pipeline.  
+They describe expected output patterns but are **currently skipped** until the preview or renderer implementation is complete.
 
-To activate them later:
+To activate them later:  
 
 1. Implement your SQL preview renderer (e.g. `build_preview_sql()` in `preview.py`).  
 2. Update the import paths in the test files.  
-3. Remove the `@pytest.mark.skip` decorators.
+3. Remove the `@pytest.mark.skip` decorators.  
 
 Example command once wired:
 
@@ -135,10 +135,6 @@ Optional flags:
 
 - Integrate pre-commit hooks to ensure consistent formatting.
 - Gradually unskip SQL preview tests as the rendering pipeline evolves.
-
----
-
-> Last updated: November 2025
 
 ---
 

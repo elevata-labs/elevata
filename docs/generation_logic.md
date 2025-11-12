@@ -19,7 +19,7 @@ and associated helper modules in `metadata/generation`.
 
 ---
 
-## 🏗️ 2. Core Principles
+## 📜 2. Core Principles
 
 - **Deterministic Transformation**  
   Every dataset and column name is generated predictably, based on naming rules.
@@ -36,7 +36,7 @@ and associated helper modules in `metadata/generation`.
 
 ---
 
-## 🧱 3. The Generation Flow
+## ♻️ 3. The Generation Flow
 
 The central entry point is:
 
@@ -47,18 +47,18 @@ svc = TargetGenerationService()
 svc.apply_all(eligible_source_datasets, target_schema)
 ```
 
-The process performs:
-1. Dataset draft creation → `build_dataset_bundle()`
-2. Surrogate key injection (if applicable)
-3. Column mapping and business key preservation
-4. Persistence as TargetDataset + TargetColumn
+The process performs:  
+1. Dataset draft creation → `build_dataset_bundle()`  
+2. Surrogate key injection (if applicable)  
+3. Column mapping and business key preservation  
+4. Persistence as TargetDataset + TargetColumn  
 
 Each dataset is generated per target layer, with schema-specific rules
 defined in `TargetSchema` (e.g., surrogate key requirement, physical prefix, null token, separators).
  
 ---
 
-## 🧮 4. Key Building Blocks
+## 🧩 4. Key Building Blocks
 
 ### 🔹 `build_dataset_bundle(source_dataset, target_schema)`
 
@@ -124,7 +124,7 @@ from metadata.generation.security import get_runtime_pepper
 pepper = get_runtime_pepper()
 ```
 
-This ensures:
+This ensures:  
 - No pepper values are persisted in metadata  
 - Deterministic but non-reversible hash values  
 - Separate peppers per environment (Dev/Test/Prod)
@@ -140,9 +140,9 @@ This ensures:
 | **Rawcore** | `rc_sap_customer` | Deterministic surrogate key | System-managed consolidation layer |
 | **Bizcore** | `bz_customer` | Logical business entity key | Business-defined structure (manual) |
 
-Each generated dataset stores both source and upstream target inputs, depending on the schema layer.
-- Raw datasets link directly to source datasets.
-- Stage datasets link to raw (if available) or directly to sources.
+Each generated dataset stores both source and upstream target inputs, depending on the schema layer.  
+- Raw datasets link directly to source datasets.  
+- Stage datasets link to raw (if available) or directly to sources.  
 - Rawcore datasets always link to upstream stage datasets.  
 
 The behavior per layer is defined via `TargetSchema`:
@@ -167,18 +167,18 @@ TargetSchema(
 | `business_key_column` | Logical key column, defined by user | ✅ |
 | `surrogate_key_column` | System-generated hash key | ❌ (system-managed) |
 
-In the generated metadata:
+In the generated metadata:  
 - Business keys remain visible and editable in the UI  
 - Surrogate keys are locked (`is_system_managed=True`)
 
 ---
 
-## 🧠 7. Mapping Behavior
+## ↔️ 7. Mapping Behavior
 
 Each source column mapped via `map_source_column_to_target_column()`  
-inherits its logical datatype, constraints, and description, but may be adjusted by:
-- Naming rules in `naming.py`
-- Integration flag (`integrate=True`)
+inherits its logical datatype, constraints, and description, but may be adjusted by:  
+- Naming rules in `naming.py`  
+- Integration flag (`integrate=True`)  
 - Natural key membership (`primary_key_column=True`)
 
 This column-level lineage is also consumed by the SQL Preview engine,  
@@ -186,7 +186,7 @@ allowing it to render true derivation queries across layers (e.g., Stage → Raw
 
 ---
 
-## 🧰 8. Filtering Logic
+## 🔬 8. Filtering Logic
 
 Target generation only considers **integrated source columns**:
 
@@ -214,14 +214,14 @@ rc_sap_customer
 └── country_code
 ```
 
-Each target column:
+Each target column:  
 - Preserves semantic meaning  
 - Has defined lineage origin  
 - Is system-managed where applicable  
 
 ---
 
-## 📄 10. Future Extensions (v0.4+)
+## 🚧 10. Future Extensions (v0.4+)
 
 The generated **logical plan** will be rendered into SQL  
 through the new Rendering Layer:

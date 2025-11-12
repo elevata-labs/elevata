@@ -74,7 +74,4 @@ Upcoming additions:
 
 ---
 
-> Last updated: November 2025
----
-
 © 2025 elevata Labs — Internal Technical Documentation

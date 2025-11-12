@@ -5,20 +5,20 @@
 
 ---
 
-## 🎯 Core Principle
+## 🧩 Core Principle
 
 > Every **target column** in the rendered SQL must explicitly use an **alias (`AS target_column_name`)**.
 
-This ensures that the final dataset’s column layout is:
-- ✅ deterministic (no dependency on source column order),
-- ✅ vendor-agnostic (works on DuckDB, BigQuery, Snowflake, Fabric, etc.),
-- ✅ lineage-compatible (each `TargetColumn` maps directly to its alias).  
+This ensures that the final dataset’s column layout is:  
+✅ deterministic (no dependency on source column order)  
+✅ vendor-agnostic (works on DuckDB, BigQuery, Snowflake, Fabric, etc.)  
+✅ lineage-compatible (each `TargetColumn` maps directly to its alias)  
 
 The renderer now also supports automatic column alignment in UNION queries (v0.3.0).
 
 ---
 
-## 🧩 Example: Simple Mapping
+## 📌 Example: Simple Mapping
 
 **Metadata definition**
 
@@ -40,7 +40,7 @@ FROM src_customer AS c;
 
 ---
 
-## 🧠 Why We Always Use Aliases
+## 💡 Why We Always Use Aliases
 
 | Benefit              | Description                                                   |
 |----------------------|---------------------------------------------------------------|
@@ -51,7 +51,7 @@ FROM src_customer AS c;
 
 ---
 
-## 🧰 Alias Style Guidelines
+## 📜 Alias Style Guidelines
 
 | Context        | Convention                          | Example                          |
 |----------------|--------------------------------------|----------------------------------|
@@ -76,7 +76,7 @@ identifier quoting and escaping according to its platform rules.
 
 ---
 
-## 📎 Related Documents
+## 🔗 Related Documents
 
 - [Automatic Target Generation Logic](generation_logic.md)
 - [Target Backends](target_backends.md)

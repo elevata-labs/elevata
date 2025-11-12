@@ -13,7 +13,7 @@ from **runtime secrets** (passwords, tokens, peppers) for both security and port
 You define lightweight YAML profiles that describe *where* to connect,  
 and `.env` variables that define *how* to authenticate.
 
-This pattern allows:
+This pattern allows:  
 - Secure credentials in environment variables  
 - Reusable, shareable YAML configurations (without secrets)  
 - Consistent access from both CLI and Django runtime  
@@ -109,7 +109,7 @@ profile = load_profile(profiles_path)
 print(profile["database"])
 ```
 
-The function will:
+The function will:  
 1. Load the YAML profile  
 2. Merge any environment overrides (e.g. passwords, peppers)  
 3. Return a ready-to-use dictionary  

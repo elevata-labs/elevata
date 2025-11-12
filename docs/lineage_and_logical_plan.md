@@ -22,10 +22,10 @@ a target dataset and its data providers.
 | `upstream_target_dataset` | The upstream target dataset (e.g., from Raw → Stage or Stage → Rawcore). |
 | `role` | Defines whether the input is `primary`, `enrichment`, `reference_lookup`, or `audit_only`. |
 
-Depending on the schema layer:
-- **Raw** targets link to *source datasets* directly.
-- **Stage** targets link to *Raw* datasets if available, otherwise to sources.
-- **Rawcore** targets always link to *Stage* datasets.
+Depending on the schema layer:  
+- **Raw** targets link to *source datasets* directly.  
+- **Stage** targets link to *Raw* datasets if available, otherwise to sources.  
+- **Rawcore** targets always link to *Stage* datasets.  
 
 ---
 
@@ -79,14 +79,10 @@ This flag informs both the SQL preview and future optimization features
 
 ## 5. Future Outlook
 
-Upcoming versions may extend the lineage model with:
-- Derived column transformations (expression templates)
-- Historical change tracking (temporal lineage)
-- Lineage visualization in the elevata UI
-
----
-
-> Last updated: November 2025
+Upcoming versions may extend the lineage model with:  
+- Derived column transformations (expression templates)  
+- Historical change tracking (temporal lineage)  
+- Lineage visualization in the elevata UI  
 
 ---
 

@@ -12,13 +12,14 @@ Before you start, make sure the following are available:
 | Requirement | Recommended Version | Notes |
 |--------------|---------------------|--------|
 | **Python**   | 3.11                | Required for full feature support |
-| **PostgreSQL** | 14+               | Used as elevata metadata repository |
-| **Node.js**  | 18+                 | Only needed for front-end builds |
+| **PostgreSQL** | 14+               | Used as elevata metadata repository (SQLite works fine for local use) |
 | **Git**      | any recent version  | For cloning and version control |
 
-Optional but helpful:
+Optional but helpful:  
 - **DuckDB** for quick SQL preview and rendering tests  
 - **Docker Compose** for local all-in-one setup in case you want PostgreSQL instead of SQLite  
+
+> *Frontend dependencies are handled directly by Django; no separate Node.js build is required.*
 
 ---
 
@@ -42,7 +43,7 @@ source .venv/bin/activate   # on Linux / macOS
 Install dependencies:
 
 ```bash
-pip install -r requirements.txt
+pip install -r requirements/base.txt
 ```
 
 Copy the example environment configuration and adjust it:
@@ -63,9 +64,30 @@ SEC_DEV_PEPPER=supersecretpeppervalue
 
 ## 🏗️ 3. Initialize the Metadata Database
 
-### Option PostgreSQL
+### 🛢️ Option SQLite (recommended for first-time setup)
 
-In case you want to use a PostgreSQL, install postgres extras:
+If you just want to explore elevata or run metadata generation locally,  
+you don’t need PostgreSQL — SQLite works out of the box.
+
+Just make sure your `.env` contains:
+
+```bash
+DB_ENGINE=sqlite
+``` 
+
+Then run the standard migrations:
+
+```bash
+python manage.py migrate
+python manage.py createsuperuser
+```
+
+This will create a local file `db.sqlite3` in your project root.  
+Perfect for demos, prototyping, or CI pipelines.
+
+### 🛢️ Option PostgreSQL (for shared or production environments)
+
+If you prefer PostgreSQL for shared or production use, install postgres extras:
 
 ```bash
 pip install -r requirements/postgres.txt
@@ -87,16 +109,13 @@ create role elevata login password 'elevata';
 create database elevata owner elevata;
 ```
 
-## In any case
+Then run the standard migrations:
 
-Run the Django migrations to create metadata tables:
 ```bash
 python manage.py migrate
-```
-Create a superuser for the web interface:
-```bash
 python manage.py createsuperuser
 ```
+
 ---
 
 ## 🧮 4. Explore the Metadata UI
@@ -112,7 +131,7 @@ You can now:
 - Inspect **source datasets and columns**
 - Define **integration rules** (`integrate = True`)
 - Trigger **target auto-generation**
-- Preview SQL renderings (starting with DuckDB dialect)
+- Preview **auto-generated** SQL renderings (starting with DuckDB dialect)
 
 ---
 

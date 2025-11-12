@@ -1,4 +1,4 @@
-# 📚 elevata Documentation Overview
+# 🗺️ elevata Documentation Overview
 
 Welcome to the **elevata platform documentation** —  
 your guide to modern, metadata-driven data & analytics engineering.
@@ -24,7 +24,7 @@ from your imported metadata — layer by layer.
 
 ---
 
-## 🧱 SQL Rendering & Logical Plan
+## 🖌️ SQL Rendering & Logical Plan
 
 👉 [SQL Rendering Conventions](sql_rendering_conventions.md)  
 Explore the rendering layer and dialect adapters that translate  
@@ -36,7 +36,7 @@ and configuration guidelines.
 
 ---
 
-## 🧰 Source System Integration
+## 📥 Source System Integration
 
 👉 [Source Backends](source_backends.md)  
 Learn how elevata imports and standardizes metadata from diverse data sources.

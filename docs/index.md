@@ -5,7 +5,7 @@ your single source of truth for metadata-driven data & analytics automation.
 
 ---
 
-## 📚 Table of Contents
+## 🗺️ Table of Contents
 
 ### 🚀 Getting Started
 - [Getting Started](getting_started.md)  
@@ -14,15 +14,15 @@ your single source of truth for metadata-driven data & analytics automation.
 ### 🧩 Metadata Model & Generation
 - [Generation Logic](generation_logic.md)
 
-### 🧱 SQL Rendering & Dialects
+### 🖌️ SQL Rendering & Dialects
 - [SQL Rendering Conventions](sql_rendering_conventions.md)
 - [Target Backends (Target Platforms)](target_backends.md)
 
-### 📘 Concepts
+### 💡 Concepts
 - [Lineage Model & Logical Plan](lineage_and_logical_plan.md)
 - [SQL Preview & Rendering Pipeline](sql_preview_pipeline.md)
 
-### 🧰 Source Integration
+### 📥 Source Integration
 - [Source Backends](source_backends.md)
 
 ### 🧪 Testing & Quality
@@ -30,7 +30,7 @@ your single source of truth for metadata-driven data & analytics automation.
 
 ---
 
-## 🗺️ Roadmap & Core References
+## 🧭 Roadmap & Core References
 - [Main Project README](readme_ref.md)
 - [CHANGELOG](changelog_ref.md)
 
