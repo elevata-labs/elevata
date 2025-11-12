@@ -42,7 +42,12 @@ Elevata Labs builds metadata-centric tooling for modern data platforms —
 bridging semantics, governance, and automation in one ecosystem.  
 
 > Designed for engineers. Loved by analysts.  
-> **Elevata: clarity through metadata.**
+> **Elevata: clarity through metadata.**  
+
+---
+
+👩‍💻 **Created and maintained by [Ilona Tag](https://www.linkedin.com/in/ilona-tag-a96ab1124)**  
+A personal open-source initiative exploring the future of declarative data architecture.
 
 ---
 
