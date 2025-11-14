@@ -97,6 +97,11 @@ body {
   font-weight: 500;
 }
 
+.form-text {
+  color: var(--elevata-primary);
+  opacity: 0.75;
+}
+
 form input,
 form select,
 form textarea {

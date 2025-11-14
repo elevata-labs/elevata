@@ -37,7 +37,8 @@ from django.contrib.auth.decorators import login_required, permission_required
 from django.views.decorators.http import require_POST
 from django.shortcuts import get_object_or_404, render
 from django.http import JsonResponse, HttpResponseBadRequest
-from metadata.models import SourceDataset, SourceSystem, TargetDataset
+from metadata.forms import TargetColumnForm, TargetDatasetForm
+from metadata.models import SourceDataset, SourceSystem, TargetDataset, TargetColumn
 from metadata.ingestion.import_service import import_metadata_for_datasets
 from sqlalchemy.exc import SQLAlchemyError
 import traceback
@@ -75,6 +76,10 @@ globals().update({
   for model in metadata_models
 })
 
+# ensure CRUD views use the validated forms
+TargetColumnCRUDView.form_class = TargetColumnForm  # type: ignore[attr-defined]
+TargetDatasetCRUDView.form_class = TargetDatasetForm  # type: ignore[attr-defined]
+
 # helper
 def _is_htmx(request):
   return request.headers.get("HX-Request") == "true"
@@ -90,13 +95,13 @@ def import_dataset_metadata(request, pk: int):
   qs = SourceDataset.objects.filter(pk=ds.pk)
   if not qs.exists():
     ctx = {"scope": "dataset", "dataset": ds, "empty": True, "result": {"datasets": 0, "columns_imported": 0}}
-    return render(request, "metadata/partials/import_result.html", ctx) if _is_htmx(request) \
+    return render(request, "metadata/partials/_import_result.html", ctx) if _is_htmx(request) \
       else HttpResponseBadRequest("Dataset not marked for metadata import.")
 
   try:
     result = import_metadata_for_datasets(qs, autointegrate_pk=autointegrate_pk, reset_flags=reset_flags)
     ctx = {"scope": "dataset", "dataset": ds, "result": result}
-    return render(request, "metadata/partials/import_result.html", ctx) if _is_htmx(request) \
+    return render(request, "metadata/partials/_import_result.html", ctx) if _is_htmx(request) \
       else JsonResponse({"ok": True, "result": result})
 
   except (SQLAlchemyError, NotImplementedError, ValueError, RuntimeError) as e:
@@ -106,7 +111,7 @@ def import_dataset_metadata(request, pk: int):
       "error": str(e),
       "debug": traceback.format_exc(limit=2),
     }
-    return render(request, "metadata/partials/import_result_error.html", ctx) if _is_htmx(request) \
+    return render(request, "metadata/partials/_import_result_error.html", ctx) if _is_htmx(request) \
       else JsonResponse({"ok": False, "error": str(e)}, status=502)
 
   except Exception as e:
@@ -115,7 +120,7 @@ def import_dataset_metadata(request, pk: int):
       "error": f"Unexpected error: {e}",
       "debug": traceback.format_exc(limit=2),
     }
-    return render(request, "metadata/partials/import_result_error.html", ctx) if _is_htmx(request) \
+    return render(request, "metadata/partials/_import_result_error.html", ctx) if _is_htmx(request) \
       else JsonResponse({"ok": False, "error": str(e)}, status=500)
 
 
@@ -130,13 +135,13 @@ def import_system_metadata(request, pk: int):
   qs = SourceDataset.objects.filter(source_system=system)
   if not qs.exists():
     ctx = {"scope": "system", "system": system, "empty": True, "result": {"datasets": 0, "columns_imported": 0}}
-    return render(request, "metadata/partials/import_result.html", ctx) if _is_htmx(request) \
+    return render(request, "metadata/partials/_import_result.html", ctx) if _is_htmx(request) \
       else HttpResponseBadRequest("No datasets on this system are stored.")
 
   try:
     result = import_metadata_for_datasets(qs, autointegrate_pk=autointegrate_pk, reset_flags=reset_flags)
     ctx = {"scope": "system", "system": system, "result": result}
-    return render(request, "metadata/partials/import_result.html", ctx) if _is_htmx(request) \
+    return render(request, "metadata/partials/_import_result.html", ctx) if _is_htmx(request) \
       else JsonResponse({"ok": True, "result": result})
 
   except (SQLAlchemyError, NotImplementedError, ValueError, RuntimeError) as e:
@@ -145,7 +150,7 @@ def import_system_metadata(request, pk: int):
       "error": str(e),
       "debug": traceback.format_exc(limit=2),
     }
-    return render(request, "metadata/partials/import_result_error.html", ctx) if _is_htmx(request) \
+    return render(request, "metadata/partials/_import_result_error.html", ctx) if _is_htmx(request) \
       else JsonResponse({"ok": False, "error": str(e)}, status=502)
 
   except Exception as e:
@@ -154,7 +159,7 @@ def import_system_metadata(request, pk: int):
       "error": f"Unexpected error: {e}",
       "debug": traceback.format_exc(limit=2),
     }
-    return render(request, "metadata/partials/import_result_error.html", ctx) if _is_htmx(request) \
+    return render(request, "metadata/partials/_import_result_error.html", ctx) if _is_htmx(request) \
       else JsonResponse({"ok": False, "error": str(e)}, status=500)
 
 

@@ -28,6 +28,7 @@ from django.utils.text import slugify
 from generic import GenericCRUDView
 # HTMX views for the import
 from . import views
+from . import views_inline_api
 from metadata.models import SourceDataset, SourceSystem
 
 # app_name = "metadata"
@@ -250,5 +251,21 @@ urlpatterns.append(
     "target-datasets/<int:pk>/sql-preview/",
     views.targetdataset_sql_preview,
     name="targetdataset_sql_preview",
+  )
+)
+
+urlpatterns.append(
+  path(
+    "api/target-datasets/<int:pk>/rename/",
+    views_inline_api.targetdataset_rename,
+    name="api_targetdataset_rename",
+  )
+)
+
+urlpatterns.append(
+  path(
+    "api/target-columns/<int:pk>/rename/",
+    views_inline_api.targetcolumn_rename,
+    name="api_targetcolumn_rename",
   )
 )

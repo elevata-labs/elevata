@@ -54,7 +54,19 @@ because there is no *_detail route under a parent. -->
   {% with model_badges=BADGE_CLASSES|get:model_class_name %}
     {% for f in fields %}
 
-      {% if forloop.first %}
+      <!-- Special case: inline rename for TargetDataset name -->
+      {% if model_name == "targetdataset" and f.name == "target_dataset_name" %}
+        <td class="align-middle">
+          {% include "metadata/partials/_targetdataset_inline_cell.html" with ds=object %}
+        </td>
+
+      <!-- Special case: inline rename for TargetColumn name in scoped views -->
+      {% elif model_name == "targetcolumn" and f.name == "target_column_name" %}
+        <td class="align-middle">
+          {% include "metadata/partials/_targetcolumn_inline_cell.html" with col=object %}
+        </td>
+
+      {% elif forloop.first %}
         <td class="align-middle">
           <!-- Only link to detail in global mode, not in scoped mode -->
           {% if parent_pk %}

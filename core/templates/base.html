@@ -1,8 +1,25 @@
 <!--
-elevata – Metadata-driven Data Platform Framework
+elevata - Metadata-driven Data Platform Framework
 Copyright © 2025 Ilona Tag
-SPDX-License-Identifier: AGPL-3.0-only
+
+This file is part of elevata.
+
+elevata is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of
+the License, or (at your option) any later version.
+
+elevata is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with elevata. If not, see <https://www.gnu.org/licenses/>.
+
+Contact: <https://github.com/elevata-labs/elevata>.
 -->
+
 {% load static %}
 <!DOCTYPE html>
 <html lang="de">
@@ -34,13 +51,32 @@ SPDX-License-Identifier: AGPL-3.0-only
       focusFirst(fullForm);
     });
 
-    // After HTMX swaps: focus first field in the swapped region (inline forms)
+    // After HTMX swaps: focus a sensible first input in the swapped region
     document.body.addEventListener('htmx:afterSwap', (e) => {
-      // Prefer the target element of the swap; fall back to the event target
-      const root = e.detail && e.detail.target ? e.detail.target : e.target;
-      // If a table row form was swapped, use that; otherwise use root
+      // Prefer HTMX's explicit swap target
+      const root = (e.detail && e.detail.target) ? e.detail.target : e.target;
+
+      // If a table row form was swapped, prefer that row as focus scope
       const container = root.closest('tr[id^="row-"]') || root;
+
+      // 1) Try your generic helper
       focusFirst(container);
+
+      // 2) Fallback: if nothing focused, look for first form and its first editable field
+      if (document.activeElement === document.body || !document.activeElement) {
+        const form = container.querySelector('form');
+        if (form) {
+          const first = form.querySelector(
+            "input:not([type=hidden]):not([disabled]):not([readonly])," +
+            "select:not([disabled])," +
+            "textarea:not([disabled])"
+          );
+          if (first) {
+            first.focus({ preventScroll: true });
+            if (typeof first.select === 'function') first.select();
+          }
+        }
+      }
     });
   </script>
   <script src="https://unpkg.com/lucide@latest"></script>
@@ -70,27 +106,60 @@ SPDX-License-Identifier: AGPL-3.0-only
             <span class="nav-link disabled text-white-50">Hi, {{ request.user.username }}</span>
           </li>
 
+          {% if request.user.is_staff %}
+            <!-- Admin link visible only to staff users -->
+            <li class="nav-item dropdown">
+              <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                <i data-lucide="settings" class="text-primary"></i> Admin
+              </a>
+              <ul class="dropdown-menu dropdown-menu-end">
+                <li>
+                  <a class="dropdown-item" href="{% url 'admin:index' %}">
+                    <i data-lucide="layout-dashboard" class="me-1"></i> Dashboard
+                  </a>
+                </li>
+                <li><hr class="dropdown-divider"></li>
+                <li>
+                  <a class="dropdown-item" href="{% url 'admin:metadata_targetdataset_changelist' %}">
+                    <i data-lucide="database" class="me-1"></i> Target Datasets
+                  </a>
+                </li>
+                <li>
+                  <a class="dropdown-item" href="{% url 'admin:metadata_targetcolumn_changelist' %}">
+                    <i data-lucide="columns-3" class="me-1"></i> Target Columns
+                  </a>
+                </li>
+              </ul>
+            </li>
+          {% endif %}
+
+          <!-- Account dropdown -->
           <li class="nav-item dropdown">
-            <a class="nav-link dropdown-toggle" href="#" role="button"
-              data-bs-toggle="dropdown" aria-expanded="false">
-              Account
+            <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+              <i data-lucide="user"></i> Account
             </a>
             <ul class="dropdown-menu dropdown-menu-end">
               <li>
-                <a class="dropdown-item" href="{% url 'password_change' %}">Change password</a>
+                <a class="dropdown-item" href="{% url 'password_change' %}">
+                  <i data-lucide="key" class="me-1"></i> Change password
+                </a>
               </li>
               <li><hr class="dropdown-divider"></li>
               <li>
                 <form method="post" action="{% url 'logout' %}?next=/accounts/login/" class="m-0">
                   {% csrf_token %}
-                  <button type="submit" class="dropdown-item">Logout</button>
+                  <button type="submit" class="dropdown-item">
+                    <i data-lucide="log-out" class="me-1"></i> Logout
+                  </button>
                 </form>
               </li>
             </ul>
           </li>
         {% else %}
           <li class="nav-item">
-            <a class="nav-link" href="{% url 'login' %}?next={{ request.path }}">Login</a>
+            <a class="nav-link" href="{% url 'login' %}?next={{ request.path }}">
+              <i data-lucide="log-in" class="me-1"></i> Login
+            </a>
           </li>
         {% endif %}
       </ul>
@@ -100,8 +169,6 @@ SPDX-License-Identifier: AGPL-3.0-only
     <main id="app" class="container-xxxl">
       {% block content %}{% endblock %}
     </main>
-  <!-- ensure CSRF cookie exists on every page -->
-  <form style="display:none;">{% csrf_token %}</form>
 
   <footer class="text-muted small text-center mt-4 mb-3">
     elevata <span class="fw-semibold">v{{ ELEVATA_VERSION }}</span> · © 2025 Ilona Tag

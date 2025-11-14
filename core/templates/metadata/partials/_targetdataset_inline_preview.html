@@ -1,0 +1,77 @@
+<!--
+elevata - Metadata-driven Data Platform Framework
+Copyright © 2025 Ilona Tag
+
+This file is part of elevata.
+
+elevata is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of
+the License, or (at your option) any later version.
+
+elevata is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with elevata. If not, see <https://www.gnu.org/licenses/>.
+
+Contact: <https://github.com/elevata-labs/elevata>.
+-->
+
+{% if ok %}
+  <div class="alert alert-success p-2 mb-2">
+    {% if impacts.models %}
+      <div><strong>Impacted models</strong></div>
+      <ul class="mb-2">
+        {% for m in impacts.models %}
+          <li>{{ m }}</li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <div>No downstream model impacts detected.</div>
+    {% endif %}
+
+    <form
+      class="mt-2 d-flex gap-2"
+      hx-post="{% url 'api_targetdataset_rename' pk=ds.id %}"
+      hx-target="#tds-cell-{{ ds.id }}"
+      hx-swap="outerHTML"
+    >
+      {% csrf_token %}
+      <input type="hidden" name="target_dataset_name" value="{{ new_name }}" />
+      <button type="submit" class="btn btn-primary btn-sm">Apply</button>
+      <button
+        type="button"
+        class="btn btn-outline-secondary btn-sm"
+        onclick="
+          (function(btn){
+            const alertBox = btn.closest('.alert');
+            const cell = btn.closest('.tds-cell');
+            if (cell) {
+              const input = cell.querySelector('input[name=&quot;target_dataset_name&quot;]');
+              if (input) {
+                input.value = '{{ ds.target_dataset_name }}';
+              }
+            }
+            if (alertBox) {
+              alertBox.remove();
+            }
+          })(this);
+        "
+      >
+        Cancel
+      </button>
+    </form>
+  </div>
+{% else %}
+  <div class="alert alert-danger p-2 mb-2">
+    <div class="mb-1"><strong>Cannot rename</strong></div>
+    <ul class="mb-0">
+      {% for e in errors %}
+        <li>{{ e }}</li>
+      {% endfor %}
+    </ul>
+  </div>
+{% endif %}

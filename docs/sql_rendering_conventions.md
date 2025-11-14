@@ -76,6 +76,63 @@ identifier quoting and escaping according to its platform rules.
 
 ---
 
+## 🧩 Template Naming Conventions (HTMX / Partials)
+
+> Defines the naming standard for all Django/HTMX partial templates used in *elevata*  
+> to ensure consistency, reusability, and clarity across UI components.
+
+### 📘 Purpose
+
+In *elevata*, most interactive frontend components (inline edits, previews, imports, etc.)  
+are rendered through Django templates. To keep them organized and predictable,  
+all partials follow a strict naming and folder convention.
+
+---
+
+### 📐 Naming Pattern
+
+| Pattern | Example | Description |
+|----------|----------|-------------|
+| `_context_purpose.html` | `_targetcolumn_inline_cell.html` | Inline editing cell for a TargetColumn |
+| `_context_inline_preview.html` | `_targetcolumn_inline_preview.html` | Rename preview (HTMX dry-run) |
+| `_import_result.html` | `_import_result.html` | Generic import result partial |
+| `_import_result_error.html` | `_import_result_error.html` | Import error feedback partial |
+
+---
+
+### 🧱 Rules
+
+1. **Prefix with `_`**  
+   Indicates that the file is a *partial* (never rendered as a standalone view).  
+
+2. **Use clear context prefix**  
+   e.g. `targetcolumn`, `targetdataset`, `import`, `lineage`.  
+
+3. **Describe purpose in suffix**  
+   e.g. `cell`, `preview`, `result`, `error`, `form`, `confirm`.  
+
+4. **HTMX partials include `_inline_`**  
+   This distinguishes dynamic components from static includes.  
+
+5. **Consistent folder layout**  
+   templates/  
+   metadata/  
+   partials/  
+   _targetcolumn_inline_cell.html  
+   _targetcolumn_inline_preview.html  
+   _import_result.html  
+   _import_result_error.html  
+
+6. **View usage**  
+- Full views render page templates (e.g. `list.html`, `detail.html`).  
+- HTMX endpoints and AJAX handlers always return partials.  
+
+---
+
+🧩 *Following this convention ensures all frontend templates remain consistent, discoverable, and safely reusable across modules.*
+
+---
+
 ## 🔗 Related Documents
 
 - [Automatic Target Generation Logic](generation_logic.md)

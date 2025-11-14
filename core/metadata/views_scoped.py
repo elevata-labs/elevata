@@ -23,8 +23,9 @@ Contact: <https://github.com/elevata-labs/elevata>.
 from django.http import HttpResponse, HttpResponseNotFound
 from django.shortcuts import render
 from django.urls import reverse_lazy
-from core.generic import GenericCRUDView
-from .models import (
+from generic import GenericCRUDView
+from metadata.forms import TargetColumnForm
+from metadata.models import (
   # Target-side
   TargetDataset,
   TargetDatasetInput,
@@ -124,6 +125,22 @@ class _ScopedChildView(GenericCRUDView):
 
     return form
 
+  def _apply_autofocus(self, form):
+    # pick first usable field after all locking/removals
+    for name, field in form.fields.items():
+      if getattr(field, "disabled", False):
+        continue
+      w = field.widget
+      # skip hidden/checkbox
+      from django.forms import widgets as wdg
+      if isinstance(w, (wdg.HiddenInput, wdg.CheckboxInput)):
+        continue
+      if w.attrs.get("readonly") or w.attrs.get("disabled"):
+        continue
+      w.attrs["autofocus"] = True
+      break
+    return form
+
   def list(self, request):
     """
     Override GenericCRUDView.list() to inject parent_pk/parent
@@ -173,6 +190,8 @@ class _ScopedChildView(GenericCRUDView):
     parent_obj = self.get_parent_object()
     if parent_obj is not None:
       ctx["parent"] = parent_obj
+
+    form = self._apply_autofocus(form)
 
     return render(request, "generic/row_form.html", ctx, status=200)
 
@@ -296,6 +315,8 @@ class _ScopedChildView(GenericCRUDView):
       parent_obj = self.get_parent_object()
       if parent_obj is not None:
         ctx["parent"] = parent_obj
+
+      form = self._apply_autofocus(form)
 
       return render(request, "generic/row_form.html", ctx, status=200)
 
@@ -468,6 +489,7 @@ class TargetDatasetColumnScopedView(_ScopedChildView):
   model = TargetColumn
   parent_model = TargetDataset
   route_name = "targetdatasetcolumn_list"
+  form_class = TargetColumnForm
 
   def get_queryset(self):
     return (
@@ -480,7 +502,7 @@ class TargetDatasetColumnScopedView(_ScopedChildView):
     ctx = super().get_context_data(**kwargs)
     ctx["dataset"] = self.get_parent_object()
     return ctx
-
+  
 
 class TargetDatasetReferenceScopedView(_ScopedChildView):
   model = TargetDatasetReference

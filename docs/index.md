@@ -15,11 +15,12 @@ your single source of truth for metadata-driven data & analytics automation.
 - [Generation Logic](generation_logic.md)
 
 ### 🖌️ SQL Rendering & Dialects
-- [SQL Rendering Conventions](sql_rendering_conventions.md)
-- [Target Backends (Target Platforms)](target_backends.md)
+- [SQL Rendering Conventions](sql_rendering_conventions.md)  
+- [Target Backends (Target Platforms)](target_backends.md)  
+- [Template Naming Conventions (HTMX / Partials)](sql_rendering_conventions.md#template-naming-conventions-htmx-partials)
 
 ### 💡 Concepts
-- [Lineage Model & Logical Plan](lineage_and_logical_plan.md)
+- [Lineage Model & Logical Plan](lineage_and_logical_plan.md)  
 - [SQL Preview & Rendering Pipeline](sql_preview_pipeline.md)
 
 ### 📥 Source Integration
@@ -31,7 +32,7 @@ your single source of truth for metadata-driven data & analytics automation.
 ---
 
 ## 🧭 Roadmap & Core References
-- [Main Project README](readme_ref.md)
+- [Main Project README](readme_ref.md)  
 - [CHANGELOG](changelog_ref.md)
 
 ---

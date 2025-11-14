@@ -1,0 +1,64 @@
+<!--
+elevata - Metadata-driven Data Platform Framework
+Copyright © 2025 Ilona Tag
+
+This file is part of elevata.
+
+elevata is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of
+the License, or (at your option) any later version.
+
+elevata is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with elevata. If not, see <https://www.gnu.org/licenses/>.
+
+Contact: <https://github.com/elevata-labs/elevata>.
+-->
+
+<!--
+  Purpose:
+    - Inline editor for a single TargetColumn (technical name)
+    - Uses HTMX to request a dry-run preview while the user types
+    - Apply button in preview commits and re-renders the cell
+  Requirements:
+    - CSRF header auto-injected (base.html)
+    - URL name: 'api_targetcolumn_rename'
+-->
+
+{% with schema_short=col.target_dataset.target_schema.short_name %}
+  {% if col.surrogate_key_column or schema_short != "rawcore" %}
+    <div id="tc-cell-{{ col.id }}" class="form-control-plaintext d-flex align-items-center gap-1">
+      <span>{{ col.target_column_name }}</span>
+      <i class="bi bi-ban text-muted" title="System-managed: rename not allowed"></i>
+    </div>
+  {% else %}
+    <div id="tc-cell-{{ col.id }}" class="tc-cell">
+      <form
+        hx-post="{% url 'api_targetcolumn_rename' pk=col.id %}"
+        hx-target="#tc-preview-{{ col.id }}"
+        hx-swap="innerHTML"
+        hx-trigger="keyup changed delay:400ms"
+      >
+        {% csrf_token %}
+        <input
+          type="text"
+          name="target_column_name"
+          value="{{ col.target_column_name }}"
+          class="form-control form-control-sm"
+          placeholder="column_name"
+          aria-label="Rename column"
+        />
+        <input type="hidden" name="dry_run" value="true" />
+      </form>
+
+      <div id="tc-preview-{{ col.id }}" class="mt-1">
+        <!-- HTMX injects _targetcolumn_inline_preview.html here -->
+      </div>
+    </div>
+  {% endif %}
+{% endwith %}

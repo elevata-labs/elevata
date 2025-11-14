@@ -177,15 +177,15 @@ FROM "stage"."stg_aw_person" AS s
 
 ---
 
-📘 **More Documentation**
-See the [`/docs`](docs/) folder for in-depth setup and technical design notes:
-- [Getting Started Guide](docs/getting_started.md)
-- [SQL Rendering & Alias Conventions](docs/sql_rendering_conventions.md)
-- [Automatic Target Generation Logic](docs/generation_logic.md)
-- [Secure Metadata Connectivity](docs/secure_metadata_connectivity.md)
-- [Lineage Model & Logical Plan](docs/lineage_and_logical_plan.md)
-- [SQL Preview & Rendering Pipeline](docs/sql_preview_pipeline.md)
-- [Testing & Quality](docs/tests.md)
+📘 **More Documentation**  
+See the [`/docs`](docs/) folder for in-depth setup and technical design notes:  
+- [Getting Started Guide](docs/getting_started.md)  
+- [SQL Rendering & Alias Conventions](docs/sql_rendering_conventions.md)  
+- [Automatic Target Generation Logic](docs/generation_logic.md)  
+- [Secure Metadata Connectivity](docs/secure_metadata_connectivity.md)  
+- [Lineage Model & Logical Plan](docs/lineage_and_logical_plan.md)  
+- [SQL Preview & Rendering Pipeline](docs/sql_preview_pipeline.md)  
+- [Testing & Quality](docs/tests.md)  
 
 ---
 
