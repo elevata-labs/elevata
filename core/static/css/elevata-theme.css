@@ -81,6 +81,12 @@ body {
   border-color: var(--elevata-accent);
 }
 
+.btn[disabled],
+.btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 /* Cards and tables */
 .card {
   border: 1px solid var(--elevata-border);
@@ -475,6 +481,124 @@ td .badge + .badge {
   margin-left: 0.2rem;
 }
 
+/* === Lineage-specific badges ================================== */
+
+/* Title badge */
+.lineage-title-box {
+  background: var(--elevata-highlight-bg);
+  color: var(--elevata-dark);
+  padding: 0.6rem 0.6rem;
+  border-radius: 0.5rem;
+  font-weight: 600;
+}
+
+/* === Health badges (traffic light style) ======================= */
+
+/* OK: green */
+.badge-health-ok {
+  background-color: #d1e7dd;  /* Bootstrap success bg */
+  color: #0f5132;             /* Bootstrap success text */
+  border: 1px solid #badbcc;
+}
+
+/* Warning: yellow/orange */
+.badge-health-warning {
+  background-color: #fff3cd;  /* Bootstrap warning bg */
+  color: #664d03;             /* Bootstrap warning text */
+  border: 1px solid #ffe69c;
+}
+
+/* Error: red */
+.badge-health-error {
+  background-color: #f8d7da;  /* Bootstrap danger bg */
+  color: #842029;             /* Bootstrap danger text */
+  border: 1px solid #f5c2c7;
+}
+
+/* === Health alert boxes (matching badges) ====================== */
+
+/* OK */
+.alert-health-ok {
+  background-color: #d1e7dd;
+  border-color: #badbcc;
+  color: #0f5132;
+}
+
+/* Warning */
+.alert-health-warning {
+  background-color: #fff3cd;
+  border-color: #ffe69c;
+  color: #664d03;
+}
+
+/* Error */
+.alert-health-error {
+  background-color: #f8d7da;
+  border-color: #f5c2c7;
+  color: #842029;
+}
+
+.alert-sql {
+  background: var(--elevata-highlight-bg);
+  border-color: var(--elevata-primary);
+  color: var(--elevata-dark);
+  font-family: var(--bs-font-monospace);
+}
+
+/* Layer / schema badge (e.g. bizcore, rawcore, serving) */
+.badge-lineage-layer {
+  background-color: var(--elevata-dark);
+  color: var(--elevata-white);
+}
+
+/* Biz entity role (core_entity, fact, dimension, reference) */
+.badge-lineage-bizrole {
+  background-color: var(--elevata-accent);
+  color: var(--elevata-white);
+}
+
+/* Materialization (table/view) */
+.badge-lineage-materialization {
+  background-color: var(--elevata-light);
+  color: var(--elevata-primary);
+  border: 1px solid var(--elevata-primary);
+}
+
+/* Incremental strategy (full / merge / none) */
+.badge-lineage-incremental {
+  background-color: var(--elevata-primary);
+  color: var(--elevata-white);
+}
+
+/* Upstream source vs upstream target distinction */
+.badge-lineage-upstream-source {
+  background-color: var(--elevata-accent);
+  color: var(--elevata-white);
+}
+
+.badge-lineage-upstream-target {
+  background-color: var(--elevata-primary);
+  color: var(--elevata-white);
+}
+
+/* Active / inactive inputs */
+.badge-lineage-active {
+  background-color: var(--elevata-highlight-bg);
+  color: var(--elevata-dark);
+}
+
+.badge-lineage-inactive {
+  background-color: var(--elevata-grey);
+  color: var(--elevata-white);
+}
+
+/* References */
+.badge-lineage-ref {
+  background-color: var(--elevata-light);
+  color: var(--elevata-primary);
+  border: 1px solid var(--elevata-border);
+}
+
 footer {
   font-size: 0.8rem;
   opacity: 0.8;
@@ -486,3 +610,14 @@ footer:hover {
 }
 
 .subnav .btn { margin-right: 0.25rem; }
+
+/* Elevata: grey background for non-editable fields (global + scoped forms) */
+.elevata-form input[readonly],
+.elevata-form input:disabled,
+.elevata-form select[readonly],
+.elevata-form select:disabled,
+.elevata-form textarea[readonly],
+.elevata-form textarea:disabled {
+  background-color: var(--bs-secondary-bg);
+  opacity: 1; /* avoid "outgreyed" Bootstrap opacity */
+}

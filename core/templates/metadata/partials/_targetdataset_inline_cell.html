@@ -28,7 +28,7 @@ Contact: <https://github.com/elevata-labs/elevata>.
 -->
 
 {% with schema_short=ds.target_schema.short_name %}
-  {% if schema_short != "rawcore" %}
+  {% if schema_short in "raw,stage" %}
     <div id="tds-cell-{{ ds.id }}" class="form-control-plaintext d-flex align-items-center gap-1">
       <span>{{ ds.target_dataset_name }}</span>
       <i class="bi bi-ban text-muted" title="System-managed: rename not allowed"></i>

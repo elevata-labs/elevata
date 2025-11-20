@@ -89,14 +89,14 @@ DIALECT_HINTS = {
   "exasol": "Manual only; reflection not supported yet.",
 
   # File-based
-  "csv": "Manual only; specify path or pattern in SourceDataset. Schema inference planned (0.3.x).",
-  "parquet": "Manual only; specify folder/prefix. Auto schema detection planned (0.3.x).",
+  "csv": "Manual only; specify path or pattern in SourceDataset. Schema inference planned.",
+  "parquet": "Manual only; specify folder/prefix. Auto schema detection planned.",
   "excel": "Manual only; specify workbook and sheet name. Adapter planned.",
   "json": "Manual only; specify path or pattern. Schema inference planned.",
   "jsonl": "Manual only; specify folder or file pattern. Adapter planned.",
 
   # API-based
-  "rest": "Manual only; document endpoint and auth. REST adapter planned (0.3.x).",
+  "rest": "Manual only; document endpoint and auth. REST adapter planned.",
   "graphql": "Manual only; document endpoint and query. Adapter planned.",
 
   # Cloud / Transport
@@ -200,11 +200,25 @@ TARGET_COMBINATION_MODE_CHOICES=[
   # later: ("manual", "Custom SQL defined by user"),  
 ]
 
-TARGET_DATASET_INPUT_ROLE_CHOICES = [
+TARGET_DATASET_INPUT_ROLE_CHOICES=[
   ("primary", "Primary (golden source)"),
   ("enrichment", "Enrichment (same entity, more attributes)"),
   ("reference_lookup", "Reference Lookup / Code table"),
   ("audit_only", "Audit / Technical Metadata only"),
+]
+
+BIZ_ENTITY_ROLE_CHOICES=[
+  ("core_entity", "Core entity"),
+  ("fact", "Fact table"),
+  ("dimension", "Dimension"),
+  ("reference", "Reference / master data"),
+]
+
+INCREMENTAL_STRATEGY_CHOICES = [
+  ("full", "Full load (truncate + reload)"),
+  ("append", "Append-only incremental load"),
+  ("merge", "Merge (upsert by business key, handle deletes)"),
+  ("snapshot", "Snapshot-based load"),
 ]
 
 # Auto import via SQLAlchemy (stable)

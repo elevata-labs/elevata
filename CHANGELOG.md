@@ -7,19 +7,151 @@ This project adheres to [Semantic Versioning](https://semver.org/) and [Keep a C
 
 ## [Unreleased]
 
-### 🧭 Roadmap Highlights
+### 🛣️ Roadmap
 
-- **Short Term:** Richer SQL previews, lineage validation, and first automated tests  
-- **Mid Term:** Support for multi-backend environments, CI/CD export, and governance model  
-- **Long Term:** elevata evolves into a **metadata-driven Lakehouse automation platform**,  
-  generating not just models — but executable SQL pipelines ready for orchestration  
-  with Airflow, Dagster, or dbt-core.
+#### **0.5.0 — Multi-Backend & UI Enhancements**
+- 🧩 Target-System Selector in Profiles  
+  (Choose processing backend: DuckDB, Postgres, MSSQL, Snowflake …)
+- 🐦 First additional SQL dialect  
+  (likely Postgres or MSSQL as the initial candidate)
+- 🔍 Pseudo-Lineage Graph in the UI (HTMX-based)
+- 🎛️ SQL Preview Modernisation  
+  (optional: simplified pipeline, improved formatting, caching)
+- 🚚 Load Runner CLI  
+  (execute, dry-run, profiling, integration with profiles)
+- 🔁 Multi-Source Incremental Loads  
+  (incremental refresh across multiple upstream datasets)
+
+#### **0.6.0 — Ecosystem & Developer Experience**
+- Extended test matrix across multiple dialects  
+- Data Quality / Metadata Rule Engine  
+- Improved diagnostics and error surfacing in the dialect layer  
+- Enhanced logging & observability for load runs
+
+#### **0.7.0 — Productivity & Automation**
+- Automated schema-evolution detection  
+- Optional: Zero-Code Stewardship / Business-User UI  
+- Advanced dependency graph visualisation  
+- dbt-style generation path (optional)
 
 ---
-📈 For the full roadmap, see [Project Roadmap](https://github.com/elevata-labs/elevata/blob/main/README.md)
+📈 For the full roadmap, see [Project Readme](https://github.com/elevata-labs/elevata/blob/main/README.md)
 
 🧾 Licensed under the **AGPL-v3** — open, governed, and community-driven.  
 💡 *elevata keeps evolving — one small, meaningful release at a time.*
+
+---
+
+## [0.4.0] — 2025-11-20
+### 🧠 Dialect Architecture & Load SQL Modernization
+
+This release marks a major leap for elevata:  
+a complete SQL dialect abstraction layer, a unified Load-SQL pipeline,  
+and extensive new documentation that sets the foundation for future multi-backend support.
+
+---
+
+### 🚀 Core Features
+
+#### **Fully Modular SQL Dialect System**
+A new, extensible dialect layer powers all SQL generation:
+
+- Central `SqlDialect` base class  
+- Concrete `DuckDBDialect` reference implementation  
+- Dialect resolution via `ELEVATA_SQL_DIALECT`, `ELEVATA_DIALECT`, and active profile  
+- Dialect capabilities:
+  - `supports_merge`
+  - `supports_delete_detection`
+- Expression-level hooks:
+  - `concat_expression()`
+  - `hash_expression()`
+  - `cast_expression()`
+  - `render_literal()`
+
+This architecture enables clean, vendor-neutral SQL generation for future backends  
+(Postgres, MSSQL, Snowflake, BigQuery, Databricks).
+
+---
+
+### 🔧 Load SQL Architecture 2.0
+
+A fully redesigned, dialect-aware Load SQL engine:
+
+#### **Full Load**
+- `render_create_replace_table`  
+- `render_insert_into_table`  
+- Uses dialect quoting, casting, literal handling
+
+#### **Incremental Merge Load**
+- Native dialect-specific `MERGE` for DuckDB  
+- Clean failure modes for dialects without merge support  
+- Deterministic key handling  
+- Automatic update/insert column mapping
+
+#### **Delete Detection**
+- Dialect-specific implementation (`DELETE … WHERE NOT EXISTS`)  
+- Guardrails when delete detection is requested but dialect does not support it
+
+All Load SQL now flows through a single, coherent pipeline via `load_sql.py`.
+
+---
+
+### 🧪 Testing Enhancements
+
+- New test suite for:
+  - literal rendering (`NULL`, booleans, strings, dates, datetimes)
+  - cast expression rendering
+  - concat & hash expression helpers
+  - merge & delete detection dialect hooks
+- End-to-end tests for Full and Merge load generation
+- All tests green across the refactor
+
+This ensures reliable future extensions to new SQL dialects.
+
+---
+
+### 📘 Documentation
+
+Three major new documents added:
+
+- **Dialect System** — full architectural overview of dialect abstraction  
+- **Load SQL Architecture** — how Full, Merge, and Delete Detection SQL are generated  
+- **Incremental Load Architecture** — planner, merge semantics, delete detection
+
+All are linked from:
+- `index.md`
+- `README_docs.md`
+- `mkdocs.yml` navigation
+
+---
+
+### 🔍 Internal Improvements
+
+- Harmonized `get_active_dialect()` with environment and profile resolution  
+- Consolidated SQL preview and load paths to use the same dialect entrypoints  
+- Removed legacy assumptions and duplicated logic  
+- Fully revised DuckDB implementation as reference for new dialects
+
+---
+
+### 🗺️ Roadmap Impact
+
+With 0.4.0 released, the following items shift to **0.5.x**:
+
+- Target System Selector (Profiles → target backend)  
+- Additional SQL dialects (MSSQL, Postgres, Snowflake)  
+- Pseudo-Lineage Graph in UI  
+- Multi-Source Incremental Loads  
+- Load-Runner CLI
+
+These features build directly on the new architecture introduced in 0.4.0.
+
+---
+
+**Impact**  
+Version 0.4.0 delivers the foundational SQL engine for elevata’s future:  
+clean, extensible, and ready for multiple SQL backends.  
+It stabilizes the path toward 0.5.x — where elevata becomes a multi-dialect metadata-driven ETL generator.
 
 ---
 

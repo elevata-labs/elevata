@@ -31,7 +31,7 @@ from metadata.constants import (
   TYPE_CHOICES, INGEST_CHOICES, INCREMENT_INTERVAL_CHOICES, DATATYPE_CHOICES, 
   MATERIALIZATION_CHOICES, RELATIONSHIP_TYPE_CHOICES, PII_LEVEL_CHOICES, TARGET_DATASET_INPUT_ROLE_CHOICES,
   ACCESS_INTENT_CHOICES, ROLE_CHOICES, SENSITIVITY_CHOICES, ENVIRONMENT_CHOICES, LINEAGE_ORIGIN_CHOICES,
-  TARGET_COMBINATION_MODE_CHOICES)
+  TARGET_COMBINATION_MODE_CHOICES, BIZ_ENTITY_ROLE_CHOICES, INCREMENTAL_STRATEGY_CHOICES)
 from metadata.generation.validators import SHORT_NAME_VALIDATOR, TARGET_IDENTIFIER_VALIDATOR
 
 class AuditFields(models.Model):
@@ -491,6 +491,13 @@ class TargetSchema(AuditFields):
   default_historize = models.BooleanField(default=True, 
     help_text="Whether datasets in this layer are expected to track history / SCD-style state."
   )
+  incremental_strategy_default = models.CharField(max_length=20, choices=INCREMENTAL_STRATEGY_CHOICES, default="full",
+    help_text=(
+      "Default incremental loading strategy for datasets in this schema "
+      "when the source is incremental. For non-incremental sources, "
+      "a full refresh is always used."
+    ),
+  )
   # Governance defaults
   sensitivity_default = models.CharField(max_length=30, choices=SENSITIVITY_CHOICES, default="public",
     help_text="Default sensitivity classification for datasets in this schema (e.g. public, confidential)."
@@ -575,6 +582,28 @@ class TargetDataset(AuditFields):
       "'single' = one upstream, 'union' = append all upstreams."
     ),
   )
+  # --- BizCore semantics (mainly used when target_schema.short_name == 'bizcore') ---
+  biz_entity_role = models.CharField( max_length=30, choices=BIZ_ENTITY_ROLE_CHOICES, blank=True, null=True,
+    help_text=(
+      "Semantic role of this dataset in the BizCore model. "
+      "Examples: core_entity, fact, dimension, reference."
+    ),
+  )
+  biz_grain_note = models.CharField(max_length=255, blank=True, null=True,
+    help_text=(
+      "Human-readable description of the business grain. "
+      "Example: 'one row per customer and today', 'one row per contract and day'."
+    ),
+  )
+  incremental_strategy = models.CharField(max_length=20, choices=INCREMENTAL_STRATEGY_CHOICES, default="full",
+    help_text=(
+      "How this dataset is loaded.\n"
+      "- full: always full refresh (truncate + reload)\n"
+      "- append: append-only incremental load\n"
+      "- merge: upsert by business key and handle deletes\n"
+      "- snapshot: periodic snapshots by watermark/date"
+    ),
+  )
   incremental_source = models.ForeignKey(SourceDataset, on_delete=models.SET_NULL, null=True, blank=True, related_name="incremental_targets",
     help_text=(
       "If set, this target dataset inherits incremental window logic (and delete detection scope) "
@@ -650,15 +679,23 @@ class TargetDataset(AuditFields):
   def effective_materialization_type(self):
     # Application-level helper, not stored in DB.
     return self.materialization_type or self.target_schema.default_materialization_type
+  
+  @property
+  def is_incremental(self):
+    """
+    Returns True if this dataset uses any incremental loading strategy.
+    Full refresh ('full') is treated as non-incremental.
+    """
+    return self.incremental_strategy in {"append", "merge", "snapshot"}
 
   @property
   def natural_key_fields(self):
     """
-    Returns sorted list of target_column names that are marked as primary_key_column.
+    Returns sorted list of target_column names that are marked as business_key_column.
     """
     qs = (
       self.target_columns
-      .filter(primary_key_column=True)
+      .filter(business_key_column=True)
       .values_list("target_column_name", flat=True)
     )
     return sorted(list(qs))
@@ -1076,43 +1113,6 @@ class TargetColumnInput(AuditFields):
       src_label = "—"
     return f"{src_label} -> {self.target_column}"
 
-
-# -------------------------------------------------------------------
-# IncrementFieldMap
-# -------------------------------------------------------------------
-class IncrementFieldMap(AuditFields):
-  """
-  Maps the field names used in the source-level increment_filter
-  to the equivalent columns in this target dataset.
-  This lets us reuse the same logical filter for delete detection in core.
-  """
-  target_dataset = models.ForeignKey(TargetDataset, on_delete=models.CASCADE, related_name="incremental_field_mappings",
-    help_text="The core/target dataset that consumes this mapping."
-  )
-  source_field_name = models.CharField(max_length=100, 
-    help_text=(
-      "Field name as it appears in the source dataset's increment_filter "
-      "(e.g. 'last_update_ts', 'created_at', 'is_deleted_flag')."
-    )
-  )
-  target_column = models.ForeignKey(TargetColumn, on_delete=models.CASCADE, related_name="used_for_incremental_filter",
-    help_text=(
-      "Column in this TargetDataset that semantically corresponds "
-      "to that source field."
-    )
-  )
-
-  class Meta:
-    db_table = "incremental_field_mapping"
-    constraints = [
-      models.UniqueConstraint(
-        fields=["target_dataset", "source_field_name"],
-        name="unique_incremental_field_mapping_per_target",
-      )
-    ]
-
-  def __str__(self):
-    return f"{self.target_dataset}.{self.source_field_name} -> {self.target_column.target_column_name}"
 
 # -------------------------------------------------------------------
 # TargetDatasetReference

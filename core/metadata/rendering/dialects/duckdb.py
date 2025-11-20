@@ -24,6 +24,8 @@ from __future__ import annotations
 
 from typing import List
 import re
+import datetime
+from decimal import Decimal
 
 from .base import SqlDialect
 from ..expr import Expr, Cast, Concat, Coalesce, ColumnRef, FuncCall, Literal, RawSql
@@ -136,11 +138,8 @@ class DuckDBDialect(SqlDialect):
       return f"CAST({inner} AS {db_type})"
 
     if isinstance(expr, Concat):
-      # Use || operator: (part1 || part2 || part3)
       rendered_parts = [self.render_expr(p) for p in expr.parts]
-      if not rendered_parts:
-        return "''"
-      return "(" + " || ".join(rendered_parts) + ")"
+      return self.concat_expression(rendered_parts)
 
     if isinstance(expr, Coalesce):
       args_sql = ", ".join(self.render_expr(p) for p in expr.parts)
@@ -151,12 +150,10 @@ class DuckDBDialect(SqlDialect):
       name_upper = expr.name.upper()
 
       if name_upper == "HASH256":
-        # DuckDB: SHA256(expr)
-        # If you later need hex encoding, you can wrap with encode(..., 'hex').
         if len(expr.args) != 1:
           raise ValueError("HASH256 expects exactly one argument")
         inner = self.render_expr(expr.args[0])
-        return f"SHA256({inner})"
+        return self.hash_expression(inner, algo="sha256")
 
       # Fallback: generic CALL(args...)
       args_sql = ", ".join(self.render_expr(a) for a in expr.args)
@@ -191,6 +188,48 @@ class DuckDBDialect(SqlDialect):
     raise TypeError(f"Unsupported expression type for DuckDBDialect: {type(expr)!r}")
   
 
+  def concat_expression(self, parts):
+    # parts are already rendered SQL expressions
+    if not parts:
+      return "''"
+    return "(" + " || ".join(parts) + ")"
+
+
+  def hash_expression(self, expr: str, algo: str = "sha256") -> str:
+    algo_lower = algo.lower()
+    if algo_lower in ("sha256", "hash256"):
+      return f"SHA256({expr})"
+    # fallback: still SHA256 for unknown algos for now
+    return f"SHA256({expr})"
+  
+
+  def render_literal(self, value):
+    if value is None:
+      return "NULL"
+    if isinstance(value, bool):
+      return "TRUE" if value else "FALSE"
+    if isinstance(value, (int, float)):
+      return str(value)
+    if isinstance(value, Decimal):
+      return str(value)
+
+    if isinstance(value, str):
+      escaped = value.replace("'", "''")
+      return f"'{escaped}'"
+
+    if isinstance(value, datetime.date) and not isinstance(value, datetime.datetime):
+      return f"DATE '{value.isoformat()}'"
+
+    if isinstance(value, datetime.datetime):
+      return f"TIMESTAMP '{value.isoformat(sep=' ', timespec='seconds')}'"
+
+    raise TypeError(f"Unsupported literal type: {type(value)}")
+
+
+  def cast_expression(self, expr: str, target_type: str) -> str:
+    return f"CAST({expr} AS {target_type})"
+
+
   # ---------------------------------------------------------------------------
   # SELECT rendering
   # ---------------------------------------------------------------------------
@@ -199,14 +238,7 @@ class DuckDBDialect(SqlDialect):
     """
     Render schema.table AS alias (schema is optional).
     """
-    name_sql = self.quote_ident(table.name)
-    if table.schema:
-      schema_sql = self.quote_ident(table.schema)
-      full_name = f"{schema_sql}.{name_sql}"
-    else:
-      full_name = name_sql
-
-    return f"{full_name} AS {table.alias}"
+    return self.render_table_alias(table.schema, table.name, table.alias)
 
   def _render_join(self, join: Join) -> str:
     right_sql = self._render_source_table(join.right)
@@ -262,3 +294,108 @@ class DuckDBDialect(SqlDialect):
       parts.append("  " + ob_sql)
 
     return "\n".join(parts)
+
+  # ---------------------------------------------------------------------------
+  # Incremental / MERGE Rendering
+  # ---------------------------------------------------------------------------
+
+  def render_create_replace_table(self, schema: str, table: str, select_sql: str) -> str:
+    """
+    CREATE OR REPLACE TABLE schema.table AS <select>
+    """
+    full = self.quote_table(schema, table)
+    return f"CREATE OR REPLACE TABLE {full} AS\n{select_sql}"
+
+  def render_insert_into_table(self, schema: str, table: str, select_sql: str) -> str:
+    """
+    INSERT INTO schema.table <select>
+    """
+    full = self.quote_table(schema, table)
+    return f"INSERT INTO {full}\n{select_sql}"
+
+  def render_merge_statement(
+      self,
+      schema: str,
+      table: str,
+      select_sql: str,
+      unique_key_columns: list[str],
+      update_columns: list[str],
+  ) -> str:
+    """
+    Render a DuckDB MERGE INTO statement.
+
+    Parameters
+    ----------
+    schema : str
+      Schema of target table
+    table : str
+      Target table name
+    select_sql : str
+      SQL of the incremental source SELECT
+    unique_key_columns : list[str]
+      Columns used to match target rows
+    update_columns : list[str]
+      Columns that should be updated on MATCHED
+    """
+
+    full = self.quote_table(schema, table)
+
+    # Build ON condition (t.pk = s.pk AND ...)
+    on_clause = " AND ".join(
+      f"t.{self.quote_ident(c)} = s.{self.quote_ident(c)}"
+      for c in unique_key_columns
+    )
+
+    # Build UPDATE clause
+    update_assignments = ", ".join(
+      f"{self.quote_ident(col)} = s.{self.quote_ident(col)}"
+      for col in update_columns
+    )
+
+    # INSERT column lists
+    all_cols = unique_key_columns + update_columns
+    col_list = ", ".join(self.quote_ident(c) for c in all_cols)
+    val_list = ", ".join(f"s.{self.quote_ident(c)}" for c in all_cols)
+
+    return f"""
+      MERGE INTO {full} AS t
+      USING (
+      {select_sql}
+      ) AS s
+      ON {on_clause}
+      WHEN MATCHED THEN UPDATE SET {update_assignments}
+      WHEN NOT MATCHED THEN INSERT ({col_list}) VALUES ({val_list});
+      """.strip()
+
+  def render_delete_detection_statement(
+    self,
+    target_schema: str,
+    target_table: str,
+    stage_schema: str,
+    stage_table: str,
+    key_columns: list[str],
+    scope_filter: str | None = None,
+  ) -> str:
+    """
+    DuckDB implementation of delete detection using DELETE + NOT EXISTS.
+    """
+    q = self.quote_ident
+    target_full = self.quote_table(target_schema, target_table)
+    stage_full = self.quote_table(stage_schema, stage_table)
+
+    # Build ON clause: t.key = s.key AND ...
+    on_expr = " AND ".join(
+      f"t.{q(col)} = s.{q(col)}"
+      for col in key_columns
+    )
+
+    scope_expr = f"({scope_filter})" if scope_filter else "TRUE"
+
+    return f"""\
+      DELETE FROM {target_full} AS t
+      WHERE {scope_expr}
+        AND NOT EXISTS (
+              SELECT 1
+              FROM {stage_full} AS s
+              WHERE {on_expr}
+          );"""

@@ -1,0 +1,254 @@
+<!--
+elevata - Metadata-driven Data Platform Framework
+Copyright © 2025 Ilona Tag
+
+This file is part of elevata.
+
+elevata is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of
+the License, or (at your option) any later version.
+
+elevata is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with elevata. If not, see <https://www.gnu.org/licenses/>.
+
+Contact: <https://github.com/elevata-labs/elevata>.
+-->
+
+{% extends "base.html" %}
+
+{% block title %}{{ title }} · elevata{% endblock %}
+
+{% block content %}
+<h1 class="h4 mb-3 d-flex align-items-center justify-content-between">
+  <span>
+    <span class="lineage-title-box">
+      {{ object.target_dataset_name }}
+      <span class="badge badge-lineage-layer ms-2">
+        {{ object.target_schema.short_name }}
+      </span>
+    </span>
+
+    {% if health_level == "ok" %}
+      <span class="badge badge-health-ok ms-2">Health: OK</span>
+    {% elif health_level == "warning" %}
+      <span class="badge badge-health-warning ms-2">Health: Needs review</span>
+    {% elif health_level == "error" %}
+      <span class="badge badge-health-error ms-2">Health: Issues</span>
+    {% endif %}
+  </span>
+
+  <a href="{% url 'targetdataset_detail' object.pk %}" class="btn btn-sm btn-outline-primary">
+    <i class="bi bi-arrow-left"></i> Back to details
+  </a>
+</h1>
+
+  <div class="mb-3">
+    <span class="badge badge-lineage-materialization me-1">
+      materialization: {{ effective_materialization }}
+    </span>
+
+    {% if object.incremental_strategy and object.incremental_strategy != "full" %}
+      <span class="badge badge-lineage-incremental me-1">
+        incremental: {{ object.incremental_strategy }}
+      </span>
+    {% endif %}
+
+    {% if object.biz_entity_role %}
+      <span class="badge badge-lineage-bizrole me-1">
+        biz role: {{ object.get_biz_entity_role_display }}
+      </span>
+    {% endif %}
+
+    {% if object.biz_grain_note %}
+      <span class="badge badge-lineage-ref">
+        grain: {{ object.biz_grain_note }}
+      </span>
+    {% endif %}
+  </div>
+
+  {% if object.description %}
+    <p class="text-muted mb-4">
+      {{ object.description }}
+    </p>
+  {% endif %}
+
+  {% if health_messages %}
+    <div class="alert
+                {% if health_level == 'warning' %}alert-health-warning
+                {% elif health_level == 'error' %}alert-health-error
+                {% else %}alert-health-ok{% endif %}
+                mt-3">
+      <strong>Metadata Health Check:</strong>
+      <ul class="small mb-0">
+        {% for msg in health_messages %}
+          <li>{{ msg }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+  {% endif %}
+
+  <div class="row g-4">
+    <!-- Upstream -->
+    <div class="col-lg-6">
+      <h2 class="h5 mb-2">Upstream inputs</h2>
+      {% if upstream_inputs %}
+        <table class="table table-sm align-middle">
+          <thead>
+            <tr>
+              <th scope="col">Role</th>
+              <th scope="col">Dataset</th>
+              <th scope="col">Type</th>
+              <th scope="col">Active</th>
+            </tr>
+          </thead>
+          <tbody>
+          {% for inp in upstream_inputs %}
+            <tr>
+              <td>{{ inp.get_role_display }}</td>
+              <td>
+                {% if inp.source_dataset %}
+                  <span class="badge badge-lineage-upstream-source me-1">Source</span>
+                  <a href="{% url 'sourcedataset_detail' inp.source_dataset.pk %}">
+                    {{ inp.source_dataset.source_dataset_name }}
+                  </a>
+                {% elif inp.upstream_target_dataset %}
+                  <span class="badge badge-lineage-upstream-target me-1">Target</span>
+                  <a href="{% url 'targetdataset_detail' inp.upstream_target_dataset.pk %}">
+                    {{ inp.upstream_target_dataset.target_dataset_name }}
+                  </a>
+                {% else %}
+                  <span class="text-muted">—</span>
+                {% endif %}
+              </td>
+              <td>
+                {% if inp.source_dataset %}
+                  source_dataset
+                {% elif inp.upstream_target_dataset %}
+                  target_dataset
+                {% else %}
+                  <span class="text-muted">n/a</span>
+                {% endif %}
+              </td>
+              <td>
+                {% if inp.active %}
+                  <span class="badge badge-lineage-active">active</span>
+                {% else %}
+                  <span class="badge badge-lineage-inactive">inactive</span>
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      {% else %}
+        <p class="text-muted">No upstream inputs configured.</p>
+      {% endif %}
+    </div>
+
+    <!-- Downstream -->
+    <div class="col-lg-6">
+      <h2 class="h5 mb-2">Downstream consumers</h2>
+      {% if downstream_inputs %}
+        <table class="table table-sm align-middle">
+          <thead>
+            <tr>
+              <th scope="col">Target dataset</th>
+              <th scope="col">Role</th>
+            </tr>
+          </thead>
+          <tbody>
+          {% for inp in downstream_inputs %}
+            <tr>
+              <td>
+                <a href="{% url 'targetdataset_detail' inp.target_dataset.pk %}">
+                  {{ inp.target_dataset.target_dataset_name }}
+                </a>
+              </td>
+              <td>{{ inp.get_role_display }}</td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      {% else %}
+        <p class="text-muted">No downstream datasets using this dataset as upstream input.</p>
+      {% endif %}
+    </div>
+  </div>
+
+  <hr class="my-4">
+
+  <div class="row g-4">
+    <!-- Incoming references -->
+    <div class="col-lg-6">
+      <h2 class="h5 mb-2">Incoming references</h2>
+      {% if incoming_refs %}
+        <table class="table table-sm align-middle">
+          <thead>
+            <tr>
+              <th scope="col">Referencing dataset</th>
+              <th scope="col">Relationship</th>
+            </tr>
+          </thead>
+          <tbody>
+          {% for ref in incoming_refs %}
+            <tr>
+              <td>
+                <a href="{% url 'targetdataset_detail' ref.referencing_dataset.pk %}">
+                  {{ ref.referencing_dataset.target_dataset_name }}
+                </a>
+              </td>
+              <td>
+                <span class="badge badge-lineage-ref">
+                  {{ ref.get_relationship_type_display }}
+                </span>
+              </td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      {% else %}
+        <p class="text-muted">No incoming references.</p>
+      {% endif %}
+    </div>
+
+    <!-- Outgoing references -->
+    <div class="col-lg-6">
+      <h2 class="h5 mb-2">Outgoing references</h2>
+      {% if outgoing_refs %}
+        <table class="table table-sm align-middle">
+          <thead>
+            <tr>
+              <th scope="col">Referenced dataset</th>
+              <th scope="col">Relationship</th>
+            </tr>
+          </thead>
+          <tbody>
+          {% for ref in outgoing_refs %}
+            <tr>
+              <td>
+                <a href="{% url 'targetdataset_detail' ref.referenced_dataset.pk %}">
+                  {{ ref.referenced_dataset.target_dataset_name }}
+                </a>
+              </td>
+              <td>
+                <span class="badge badge-lineage-ref">
+                  {{ ref.get_relationship_type_display }}
+                </span>
+              </td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      {% else %}
+        <p class="text-muted">No outgoing references.</p>
+      {% endif %}
+    </div>
+  </div>
+
+{% endblock %}

@@ -22,13 +22,8 @@ Contact: <https://github.com/elevata-labs/elevata>.
 
 from __future__ import annotations
 
-from django.http import HttpResponse
-from django.shortcuts import get_object_or_404
-
-from metadata.models import TargetDataset
-from metadata.rendering.builder import build_logical_select_for_target
-from metadata.rendering.renderer import render_sql
-from metadata.rendering.dialects.duckdb import DuckDBDialect
+from metadata.rendering.renderer import render_select_for_target
+from metadata.rendering.dialects import get_active_dialect
 
 
 def beautify_sql(sql: str) -> str:
@@ -49,7 +44,7 @@ def beautify_sql(sql: str) -> str:
   keywords = [
     "select", "from", "where", "group by", "order by", "union", "union all",
     "inner join", "left join", "right join", "full join", "on",
-    "as", "and", "or", "case", "when", "then", "else", "end"
+    "as", "and", "or", "case", "when", "then", "else", "end",
   ]
   for kw in sorted(keywords, key=len, reverse=True):
     pattern = r"\b" + re.escape(kw) + r"\b"
@@ -62,40 +57,22 @@ def beautify_sql(sql: str) -> str:
     sql,
   )
 
-  # 4) Put SELECT list on separate lines:
-  #    "SELECT a, b, c"  ->  "SELECT\n  a,\n  b,\n  c"
+  # 4) Put SELECT list on separate lines
   sql = re.sub(r"SELECT\s+", "SELECT\n  ", sql)
   sql = sql.replace(", ", ",\n  ")
 
-  # 5) Indent the line following FROM / WHERE / GROUP BY / ORDER BY
+  # 5) Indent lines following FROM / WHERE / GROUP BY / ORDER BY
   sql = re.sub(r"\n(FROM|WHERE|GROUP BY|ORDER BY)\s+", r"\n\1\n  ", sql)
 
   return sql.strip()
 
 
-def build_sql_preview_for_target(target_ds):
-  """Return SQL string only (used internally)."""
-  logical_plan = build_logical_select_for_target(target_ds)
-  dialect = DuckDBDialect()
-  raw_sql = render_sql(logical_plan, dialect)
+def build_sql_preview_for_target(target_ds) -> str:
+  """
+  Build a dialect-aware, beautified SQL SELECT for a single TargetDataset.
+
+  This is used by the UI preview and by tests.
+  """
+  dialect = get_active_dialect()
+  raw_sql = render_select_for_target(target_ds, dialect)
   return beautify_sql(raw_sql)
-
-
-def preview_target_sql(request, pk):
-  """Return rendered HTML preview."""
-  try:
-    target_ds = get_object_or_404(TargetDataset, pk=pk)
-    sql = build_sql_preview_for_target(target_ds)
-    return HttpResponse(
-      '<div class="alert alert-success py-1 px-2 mb-0 small">'
-      '<pre class="mb-0" style="white-space: pre-wrap;">'
-      f'{sql}'
-      '</pre>'
-      '</div>'
-    )
-  except Exception as e:
-    return HttpResponse(
-      f'<div class="alert alert-danger py-1 px-2 mb-0 small">'
-      f'SQL preview failed: {e}</div>',
-      status=500,
-    )

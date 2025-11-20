@@ -27,13 +27,14 @@ from django.contrib import messages
 from django.utils.translation import gettext_lazy as _
 from django.forms import modelform_factory
 from django.http import Http404, HttpResponse, HttpResponseNotFound
-from django.template.loader import render_to_string
 from crum import get_current_user
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.conf import settings
 from django.db import models
 from django import forms as djforms
 from django.apps import apps
+from django.core.exceptions import FieldDoesNotExist
+from django.db.models import ManyToManyField
 
 # ------------------------------------------------------------
 # Utility helper
@@ -170,7 +171,30 @@ class GenericCRUDView(LoginRequiredMixin, View):
     base_locked.update(extra_fields)
 
     return base_locked
-  
+
+
+  def get_schema_readonly_fields(self, instance):
+    """
+    Return a set of field names that should be read-only for this instance
+    based solely on its TargetSchema, regardless of is_system_managed.
+    """
+    if not instance:
+      return set()
+
+    meta_cfg = getattr(settings, "ELEVATA_CRUD", {}).get("metadata", {})
+    sysman_cfg_all = meta_cfg.get("system_managed", {})
+
+    schema_short_name = self._get_schema_short_name_for_instance(instance)
+    if not schema_short_name:
+      return set()
+
+    schema_readonly_cfg = sysman_cfg_all.get("schema_readonly", {})
+    schema_cfg = schema_readonly_cfg.get(schema_short_name, {})
+
+    model_cfg = schema_cfg.get(self.model.__name__, [])
+    return set(model_cfg)
+
+
   def _get_schema_short_name_for_instance(self, instance):
     """
     Try to determine the TargetSchema.short_name for a given instance.
@@ -218,23 +242,35 @@ class GenericCRUDView(LoginRequiredMixin, View):
       return False
     return getattr(instance, "is_system_managed", False) is True
 
+
   def apply_system_managed_locking(self, form, instance):
     """
-    If instance is marked system-managed, disable editing for locked fields.
-    Also hide is_system_managed itself, if present.
-    """
-    locked_fields = self.get_system_managed_locked_fields(instance)
+    Apply read-only rules to the form:
 
+    - schema-level readonly fields (irrelevant in a given layer),
+      configured via settings.ELEVATA_CRUD["metadata"]["system_managed"]["schema_readonly"]
+    - system-managed locked fields for rows where is_system_managed == True
+    - hide is_system_managed itself from the form
+    """
+    # 1) Always-readonly fields for this schema/model
+    readonly_fields = self.get_schema_readonly_fields(instance)
+    for fname in readonly_fields:
+      if fname in form.fields:
+        form.fields[fname].disabled = True
+        form.fields[fname].widget.attrs["readonly"] = True
+
+    # 2) System-managed locked fields (existing behavior)
+    locked_fields = self.get_system_managed_locked_fields(instance)
     if self.is_instance_system_managed(instance):
       for fname in locked_fields:
         if fname in form.fields:
           form.fields[fname].disabled = True
-          # cosmetic: also set readonly attr so it *looks* uneditable
           form.fields[fname].widget.attrs["readonly"] = True
 
-    # Hide is_system_managed itself from the form entirely
+    # 3) Hide is_system_managed flag itself
     if "is_system_managed" in form.fields:
       form.fields["is_system_managed"].widget = djforms.HiddenInput()
+
 
   def is_creation_blocked_for_model(self):
     """Evaluates if a model does not allow creation of new rows."""
@@ -246,16 +282,30 @@ class GenericCRUDView(LoginRequiredMixin, View):
     """
     If instance is system-managed, restore locked fields to their original DB values
     to prevent tampering via POST.
+
+    Many-to-many fields are skipped here, because direct assignment is not allowed
+    and they are typically managed via separate relation updates.
     """
     if not self.is_instance_system_managed(instance):
       return
 
     locked_fields = self.get_system_managed_locked_fields(instance)
 
-    # If this is an update: load original DB values
     if instance.pk:
       original = self.model.objects.get(pk=instance.pk)
+      model_meta = self.model._meta
+
       for fname in locked_fields:
+        try:
+          field = model_meta.get_field(fname)
+        except FieldDoesNotExist:
+          # Unknown field name in configuration: ignore safely
+          continue
+
+        # Skip many-to-many fields (and optionally reverse relations)
+        if isinstance(field, ManyToManyField) or field.many_to_many:
+          continue
+
         setattr(instance, fname, getattr(original, fname))
 
   def get_toggle_field_names(self):
@@ -548,15 +598,10 @@ class GenericCRUDView(LoginRequiredMixin, View):
       existing = widget.attrs.get("class", "")
       widget.attrs["class"] = f"{existing} form-control".strip()
 
-    # Set autofocus on first usable field
-    for name, bf in FormClass.base_fields.items():
-      widget = bf.widget
-      # skip checkboxes/hidden fields
-      if isinstance(widget, (w.CheckboxInput, w.HiddenInput)):
-        continue
-      widget.attrs.setdefault("autofocus", True)
-      break
-
+    # IMPORTANT:
+    # Do not set autofocus here – focus is handled globally
+    # in base.html after system-managed locking and dynamic
+    # field enhancements have been applied.
     return FormClass
    
   def get_queryset(self):
@@ -641,7 +686,39 @@ class GenericCRUDView(LoginRequiredMixin, View):
       form.fields[field_name].widget = djforms.Select(choices=choices)
 
     return form
+  
+  def _apply_autofocus(self, form):
+    """
+    Set 'autofocus' on the first truly editable field in a full-page form.
 
+    Regeln:
+    - Felder, die vom Field selbst als disabled markiert sind, werden übersprungen
+    - Hidden- und Checkbox-Felder werden übersprungen
+    - Widgets mit readonly/disabled-Attribut werden übersprungen
+    """
+    from django.forms import widgets as wdg
+
+    for name, field in form.fields.items():
+      # Field ist von Django disabled
+      if getattr(field, "disabled", False):
+        continue
+
+      widget = field.widget
+
+      # Hidden oder Checkbox überspringen
+      if isinstance(widget, (wdg.HiddenInput, wdg.CheckboxInput)):
+        continue
+
+      # Widgets, die explizit readonly/disabled sind, überspringen
+      if widget.attrs.get("readonly") or widget.attrs.get("disabled"):
+        continue
+
+      # Dieses Feld bekommt den Autofokus
+      widget.attrs["autofocus"] = True
+      break
+
+    return form
+    
   # --------------------------------------------------
   # CRUD operations (standard)
   # --------------------------------------------------
@@ -668,6 +745,9 @@ class GenericCRUDView(LoginRequiredMixin, View):
       form = FormClass(instance=obj)
       self.apply_system_managed_locking(form, obj)
       form = self.enhance_dynamic_fields(form)
+
+    form = self._apply_autofocus(form)
+
     context = {
       "form": form,
       "object": obj,

@@ -29,7 +29,7 @@ it defines **how a modern data architecture should look** — opinionated, gover
 *In other words: elevata brings structure, governance, and automation to modern data platforms — from metadata to SQL.*
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/elevata-labs/elevata/main/docs/elevata_ui_v0_3_0.png" alt="elevata UI preview" width="700"/>
+  <img src="https://raw.githubusercontent.com/elevata-labs/elevata/main/docs/elevata_ui_v0_4_0.png" alt="elevata UI preview" width="700"/>
 </p>
 
 ---
@@ -58,6 +58,7 @@ Its purpose is to take what is usually scattered across SQL scripts, YAML files,
 
 ## ⚙️ Key Features & Capabilities
 
+- Modular SQL dialect layer enabling backend-specific SQL generation (DuckDB today, Postgres/MSSQL/Snowflake upcoming)
 - Automated generation of target datasets and columns 
   from imported metadata, including PK propagation and surrogate key creation  
 - Deterministic, lookup-free surrogate keys (SHA-256 + runtime-loaded pepper)  
@@ -186,6 +187,9 @@ See the [`/docs`](docs/) folder for in-depth setup and technical design notes:
 - [Lineage Model & Logical Plan](docs/lineage_and_logical_plan.md)  
 - [SQL Preview & Rendering Pipeline](docs/sql_preview_pipeline.md)  
 - [Testing & Quality](docs/tests.md)  
+- [Dialect System](docs/dialect_system.md)  
+- [Load SQL Architecture](docs/load_sql_architecture.md)  
+- [Incremental Load Architecture](docs/incremental_load.md)  
 
 ---
 

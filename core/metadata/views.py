@@ -24,36 +24,50 @@ import re
 from django.core.management import call_command
 from django.apps import apps
 from django.conf import settings
-from generic import GenericCRUDView
-from django.http import HttpResponse
+from django.http import JsonResponse, HttpResponse, HttpResponseBadRequest
 from django.contrib.auth.decorators import login_required, permission_required
 from django.core.management import call_command
+from django.utils.html import escape
+from django.views.decorators.http import require_POST
+from django.shortcuts import get_object_or_404, render
 from io import StringIO
+from generic import GenericCRUDView
+from sqlalchemy.exc import SQLAlchemyError
+import traceback
+
 from metadata.constants import DIALECT_HINTS
-
-# --- custom import views (HTMX-friendly) ---
-
-from django.contrib.auth.decorators import login_required, permission_required
-from django.views.decorators.http import require_POST
-from django.shortcuts import get_object_or_404, render
-from django.http import JsonResponse, HttpResponseBadRequest
 from metadata.forms import TargetColumnForm, TargetDatasetForm
-from metadata.models import SourceDataset, SourceSystem, TargetDataset, TargetColumn
+from metadata.models import SourceDataset, SourceSystem, TargetDataset, TargetDatasetInput
 from metadata.ingestion.import_service import import_metadata_for_datasets
-from sqlalchemy.exc import SQLAlchemyError
-import traceback
 
-from django.contrib.auth.decorators import permission_required
-from django.views.decorators.http import require_POST
-from django.shortcuts import get_object_or_404, render
-from django.http import JsonResponse, HttpResponseBadRequest
-from django.utils.html import escape, conditional_escape
-from sqlalchemy.exc import SQLAlchemyError
-import traceback
-
-from metadata.generation.target_generation_service import TargetGenerationService
-from metadata.generation.security import get_runtime_pepper
 from metadata.rendering.preview import build_sql_preview_for_target
+from metadata.rendering.load_sql import render_merge_sql, render_delete_missing_rows_sql
+from metadata.rendering.dialects import get_active_dialect
+
+
+from metadata.generation.validators import summarize_targetdataset_health
+
+
+def _render_sql_ok(sql: str) -> HttpResponse:
+  return HttpResponse(
+    '<div class="alert alert-sql py-1 px-2 mb-0 small">'
+    '<pre class="mb-0" style="white-space: pre-wrap;">'
+    f'{sql}'
+    '</pre>'
+    '</div>'
+  )
+
+import logging
+logger = logging.getLogger(__name__)
+
+def _render_sql_error(prefix: str, exc: Exception) -> HttpResponse:
+  logger.exception("%s: %s", prefix, exc)
+  return HttpResponse(
+    f'<div class="alert alert-danger py-1 px-2 mb-0 small">'
+    f'{prefix}: {escape(str(exc))}'
+    f'</div>',
+    status=500,
+  )
 
 
 def make_crud_view(model):
@@ -246,31 +260,108 @@ def generate_targets(request):
       status=500,
     )
   
-
 @login_required
 @permission_required("metadata.view_targetdataset", raise_exception=True)
 def targetdataset_sql_preview(request, pk: int):
-  """
-  Build and return a SQL preview snippet for a single TargetDataset.
-
-  Intended to be called via HTMX from the UI.
-  """
   dataset = get_object_or_404(TargetDataset, pk=pk)
 
   try:
     sql = build_sql_preview_for_target(dataset)
-    # Basic HTML-escaped <pre><code> block for readability
-    return HttpResponse(
-      '<div class="alert alert-success py-1 px-2 mb-0 small">'
-      '<pre class="mb-0" style="white-space: pre-wrap;">'
-      f'{sql}'
-      '</pre>'
-      '</div>'
-    )
+    return _render_sql_ok(sql)
   except Exception as e:
-    return HttpResponse(
-      f'<div class="alert alert-danger py-1 px-2 mb-0 small">'
-      f'SQL preview failed: {escape(str(e))}'
-      f'</div>',
-      status=500,
+    return _render_sql_error("SQL preview failed", e)
+
+
+@login_required
+@permission_required("metadata.view_targetdataset", raise_exception=True)
+def targetdataset_merge_sql_preview(request, pk):
+  dataset = get_object_or_404(TargetDataset, pk=pk)
+
+  try:
+    dialect = get_active_dialect()
+    sql = render_merge_sql(dataset, dialect)
+    return _render_sql_ok(sql)
+  except Exception as e:
+    return _render_sql_error("SQL preview failed", e)
+
+
+@login_required
+@permission_required("metadata.view_targetdataset", raise_exception=True)
+def targetdataset_delete_sql_preview(request, pk):
+  dataset = get_object_or_404(TargetDataset, pk=pk)
+
+  try:
+    dialect = get_active_dialect()
+    sql = render_delete_missing_rows_sql(dataset, dialect)
+    return _render_sql_ok(sql)
+  except Exception as e:
+    return _render_sql_error("SQL preview failed", e)
+
+
+@login_required
+@permission_required("metadata.view_targetdataset", raise_exception=True)
+def targetdataset_lineage(request, pk):
+  """
+  Read-only lineage overview for a single TargetDataset.
+
+  Shows:
+    - Upstream inputs (source datasets + upstream target datasets)
+    - Downstream datasets that use this dataset as upstream
+    - Incoming / outgoing semantic references (FK-style relationships)
+  """
+  dataset = get_object_or_404(
+    TargetDataset.objects.select_related("target_schema"),
+    pk=pk,
+  )
+
+  # Upstream: how this dataset is built
+  upstream_inputs = (
+    dataset.input_links
+    .select_related("source_dataset", "upstream_target_dataset")
+    .order_by("role", "id")
+  )
+
+  # Downstream: other targets that use this dataset as input (via upstream_target_dataset)
+  downstream_inputs = (
+    TargetDatasetInput.objects
+    .select_related("target_dataset")
+    .filter(upstream_target_dataset=dataset)
+    .order_by("target_dataset__target_dataset_name")
+  )
+
+  # Semantic references (FK-style)
+  incoming_refs = (
+    dataset.incoming_references
+    .select_related("referencing_dataset")
+    .order_by("referencing_dataset__target_dataset_name")
+  )
+  outgoing_refs = (
+    dataset.outgoing_references
+    .select_related("referenced_dataset")
+    .order_by("referenced_dataset__target_dataset_name")
+  )
+
+  # Effective materialization (schema default + override)
+  if hasattr(dataset, "effective_materialization_type"):
+    eff_attr = getattr(dataset, "effective_materialization_type")
+    effective_mat = eff_attr() if callable(eff_attr) else eff_attr
+  else:
+    effective_mat = getattr(dataset, "materialization_type", None) or getattr(
+      dataset.target_schema, "default_materialization_type", "table"
     )
+
+  health_level, health_messages = summarize_targetdataset_health(dataset)
+
+  context = {
+    "object": dataset,
+    "title": f"Lineage for {dataset.target_dataset_name}",
+    "upstream_inputs": upstream_inputs,
+    "downstream_inputs": downstream_inputs,
+    "incoming_refs": incoming_refs,
+    "outgoing_refs": outgoing_refs,
+    "effective_materialization": effective_mat,
+    "health_level": health_level,
+    "health_messages": health_messages,
+  }
+
+  return render(request, "metadata/lineage/targetdataset_lineage.html", context)

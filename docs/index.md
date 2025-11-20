@@ -13,15 +13,20 @@ your single source of truth for metadata-driven data & analytics automation.
 
 ### 🧩 Metadata Model & Generation
 - [Generation Logic](generation_logic.md)
+- [Incremental Load Architecture](incremental_load.md)
+- [Load SQL Architecture](load_sql_architecture.md)
 
 ### 🖌️ SQL Rendering & Dialects
 - [SQL Rendering Conventions](sql_rendering_conventions.md)  
+- [Dialect System](dialect_system.md)  
 - [Target Backends (Target Platforms)](target_backends.md)  
-- [Template Naming Conventions (HTMX / Partials)](sql_rendering_conventions.md#template-naming-conventions-htmx-partials)
+- [Template Naming Conventions (HTMX / Partials)](sql_rendering_conventions.md#template-naming-conventions-htmx-partials)   
 
 ### 💡 Concepts
-- [Lineage Model & Logical Plan](lineage_and_logical_plan.md)  
+- [Architecture Overview](architecture_overview.md)
+- [Lineage Model & Logical Plan](lineage_and_logical_plan.md)
 - [SQL Preview & Rendering Pipeline](sql_preview_pipeline.md)
+- [Metadata Health Check](health_check.md)
 
 ### 📥 Source Integration
 - [Source Backends](source_backends.md)
@@ -52,4 +57,4 @@ A personal open-source initiative exploring the future of declarative data archi
 
 ---
 
-_Last updated: 2025-11-12_
+_Last updated: 2025-11-18_

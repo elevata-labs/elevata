@@ -31,7 +31,20 @@ from . import views
 from . import views_inline_api
 from metadata.models import SourceDataset, SourceSystem
 
-# app_name = "metadata"
+from .views_scoped import (
+  # Target side
+  TargetDatasetInputScopedView,
+  TargetDatasetColumnScopedView,
+  TargetDatasetReferenceScopedView,
+  TargetColumnInputScopedView,
+  TargetDatasetOwnershipScopedView,
+  # Source side
+  SourceSystemDatasetScopedView,
+  SourceDatasetColumnScopedView,
+  SourceDatasetGroupMembershipScopedView,
+  SourceDatasetOwnershipScopedView,
+  SourceDatasetIncrementPolicyScopedView
+)
 
 # ------------------------------------------------------------
 # Configuration (optional, read from settings.ELEVATA_CRUD)
@@ -113,11 +126,13 @@ for model in models_sorted:
 
     # Toggle for given Boolean field (eg. Integrate)
     path(f"{seg}/<int:pk>/row-toggle/", view_cls.as_view(action="row_toggle"), name=f"{model_name}_row_toggle"),
-
-    # Others
-    path("source-type-hint/", views.source_type_hint, name="source_type_hint"),
-    path("generate-targets/", views.generate_targets, name="generate_targets"),
   ]
+
+# Others (once, not per model)
+urlpatterns += [
+  path("source-type-hint/", views.source_type_hint, name="source_type_hint"),
+  path("generate-targets/", views.generate_targets, name="generate_targets"),
+]
 
 # Custom import endpoints (UI-Buttons → HTMX POST)
 ds_seg = path_segment_for(SourceDataset)
@@ -139,21 +154,6 @@ print(
 # --------------------------------------------------------------------
 # Scoped Views for Source and Target Metadata (auto-generated patterns)
 # --------------------------------------------------------------------
-
-from django.urls import path
-from .views_scoped import (
-  # Target side
-  TargetDatasetInputScopedView,
-  TargetDatasetColumnScopedView,
-  TargetDatasetReferenceScopedView,
-  TargetColumnInputScopedView,
-  TargetDatasetOwnershipScopedView,
-  # Source side
-  SourceSystemDatasetScopedView,
-  SourceDatasetColumnScopedView,
-  SourceDatasetGroupMembershipScopedView,
-  SourceDatasetOwnershipScopedView
-)
 
 scoped_views = {
   "targetdataset/<int:parent_pk>/inputs/": (
@@ -191,81 +191,36 @@ scoped_views = {
   "sourcedataset/<int:parent_pk>/ownerships/": (
     SourceDatasetOwnershipScopedView,
     "sourcedatasetownership",
-  )
+  ),
+  "sourcedataset/<int:parent_pk>/increment-policies/": (
+    SourceDatasetIncrementPolicyScopedView,
+    "sourcedatasetincrementpolicy",
+  ),
 }
 
 for base_path, (view, prefix) in scoped_views.items():
   urlpatterns += [
-    # Liste der Child-Objekte für einen bestimmten Parent
-    path(
-      base_path,
-      view.as_view(action="list"),
-      name=f"{prefix}_list",
-    ),
-
-    # Inline-"Add Row": Formular-Zeile holen
-    path(
-      base_path + "row-new/",
-      view.as_view(action="row_new"),
-      name=f"{prefix}_row_new",
-    ),
-
-    # Inline-"Save New Row": Formular absenden
-    path(
-      base_path + "row-create/",
-      view.as_view(action="row_create"),
-      name=f"{prefix}_row_create",
-    ),
-
-    # Inline edit bestehender Zeile
-    path(
-      base_path + "<int:pk>/row-edit/",
-      view.as_view(action="row_edit"),
-      name=f"{prefix}_row_edit",
-    ),
-
-    # Inline delete bestehender Zeile
-    path(
-      base_path + "<int:pk>/row-delete/",
-      view.as_view(action="row_delete"),
-      name=f"{prefix}_row_delete",
-    ),
-
+    # List of child objects for a certain parent
+    path(base_path, view.as_view(action="list"), name=f"{prefix}_list"),
+    # Inline-"Add Row": get form row
+    path(base_path + "row-new/", view.as_view(action="row_new"), name=f"{prefix}_row_new"),
+    # Inline-"Save New Row": send form
+    path(base_path + "row-create/", view.as_view(action="row_create"), name=f"{prefix}_row_create"),
+    # Inline edit of existing row
+    path(base_path + "<int:pk>/row-edit/", view.as_view(action="row_edit"), name=f"{prefix}_row_edit"),
+    # Inline delete of existing row
+    path(base_path + "<int:pk>/row-delete/", view.as_view(action="row_delete"), name=f"{prefix}_row_delete"),
     # Toggle (boolean switches)
-    path(
-      base_path + "<int:pk>/row-toggle/",
-      view.as_view(action="row_toggle"),
-      name=f"{prefix}_row_toggle",
-    ),
-
-    path(
-      base_path + "<int:pk>/row/",
-      view.as_view(action="row"),
-      name=f"{prefix}_row",
-    ),
-
+    path(base_path + "<int:pk>/row-toggle/", view.as_view(action="row_toggle"), name=f"{prefix}_row_toggle"),
+    path(base_path + "<int:pk>/row/", view.as_view(action="row"), name=f"{prefix}_row")
   ]
 
-urlpatterns.append(
-  path(
-    "target-datasets/<int:pk>/sql-preview/",
-    views.targetdataset_sql_preview,
-    name="targetdataset_sql_preview",
-  )
-)
-
-urlpatterns.append(
-  path(
-    "api/target-datasets/<int:pk>/rename/",
-    views_inline_api.targetdataset_rename,
-    name="api_targetdataset_rename",
-  )
-)
-
-urlpatterns.append(
-  path(
-    "api/target-columns/<int:pk>/rename/",
-    views_inline_api.targetcolumn_rename,
-    name="api_targetcolumn_rename",
-  )
-)
+# Previews and comfort functions
+urlpatterns += [
+  path("target-datasets/<int:pk>/sql-preview/", views.targetdataset_sql_preview, name="targetdataset_sql_preview"),
+  path("target-datasets/<int:pk>/sql/merge/", views.targetdataset_merge_sql_preview, name="targetdataset_merge_sql_preview"),
+  path("target-datasets/<int:pk>/sql/delete/", views.targetdataset_delete_sql_preview, name="targetdataset_delete_sql_preview"),
+  path("target-datasets/<int:pk>/lineage/", views.targetdataset_lineage, name="targetdataset_lineage"),
+  path("api/target-datasets/<int:pk>/rename/", views_inline_api.targetdataset_rename, name="api_targetdataset_rename"),
+  path("api/target-columns/<int:pk>/rename/", views_inline_api.targetcolumn_rename, name="api_targetcolumn_rename"),
+]

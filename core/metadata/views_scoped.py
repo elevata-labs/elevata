@@ -39,7 +39,8 @@ from metadata.models import (
   SourceColumn,
   SourceDatasetGroup,
   SourceDatasetGroupMembership,
-  SourceDatasetOwnership
+  SourceDatasetOwnership,
+  SourceDatasetIncrementPolicy,
 )
 
 class _ScopedChildView(GenericCRUDView):
@@ -541,6 +542,7 @@ class TargetColumnInputScopedView(_ScopedChildView):
     ctx["column"] = self.get_parent_object()
     return ctx
 
+
 # ---------------- Source side ----------------
 
 class SourceSystemDatasetScopedView(_ScopedChildView):
@@ -634,4 +636,27 @@ class TargetDatasetOwnershipScopedView(_ScopedChildView):
   def get_context_data(self, **kwargs):
     ctx = super().get_context_base(self.request) if hasattr(self, "request") else {}
     ctx["dataset"] = self.get_parent_object()
+    return ctx
+  
+
+class SourceDatasetIncrementPolicyScopedView(_ScopedChildView):
+  """
+  Scoped CRUD for SourceDatasetIncrementPolicy, filtered by parent SourceDataset.
+  """
+  model = SourceDatasetIncrementPolicy
+  parent_model = SourceDataset
+  route_name = "sourcedatasetincrementpolicy_list"
+
+  def get_queryset(self):
+    return (
+      self.model.objects
+      .filter(source_dataset_id=self.get_parent_pk())
+      .select_related("source_dataset")
+      .order_by("environment")
+    )
+
+  def get_context_data(self, **kwargs):
+    ctx = super().get_context_data(**kwargs)
+    ctx["dataset"] = self.get_parent_object()
+    ctx["title"] = f"Increment policies for source dataset {ctx['dataset']}"
     return ctx

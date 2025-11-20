@@ -32,53 +32,6 @@ Contact: <https://github.com/elevata-labs/elevata>.
     <link rel="stylesheet" href="{% static 'css/elevata-theme.css' %}">
     <!-- HTMX for inline edit/create -->
   </head>
-  <script>
-    // Focus helper: find first focusable in a container
-    function focusFirst(container) {
-      if (!container) return;
-      const el =
-        container.querySelector('[autofocus]') ||
-        container.querySelector('input:not([type="hidden"]):not([disabled]), textarea:not([disabled]), select:not([disabled])');
-      if (el) {
-        el.focus({ preventScroll: true });
-        if (typeof el.select === 'function') el.select();
-      }
-    }
-
-    // On initial page load: focus first field in full-page forms
-    document.addEventListener('DOMContentLoaded', () => {
-      const fullForm = document.querySelector('.elevata-form');
-      focusFirst(fullForm);
-    });
-
-    // After HTMX swaps: focus a sensible first input in the swapped region
-    document.body.addEventListener('htmx:afterSwap', (e) => {
-      // Prefer HTMX's explicit swap target
-      const root = (e.detail && e.detail.target) ? e.detail.target : e.target;
-
-      // If a table row form was swapped, prefer that row as focus scope
-      const container = root.closest('tr[id^="row-"]') || root;
-
-      // 1) Try your generic helper
-      focusFirst(container);
-
-      // 2) Fallback: if nothing focused, look for first form and its first editable field
-      if (document.activeElement === document.body || !document.activeElement) {
-        const form = container.querySelector('form');
-        if (form) {
-          const first = form.querySelector(
-            "input:not([type=hidden]):not([disabled]):not([readonly])," +
-            "select:not([disabled])," +
-            "textarea:not([disabled])"
-          );
-          if (first) {
-            first.focus({ preventScroll: true });
-            if (typeof first.select === 'function') first.select();
-          }
-        }
-      }
-    });
-  </script>
   <script src="https://unpkg.com/lucide@latest"></script>
   <body class="p-3">
     <form style="display:none;">{% csrf_token %}</form>
@@ -193,9 +146,67 @@ Contact: <https://github.com/elevata-labs/elevata>.
       if (token) e.detail.headers['X-CSRFToken'] = token;
     });
   </script>
+  <!-- elevata: focus handling -->
+  <script>
+    function elevataFocusFirstInForm(form) {
+      if (!form) return;
+
+      const editableSelector =
+        'input:not([type="hidden"]):not([disabled]):not([readonly]),' +
+        'select:not([disabled]):not([readonly]),' +
+        'textarea:not([disabled]):not([readonly])';
+
+      const el = form.querySelector(editableSelector);
+      if (!el) return;
+
+      try {
+        el.focus({ preventScroll: true });
+      } catch (e) {
+        el.focus();
+      }
+      if (typeof el.select === 'function') {
+        el.select();
+      }
+    }
+
+    // Initial page load: prefer a full-page CRUD form (not inline)
+    (function () {
+      const fullForm = document.querySelector(
+        'form.elevata-form:not(.elevata-form-inline)'
+      );
+      if (fullForm) {
+        elevataFocusFirstInForm(fullForm);
+        return;
+      }
+
+      // Fallback: first form in <main> (e.g. filters)
+      const anyForm = document.querySelector('main form');
+      if (anyForm) {
+        elevataFocusFirstInForm(anyForm);
+      }
+    })();
+
+    // After HTMX swaps: focus last inline form (add/edit row) if present
+    document.body.addEventListener('htmx:afterSwap', function (e) {
+      const inlineForms = document.querySelectorAll('form.elevata-form-inline');
+      if (inlineForms.length > 0) {
+        const lastInlineForm = inlineForms[inlineForms.length - 1];
+        elevataFocusFirstInForm(lastInlineForm);
+        return;
+      }
+
+      // Fallback: focus inside the swapped target
+      const target = (e.detail && e.detail.target) ? e.detail.target : e.target;
+      const formInTarget = target.querySelector && target.querySelector('form');
+      if (formInTarget) {
+        elevataFocusFirstInForm(formInTarget);
+      }
+    });
+  </script>
   <script>
     lucide.createIcons();
   </script>
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+
 </body>
 </html>

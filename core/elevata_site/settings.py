@@ -43,7 +43,7 @@ from utils.db import build_metadata_database_url
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(find_dotenv(filename=".env", raise_error_if_not_found=False))
 
-ELEVATA_VERSION = "0.3.0"
+ELEVATA_VERSION = "0.4.0"
 
 ELEVATA_PROFILES_PATH = os.getenv("ELEVATA_PROFILES_PATH", str((BASE_DIR.parent / "config" / "elevata_profiles.yaml")))
 
@@ -222,7 +222,6 @@ ELEVATA_CRUD = {
       "SourceDatasetIncrementPolicy",
       "SourceDatasetGroupMembership",
       "TargetDatasetInput",
-      "IncrementFieldMap",
       "TargetColumnInput",
       "TargetDatasetReferenceComponent",
     ],
@@ -234,7 +233,12 @@ ELEVATA_CRUD = {
         "database_name",
         "schema_name",
         "physical_prefix",
+        "generate_layer",
+        "consolidate_groups",
+        "is_user_visible",
         "default_materialization_type",
+        "default_historize",
+        "incremental_strategy_default",
         "surrogate_keys_enabled",
         "surrogate_key_algorithm",
         "surrogate_key_null_token",
@@ -245,12 +249,20 @@ ELEVATA_CRUD = {
       "TargetDataset": [
         "target_schema",
         "target_dataset_name",
+        "incremental_strategy",
         "incremental_source",
         "handle_deletes",
         "historize",
-        "distinct_select",
-        "materialization_type",
+        "source_datasets",
+        "upstream_datasets",
+        "combination_mode",
+        "biz_entity_role",
+        "biz_grain_note",
         "manual_model",
+        "distinct_select",
+        "data_filter",
+        "active",
+        "retired_at",
       ],
       "TargetColumn": [
         "target_dataset",
@@ -289,9 +301,10 @@ ELEVATA_CRUD = {
               "target_dataset_name",
               "handle_deletes",
               "historize",
-              "distinct_select",
-              "materialization_type",
               "manual_model",
+              "distinct_select",
+              "data_filter",
+              "active",
             ],
           },
           "TargetColumn": {
@@ -309,11 +322,29 @@ ELEVATA_CRUD = {
               "upstream_columns",
               "lineage_origin",
               "active",
-              "retired_at",
             ],
           },
         },
       },
+      # schema-level readonly fields (independent of is_system_managed)
+      "schema_readonly": {
+        "bizcore": {
+          "TargetDataset": [
+            "handle_deletes",
+            "manual_model",
+            "incremental_source",
+            "source_datasets"
+          ],
+          "TargetColumn": [
+          ],
+        },
+        "serving": {
+          "TargetDataset": [
+          ],
+          "TargetColumn": [
+          ],
+        },
+      }, 
     },
     "no_create": [
       "TargetSchema"

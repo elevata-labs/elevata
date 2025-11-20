@@ -27,20 +27,24 @@ from pathlib import Path
 import pytest
 
 
-def main():
+def main(argv=None):
   """Configure Django and run pytest."""
   root = Path(__file__).resolve().parent
 
-  # Ensure repository root is on sys.path so 'core' and 'utils' can be imported
   if str(root) not in sys.path:
     sys.path.insert(0, str(root))
 
-  # Match your manage.py setting
   os.environ.setdefault("DJANGO_SETTINGS_MODULE", "elevata_site.settings")
 
-  # Run tests in core/tests
-  return pytest.main(["core/tests"])
+  if argv is None:
+    argv = sys.argv[1:]
 
+  # Always start in core/tests, allow extra filters/paths
+  args = ["core/tests"]
+  args.extend(argv)
+
+  return pytest.main(args)
 
 if __name__ == "__main__":
   raise SystemExit(main())
+

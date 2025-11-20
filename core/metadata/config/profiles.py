@@ -24,7 +24,7 @@ import os
 import yaml
 from pathlib import Path
 from dataclasses import dataclass
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 
 @dataclass
 class Profile:
@@ -33,6 +33,7 @@ class Profile:
   secret_ref_template: str
   overrides: Dict[str, str]
   security: Dict[str, Any]
+  default_dialect: str
 
 def _find_profiles_path(explicit_path: str | None = None) -> Path:
   """
@@ -73,6 +74,7 @@ def load_profile(profiles_path: str) -> Profile:
     secret_ref_template=p.get("secret_ref_template", "sec/{profile}/conn/{type}/{short_name}"),
     overrides=p.get("overrides", {}) or {},
     security=p.get("security", {}) or {},
+    default_dialect=p.get("default_dialect", "duckdb")
   )
 
 def render_ref(template: str, profile: Profile, **kwargs) -> str:

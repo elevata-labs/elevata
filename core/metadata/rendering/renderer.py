@@ -24,6 +24,7 @@ from __future__ import annotations
 
 from .logical_plan import LogicalSelect, LogicalUnion
 from .dialects.base import SqlDialect
+from metadata.rendering.builder import build_logical_select_for_target
 
 
 def render_sql(plan, dialect: SqlDialect) -> str:
@@ -46,3 +47,14 @@ def render_sql(plan, dialect: SqlDialect) -> str:
       f"Unsupported logical plan type: {type(plan).__name__}. "
       "Expected LogicalSelect or LogicalUnion."
     )
+
+def render_select_for_target(target_ds, dialect: SqlDialect) -> str:
+  """
+  Build the logical SELECT for a TargetDataset and render it
+  using the given dialect.
+
+  This is the core SELECT used by both the SQL preview and
+  the Load SQL layer (full refresh).
+  """
+  plan = build_logical_select_for_target(target_ds)
+  return render_sql(plan, dialect)

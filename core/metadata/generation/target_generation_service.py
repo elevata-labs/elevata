@@ -93,6 +93,41 @@ class TargetGenerationService:
       return schemas
 
 
+  def _determine_incremental_source(self, src_list):
+    """
+    Decide which SourceDataset should be stored as incremental_source
+    on the TargetDataset.
+
+    Rules:
+    - consider only SourceDatasets with incremental=True
+    - if any such dataset has a SourceDatasetGroupMembership with
+      is_primary_system=True -> prefer that one
+    - otherwise fall back to the first incremental dataset
+    - if none is incremental -> return None
+    """
+    # 1) collect incremental candidates
+    incremental_candidates = [
+      ds for ds in src_list
+      if getattr(ds, "incremental", False)
+    ]
+    if not incremental_candidates:
+      return None
+
+    # 2) prefer those whose group membership is marked as primary system
+    for ds in incremental_candidates:
+      # dataset_groups is the related_name on SourceDatasetGroupMembership
+      membership_qs = getattr(ds, "dataset_groups", None)
+      if membership_qs is None:
+        continue
+
+      primary_membership = membership_qs.filter(is_primary_system=True).first()
+      if primary_membership is not None:
+        return ds
+
+    # 3) fallback: first incremental source in the bucket
+    return incremental_candidates[0]
+
+
   def build_dataset_bundle(self, source_dataset, target_schema):
     """
     Build a draft TargetDataset + TargetColumns for a single source_dataset in a given target_schema.
@@ -283,6 +318,26 @@ class TargetGenerationService:
       return "union" if len(src_list) > 1 else "single"
     # raw + others
     return "union" if len(src_list) > 1 else "single"
+  
+
+  def _determine_incremental_strategy(self, target_schema, src_list):
+    """
+    Decide the default incremental strategy for a generated TargetDataset.
+
+    Rules:
+    - If none of the source datasets in this bucket is incremental -> 'full'
+    - If at least one source dataset is incremental               -> use
+      target_schema.incremental_strategy_default (fallback to 'full').
+    """
+    # Any incremental source in this bucket?
+    any_incremental = any(getattr(ds, "incremental", False) for ds in src_list)
+    if not any_incremental:
+      return "full"
+
+    # Source is incremental -> use schema-level default for this layer
+    default = getattr(target_schema, "incremental_strategy_default", None)
+    return default or "full"
+
 
   def _get_or_create_target_dataset(self, target_schema, dataset_draft, src_list, combination_mode):
     """
@@ -291,6 +346,12 @@ class TargetGenerationService:
     for older rows.
     """
     lineage_key = self.build_lineage_key_for_bucket(target_schema, src_list)
+    incremental_strategy = self._determine_incremental_strategy(target_schema, src_list)
+    incremental_source = self._determine_incremental_source(src_list)
+
+    # Only store incremental_source for non-full strategies
+    if incremental_strategy == "full":
+      incremental_source = None
 
     target_dataset_obj = TargetDataset.objects.filter(
       target_schema=target_schema,
@@ -318,6 +379,8 @@ class TargetGenerationService:
         is_system_managed=dataset_draft.is_system_managed,
         combination_mode=combination_mode,
         lineage_key=lineage_key,
+        incremental_strategy=incremental_strategy,
+        incremental_source=incremental_source,
       )
       created = True
     else:
@@ -334,6 +397,14 @@ class TargetGenerationService:
       if not target_dataset_obj.lineage_key:
         target_dataset_obj.lineage_key = lineage_key
         changed = True
+      if getattr(target_schema, "is_system_managed", False):
+        if target_dataset_obj.incremental_strategy != incremental_strategy:
+          target_dataset_obj.incremental_strategy = incremental_strategy
+          changed = True
+        if target_dataset_obj.incremental_source != incremental_source:
+          target_dataset_obj.incremental_source = incremental_source
+          changed = True
+
       if changed:
         target_dataset_obj.save()
 

@@ -12,12 +12,14 @@ active_profile: ${ELEVATA_PROFILE:-dev}
 
 profiles:
   dev:
+    default_dialect: duckdb
     secret_ref_template: "sec/{profile}/conn/{type}/{short_name}"
     providers:
       - type: env
     security:
       pepper_ref: "sec/{profile}/pepper"
   test:
+    default_dialect: duckdb
     secret_ref_template: "kv://sec/{profile}/conn/{type}/{short_name}"  # purely naming; provider determines access
     providers:
       - type: azure_key_vault
@@ -26,6 +28,7 @@ profiles:
     security:
       pepper_ref: "sec/{profile}/pepper"
   prod:
+    default_dialect: duckdb
     secret_ref_template: "kv://sec/{profile}/conn/{type}/{short_name}"
     overrides:
       erp: "sec/prod/conn/mssql/erp-core-01" # maps short_name 'erp' to different secret id
