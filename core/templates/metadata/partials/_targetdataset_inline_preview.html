@@ -38,6 +38,7 @@ Contact: <https://github.com/elevata-labs/elevata>.
       hx-post="{% url 'api_targetdataset_rename' pk=ds.id %}"
       hx-target="#tds-cell-{{ ds.id }}"
       hx-swap="outerHTML"
+      data-role="tc-rename-apply"
     >
       {% csrf_token %}
       <input type="hidden" name="target_dataset_name" value="{{ new_name }}" />

@@ -630,7 +630,7 @@ class GenericCRUDView(LoginRequiredMixin, View):
     "dynamic_choices": {
       "SourceDatasetGroup": {
         "target_short_name": {
-          "model": "SourceSystem",
+          "model": "System",
           "field": "target_short_name",
           "placeholder": "— choose target short name —"
         }

@@ -369,33 +369,42 @@ class DuckDBDialect(SqlDialect):
 
   def render_delete_detection_statement(
     self,
-    target_schema: str,
-    target_table: str,
-    stage_schema: str,
-    stage_table: str,
-    key_columns: list[str],
-    scope_filter: str | None = None,
-  ) -> str:
+    target_schema,
+    target_table,
+    stage_schema,
+    stage_table,
+    join_predicates,
+    scope_filter=None,
+  ):
     """
     DuckDB implementation of delete detection using DELETE + NOT EXISTS.
     """
     q = self.quote_ident
-    target_full = self.quote_table(target_schema, target_table)
-    stage_full = self.quote_table(stage_schema, stage_table)
 
-    # Build ON clause: t.key = s.key AND ...
-    on_expr = " AND ".join(
-      f"t.{q(col)} = s.{q(col)}"
-      for col in key_columns
+    target_qualified = f'{q(target_schema)}.{q(target_table)}'
+    stage_qualified = f'{q(stage_schema)}.{q(stage_table)}'
+
+    join_sql = " AND ".join(join_predicates)
+
+    conditions = []
+
+    if scope_filter:
+      # scope_filter is already a full boolean expression,
+      # e.g. (ModifiedDate > {{DELTA_CUTOFF}})
+      conditions.append(scope_filter)
+
+    # NOT EXISTS subquery using the provided join predicates
+    conditions.append(
+      f"NOT EXISTS (\n"
+      f"    SELECT 1\n"
+      f"    FROM {stage_qualified} AS s\n"
+      f"    WHERE {join_sql}\n"
+      f")"
     )
 
-    scope_expr = f"({scope_filter})" if scope_filter else "TRUE"
+    where_sql = "\n  AND ".join(conditions)
 
-    return f"""\
-      DELETE FROM {target_full} AS t
-      WHERE {scope_expr}
-        AND NOT EXISTS (
-              SELECT 1
-              FROM {stage_full} AS s
-              WHERE {on_expr}
-          );"""
+    return (
+      f'DELETE FROM {target_qualified} AS t\n'
+      f'WHERE {where_sql};'
+    )

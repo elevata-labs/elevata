@@ -29,8 +29,8 @@ Contact: <https://github.com/elevata-labs/elevata>.
       {% endif %}
     </label>
 
-    {# Special handling for SourceSystem.type → live hint below the input #}
-    {% if model_name == 'sourcesystem' and field.name == 'type' %}
+    <!-- Special handling for System.type → live hint below the input -->
+    {% if model_name == 'system' and field.name == 'type' %}
       {{ field }}
 
       <div class="small text-muted mt-1"

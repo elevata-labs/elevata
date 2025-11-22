@@ -43,7 +43,7 @@ class Command(BaseCommand):
 
   def add_arguments(self, parser):
     parser.add_argument("--all", action="store_true", help="Import all datasets")
-    parser.add_argument("--system", action="append", help="Filter by SourceSystem short_name (can be repeated)")
+    parser.add_argument("--system", action="append", help="Filter by System short_name (can be repeated)")
     parser.add_argument("--dataset", action="append", help="Filter by dataset key SYSTEM.SCHEMA.TABLE; can be repeated")
 
   def handle(self, *args, **options):

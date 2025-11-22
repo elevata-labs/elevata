@@ -42,6 +42,8 @@ import re
 from metadata.models import TargetDataset, TargetColumn
 from metadata.rendering.load_planner import build_load_plan
 from metadata.rendering.renderer import render_select_for_target
+from metadata.rendering.builder import build_logical_select_for_target
+from metadata.rendering.logical_plan import LogicalSelect
 
 
 def _get_target_columns_in_order(td: TargetDataset) -> Sequence[TargetColumn]:
@@ -53,6 +55,31 @@ def _get_target_columns_in_order(td: TargetDataset) -> Sequence[TargetColumn]:
     td.target_columns
     .order_by("ordinal_position", "target_column_name")
   )
+
+
+def _get_rendered_column_exprs_for_target(td: TargetDataset, dialect) -> dict[str, str]:
+  """
+  Helper for merge: use the same logical SELECT as preview/full load
+  to obtain the expression for each target column, rendered with the
+  given dialect.
+
+  Returns a mapping: target_column_name -> SQL expression string.
+  """
+  plan = build_logical_select_for_target(td)
+
+  # For rawcore we expect a single LogicalSelect (no UNION).
+  if not isinstance(plan, LogicalSelect):
+    # Fallback: not supported yet -> let caller decide how to proceed.
+    return {}
+
+  expr_map: dict[str, str] = {}
+
+  for item in plan.select_list:
+    # item.alias is the final target column name
+    expr_sql = dialect.render_expr(item.expr)
+    expr_map[item.alias] = expr_sql
+
+  return expr_map
 
 
 def _build_incremental_scope_filter_for_target(td: TargetDataset) -> str | None:
@@ -127,6 +154,40 @@ def _build_incremental_scope_filter_for_target(td: TargetDataset) -> str | None:
   return " ".join(expr.split())
 
 
+def _get_surrogate_expressions_for_target(td: TargetDataset, dialect) -> dict[str, str]:
+  """
+  Return a mapping of target_column_name -> rendered surrogate key expression
+  for all surrogate_key_columns of this target dataset.
+
+  The expressions are taken from the same logical SELECT that is used for
+  preview / full load, so the semantics stay consistent.
+  """
+  # Find surrogate-key columns (by target name)
+  sk_names = set(
+    td.target_columns
+    .filter(surrogate_key_column=True, surrogate_expression__isnull=False)
+    .values_list("target_column_name", flat=True)
+  )
+  if not sk_names:
+    return {}
+
+  plan = build_logical_select_for_target(td)
+  if not isinstance(plan, LogicalSelect):
+    # For rawcore we expect a single SELECT, no UNION
+    # (if this ever changes, we should revisit this helper).
+    raise TypeError(
+      f"Expected LogicalSelect for {td.target_dataset_name}, "
+      f"got {type(plan).__name__}."
+    )
+
+  mapping: dict[str, str] = {}
+  for item in plan.select_list:
+    if item.alias in sk_names:
+      mapping[item.alias] = dialect.render_expr(item.expr)
+
+  return mapping
+
+
 def render_delete_missing_rows_sql(td: TargetDataset, dialect) -> str | None:
   """
   Render a DELETE statement that removes rows from the rawcore target table
@@ -197,14 +258,35 @@ def render_delete_missing_rows_sql(td: TargetDataset, dialect) -> str | None:
   stage_schema_name = stage_td.target_schema.schema_name
   stage_table_name = stage_td.target_dataset_name
 
-  return dialect.render_delete_detection_statement(
-    target_schema_name,
-    target_table_name,
-    stage_schema_name,
-    stage_table_name,
-    key_cols,
-    scope_filter,
+  # Expressions per target column name from the logical SELECT
+  expr_map = _get_rendered_column_exprs_for_target(td, dialect)
+
+  target_alias = "t"
+  source_alias = "s"
+  q = dialect.quote_ident
+
+  join_predicates: list[str] = []
+  for col_name in key_cols:
+    # Right-hand side: expression as defined for the *target* column when
+    # reading from stage (usually s."<stage_col_name>", but inc. manual_expr and CASTs)
+    rhs_sql = expr_map.get(col_name)
+    if not rhs_sql:
+      # Fallback: best effort; should be rare
+      rhs_sql = f'{source_alias}.{q(col_name)}'
+
+    join_predicates.append(
+      f'{target_alias}.{q(col_name)} = {rhs_sql}'
+    )
+
+  sql = dialect.render_delete_detection_statement(
+    target_schema=target_schema_name,
+    target_table=target_table_name,
+    stage_schema=stage_schema_name,
+    stage_table=stage_table_name,
+    join_predicates=join_predicates,
+    scope_filter=scope_filter,
   )
+  return sql
 
 
 def _find_stage_upstream_for_rawcore(td: TargetDataset):
@@ -296,27 +378,54 @@ def render_merge_sql(td: TargetDataset, dialect) -> str:
   target_cols = list(_get_target_columns_in_order(td))
   non_key_cols = [c for c in target_cols if c.target_column_name not in key_cols]
 
-  # ON predicate: t.pk = s.pk (for all key columns)
-  on_clauses = [
-    f"{target_alias}.{q(col)} = {source_alias}.{q(col)}"
-    for col in key_cols
-  ]
+  q = dialect.quote_ident
+
+  # Expressions per target column from the logical SELECT
+  expr_map = _get_rendered_column_exprs_for_target(td, dialect)
+
+  # ON predicate: t.pk = <expr_for_pk_from_stage>
+  on_clauses: list[str] = []
+  for col in key_cols:
+    # right side: same expression which is used in full select too
+    rhs_sql = expr_map.get(col)
+    if not rhs_sql:
+      # Fallback: classic s."col", if something is missing
+      rhs_sql = f'{source_alias}.{q(col)}'
+
+    on_clauses.append(
+      f'{target_alias}.{q(col)} = {rhs_sql}'
+    )
+
   on_expr = " AND ".join(on_clauses)
 
-  # UPDATE SET col = s.col for all non-key columns
-  update_assignments = [
-    f"{q(c.target_column_name)} = "
-    f"{source_alias}.{q(c.target_column_name)}"
-    for c in non_key_cols
-  ]
+  # UPDATE SET col = <expr_for_col> for all non-key columns
+  update_assignments: list[str] = []
+  for c in non_key_cols:
+    col_name = c.target_column_name
+    value_sql = expr_map.get(col_name)
+
+    if not value_sql:
+      # Fallback: classic s."col" reference, if something is unexpectedly missing
+      value_sql = f"{source_alias}.{q(col_name)}"
+
+    update_assignments.append(
+      f"{q(col_name)} = {value_sql}"
+    )
+
   update_clause = ",\n      ".join(update_assignments)
 
-  # INSERT column list + VALUES
+  # INSERT (cols) VALUES (<expr_for_col>, ...)
   insert_columns = [c.target_column_name for c in target_cols]
   insert_cols_sql = ", ".join(q(c) for c in insert_columns)
-  insert_vals_sql = ", ".join(
-    f"{source_alias}.{q(c)}" for c in insert_columns
-  )
+
+  insert_values: list[str] = []
+  for col_name in insert_columns:
+    value_sql = expr_map.get(col_name)
+    if not value_sql:
+      value_sql = f"{source_alias}.{q(col_name)}"
+    insert_values.append(value_sql)
+
+  insert_vals_sql = ", ".join(insert_values)
 
   sql_parts: list[str] = []
   sql_parts.append(

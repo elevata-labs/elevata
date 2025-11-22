@@ -81,11 +81,13 @@ because there is no *_detail route under a parent. -->
       {% elif f.name == "type" %}
         <td class="align-middle">
           {{ object|attr:f.name }}
-          {% with level=object.type|support_level %}
-            <span class="badge {{ level|support_badge_class }} ms-1">
-              {{ level|support_label }}
-            </span>
-          {% endwith %}
+          {% if object.is_source %}
+            {% with level=object.type|support_level %}
+              <span class="badge {{ level|support_badge_class }} ms-1">
+                {{ level|support_label }}
+              </span>
+            {% endwith %}
+          {% endif %}
         </td>
 
       {% elif f.get_internal_type == "TextField" or f.name in "description,remark" %}
@@ -198,7 +200,7 @@ because there is no *_detail route under a parent. -->
       </button>
 
       <!-- Optional custom action: Import metadata on SourceDataset rows -->
-      {% if model_name == 'sourcedataset' and object.source_system.type|is_import_supported %}
+      {% if model_name == 'sourcedataset' and object.source_system.is_source and object.source_system.type|is_import_supported %}
         <form class="d-inline">
           {% csrf_token %}
           <button

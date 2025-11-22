@@ -23,7 +23,7 @@ Contact: <https://github.com/elevata-labs/elevata>.
 import pytest
 
 from metadata.models import (
-  SourceSystem,
+  System,
   SourceDataset,
   TargetSchema,
   TargetDataset,
@@ -44,14 +44,16 @@ def target_generation_service():
 @pytest.fixture
 def source_system_sap(db):
   """
-  Minimal SourceSystem for tests.
+  Minimal System for tests.
   Only required (non-null) fields are populated.
   """
-  return SourceSystem.objects.create(
+  return System.objects.create(
     short_name="sap",
     name="SAP",
-    type="db",           # 'type' has choices, but Django does not enforce them at DB level
+    type="db",
     target_short_name="sap",
+    is_source=True,
+    is_target=False,
   )
 
 

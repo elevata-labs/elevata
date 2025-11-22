@@ -50,6 +50,7 @@ Contact: <https://github.com/elevata-labs/elevata>.
       hx-post="{% url 'api_targetcolumn_rename' pk=col.id %}"
       hx-target="#tc-cell-{{ col.id }}"
       hx-swap="outerHTML"
+      data-role="tc-rename-apply"
     >
       {% csrf_token %}
       <input type="hidden" name="target_column_name" value="{{ new_name }}" />

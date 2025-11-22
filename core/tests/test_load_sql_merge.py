@@ -123,6 +123,22 @@ def test_render_merge_sql_basic_happy_path(monkeypatch):
 
   monkeypatch.setattr(load_sql, "_get_target_columns_in_order", fake_get_target_columns_in_order)
 
+  # 4) _get_rendered_column_exprs_for_target → expressions for UPDATE/INSERT
+  def fake_get_rendered_column_exprs_for_target(target_dataset, dialect_):
+    assert target_dataset is td
+    assert isinstance(dialect_, DuckDBDialect)
+    return {
+      "customer_id": 's."customer_id"',
+      "name": 's."name"',
+      "city": 's."city"',
+    }
+
+  monkeypatch.setattr(
+    load_sql,
+    "_get_rendered_column_exprs_for_target",
+    fake_get_rendered_column_exprs_for_target,
+  )
+
   # Act
   sql = render_merge_sql(td, dialect)
 

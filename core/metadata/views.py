@@ -24,7 +24,7 @@ import re
 from django.core.management import call_command
 from django.apps import apps
 from django.conf import settings
-from django.http import JsonResponse, HttpResponse, HttpResponseBadRequest
+from django.http import JsonResponse, HttpResponse, HttpResponseBadRequest, Http404
 from django.contrib.auth.decorators import login_required, permission_required
 from django.core.management import call_command
 from django.utils.html import escape
@@ -37,7 +37,7 @@ import traceback
 
 from metadata.constants import DIALECT_HINTS
 from metadata.forms import TargetColumnForm, TargetDatasetForm
-from metadata.models import SourceDataset, SourceSystem, TargetDataset, TargetDatasetInput
+from metadata.models import SourceDataset, System, TargetDataset, TargetDatasetInput
 from metadata.ingestion.import_service import import_metadata_for_datasets
 
 from metadata.rendering.preview import build_sql_preview_for_target
@@ -102,7 +102,9 @@ def _is_htmx(request):
 @permission_required("metadata.change_sourcedataset", raise_exception=True)
 @require_POST
 def import_dataset_metadata(request, pk: int):
-  ds = get_object_or_404(SourceDataset, pk=pk)
+  ds = get_object_or_404(SourceDataset.objects.select_related("source_system"), pk=pk)
+  if not ds.source_system.is_source:
+    raise Http404("Metadata import is only allowed for source systems.")
   autointegrate_pk = request.POST.get("autointegrate_pk", "on") == "on"
   reset_flags = request.POST.get("reset_flags") == "on"
 
@@ -142,7 +144,7 @@ def import_dataset_metadata(request, pk: int):
 @permission_required("metadata.change_sourcedataset", raise_exception=True)
 @require_POST
 def import_system_metadata(request, pk: int):
-  system = get_object_or_404(SourceSystem, pk=pk)
+  system = get_object_or_404(System, pk=pk, is_source=True)
   autointegrate_pk = request.POST.get("autointegrate_pk", "on") == "on"
   reset_flags = request.POST.get("reset_flags") == "on"
 

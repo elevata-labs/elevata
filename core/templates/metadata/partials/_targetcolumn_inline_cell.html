@@ -52,6 +52,21 @@ Contact: <https://github.com/elevata-labs/elevata>.
           class="form-control form-control-sm"
           placeholder="column_name"
           aria-label="Rename column"
+          onkeydown="
+            if (event.key === 'Enter') {
+              const cell = this.closest('.tc-cell');
+              if (!cell) return;
+              const applyForm = cell.querySelector('form[data-role=&quot;tc-rename-apply&quot;]');
+              if (applyForm) {
+                event.preventDefault();
+                if (applyForm.requestSubmit) {
+                  applyForm.requestSubmit();
+                } else {
+                  applyForm.submit();
+                }
+              }
+            }
+          "
         />
         <input type="hidden" name="dry_run" value="true" />
       </form>

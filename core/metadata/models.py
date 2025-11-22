@@ -115,47 +115,59 @@ class Person(AuditFields):
     return self.email
 
 # -------------------------------------------------------------------
-# SourceSystem
+# System
 # -------------------------------------------------------------------
-class SourceSystem(AuditFields):
+class System(AuditFields):
   short_name = models.CharField(max_length=10, validators=[SHORT_NAME_VALIDATOR], unique=True,
-    help_text="Physical / concrete system identifier. eg. 'sap', 'nav', 'crm', 'ga4'."
+    help_text=(
+      "Physical / concrete system identifier. eg. 'sap', 'nav', 'crm', 'ga4', "
+      "'duckdb_local', 'erp_dwh'."
+    ),
   )
   name = models.CharField(max_length=50,
-    help_text="Identifying name of the source system. Does not have technical consequences."
+    help_text="Identifying name of the system. Does not have technical consequences.",
   )
   description = models.CharField(max_length=255, blank=True, null=True,
-    help_text="Business description / semantic meaning of the source system."
+    help_text="Business description / semantic meaning of the system.",
   )
   type = models.CharField(max_length=20, choices=TYPE_CHOICES,
-    help_text="System type / backend technology. Used for import and adapter logic."
+    help_text="System type / backend technology. Used for import and adapter logic.",
   )
   target_short_name = models.CharField(max_length=10, validators=[SHORT_NAME_VALIDATOR],
-    help_text="Stable business prefix for stage/rawcore naming (e.g. 'sap', 'crm', 'fi')."
+    help_text=(
+      "Stable business prefix for stage/rawcore naming (e.g. 'sap', 'crm', 'fi'). "
+      "Primarily relevant for source-driven layers."
+    ),
+  )
+  is_source = models.BooleanField(default=True,
+    help_text="If checked, this system acts as a source (has datasets, ingestion, etc.).",
+  )
+  is_target = models.BooleanField(default=False,
+    help_text="If checked, this system acts as a target platform (warehouse/lakehouse/etc.).",
   )
   include_ingest = models.CharField(max_length=20, choices=INGEST_CHOICES, default="none",
     help_text=(
-      "How/if this source participates in ingestion pipelines. "
-      "If None, it is expected that the data are delivered through an alternative way."
-    )
+      "How/if this system participates in ingestion pipelines. "
+      "Only relevant if is_source=True."
+    ),
   )
-  generate_raw_tables = models.BooleanField(default=False,
+  generate_raw_tables = models.BooleanField(default=False, 
     help_text=(
       "Default policy: create raw landing tables (TargetDatasets in schema 'raw') "
-      "for all SourceDatasets in this SourceSystem."
-    )
+      "for all SourceDatasets in this system. Only relevant if is_source=True."
+    ),
   )
-  active = models.BooleanField(default=True, 
-    help_text="System is still considered a live data source."
+  active = models.BooleanField(default=True,
+    help_text="System is still considered a live data source / target.",
   )
-  retired_at = models.DateTimeField(blank=True, null=True, 
-    help_text="Automatically set when active is unchecked."
+  retired_at = models.DateTimeField(blank=True, null=True,
+    help_text="Automatically set when active is unchecked.",
   )
 
   class Meta:
-    db_table = "source_system"
+    db_table = "system"
     ordering = ["short_name"]
-    verbose_name_plural = "Source Systems"
+    verbose_name_plural = "Systems"
 
   def __str__(self):
     return self.short_name
@@ -165,16 +177,17 @@ class SourceSystem(AuditFields):
     if not self.active and self.retired_at is None:
       self.retired_at = timezone.now()
     elif self.active:
-      # If reactivated, clear retired_at
       self.retired_at = None
     super().save(*args, **kwargs)
+
 
 # -------------------------------------------------------------------
 # SourceDataset
 # -------------------------------------------------------------------
 class SourceDataset(AuditFields):
-  source_system = models.ForeignKey(SourceSystem, on_delete=models.CASCADE, related_name="source_tables",
-    help_text="The source system this dataset comes from."
+  source_system = models.ForeignKey(System, on_delete=models.CASCADE, related_name="source_datasets",
+    help_text="The system this dataset comes from (must have is_source=True).",
+    limit_choices_to={"is_source": True},
   )
   schema_name = models.CharField(max_length=50, blank=True, null=True,
     help_text="The schema name this dataset resides on. Can be left empty if it is a default schema (eg. dbo in SQLServer)."

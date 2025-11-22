@@ -19,8 +19,7 @@ along with elevata. If not, see <https://www.gnu.org/licenses/>.
 
 Contact: <https://github.com/elevata-labs/elevata>.
 """
-
-from django.http import HttpResponse, HttpResponseNotFound
+from django.http import HttpResponse, HttpResponseNotFound, Http404
 from django.shortcuts import render
 from django.urls import reverse_lazy
 from generic import GenericCRUDView
@@ -34,7 +33,7 @@ from metadata.models import (
   TargetDatasetReference,
   TargetColumnInput,
   # Source-side
-  SourceSystem,
+  System,
   SourceDataset,
   SourceColumn,
   SourceDatasetGroup,
@@ -547,8 +546,15 @@ class TargetColumnInputScopedView(_ScopedChildView):
 
 class SourceSystemDatasetScopedView(_ScopedChildView):
   model = SourceDataset
-  parent_model = SourceSystem
+  parent_model = System
   route_name = "sourcesystemdataset_list"
+
+  def get_parent_object(self):
+    parent = super().get_parent_object()
+    if parent and not parent.is_source:
+      # If someone tries to access datasets on a non-source system, show 404
+      raise Http404("This system is not marked as a source system.")
+    return parent
 
   def get_queryset(self):
     return (
@@ -561,7 +567,7 @@ class SourceSystemDatasetScopedView(_ScopedChildView):
     ctx = super().get_context_data(**kwargs)
     ctx["system"] = self.get_parent_object()
     return ctx
-
+  
 
 class SourceDatasetColumnScopedView(_ScopedChildView):
   model = SourceColumn

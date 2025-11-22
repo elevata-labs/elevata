@@ -29,7 +29,7 @@ from generic import GenericCRUDView
 # HTMX views for the import
 from . import views
 from . import views_inline_api
-from metadata.models import SourceDataset, SourceSystem
+from metadata.models import SourceDataset, System
 
 from .views_scoped import (
   # Target side
@@ -136,7 +136,7 @@ urlpatterns += [
 
 # Custom import endpoints (UI-Buttons → HTMX POST)
 ds_seg = path_segment_for(SourceDataset)
-sys_seg = path_segment_for(SourceSystem)
+sys_seg = path_segment_for(System)
 
 urlpatterns += [
   path(f"{ds_seg}/<int:pk>/import/", views.import_dataset_metadata, name="sourcedataset_import_metadata"),

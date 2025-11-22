@@ -60,7 +60,7 @@ SEC_DEV_CONN_MSSQL_SAP=mssql+pyodbc://user:pwd@sql01,1433/SAPDB?driver=ODBC%20Dr
 - `db2`
 - `hana`
 
-You can register these manually under `SourceSystem.type` if you want to experiment — elevata will attempt a generic reflection, but may not retrieve primary/foreign key details.
+You can register these manually under `System.type` if you want to experiment — elevata will attempt a generic reflection, but may not retrieve primary/foreign key details.
 
 ---
 

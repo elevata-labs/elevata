@@ -22,7 +22,7 @@ Contact: <https://github.com/elevata-labs/elevata>.
 
 from metadata.models import TargetDataset, SourceColumn
 from metadata.rendering.logical_plan import LogicalSelect, LogicalUnion, SourceTable, SelectItem
-from metadata.rendering.expr import Expr, ColumnRef, RawSql
+from metadata.rendering.expr import Expr, ColumnRef, RawSql, Cast
 
 
 def _looks_like_dsl(expr: str) -> bool:
@@ -175,31 +175,73 @@ def build_logical_select_for_target(target_dataset: TargetDataset):
   )
 
   for col in tcols:
-    # Surrogate key: use the stored RawSql expression
+    # 1) Surrogate key: use the stored RawSql expression (takes absolute precedence)
     if col.surrogate_key_column and col.surrogate_expression:
       expr: Expr = RawSql(sql=col.surrogate_expression)
+
     else:
-      # Resolve column lineage
+      # 2) Resolve column-level lineage and manual expressions
+
       col_input = (
         col.input_links
-        .select_related("upstream_target_column", "source_column", "source_column__source_dataset")
+        .select_related(
+          "upstream_target_column",
+          "source_column",
+          "source_column__source_dataset",
+        )
         .filter(active=True)
         .order_by("ordinal_position", "id")
         .first()
       )
 
-      upstream_col_name = None
+      # 2a) manual_expression has precedence:
+      #     - first on the input link
+      #     - then on the target column itself
+      manual_sql: str | None = None
+      if col_input and col_input.manual_expression:
+        manual_sql = col_input.manual_expression
+      elif col.manual_expression:
+        manual_sql = col.manual_expression
 
-      if col_input and col_input.upstream_target_column:
-        upstream_col_name = col_input.upstream_target_column.target_column_name
-      elif col_input and col_input.source_column:
-        upstream_col_name = col_input.source_column.source_column_name
+      if manual_sql:
+        # For now we treat all manual expressions as plain SQL.
+        # DSL ({{ ... }}) handling can be added later.
+        expr = RawSql(sql=manual_sql)
 
-      if upstream_col_name:
-        expr = ColumnRef(table_alias="s", column_name=upstream_col_name)
       else:
-        # fallback to target column name
-        expr = ColumnRef(table_alias="s", column_name=col.target_column_name)
+        # 2b) No manual expression -> derive from lineage
+        upstream_col_name: str | None = None
+
+        if col_input and col_input.upstream_target_column:
+          upstream_col_name = col_input.upstream_target_column.target_column_name
+          src_datatype = col_input.upstream_target_column.datatype
+        elif col_input and col_input.source_column:
+          upstream_col_name = col_input.source_column.source_column_name
+          src_datatype = col_input.source_column.datatype
+        else:
+          src_datatype = None
+
+        if upstream_col_name:
+          base_expr: Expr = ColumnRef(
+            table_alias="s",
+            column_name=upstream_col_name,
+          )
+        else:
+          # fall back to target column name
+          base_expr = ColumnRef(
+            table_alias="s",
+            column_name=col.target_column_name,
+          )
+
+        # 3) Optional CAST, wenn Source- und Target-Datatype unterschiedlich sind
+        tgt_datatype = col.datatype
+
+        if src_datatype and tgt_datatype and src_datatype != tgt_datatype:
+          # Use logical datatype; dialect.map_logical_type will turn it
+          # into the concrete DB type.
+          expr = Cast(expr=base_expr, target_type=tgt_datatype)
+        else:
+          expr = base_expr
 
     logical.select_list.append(
       SelectItem(

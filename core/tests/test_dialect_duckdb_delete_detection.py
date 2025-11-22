@@ -34,8 +34,8 @@ def test_render_delete_detection_statement_basic():
     target_table="rc_customer",
     stage_schema="stage",
     stage_table="stg_customer",
-    key_columns=["customer_id"],
-    scope_filter="customer_id > 100",
+    join_predicates=['t."customer_id" = s."customer_id"'],
+    scope_filter="(ModifiedDate > {{DELTA_CUTOFF}})",  # <-- hier statt None
   )
 
   # Normalize whitespace for easier matching
@@ -48,10 +48,10 @@ def test_render_delete_detection_statement_basic():
   assert '"stage"."stg_customer" AS s' in normalized
 
   # Business key join
-  assert "t.\"customer_id\" = s.\"customer_id\"" in normalized
+  assert 't."customer_id" = s."customer_id"' in normalized
 
   # Scope filter must be present in WHERE
-  assert "WHERE (customer_id > 100)" in normalized
+  assert "ModifiedDate > {{DELTA_CUTOFF}}" in normalized
 
   # NOT EXISTS subquery must be present
   assert "NOT EXISTS" in normalized
@@ -67,11 +67,15 @@ def test_render_delete_detection_statement_without_scope_filter():
     target_table="rc_customer",
     stage_schema="stage",
     stage_table="stg_customer",
-    key_columns=["customer_id"],
+    join_predicates=['t."customer_id" = s."customer_id"'],
     scope_filter=None,
   )
 
   normalized = " ".join(sql.split())
 
-  # If scope_filter is None, we expect a TRUE guard (or equivalent)
-  assert "WHERE TRUE" in normalized or "WHERE 1=1" in normalized
+  # If scope_filter is None, we expect a simple WHERE with NOT EXISTS only
+  assert "DELETE FROM" in normalized
+  assert "NOT EXISTS" in normalized
+  # No scope filter should be present
+  assert "DELTA_CUTOFF" not in normalized
+  assert "ModifiedDate" not in normalized

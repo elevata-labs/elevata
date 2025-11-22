@@ -103,6 +103,36 @@ class SqlDialect(ABC):
       schema_sql = self.quote_ident(schema)
       return f"{schema_sql}.{name_sql}"
     return name_sql
+  
+
+  def literal(self, value: Any) -> str:
+    """
+    Render a Python value as a SQL literal in a dialect-agnostic way.
+    Dialects may override this if they need special handling.
+    """
+    if value is None:
+      return "NULL"
+
+    if isinstance(value, bool):
+      return "TRUE" if value else "FALSE"
+
+    if isinstance(value, (int, float)):
+      # For now we rely on the default string representation.
+      return str(value)
+
+    # Fallback for strings and other objects: use str() and escape single quotes.
+    s = str(value)
+    s = s.replace("'", "''")
+    return f"'{s}'"
+  
+
+  def cast(self, expr: str, target_type: str) -> str:
+    """
+    Wrap an expression in a CAST(... AS ...) construct.
+    Dialects may override this if they need a different syntax.
+    """
+    return f"CAST({expr} AS {target_type})"
+
 
   def render_table_alias(
     self,
@@ -201,25 +231,15 @@ class SqlDialect(ABC):
     target_table: str,
     stage_schema: str,
     stage_table: str,
-    key_columns: list[str],
+    join_predicates: Sequence[str],
     scope_filter: str | None = None,
   ) -> str:
     """
-    Render a DELETE FROM ... WHERE NOT EXISTS (...) statement for delete detection.
+    Render a DELETE statement that removes rows from the target table
+    which no longer exist in the stage table.
 
-    Parameters
-    ----------
-    target_schema: schema of the rawcore table
-    target_table: name of the rawcore table
-    stage_schema: schema of the stage table
-    stage_table: name of the stage table
-    key_columns: business key columns for matching rows
-    scope_filter: additional filter expressing the incremental scope (e.g. time window)
-
-    Returns
-    -------
-    SQL string performing delete detection
+    join_predicates: list of SQL boolean expressions representing the join
+    between target (alias t) and stage (alias s), e.g.:
+      ['t."customer_id" = s."customer_id"', 't."partner_id" = s."partner_id"']
     """
-    raise NotImplementedError(
-        f"{self.__class__.__name__} does not implement delete detection SQL."
-    )
+    raise NotImplementedError

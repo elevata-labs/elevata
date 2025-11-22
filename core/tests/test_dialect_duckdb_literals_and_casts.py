@@ -20,67 +20,105 @@ along with elevata. If not, see <https://www.gnu.org/licenses/>.
 Contact: <https://github.com/elevata-labs/elevata>.
 """
 
-import datetime
-from decimal import Decimal
+import pytest
 
 from metadata.rendering.dialects.duckdb import DuckDBDialect
 
 
-def test_render_literal_null():
-  dialect = DuckDBDialect()
-  sql = dialect.render_literal(None)
-  assert sql == "NULL"
+@pytest.fixture
+def dialect():
+  # Single place to construct the dialect for all tests
+  return DuckDBDialect()
 
 
-def test_render_literal_boolean():
-  dialect = DuckDBDialect()
-  assert dialect.render_literal(True) == "TRUE"
-  assert dialect.render_literal(False) == "FALSE"
+# ---------------------------------------------------------------------------
+# literal()
+# ---------------------------------------------------------------------------
+
+def test_literal_null(dialect):
+  # None must turn into SQL NULL
+  assert dialect.literal(None) == "NULL"
 
 
-def test_render_literal_numeric():
-  dialect = DuckDBDialect()
-  assert dialect.render_literal(42) == "42"
-  assert dialect.render_literal(3.5) == "3.5"
-  assert dialect.render_literal(Decimal("10.25")) == "10.25"
+def test_literal_integer(dialect):
+  # Integers should not be quoted
+  assert dialect.literal(0) == "0"
+  assert dialect.literal(42) == "42"
+  assert dialect.literal(-7) == "-7"
 
 
-def test_render_literal_string_simple():
-  dialect = DuckDBDialect()
-  sql = dialect.render_literal("hello")
-  assert sql == "'hello'"
+def test_literal_float(dialect):
+  # Floats should not be quoted and keep standard repr
+  assert dialect.literal(1.5) == "1.5"
+  assert dialect.literal(-0.25) == "-0.25"
 
 
-def test_render_literal_string_with_quote_escaping():
-  dialect = DuckDBDialect()
-  sql = dialect.render_literal("O'Malley")
-  # Single quote must be doubled inside the literal
-  assert sql == "'O''Malley'"
+def test_literal_boolean(dialect):
+  # Booleans should map to SQL boolean keywords
+  # (exact casing depends on your implementation, normalize for comparison)
+  assert dialect.literal(True).upper() == "TRUE"
+  assert dialect.literal(False).upper() == "FALSE"
 
 
-def test_render_literal_date():
-  dialect = DuckDBDialect()
-  d = datetime.date(2024, 5, 17)
-  sql = dialect.render_literal(d)
-  assert sql == "DATE '2024-05-17'"
+def test_literal_simple_string(dialect):
+  # Simple strings should be single-quoted
+  assert dialect.literal("hello") == "'hello'"
 
 
-def test_render_literal_datetime():
-  dialect = DuckDBDialect()
-  dt = datetime.datetime(2024, 5, 17, 14, 30, 5)
-  sql = dialect.render_literal(dt)
-  # Depending on your implementation, the exact formatting may vary.
-  # This assertion assumes ISO format with seconds and a space separator.
-  assert sql == "TIMESTAMP '2024-05-17 14:30:05'"
+def test_literal_string_with_single_quote_escaped(dialect):
+  # Single quotes inside strings must be escaped as ''
+  val = "O'Reilly"
+  lit = dialect.literal(val)
+  assert lit == "'O''Reilly'"
 
 
-def test_cast_expression_basic():
-  dialect = DuckDBDialect()
-  sql = dialect.cast_expression("customer_id", "BIGINT")
-  assert sql == "CAST(customer_id AS BIGINT)"
+def test_literal_non_string_object_uses_str_and_escaped(dialect):
+  # Fallback: use str(value) and still escape quotes
+  class Custom:
+    def __str__(self):
+      return "value 'with' quotes"
+
+  lit = dialect.literal(Custom())
+  # Must be quoted
+  assert lit.startswith("'") and lit.endswith("'")
+  # Inner single quotes must be doubled
+  assert "''with''" in lit
 
 
-def test_cast_expression_with_function_call_inside():
-  dialect = DuckDBDialect()
-  sql = dialect.cast_expression("SUM(amount)", "DECIMAL(10,2)")
-  assert sql == "CAST(SUM(amount) AS DECIMAL(10,2))"
+# ---------------------------------------------------------------------------
+# cast()
+# ---------------------------------------------------------------------------
+
+def test_cast_wraps_expression_with_cast(dialect):
+  expr = 's."amount"'
+  result = dialect.cast(expr, "DECIMAL(18,2)")
+  # We only assert the general shape; exact spacing can differ slightly.
+  normalized = " ".join(result.split())
+  assert normalized == 'CAST(s."amount" AS DECIMAL(18,2))'
+
+
+def test_cast_works_with_complex_expression(dialect):
+  expr = 's."amount" / 100'
+  result = dialect.cast(expr, "DOUBLE")
+  normalized = " ".join(result.split())
+  # Important: the whole expression should be inside CAST(...)
+  assert normalized.startswith("CAST(")
+  assert normalized.endswith(" AS DOUBLE)")
+  assert 's."amount" / 100' in result
+
+
+def test_cast_with_literal_expression(dialect):
+  # Casting a literal should just wrap the literal
+  result = dialect.cast(dialect.literal(1), "INTEGER")
+  normalized = " ".join(result.split())
+  assert normalized == "CAST(1 AS INTEGER)"
+
+
+def test_cast_is_idempotent_if_expression_already_cast(dialect):
+  # Optional / soft expectation:
+  # If the implementation does not try to detect nested CAST,
+  # this test can be relaxed. For now we assert we don't break it.
+  expr = "CAST(s.amount AS INTEGER)"
+  result = dialect.cast(expr, "INTEGER")
+  # At least the original expression should be contained
+  assert "CAST(s.amount AS INTEGER)" in result

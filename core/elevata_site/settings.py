@@ -181,7 +181,7 @@ ELEVATA_CRUD = {
       "Team", 
       "Person", 
       "PartialLoad", 
-      "SourceSystem", 
+      "System", 
       "SourceDataset", 
       "SourceColumn",
       "TargetSchema", 
@@ -194,7 +194,7 @@ ELEVATA_CRUD = {
       "Team": "Organize data teams and functional groups.",
       "Person": "Track users and their association with data teams across the organization.",
       "PartialLoad": "Define additional loads to process subsets of datasets at individual frequencies.",
-      "SourceSystem": "Register and describe upstream systems that provide raw data to the platform.",
+      "System": "Register and describe systems which can be targets or upstream systems that provide raw data to the platform.",
       "SourceDataset": "Define datasets extracted from source systems — the entry point for ingestion.",
       "SourceColumn": "Capture technical metadata and profiling details for each source column.",
       "TargetSchema": "Model your platform’s architectural layers and their default behaviors.",
@@ -207,7 +207,7 @@ ELEVATA_CRUD = {
       "Team": "users",
       "Person": "user",
       "PartialLoad": "timer",
-      "SourceSystem": "database",
+      "System": "database",
       "SourceDataset": "file",
       "SourceColumn": "grid-2x2",
       "TargetSchema": "layers",
@@ -352,7 +352,7 @@ ELEVATA_CRUD = {
     "dynamic_choices": {
       "SourceDatasetGroup": {
         "target_short_name": {
-          "model": "SourceSystem",
+          "model": "System",
           "field": "target_short_name",
           "placeholder": "— choose a target —"
         }
