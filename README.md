@@ -29,7 +29,7 @@ it defines **how a modern data architecture should look** — opinionated, gover
 *In other words: elevata brings structure, governance, and automation to modern data platforms — from metadata to SQL.*
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/elevata-labs/elevata/main/docs/elevata_ui_v0_4_0.png" alt="elevata UI preview" width="700"/>
+  <img src="https://raw.githubusercontent.com/elevata-labs/elevata/main/docs/elevata_v0_4_0.png" alt="elevata UI preview" width="700"/>
 </p>
 
 ---

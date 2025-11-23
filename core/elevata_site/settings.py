@@ -188,7 +188,6 @@ ELEVATA_CRUD = {
       "TargetDataset", 
       "TargetColumn", 
       "SourceDatasetGroup",
-      "TargetDatasetReference"
       ],
     "descriptions": {
       "Team": "Organize data teams and functional groups.",
@@ -201,7 +200,6 @@ ELEVATA_CRUD = {
       "TargetDataset": "Design target datasets and map them to their corresponding source inputs.",
       "TargetColumn": "Define business-ready columns and manage data quality at the attribute level.",
       "SourceDatasetGroup": "Group structurally similar source datasets to enable unified target generation.",
-      "TargetDatasetReference": "Define relationships between target datasets to generate consistent foreign surrogate keys."
     },
     "icons": {
       "Team": "users",
@@ -214,7 +212,6 @@ ELEVATA_CRUD = {
       "TargetDataset": "file-check-2",
       "TargetColumn": "grid-2x2-check",
       "SourceDatasetGroup": "merge",
-      "TargetDatasetReference": "arrow-left-right",
     },
     "exclude": [
       "SourceDatasetOwnership", 
@@ -223,6 +220,7 @@ ELEVATA_CRUD = {
       "SourceDatasetGroupMembership",
       "TargetDatasetInput",
       "TargetColumnInput",
+      "TargetDatasetReference",
       "TargetDatasetReferenceComponent",
     ],
     "paths": {      
@@ -462,6 +460,21 @@ ELEVATA_CRUD = {
             "special_category_data": "Special",
             "personal_data": "Personal",
             "none": "",
+            "default": "",
+          },
+        },
+      ],
+      "TargetDatasetReference": [
+        {
+          "field": "has_incomplete_bk_components",
+          "class_map": {
+            "True": "badge bg-danger",
+            "False": "",
+            "default": "",
+          },
+          "label_map": {
+            "True": "BK incomplete",
+            "False": "",
             "default": "",
           },
         },

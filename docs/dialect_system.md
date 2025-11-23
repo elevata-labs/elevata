@@ -66,7 +66,6 @@ Resolution order:
 
 ### 1. Environment variable  
 - `ELEVATA_SQL_DIALECT`  
-- Fallback: `ELEVATA_DIALECT`
 
 ### 2. Active profile  
 `load_profile()` may define:

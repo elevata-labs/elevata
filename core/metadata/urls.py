@@ -38,6 +38,7 @@ from .views_scoped import (
   TargetDatasetReferenceScopedView,
   TargetColumnInputScopedView,
   TargetDatasetOwnershipScopedView,
+  TargetDatasetReferenceComponentScopedView,
   # Source side
   SourceSystemDatasetScopedView,
   SourceDatasetColumnScopedView,
@@ -168,6 +169,10 @@ scoped_views = {
     TargetDatasetReferenceScopedView,
     "targetdatasetreference",
   ),
+  "targetdatasetreference/<int:parent_pk>/components/": (
+    TargetDatasetReferenceComponentScopedView,
+    "targetdatasetreferencecomponent",
+  ),
   "targetcolumn/<int:parent_pk>/inputs/": (
     TargetColumnInputScopedView,
     "targetcolumninput",
@@ -223,4 +228,5 @@ urlpatterns += [
   path("target-datasets/<int:pk>/lineage/", views.targetdataset_lineage, name="targetdataset_lineage"),
   path("api/target-datasets/<int:pk>/rename/", views_inline_api.targetdataset_rename, name="api_targetdataset_rename"),
   path("api/target-columns/<int:pk>/rename/", views_inline_api.targetcolumn_rename, name="api_targetcolumn_rename"),
+  path("targetdataset/<int:parent_pk>/references/<int:pk>/detail/", TargetDatasetReferenceScopedView.as_view(action="detail"), name="targetdatasetreference_detail_scoped"),
 ]

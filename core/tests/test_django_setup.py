@@ -20,7 +20,6 @@ along with elevata. If not, see <https://www.gnu.org/licenses/>.
 Contact: <https://github.com/elevata-labs/elevata>.
 """
 
-
 import pytest
 
 @pytest.mark.django_db

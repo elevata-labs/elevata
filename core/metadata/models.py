@@ -121,7 +121,7 @@ class System(AuditFields):
   short_name = models.CharField(max_length=10, validators=[SHORT_NAME_VALIDATOR], unique=True,
     help_text=(
       "Physical / concrete system identifier. eg. 'sap', 'nav', 'crm', 'ga4', "
-      "'duckdb_local', 'erp_dwh'."
+      "'dwhdev', 'dwh'."
     ),
   )
   name = models.CharField(max_length=50,
@@ -1166,6 +1166,106 @@ class TargetDatasetReference(AuditFields):
 
   def __str__(self):
     return f"{self.referencing_dataset} -> {self.referenced_dataset} ({self.reference_prefix or ''})"
+  
+  @property
+  def missing_bk_components(self) -> list[str]:
+    """
+    Return parent BK column names that are not covered by any key component.
+
+    This only checks the FK mapping coverage (components),
+    not Stage lineage or expressions.
+    """
+    # All active BK columns on the parent dataset, in key order
+    parent_bk_cols = list(
+      self.referenced_dataset.target_columns
+      .filter(business_key_column=True, active=True)
+      .order_by("ordinal_position", "id")
+      .values_list("target_column_name", flat=True)
+    )
+
+    # All parent BK columns that are actually mapped by components
+    mapped_parent_cols = set(
+      self.key_components
+      .filter(to_column__isnull=False)
+      .values_list("to_column__target_column_name", flat=True)
+    )
+
+    # Those parent BK columns that do not appear in the mapping
+    return [name for name in parent_bk_cols if name not in mapped_parent_cols]
+
+  @property
+  def has_incomplete_bk_components(self) -> bool:
+    """
+    True if at least one parent BK column has no mapping component.
+    """
+    return bool(self.missing_bk_components)
+  
+  def validate_key_components(self) -> list[str]:
+    """
+    Return a list of missing parent BK column names.
+
+    If empty, the mapping is complete.
+    This method does NOT use an 'active' flag on components,
+    because components are either present or deleted.
+    """
+    # All BK columns on the parent, in defined order
+    parent_bk_names = list(
+      self.referenced_dataset.target_columns
+      .filter(business_key_column=True)
+      .order_by("ordinal_position", "id")
+      .values_list("target_column_name", flat=True)
+    )
+
+    # To-Columns that are mapped by components
+    mapped_parent_bk_names = set(
+      self.key_components
+      .values_list("to_column__target_column_name", flat=True)
+    )
+
+    # Missing = parent BKs that are not mapped
+    missing = [name for name in parent_bk_names if name not in mapped_parent_bk_names]
+    return missing
+  
+  def save(self, *args, **kwargs):
+    is_new = self.pk is None
+    super().save(*args, **kwargs)
+
+    if is_new:
+      # Auto-create FK column in child dataset
+      from metadata.generation.naming import build_surrogate_key_name
+
+      child_ds = self.referencing_dataset
+      parent_ds = self.referenced_dataset
+
+      # Base FK name derived from parent
+      base_fk_name = build_surrogate_key_name(parent_ds.target_dataset_name)
+
+      # Apply prefix if user specified one
+      fk_name = (
+        f"{self.reference_prefix}_{base_fk_name}"
+        if self.reference_prefix else base_fk_name
+      )
+
+      # Only create FK column if not existing
+      if not child_ds.target_columns.filter(target_column_name=fk_name, active=True).exists():
+        
+        # Determine next ordinal position
+        last_ord = (
+          child_ds.target_columns.filter(active=True)
+          .order_by("-ordinal_position")
+          .values_list("ordinal_position", flat=True)
+          .first()
+        )
+        next_ord = (last_ord or 0) + 1
+
+        TargetColumn.objects.create(
+          target_dataset=child_ds,
+          target_column_name=fk_name,
+          ordinal_position=next_ord,
+          surrogate_key_column=False,
+          business_key_column=False,
+          manual_expression=None,
+        )
 
 # -------------------------------------------------------------------
 # TargetDatasetReferenceComponent

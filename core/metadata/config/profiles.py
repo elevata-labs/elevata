@@ -20,58 +20,100 @@ along with elevata. If not, see <https://www.gnu.org/licenses/>.
 Contact: <https://github.com/elevata-labs/elevata>.
 """
 
+from __future__ import annotations
+
 import os
-import yaml
-from pathlib import Path
 from dataclasses import dataclass
+from pathlib import Path
 from typing import List, Dict, Any, Optional
-from metadata.models import System
+
+import yaml
+from django.conf import settings
+
+"""
+Profile loading for elevata.
+
+Profiles define environment-specific configuration such as:
+- where to load secrets from (providers)
+- how to build secret references (secret_ref_template)
+- security references (e.g. pepper_ref)
+- the default SQL dialect for SQL generation
+
+They do NOT define project-specific metadata such as target systems.
+"""
 
 @dataclass
 class Profile:
   name: str
+
+  # Where to load secrets from (env, Azure Key Vault, ...)
   providers: List[Dict[str, Any]]
-  # Single ref template for all connections (source and target)
+
+  # Single template for all connections (source + target)
   # e.g. "sec/{profile}/conn/{type}/{short_name}"
   secret_ref_template: str
 
+  # Optional ref overrides (by full ref string)
   overrides: Dict[str, str]
+
+  # Arbitrary security config, e.g. {"pepper_ref": "sec/{profile}/pepper"}
   security: Dict[str, Any]
 
   # Dialect used for SQL generation (unless env override)
   default_dialect: str
 
-  # Selector for active target system (references System.short_name with is_target=True)
-  default_target_system: Optional[str] = None
-
 
 def _find_profiles_path(explicit_path: str | None = None) -> Path:
   """
-  Locate elevata_profiles.yaml in several common locations.
-  """
-  # 1. Use explicit path from settings or .env if provided
-  candidates = []
-  if explicit_path:
-    candidates.append(explicit_path)
+  Locate elevata_profiles.yaml in several common locations:
 
-  # 2. Relative to BASE_DIR or project root
+  1. explicit_path argument (if provided and exists)
+  2. Django settings.ELEVATA_PROFILES_PATH (if set and exists)
+  3. common fallback locations relative to the package and CWD
+
+  Raises:
+      FileNotFoundError: if no suitable file can be found.
+  """
+  candidates: list[Path] = []
+
+  # 1) explicit argument
+  if explicit_path:
+    candidates.append(Path(explicit_path))
+
+  # 2) Django setting (typically based on ELEVATA_PROFILES_PATH env var)
+  cfg_path = getattr(settings, "ELEVATA_PROFILES_PATH", None)
+  if cfg_path:
+    candidates.append(Path(cfg_path))
+
+  # 3) fallbacks
   here = Path(__file__).resolve()
   candidates += [
-    here.parents[3] / "config" / "elevata_profiles.yaml",  # e.g. elevata/config
+    here.parents[3] / "config" / "elevata_profiles.yaml",
     Path.cwd() / "config" / "elevata_profiles.yaml",
     Path("/etc/elevata/elevata_profiles.yaml"),
   ]
 
   for c in candidates:
-    c = Path(c)
-    if c.exists():
+    if c and c.exists():
       return c
 
-  raise FileNotFoundError("elevata_profiles.yaml not found in expected locations")
+  raise FileNotFoundError(
+    "elevata_profiles.yaml not found in expected locations. "
+    "Provide an explicit path or configure ELEVATA_PROFILES_PATH."
+  )
+
 
 def load_profile(profiles_path: Optional[str] = None) -> Profile:
-  """Evaluates and returns the current active profile"""
+  """
+  Load and return the current active profile.
+
+  Resolution order:
+    - ELEVATA_PROFILE env var
+    - `active_profile` key in elevata_profiles.yaml
+    - default 'dev'
+  """
   path = _find_profiles_path(profiles_path)
+
   with open(path, "r") as f:
     data = yaml.safe_load(f) or {}
 
@@ -79,9 +121,10 @@ def load_profile(profiles_path: Optional[str] = None) -> Profile:
   profiles = data.get("profiles") or {}
 
   if active not in profiles:
+    available = ", ".join(sorted(profiles)) if profiles else "(none)"
     raise KeyError(
-      f"Active profile '{active}' not found in elevata_profiles.yaml. "
-      "Check 'active_profile' or ELEVATA_PROFILE."
+      f"Active profile '{active}' not found in elevata_profiles.yaml "
+      f"at {path}. Available profiles: {available}."
     )
 
   p = profiles[active] or {}
@@ -89,54 +132,21 @@ def load_profile(profiles_path: Optional[str] = None) -> Profile:
   return Profile(
     name=active,
     providers=p.get("providers", []) or [],
-    secret_ref_template=p["secret_ref_template"],
+    secret_ref_template=p.get(
+      "secret_ref_template",
+      "sec/{profile}/conn/{type}/{short_name}",
+    ),
     overrides=p.get("overrides", {}) or {},
     security=p.get("security", {}) or {},
     default_dialect=p.get("default_dialect", "duckdb"),
-    default_target_system=p.get("default_target_system"),
   )
 
 
 def render_ref(template: str, profile: Profile, **kwargs) -> str:
-  """Render a template like 'sec/{profile}/pepper' with profile + kwargs."""
+  """Render a template like 'sec/{profile}/conn/{type}/{short_name}'."""
   return (template or "").format(profile=profile.name, **kwargs)
 
 
 def apply_overrides(ref: str, profile: Profile) -> str:
   """Apply profile-specific ref overrides if present."""
   return profile.overrides.get(ref, ref)
-
-
-def build_system_secret_ref(profile: Profile, system: System) -> str:
-  tmpl = profile.secret_ref_template
-  raw_ref = render_ref(
-    tmpl,
-    profile,
-    type=system.type,
-    short_name=system.short_name,
-  )
-  return apply_overrides(raw_ref, profile)
-
-
-def get_active_target_system(profile: Profile, name: Optional[str] = None) -> System:
-  code = name or profile.default_target_system
-  if not code:
-    raise KeyError(
-      f"Profile '{profile.name}' has no default_target_system configured "
-      "and no explicit target name was provided."
-    )
-
-  try:
-    system = System.objects.get(short_name=code)
-  except System.DoesNotExist as exc:
-    raise KeyError(
-      f"System with short_name='{code}' not found."
-    ) from exc
-
-  if not system.is_target:
-    raise ValueError(
-      f"System '{code}' is not marked as target (is_target=False). "
-      "Set is_target=True in the admin if this should act as a target platform."
-    )
-
-  return system

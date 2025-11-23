@@ -36,6 +36,10 @@ because there is no *_detail route under a parent. -->
   {% url model_name|add:'_row_edit' parent_pk object.pk as edit_url %}
   {% url model_name|add:'_row_delete' parent_pk object.pk as delete_url %}
   {% url model_name|add:'_row_toggle' parent_pk object.pk as toggle_url %}
+  <!-- if a scoped detail route is defined, build detail_url as well -->
+  {% if detail_route_name %}
+    {% url detail_route_name parent_pk object.pk as detail_url %}
+  {% endif %}
 {% else %}
   <!-- global mode: /.../<pk>/row-xxx/ -->
   {% url model_name|add:'_row_edit' object.pk as edit_url %}
@@ -177,6 +181,23 @@ because there is no *_detail route under a parent. -->
         {% endif %}
       {% endwith %}
       <!-- TOGGLE BUTTONS -->
+
+      {% if model_name == 'targetdatasetreference' %}
+        <a
+          href="{% url 'targetdatasetreferencecomponent_list' object.pk %}"
+          class="btn btn-outline-secondary"
+        >
+          Key Components
+        </a>
+      {% elif detail_url %}
+        {# Standard-Detail-Button für alle anderen Modelle #}
+        <a
+          href="{{ detail_url }}"
+          class="btn btn-outline-secondary"
+        >
+          Detail
+        </a>
+      {% endif %}
 
       <button
         type="button"

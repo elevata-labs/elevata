@@ -31,8 +31,7 @@ Contact: <https://github.com/elevata-labs/elevata>.
     <h1 class="h4 mb-0">{{ title|default:object }}</h1>
 
     {% if object %}
-      {% if model_name == 'system' or model_name == 'sourcedataset' or model_name == 'sourcedatasetgroup' or model_name == 'targetdataset' %}
-        {# WICHTIG: kein mb-3; nur ein kleiner linker Abstand zum Titel #}
+      {% if model_name == 'system' or model_name == 'sourcedataset' or model_name == 'sourcedatasetgroup' or model_name == 'targetdataset' or model_name == 'targetdatasetreference' %}
         <nav class="subnav ms-2">
           {% if model_name == 'system' and object.is_source %}
             <a href="{% url 'sourcedataset_list' object.pk %}" class="btn btn-sm btn-outline-primary">
@@ -68,6 +67,10 @@ Contact: <https://github.com/elevata-labs/elevata>.
             <a href="{% url 'targetdataset_lineage' object.pk %}" class="btn btn-sm btn-outline-primary">
               <i class="bi bi-diagram-3"></i> Lineage
             </a>
+          {% elif model_name == 'targetdatasetreference' %}
+            <a href="{% url 'targetdatasetreferencecomponent_list' object.pk %}" class="btn btn-sm btn-outline-primary">
+              <i class="bi bi-link-45deg"></i> Key Components
+            </a>
           {% endif %}
         </nav>
       {% endif %}
@@ -82,10 +85,34 @@ Contact: <https://github.com/elevata-labs/elevata>.
   </div>
 
   <!-- top-align back button -->
-  <a class="btn btn-secondary btn-sm d-flex align-self-start" href="{% url model_name|add:'_list' %}">
-    <i class="bi bi-arrow-left"></i> Back
-  </a>
-</div>
+  {% if model_name == 'targetdatasetreference' %}
+    <!-- back to scoped References-List of the child dataset -->
+    <a class="btn btn-secondary btn-sm d-flex align-self-start"
+      href="{% url 'targetdatasetreference_list' object.referencing_dataset.pk %}">
+      <i class="bi bi-arrow-left"></i> Back
+    </a>
+  {% else %}
+    <a class="btn btn-secondary btn-sm d-flex align-self-start"
+      href="{% url model_name|add:'_list' %}">
+      <i class="bi bi-arrow-left"></i> Back
+    </a>
+  {% endif %}
+
+  {% if object and model_name == 'targetdatasetreference' and object.has_incomplete_bk_components %}
+    <div class="alert alert-danger mt-3">
+      <strong>Missing Business-Key components</strong>
+      <p class="mb-1">
+        This reference does not yet map all parent business key columns.
+        The surrogate foreign key will not be generated until the mapping is complete.
+      </p>
+      <ul class="mb-0">
+        {% for col in object.missing_bk_components %}
+          <li>{{ col }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+  {% endif %}
+  </div>
 
   <table class="table table-striped align-middle mb-4">
     <tbody>

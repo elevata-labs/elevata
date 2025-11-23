@@ -20,21 +20,260 @@ along with elevata. If not, see <https://www.gnu.org/licenses/>.
 Contact: <https://github.com/elevata-labs/elevata>.
 """
 
-from metadata.models import TargetDataset, SourceColumn
-from metadata.rendering.logical_plan import LogicalSelect, LogicalUnion, SourceTable, SelectItem
-from metadata.rendering.expr import Expr, ColumnRef, RawSql, Cast
+from __future__ import annotations
+
+from typing import List, Optional
+import re
+
+from metadata.models import (
+  TargetDataset,
+  TargetColumn,
+)
+from metadata.rendering.expr import (
+  Expr,
+  ColumnRef,
+  RawSql,
+)
+from metadata.rendering.logical_plan import (
+  SourceTable,
+  SelectItem,
+  LogicalSelect,
+  LogicalUnion,
+)
+from metadata.generation.naming import build_surrogate_key_name
+
+"""
+Logical Query Builder for TargetDatasets.
+Responsible for SK/FK hashing, lineage resolution,
+and merging multiple inputs (UNION or single-path).
+"""
+
+# ------------------------------------------------------------------------------
+# Regex that matches col("column_name") in DSL expressions
+# ------------------------------------------------------------------------------
+COL_PATTERN = re.compile(r'col\(["\']([^"\']+)["\']\)')
 
 
-def _looks_like_dsl(expr: str) -> bool:
+# ------------------------------------------------------------------------------
+# Extract Stage-level lineage of a RawCore column
+# ------------------------------------------------------------------------------
+def _get_stage_expr_for_rawcore_col(col: TargetColumn) -> Optional[str]:
   """
-  Heuristic: treat expressions containing {{ ... }} as elevata DSL,
-  not as native SQL.
+  Resolve the Stage-level expression feeding this RawCore column.
+
+  Priority:
+    1) manual_expression (overrides all)
+    2) upstream_target_column (Stage → RawCore lineage)
+
+  Returns:
+    DSL expression string such as 'col("stage_col")'
+    or a manual expression, or None if no Stage lineage is found.
   """
-  if expr is None:
-    return False
-  return "{{" in expr and "}}" in expr
+  # Manual expression always wins
+  if col.manual_expression:
+    return col.manual_expression
+
+  # Upstream Stage column
+  link = (
+    col.input_links
+    .filter(active=True)
+    .select_related("upstream_target_column")
+    .order_by("ordinal_position", "id")
+    .first()
+  )
+  if link and link.upstream_target_column:
+    stage_col = link.upstream_target_column
+    return f'col("{stage_col.target_column_name}")'
+
+  # No Stage lineage
+  return None
 
 
+# ------------------------------------------------------------------------------
+# Rewrite parent SK expression so that left side stays parent-BK,
+# and right side becomes the child Stage expression.
+# ------------------------------------------------------------------------------
+def _rewrite_parent_sk_expr(parent_expr_sql: str, mapping: dict[str, str]) -> str:
+  """
+  Rewrite a parent's SK DSL expression into a child FK expression.
+
+  Robust version:
+  - Detect left/right occurrences *by counting* how many times a BK column appears.
+  - For each BK column:
+      1st occurrence → left side, keep col("bk")
+      2nd occurrence → right side, map to child Stage expression
+  """
+
+  # Count how many times each BK name was seen
+  seen_counts = {}
+
+  result = []
+  idx = 0
+
+  while True:
+    m = COL_PATTERN.search(parent_expr_sql, idx)
+    if not m:
+      result.append(parent_expr_sql[idx:])
+      break
+
+    # text before match
+    result.append(parent_expr_sql[idx:m.start()])
+
+    colname = m.group(1)
+
+    if colname not in mapping:
+      # not a BK component → unchanged
+      replacement = f'col("{colname}")'
+    else:
+      # count appearances
+      count = seen_counts.get(colname, 0) + 1
+      seen_counts[colname] = count
+
+      if count == 1:
+        # left side → keep BK name
+        replacement = f'col("{colname}")'
+      else:
+        # right side → mapped Stage expression
+        replacement = mapping[colname]
+
+    result.append(replacement)
+    idx = m.end()
+
+  return "".join(result)
+
+
+# ------------------------------------------------------------------------------
+# Build FK surrogate expression map
+# ------------------------------------------------------------------------------
+def _build_fk_surrogate_expr_map(target_dataset: TargetDataset) -> dict[str, str]:
+  """
+  Return:
+      { fk_column_name -> fk_expression_sql }
+
+  A FK expression is generated only if:
+    - parent SK exists with surrogate_expression
+    - all BK components are fully mapped to child Stage expressions
+    - FK column exists on child dataset
+  """
+  fk_map: dict[str, str] = {}
+
+  refs = (
+    target_dataset.outgoing_references
+    .select_related("referenced_dataset")
+    .prefetch_related(
+      "key_components__from_column__input_links__upstream_target_column",
+      "key_components__to_column",
+    )
+  )
+
+  for ref in refs:
+    parent_ds = ref.referenced_dataset
+
+    # Parent SK column
+    parent_sk = (
+      parent_ds.target_columns
+      .filter(surrogate_key_column=True, active=True)
+      .order_by("ordinal_position", "id")
+      .first()
+    )
+    if not parent_sk or not parent_sk.surrogate_expression:
+      continue
+
+    parent_expr = parent_sk.surrogate_expression
+
+    # Determine FK column name on child side
+    base_fk_name = build_surrogate_key_name(parent_ds.target_dataset_name)
+    fk_name = f"{ref.reference_prefix}_{base_fk_name}" if ref.reference_prefix else base_fk_name
+
+    if not target_dataset.target_columns.filter(target_column_name=fk_name, active=True).exists():
+      continue
+
+    # Build mapping: parent BK -> child Stage expression
+    components = list(ref.key_components.all())
+    if not components:
+      continue
+
+    mapping: dict[str, str] = {}
+    all_ok = True
+
+    for comp in components:
+      parent_bk_name = comp.to_column.target_column_name
+
+      child_stage_expr = _get_stage_expr_for_rawcore_col(comp.from_column)
+      if not child_stage_expr:
+        all_ok = False
+        break
+
+      mapping[parent_bk_name] = child_stage_expr
+
+    if not all_ok:
+      continue
+
+    # Rewrite expression
+    fk_expr_sql = _rewrite_parent_sk_expr(parent_expr, mapping)
+    fk_map[fk_name] = fk_expr_sql
+
+  return fk_map
+
+
+# ------------------------------------------------------------------------------
+# Helper: Build a SELECT for a single upstream dataset (UNION path)
+# ------------------------------------------------------------------------------
+def _build_single_select_for_upstream(
+  target_dataset: TargetDataset,
+  upstream_dataset: TargetDataset,
+) -> LogicalSelect:
+  """
+  Build a LogicalSelect from a single upstream TargetDataset.
+  Used in UNION ALL scenarios (stage with multiple raw upstreams).
+
+  For each TargetColumn of the target_dataset:
+
+    - If the upstream_dataset (a RAW target dataset) has a target column
+      with the same target_column_name, we assume this column is present
+      and integrated in this branch -> use s."<that_name>".
+
+    - If not, we render NULL for this column in this branch.
+
+  The alias always uses target_dataset.target_column_name so the preview
+  shows the final shape.
+  """
+  source_table = SourceTable(
+    schema=upstream_dataset.target_schema.schema_name,
+    name=upstream_dataset.target_dataset_name,
+    alias="s",
+  )
+  logical = LogicalSelect(from_=source_table)
+
+  upstream_col_names = set(
+    upstream_dataset.target_columns.values_list("target_column_name", flat=True)
+  )
+
+  tcols = (
+    target_dataset.target_columns
+    .filter(active=True)
+    .order_by("ordinal_position", "id")
+  )
+
+  for col in tcols:
+    if col.surrogate_key_column and col.surrogate_expression:
+      expr: Expr = RawSql(sql=col.surrogate_expression)
+    else:
+      if col.target_column_name in upstream_col_names:
+        expr = ColumnRef(table_alias="s", column_name=col.target_column_name)
+      else:
+        expr = RawSql("NULL")
+
+    logical.select_list.append(
+      SelectItem(expr=expr, alias=col.target_column_name)
+    )
+
+  return logical
+
+
+# ------------------------------------------------------------------------------
+# Main builder: Build logical select for a target dataset
+# ------------------------------------------------------------------------------
 def build_logical_select_for_target(target_dataset: TargetDataset):
   """
   Build a vendor-neutral logical representation (LogicalSelect or LogicalUnion)
@@ -43,7 +282,9 @@ def build_logical_select_for_target(target_dataset: TargetDataset):
   Behavior:
 
     - raw:
-        FROM the target_dataset itself.
+        FROM the SourceDataset (if present as input),
+        otherwise from an upstream TargetDataset (fallback),
+        otherwise from the raw target itself.
 
     - stage:
         - if multiple upstream RAW TargetDatasets exist:
@@ -51,18 +292,20 @@ def build_logical_select_for_target(target_dataset: TargetDataset):
         - if exactly one raw-upstream:
             FROM that raw TargetDataset.
         - if no raw-upstream:
-            FROM the first (optionally primary) SourceDataset.
+            FROM the first (optionally primary) SourceDataset,
+            otherwise from the stage target itself.
 
     - rawcore:
-        FROM upstream stage TargetDataset.
+        FROM upstream stage TargetDataset if present,
+        otherwise from the rawcore target itself.
 
     - other schemas:
         FROM the target_dataset itself.
 
   Columns:
     - Surrogate-key columns with surrogate_expression → RawSql(...)
-      (expression placeholders like {expr:...} are expanded by the dialect).
-
+    - FK surrogate columns (derived from outgoing TargetDatasetReference)
+      → RawSql(fk_expression_sql)
     - Otherwise:
         * Prefer upstream_target_column.target_column_name
         * Else source_column.source_column_name
@@ -72,19 +315,25 @@ def build_logical_select_for_target(target_dataset: TargetDataset):
       the preview shows the final target structure while the expression
       reveals the true upstream names.
   """
-
   schema_short = target_dataset.target_schema.short_name
 
-  inputs_qs = target_dataset.input_links.select_related(
-    "upstream_target_dataset",
-    "upstream_target_dataset__target_schema",
-    "source_dataset",
-    "source_dataset__source_system",
+  inputs_qs = (
+    target_dataset.input_links
+    .select_related(
+      "upstream_target_dataset",
+      "upstream_target_dataset__target_schema",
+      "source_dataset",
+      "source_dataset__source_system",
+    )
+    .filter(active=True)
   )
 
-  # ----------------------------------------------------------------
+  # Build FK expressions now so they can be reused in all paths
+  fk_expr_map = _build_fk_surrogate_expr_map(target_dataset)
+
+  # --------------------------------------------------------------------------
   # 1) Special case: STAGE with multiple RAW upstreams -> UNION ALL
-  # ----------------------------------------------------------------
+  # --------------------------------------------------------------------------
   if schema_short == "stage":
     raw_inputs = [
       inp for inp in inputs_qs
@@ -93,9 +342,7 @@ def build_logical_select_for_target(target_dataset: TargetDataset):
     ]
 
     if len(raw_inputs) > 1:
-      # Build one LogicalSelect per upstream RAW TargetDataset
-      # and join them via UNION ALL.
-      sub_selects = []
+      sub_selects: list[LogicalSelect] = []
       for inp in raw_inputs:
         raw_ds = inp.upstream_target_dataset
         sub_sel = _build_single_select_for_upstream(target_dataset, raw_ds)
@@ -103,85 +350,100 @@ def build_logical_select_for_target(target_dataset: TargetDataset):
 
       return LogicalUnion(selects=sub_selects, union_type="ALL")
 
-  # ----------------------------------------------------------------
-  # 2) Normal FROM resolution (single upstream)
-  # ----------------------------------------------------------------
-  from_schema = None
-  from_table = None
+  # --------------------------------------------------------------------------
+  # 2) Determine FROM source_table for single-path scenarios
+  # --------------------------------------------------------------------------
+  from_schema = target_dataset.target_schema.schema_name
+  from_table = target_dataset.target_dataset_name
 
-  upstream_td = None
-  upstream_src = None
-
-  if schema_short == "rawcore":
-    # rawcore: expect stage as upstream
-    for inp in inputs_qs:
-      utd = inp.upstream_target_dataset
-      if utd and utd.target_schema.short_name == "stage":
-        upstream_td = utd
-        break
+  if schema_short == "raw":
+    # Prefer direct SourceDataset input
+    src_input = next(
+      (inp for inp in inputs_qs if inp.source_dataset is not None),
+      None,
+    )
+    if src_input and src_input.source_dataset:
+      sd = src_input.source_dataset
+      from_schema = sd.schema_name
+      from_table = sd.source_dataset_name
+    else:
+      # Fallback: upstream TargetDataset if present
+      up_input = next(
+        (inp for inp in inputs_qs if inp.upstream_target_dataset is not None),
+        None,
+      )
+      if up_input and up_input.upstream_target_dataset:
+        up = up_input.upstream_target_dataset
+        from_schema = up.target_schema.schema_name
+        from_table = up.target_dataset_name
 
   elif schema_short == "stage":
-    # stage: prefer upstream raw (primary if available), else first source dataset
-    raw_candidates = []
-    for inp in inputs_qs:
-      utd = inp.upstream_target_dataset
-      if utd and utd.target_schema.short_name == "raw":
-        raw_candidates.append(inp)
-
-    if raw_candidates:
-      # prefer role="primary" if present
-      primary = next((inp for inp in raw_candidates if getattr(inp, "role", None) == "primary"), None)
-      chosen = primary or raw_candidates[0]
-      upstream_td = chosen.upstream_target_dataset
+    # Here we are only in the single-raw or source-input case (multi-raw already handled)
+    raw_input = next(
+      (
+        inp for inp in inputs_qs
+        if inp.upstream_target_dataset
+        and inp.upstream_target_dataset.target_schema.short_name == "raw"
+      ),
+      None,
+    )
+    if raw_input and raw_input.upstream_target_dataset:
+      up = raw_input.upstream_target_dataset
+      from_schema = up.target_schema.schema_name
+      from_table = up.target_dataset_name
     else:
-      # no raw upstream: fall back to a source dataset
-      src_candidates = [inp for inp in inputs_qs if inp.source_dataset is not None]
-      if src_candidates:
-        primary_src = next((inp for inp in src_candidates if getattr(inp, "role", None) == "primary"), None)
-        chosen_src = primary_src or src_candidates[0]
-        upstream_src = chosen_src.source_dataset
+      src_input = next(
+        (inp for inp in inputs_qs if inp.source_dataset is not None),
+        None,
+      )
+      if src_input and src_input.source_dataset:
+        sd = src_input.source_dataset
+        from_schema = sd.schema_name
+        from_table = sd.source_dataset_name
 
-  # raw and other schemas: no special logic (use self as fallback)
-  if upstream_td is not None:
-    from_schema = upstream_td.target_schema.schema_name
-    from_table = upstream_td.target_dataset_name
-  elif upstream_src is not None:
-    # heuristic for SourceDatasets: prefer schema_name, else source_system.target_short_name
-    if upstream_src.schema_name:
-      from_schema = upstream_src.schema_name
-    else:
-      from_schema = upstream_src.source_system.target_short_name
-    from_table = upstream_src.source_dataset_name
-  else:
-    # fallback: use the target dataset itself
-    from_schema = target_dataset.target_schema.schema_name
-    from_table = target_dataset.target_dataset_name
+  elif schema_short == "rawcore":
+    stage_input = next(
+      (
+        inp for inp in inputs_qs
+        if inp.upstream_target_dataset
+        and inp.upstream_target_dataset.target_schema.short_name == "stage"
+      ),
+      None,
+    )
+    if stage_input and stage_input.upstream_target_dataset:
+      up = stage_input.upstream_target_dataset
+      from_schema = up.target_schema.schema_name
+      from_table = up.target_dataset_name
+
+  # Other schemas: keep default (target_dataset itself)
 
   source_table = SourceTable(
-    name=from_table,
     schema=from_schema,
+    name=from_table,
     alias="s",
   )
-
   logical = LogicalSelect(from_=source_table)
 
-  # ----------------------------------------------------------------
+  # --------------------------------------------------------------------------
   # 3) SELECT list based on TargetColumns and column-level lineage
-  # ----------------------------------------------------------------
+  # --------------------------------------------------------------------------
   tcols = (
     target_dataset.target_columns
-    .all()
+    .filter(active=True)
     .order_by("ordinal_position", "id")
   )
 
   for col in tcols:
-    # 1) Surrogate key: use the stored RawSql expression (takes absolute precedence)
+    # Surrogate key column
     if col.surrogate_key_column and col.surrogate_expression:
       expr: Expr = RawSql(sql=col.surrogate_expression)
 
-    else:
-      # 2) Resolve column-level lineage and manual expressions
+    # Surrogate FK column (hash based on parent SK)
+    elif col.target_column_name in fk_expr_map:
+      expr = RawSql(sql=fk_expr_map[col.target_column_name])
 
+    # Normal lineage
+    else:
       col_input = (
         col.input_links
         .select_related(
@@ -194,119 +456,21 @@ def build_logical_select_for_target(target_dataset: TargetDataset):
         .first()
       )
 
-      # 2a) manual_expression has precedence:
-      #     - first on the input link
-      #     - then on the target column itself
-      manual_sql: str | None = None
-      if col_input and col_input.manual_expression:
-        manual_sql = col_input.manual_expression
-      elif col.manual_expression:
-        manual_sql = col.manual_expression
+      upstream_col_name: Optional[str] = None
 
-      if manual_sql:
-        # For now we treat all manual expressions as plain SQL.
-        # DSL ({{ ... }}) handling can be added later.
-        expr = RawSql(sql=manual_sql)
+      if col_input and col_input.upstream_target_column:
+        upstream_col_name = col_input.upstream_target_column.target_column_name
+      elif col_input and col_input.source_column:
+        upstream_col_name = col_input.source_column.source_column_name
 
+      if upstream_col_name:
+        expr = ColumnRef(table_alias="s", column_name=upstream_col_name)
       else:
-        # 2b) No manual expression -> derive from lineage
-        upstream_col_name: str | None = None
-
-        if col_input and col_input.upstream_target_column:
-          upstream_col_name = col_input.upstream_target_column.target_column_name
-          src_datatype = col_input.upstream_target_column.datatype
-        elif col_input and col_input.source_column:
-          upstream_col_name = col_input.source_column.source_column_name
-          src_datatype = col_input.source_column.datatype
-        else:
-          src_datatype = None
-
-        if upstream_col_name:
-          base_expr: Expr = ColumnRef(
-            table_alias="s",
-            column_name=upstream_col_name,
-          )
-        else:
-          # fall back to target column name
-          base_expr = ColumnRef(
-            table_alias="s",
-            column_name=col.target_column_name,
-          )
-
-        # 3) Optional CAST, wenn Source- und Target-Datatype unterschiedlich sind
-        tgt_datatype = col.datatype
-
-        if src_datatype and tgt_datatype and src_datatype != tgt_datatype:
-          # Use logical datatype; dialect.map_logical_type will turn it
-          # into the concrete DB type.
-          expr = Cast(expr=base_expr, target_type=tgt_datatype)
-        else:
-          expr = base_expr
-
-    logical.select_list.append(
-      SelectItem(
-        expr=expr,
-        alias=col.target_column_name,
-      )
-    )
-
-  return logical
-
-def _build_single_select_for_upstream(target_dataset, upstream_dataset):
-  """
-  Helper: build a LogicalSelect for one upstream TargetDataset (used in UNION ALL mode).
-
-  For each TargetColumn of the target_dataset:
-
-    - If the upstream_dataset (a RAW target dataset) has a target column
-      with the same target_column_name, we assume this column is present
-      and integrated in this branch -> use s."<that_name>".
-
-    - If not, we render NULL for this column in this branch.
-
-  This uses the fact that RAW target datasets are generated only from
-  integrated SourceColumns, so their column set already encodes which
-  fields participate in the consolidation.
-
-  The alias always uses target_dataset.target_column_name so the preview
-  shows the final shape.
-  """
-
-  source_table = SourceTable(
-    name=upstream_dataset.target_dataset_name,
-    schema=upstream_dataset.target_schema.schema_name,
-    alias="s",
-  )
-  logical = LogicalSelect(from_=source_table)
-
-  # Collect the column names that actually exist on this upstream dataset
-  upstream_col_names = set(
-    upstream_dataset.target_columns.values_list("target_column_name", flat=True)
-  )
-
-  tcols = (
-    target_dataset.target_columns
-    .all()
-    .order_by("ordinal_position", "id")
-  )
-
-  for col in tcols:
-    # Surrogate key: same behavior as in main builder (usually not used on stage)
-    if col.surrogate_key_column and col.surrogate_expression:
-      expr: Expr = RawSql(sql=col.surrogate_expression)
-    else:
-      if col.target_column_name in upstream_col_names:
-        # Column exists in this raw dataset -> use it
+        # Fallback to the target column name
         expr = ColumnRef(table_alias="s", column_name=col.target_column_name)
-      else:
-        # Column does not exist in this raw dataset -> NULL for this union branch
-        expr = RawSql("NULL")
 
     logical.select_list.append(
-      SelectItem(
-        expr=expr,
-        alias=col.target_column_name,
-      )
+      SelectItem(expr=expr, alias=col.target_column_name)
     )
 
   return logical

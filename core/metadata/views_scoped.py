@@ -32,6 +32,7 @@ from metadata.models import (
   TargetDatasetOwnership,
   TargetDatasetReference,
   TargetColumnInput,
+  TargetDatasetReferenceComponent,
   # Source-side
   System,
   SourceDataset,
@@ -41,6 +42,7 @@ from metadata.models import (
   SourceDatasetOwnership,
   SourceDatasetIncrementPolicy,
 )
+
 
 class _ScopedChildView(GenericCRUDView):
   """
@@ -102,7 +104,13 @@ class _ScopedChildView(GenericCRUDView):
     if parent_obj is not None:
       ctx["parent"] = parent_obj
 
+    # expose detail_route_name so row.html can build a scoped detail_url
+    detail_route_name = getattr(self, "detail_route_name", None)
+    if detail_route_name:
+      ctx["detail_route_name"] = detail_route_name
+      
     return ctx
+  
   
   def _remove_parent_fk_from_form(self, form):
     """
@@ -458,6 +466,11 @@ class _ScopedChildView(GenericCRUDView):
       "parent_pk": self.get_parent_pk(),
     }
 
+    # pass detail_route_name into row context, if defined
+    detail_route_name = getattr(self, "detail_route_name", None)
+    if detail_route_name:
+      ctx["detail_route_name"] = detail_route_name
+
     return render(request, "generic/row.html", ctx, status=200)
 
 # ---------------- Target side ----------------
@@ -508,6 +521,7 @@ class TargetDatasetReferenceScopedView(_ScopedChildView):
   model = TargetDatasetReference
   parent_model = TargetDataset
   route_name = "targetdatasetreference_list"
+  detail_route_name = "targetdatasetreference_detail_scoped"
 
   def get_queryset(self):
     return (
@@ -517,10 +531,86 @@ class TargetDatasetReferenceScopedView(_ScopedChildView):
       .order_by("referenced_dataset__target_dataset_name")
     )
 
+  def enhance_dynamic_fields(self, form):
+    """
+    Restrict referencing_dataset / referenced_dataset dropdowns
+    to RawCore target datasets.
+    """
+    form = super().enhance_dynamic_fields(form)
+
+    rawcore_qs = TargetDataset.objects.filter(
+      target_schema__short_name="rawcore"
+    ).order_by("target_dataset_name")
+
+    ref_child = form.fields.get("referencing_dataset")
+    if ref_child is not None:
+      ref_child.queryset = rawcore_qs
+
+    ref_parent = form.fields.get("referenced_dataset")
+    if ref_parent is not None:
+      ref_parent.queryset = rawcore_qs
+
+    return form
+
   def get_context_data(self, **kwargs):
     ctx = super().get_context_data(**kwargs)
     ctx["dataset"] = self.get_parent_object()
     return ctx
+    
+
+class TargetDatasetReferenceComponentScopedView(_ScopedChildView):
+  model = TargetDatasetReferenceComponent
+  parent_model = TargetDatasetReference
+  route_name = "targetdatasetreferencecomponent_list"
+
+  def get_queryset(self):
+    return (
+      self.model.objects
+      .filter(reference_id=self.get_parent_pk())
+      .select_related("reference", "from_column", "to_column")
+      .order_by("ordinal_position")
+    )
+
+  def get_context_data(self, **kwargs):
+    ctx = super().get_context_data(**kwargs)
+    ctx["reference"] = self.get_parent_object()
+    return ctx
+
+  def enhance_dynamic_fields(self, form):
+    """
+    Restrict dropdowns for TargetDatasetReferenceComponent:
+
+    - from_column: only columns of the referencing (child) dataset
+    - to_column: only business key columns of the referenced (parent) dataset
+    """
+    form = super().enhance_dynamic_fields(form)
+
+    parent = self.get_parent_object()
+    if not parent:
+      return form
+
+    # Child: referencing_dataset
+    from_field = form.fields.get("from_column")
+    if from_field is not None:
+      from_field.queryset = (
+        from_field.queryset
+        .filter(target_dataset=parent.referencing_dataset)
+        .order_by("target_dataset__target_dataset_name", "ordinal_position")
+      )
+
+    # Parent: referenced_dataset → only business key columns
+    to_field = form.fields.get("to_column")
+    if to_field is not None:
+      to_field.queryset = (
+        to_field.queryset
+        .filter(
+          target_dataset=parent.referenced_dataset,
+          business_key_column=True,
+        )
+        .order_by("target_dataset__target_dataset_name", "ordinal_position")
+      )
+
+    return form
 
 
 class TargetColumnInputScopedView(_ScopedChildView):
