@@ -23,7 +23,7 @@ Contact: <https://github.com/elevata-labs/elevata>.
 import re
 import unicodedata
 from metadata.generation.validators import validate_or_raise
-from metadata.models import SourceDatasetGroupMembership
+
 
 def _normalize_umlauts(value: str) -> str:
   """
@@ -89,80 +89,19 @@ def sanitize_name(raw: str) -> str:
   return cleaned
 
 
-def resolve_dataset_group_context(source_dataset, target_schema):
-  """
-  Decide naming parts (short_name, base_name) for a dataset
-  in the context of a specific target_schema.
-
-  RAW layer case (consolidate_groups == False):
-    - Never merge systems.
-    - Use the physical system short name (e.g. 'sap1', 'sap2'),
-      NOT the harmonized target_short_name.
-    - Use the dataset's own source_dataset_name.
-
-    Result raw_*_*
-      short_name = source_dataset.source_system.short_name
-      base_name  = source_dataset.source_dataset_name
-
-  STAGE / RAWCORE case (consolidate_groups == True):
-    - Merging/grouping is allowed across systems that conceptually belong together.
-    - Try SourceDatasetGroupMembership first:
-        short_name = group.target_short_name
-        base_name  = group.unified_source_dataset_name
-      If no group:
-        short_name = source_system.target_short_name
-        base_name  = source_dataset.source_dataset_name
-  """
-  consolidate = getattr(target_schema, "consolidate_groups", False)
-
-  # RAW-like behavior: no consolidation
-  if not consolidate:
-    sys_obj = getattr(source_dataset, "source_system", None)
-    short_raw = getattr(sys_obj, "short_name", "")  # IMPORTANT: physical system short_name (sap1, sap2)
-    base_raw  = getattr(source_dataset, "source_dataset_name", "")
-    return dict(
-      group=None,
-      short_name=sanitize_name(short_raw),
-      base_name=sanitize_name(base_raw),
-    )
-
-  # STAGE / RAWCORE behavior: consolidation allowed
-  group = None
-  membership = (
-    SourceDatasetGroupMembership.objects
-    .filter(source_dataset=source_dataset)
-    .select_related("group")
-    .first()
-  )
-  if membership and membership.group:
-    group = membership.group
-
-  if group:
-    short_raw = getattr(group, "target_short_name", "")                  # e.g. "sap"
-    base_raw  = getattr(group, "unified_source_dataset_name", "")        # e.g. "kna1"
-  else:
-    sys_obj = getattr(source_dataset, "source_system", None)
-    short_raw = getattr(sys_obj, "target_short_name", "")                # e.g. "sap"
-    base_raw  = getattr(source_dataset, "source_dataset_name", "")       # e.g. "kna1"
-
-  return dict(
-    group=group,
-    short_name=sanitize_name(short_raw),
-    base_name=sanitize_name(base_raw),
-  )
-
-
 def build_physical_dataset_name(target_schema, source_dataset) -> str:
   """
   Build final physical table name for (source_dataset in target_schema),
   using target_schema.physical_prefix and the schema's consolidation policy.
   """
+  from metadata.generation.grouping import resolve_dataset_group_context
+
   prefix_raw = getattr(target_schema, "physical_prefix", "") or ""
   prefix = sanitize_name(prefix_raw)
 
   ctx = resolve_dataset_group_context(source_dataset, target_schema)
   short_part = ctx["short_name"]
-  base_part  = ctx["base_name"]
+  base_part = ctx["base_name"]
 
   candidate = f"{prefix}_{short_part}_{base_part}"
   validate_or_raise(candidate, context="target_dataset_name")
@@ -174,14 +113,12 @@ def build_history_name(base_table_name: str) -> str:
   Returns the name for a history table derived from the given base table.
   Example: 'sap_customer' -> 'sap_customer_hist'
   """
-  from .validators import validate_or_raise
   cleaned = f"{base_table_name}_hist"
   validate_or_raise(cleaned, context="history_table_name")
   return cleaned
 
 
 def build_surrogate_key_name(target_dataset_name: str) -> str:
-  # <target_dataset_name>_key
   """
   Returns the name for the surrogate key field of a target dataset.
   Convention: <target_dataset_name>_key 

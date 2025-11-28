@@ -188,6 +188,14 @@ Contact: <https://github.com/elevata-labs/elevata>.
 
     // After HTMX swaps: focus last inline form (add/edit row) if present
     document.body.addEventListener('htmx:afterSwap', function (e) {
+      const cfg = e.detail && e.detail.requestConfig;
+      const path = cfg && typeof cfg.path === 'string' ? cfg.path : '';
+
+      // Don't touch hints - no focus steal with source_type_hint
+      if (path.indexOf('/metadata/source-type-hint') !== -1) {
+        return;
+      }
+
       const inlineForms = document.querySelectorAll('form.elevata-form-inline');
       if (inlineForms.length > 0) {
         const lastInlineForm = inlineForms[inlineForms.length - 1];

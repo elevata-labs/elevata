@@ -313,12 +313,7 @@ ELEVATA_CRUD = {
               "decimal_precision",
               "decimal_scale",
               "nullable",
-              "artificial_column",
               "manual_expression",
-              "ordinal_position",
-              "source_columns",
-              "upstream_columns",
-              "lineage_origin",
               "active",
             ],
           },
@@ -444,6 +439,19 @@ ELEVATA_CRUD = {
           },
           "label_map": {
             "True": "BK",
+            "False": "",
+            "default": "",
+          },
+        },
+        {
+          "field": "foreign_key_column", 
+          "class_map": {
+            "True": "badge badge-fk",
+            "False": "",
+            "default": "",
+          },
+          "label_map": {
+            "True": "FK",
             "False": "",
             "default": "",
           },

@@ -447,7 +447,7 @@ th i.bi-tags:hover {
 
 /* BK (Business Key) badge */
 .badge-pk {
-  background-color: var(--bs-info);
+  background-color: var(--elevata-dark);
   color: var(--elevata-white);
   font-weight: 700;
   letter-spacing: 0.03em;
@@ -455,8 +455,16 @@ th i.bi-tags:hover {
 
 /* SK (Surrogate Key) badge */
 .badge-sk {
-  background-color: var(--bs-primary);
+  background-color: var(--elevata-primary);
   color: var(--elevata-white);
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}
+
+/* FK (Foreign Key) badge */
+.badge-fk {
+  background-color: var(--elevata-accent);
+  color: var(--elevata-text);
   font-weight: 700;
   letter-spacing: 0.03em;
 }

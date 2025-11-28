@@ -594,7 +594,11 @@ class TargetDatasetReferenceComponentScopedView(_ScopedChildView):
     if from_field is not None:
       from_field.queryset = (
         from_field.queryset
-        .filter(target_dataset=parent.referencing_dataset)
+        .filter(
+          target_dataset=parent.referencing_dataset,
+          surrogate_key_column=False,
+          foreign_key_column=False,
+        )
         .order_by("target_dataset__target_dataset_name", "ordinal_position")
       )
 

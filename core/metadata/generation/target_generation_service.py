@@ -176,6 +176,50 @@ class TargetGenerationService:
     column_drafts: list[TargetColumnDraft] = []
     ordinal_counter = 1
 
+
+    # 4b. Auto-add source_identity_id as artificial BK column
+    #     for STAGE and RAWCORE if any group membership has an identity.
+    if target_schema.short_name in ("stage", "rawcore"):
+      memberships = getattr(source_dataset, "dataset_groups", None)
+      has_identity = False
+      if memberships is not None:
+        # adjust field name if it differs in your model
+        for m in memberships.all():
+          ident = getattr(m, "source_identity_id", None)
+          if ident:
+            has_identity = True
+            break
+
+      if has_identity:
+        already_present = any(
+          c.target_column_name == "source_identity_id"
+          for c in natural_key_cols
+        )
+
+        if not already_present:
+          identity_draft = TargetColumnDraft(
+            target_column_name="source_identity_id",
+            datatype="STRING",
+            max_length=30,
+            decimal_precision=None,
+            decimal_scale=None,
+            nullable=False,
+            business_key_column=True,
+            surrogate_key_column=False,
+            artificial_column=True,
+            lineage_origin="source_identity",
+            source_column_id=None,
+            ordinal_position=0,
+            surrogate_expression=None,
+          )
+
+          # Identity should be on first position in BK (Ordinal 1 in STAGE/RAWCORE),
+          # however, the hash order stays alphabetic.
+          natural_key_cols.insert(0, identity_draft)
+          natural_key_colnames = [
+            c.target_column_name for c in natural_key_cols
+          ]
+
     # 5. If this schema wants surrogate keys, create surrogate key column FIRST
     if getattr(target_schema, "surrogate_keys_enabled", False):
       pepper = security.get_runtime_pepper()  # your helper that resolves the pepper from env/profile

@@ -31,7 +31,7 @@ Contact: <https://github.com/elevata-labs/elevata>.
 -->
 
 {% with schema_short=col.target_dataset.target_schema.short_name %}
-  {% if col.surrogate_key_column or schema_short in "raw,stage" %}
+  {% if col.surrogate_key_column or col.foreign_key_column or schema_short in "raw,stage" %}
     <div id="tc-cell-{{ col.id }}" class="form-control-plaintext d-flex align-items-center gap-1">
       <span>{{ col.target_column_name }}</span>
       <i class="bi bi-ban text-muted" title="System-managed: rename not allowed"></i>

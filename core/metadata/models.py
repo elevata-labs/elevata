@@ -22,11 +22,15 @@ Contact: <https://github.com/elevata-labs/elevata>.
 
 import os
 import hashlib
+from django.db.models import Max
 from django.conf import settings
 from django.db import models
 from django.utils import timezone
 from crum import get_current_user
 from generic import display_key
+from metadata.generation import naming
+from metadata.rendering.builder import build_surrogate_fk_expression
+
 from metadata.constants import (
   TYPE_CHOICES, INGEST_CHOICES, INCREMENT_INTERVAL_CHOICES, DATATYPE_CHOICES, 
   MATERIALIZATION_CHOICES, RELATIONSHIP_TYPE_CHOICES, PII_LEVEL_CHOICES, TARGET_DATASET_INPUT_ROLE_CHOICES,
@@ -343,6 +347,21 @@ class SourceDatasetGroupMembership(AuditFields):
   )
   is_primary_system = models.BooleanField(default=False,
     help_text="If checked, this dataset is considered the 'golden' / leading source for this group."
+  )
+  source_identity_id = models.CharField(max_length=30, blank=True, null=True,
+    help_text=(
+      "Optional identifier used to distinguish rows when multiple source "
+      "datasets are grouped (e.g. 'aw1', 'aw2'). "
+      "If set, it can be used as additional business key component or "
+      "as tie-breaker in incremental logic."
+    ),
+  )
+  source_identity_ordinal = models.PositiveIntegerField(blank=True, null=True,
+    help_text=(
+      "Optional priority score for this source within the group. "
+      "Lower values mean higher priority. "
+      "If not set, the default order uses is_primary_system and identity id."
+    ),
   )
 
   class Meta:
@@ -812,7 +831,6 @@ class TargetDataset(AuditFields):
     # if the dataset has been renamed, update surrogate key columns
     if old_name and old_name != self.target_dataset_name:
       # build new surrogate key name
-      from metadata.generation import naming
       new_sk_name = naming.build_surrogate_key_name(self.target_dataset_name)
 
       # Update all surrogate key columns of this dataset
@@ -958,6 +976,9 @@ class TargetColumn(AuditFields):
   surrogate_key_column = models.BooleanField(default=False,
     help_text="If checked, this column is the system-generated surrogate key."
   )
+  foreign_key_column = models.BooleanField(default=False,
+    help_text="If checked, this column is a system-generated surrogate foreign key."
+  )
   artificial_column = models.BooleanField(default=False,
     help_text=(
       "If checked, this column does not directly exist in any single source, "
@@ -1042,7 +1063,6 @@ class TargetColumn(AuditFields):
   def save(self, *args, **kwargs):
     # Only set an ordinal_position if neither pk exists nor a value is set.
     if not self.pk and not self.ordinal_position:
-      from django.db.models import Max
       max_ord = (
         TargetColumn.objects
         .filter(target_dataset=self.target_dataset)
@@ -1226,46 +1246,102 @@ class TargetDatasetReference(AuditFields):
     missing = [name for name in parent_bk_names if name not in mapped_parent_bk_names]
     return missing
   
+  def get_child_fk_name(self) -> str:
+    """
+    Compute the FK column name on the child dataset.
+
+    Convention:
+      - Base name derived from the parent dataset (surrogate key name)
+      - Optional prefix: <prefix>_<base_name>
+    """
+    # Parent dataset holds the surrogate key
+    parent_ds = self.referenced_dataset
+
+    # Base FK name like "<parent>_key"
+    base_fk_name = naming.build_surrogate_key_name(
+      parent_ds.target_dataset_name
+    )
+
+    # Optional prefix, e.g. "billing_sap_customer_key"
+    if self.reference_prefix:
+      return f"{self.reference_prefix}_{base_fk_name}"
+
+    return base_fk_name
+
+  def sync_child_fk_column(self):
+    """
+    Ensure the FK surrogate column exists and is up-to-date.
+
+    Logic:
+      1) Check if all required BK components exist
+      2) If complete → build expression via builder (single source of truth)
+      3) Create or update the FK column
+      4) Mark as system-managed + foreign_key_column
+    """
+
+    reference = self
+    child = reference.referencing_dataset
+
+    # ----------------------------------------------------------------------
+    # 1) Check BK completeness
+    # ----------------------------------------------------------------------
+    if self.has_incomplete_bk_components:
+      return None
+
+    # ----------------------------------------------------------------------
+    # 2) Build final FK expression via central builder method
+    # ----------------------------------------------------------------------
+    fk_expression_sql = build_surrogate_fk_expression(reference)
+    # builder returns either RawSql(...) or a ConcatExpression with correct .sql
+
+    # ----------------------------------------------------------------------
+    # 3) Determine FK column name
+    # ----------------------------------------------------------------------
+    fk_name = reference.get_child_fk_name()
+
+    fk_col, created = TargetColumn.objects.get_or_create(
+        target_dataset=child,
+        target_column_name=fk_name,
+        defaults={
+            "datatype": "string",
+            "max_length": 64,
+            "nullable": True,
+            "is_system_managed": True,
+            "foreign_key_column": True,
+            "lineage_origin": "foreign_key",
+            "surrogate_expression": fk_expression_sql.sql
+                if hasattr(fk_expression_sql, "sql")
+                else str(fk_expression_sql),
+        },
+    )
+
+    # ----------------------------------------------------------------------
+    # 4) Update existing FK column
+    # ----------------------------------------------------------------------
+    fk_col.datatype = "string"
+    fk_col.max_length = 64
+    fk_col.nullable = True
+    fk_col.is_system_managed = True
+    fk_col.foreign_key_column = True
+    fk_col.lineage_origin = "foreign_key"
+    fk_col.surrogate_expression = (
+        fk_expression_sql.sql
+        if hasattr(fk_expression_sql, "sql")
+        else str(fk_expression_sql)
+    )
+    fk_col.save()
+
+    return fk_col
+
   def save(self, *args, **kwargs):
-    is_new = self.pk is None
     super().save(*args, **kwargs)
-
-    if is_new:
-      # Auto-create FK column in child dataset
-      from metadata.generation.naming import build_surrogate_key_name
-
-      child_ds = self.referencing_dataset
-      parent_ds = self.referenced_dataset
-
-      # Base FK name derived from parent
-      base_fk_name = build_surrogate_key_name(parent_ds.target_dataset_name)
-
-      # Apply prefix if user specified one
-      fk_name = (
-        f"{self.reference_prefix}_{base_fk_name}"
-        if self.reference_prefix else base_fk_name
-      )
-
-      # Only create FK column if not existing
-      if not child_ds.target_columns.filter(target_column_name=fk_name, active=True).exists():
-        
-        # Determine next ordinal position
-        last_ord = (
-          child_ds.target_columns.filter(active=True)
-          .order_by("-ordinal_position")
-          .values_list("ordinal_position", flat=True)
-          .first()
-        )
-        next_ord = (last_ord or 0) + 1
-
-        TargetColumn.objects.create(
-          target_dataset=child_ds,
-          target_column_name=fk_name,
-          ordinal_position=next_ord,
-          surrogate_key_column=False,
-          business_key_column=False,
-          manual_expression=None,
-        )
+    # Try to sync FK column whenever the reference itself changes.
+    # This will only create/update the FK if the BK components are complete.
+    try:
+      self.sync_child_fk_column()
+    except Exception:
+      # defensive: FK-Sync should not force errors in normal save
+      pass
 
 # -------------------------------------------------------------------
 # TargetDatasetReferenceComponent
@@ -1297,3 +1373,21 @@ class TargetDatasetReferenceComponent(AuditFields):
 
   def __str__(self):
     return f"{self.reference.referencing_dataset}.{self.from_column.target_column_name} -> {self.reference.referenced_dataset}.{self.to_column.target_column_name} (#{self.ordinal_position})"
+
+  def save(self, *args, **kwargs):
+    super().save(*args, **kwargs)
+    # After each change to key components, re-evaluate FK completeness
+    try:
+      self.reference.sync_child_fk_column()
+    except Exception:
+      pass
+
+  def delete(self, *args, **kwargs):
+    ref = self.reference
+    super().delete(*args, **kwargs)
+    # After deleting a component, FK might become incomplete – we currently
+    # do not drop it, but we could extend sync_child_fk_column() if nötig.
+    try:
+      ref.sync_child_fk_column()
+    except Exception:
+      pass

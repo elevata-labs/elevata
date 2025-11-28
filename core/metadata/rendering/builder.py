@@ -22,13 +22,9 @@ Contact: <https://github.com/elevata-labs/elevata>.
 
 from __future__ import annotations
 
-from typing import List, Optional
+from typing import List, Optional, TYPE_CHECKING
 import re
 
-from metadata.models import (
-  TargetDataset,
-  TargetColumn,
-)
 from metadata.rendering.expr import (
   Expr,
   ColumnRef,
@@ -41,6 +37,10 @@ from metadata.rendering.logical_plan import (
   LogicalUnion,
 )
 from metadata.generation.naming import build_surrogate_key_name
+
+if TYPE_CHECKING:
+  # Only for type hints, no runtime import -> no circular import
+  from metadata.models import TargetDataset, TargetColumn, TargetDatasetReference
 
 """
 Logical Query Builder for TargetDatasets.
@@ -142,6 +142,84 @@ def _rewrite_parent_sk_expr(parent_expr_sql: str, mapping: dict[str, str]) -> st
   return "".join(result)
 
 
+def _resolve_source_identity_id_for_raw(raw_ds):
+  """
+  Returns the identity name for a RAW dataset if it exists,
+  otherwise None.
+  """
+  # RAW → SourceDataset via TargetDatasetInput
+  inp = raw_ds.target_inputs.filter(source_dataset__isnull=False).first()
+  if not inp:
+    return None
+
+  src = inp.source_dataset
+  memberships = getattr(src, "dataset_groups", None)
+  if not memberships:
+    return None
+
+  mem = memberships.first()
+  return getattr(mem, "source_identity_id", None)
+
+
+def build_surrogate_fk_expression(reference: "TargetDatasetReference") -> Expr:
+  """
+  Build the surrogate FK expression for a single TargetDatasetReference.
+
+  The FK expression is derived from the parent's surrogate key expression by
+  rewriting the occurrences of the parent's BK columns:
+
+    - 1st occurrence of a BK column name: left side -> stays col("bk")
+    - 2nd occurrence: right side -> becomes the child Stage expression
+
+  This mirrors the logic in _build_fk_surrogate_expr_map() and ensures that
+  FK and SK use the exact same hashing / concatenation DSL.
+  """
+
+  parent_ds = reference.referenced_dataset
+
+  # 1) Parent SK column with surrogate_expression
+  parent_sk = (
+    parent_ds.target_columns
+    .filter(surrogate_key_column=True, active=True)
+    .order_by("ordinal_position", "id")
+    .first()
+  )
+  if not parent_sk or not parent_sk.surrogate_expression:
+    raise ValueError(
+      f"Parent dataset '{parent_ds}' has no surrogate key expression."
+    )
+
+  parent_expr = parent_sk.surrogate_expression
+
+  # 2) Build mapping: parent BK -> child Stage expression
+  components = list(reference.key_components.all())
+  if not components:
+    raise ValueError(
+      f"Reference '{reference}' has no key components defined."
+    )
+
+  mapping: dict[str, str] = {}
+  for comp in components:
+    # Parent BK column name as referenced in the parent SK expression
+    parent_bk_name = comp.to_column.target_column_name
+
+    # Child RawCore column -> get Stage-level expression feeding it
+    child_stage_expr = _get_stage_expr_for_rawcore_col(comp.from_column)
+    if not child_stage_expr:
+      raise ValueError(
+        f"Cannot resolve Stage expression for child column "
+        f"'{comp.from_column.target_column_name}' in reference '{reference}'."
+      )
+
+    mapping[parent_bk_name] = child_stage_expr
+
+  # 3) Rewrite parent SK expression into FK expression
+  fk_expr_sql = _rewrite_parent_sk_expr(parent_expr, mapping)
+
+  # Returned object is compatible with sync_child_fk_column(), which expects
+  # an Expr-like object with a .sql attribute (RawSql) or something similar.
+  return RawSql(sql=fk_expr_sql)
+
 # ------------------------------------------------------------------------------
 # Build FK surrogate expression map
 # ------------------------------------------------------------------------------
@@ -169,51 +247,123 @@ def _build_fk_surrogate_expr_map(target_dataset: TargetDataset) -> dict[str, str
   for ref in refs:
     parent_ds = ref.referenced_dataset
 
-    # Parent SK column
-    parent_sk = (
-      parent_ds.target_columns
-      .filter(surrogate_key_column=True, active=True)
-      .order_by("ordinal_position", "id")
-      .first()
-    )
-    if not parent_sk or not parent_sk.surrogate_expression:
-      continue
-
-    parent_expr = parent_sk.surrogate_expression
-
-    # Determine FK column name on child side
     base_fk_name = build_surrogate_key_name(parent_ds.target_dataset_name)
-    fk_name = f"{ref.reference_prefix}_{base_fk_name}" if ref.reference_prefix else base_fk_name
+    fk_name = (
+      f"{ref.reference_prefix}_{base_fk_name}"
+      if ref.reference_prefix
+      else base_fk_name
+    )
 
-    if not target_dataset.target_columns.filter(target_column_name=fk_name, active=True).exists():
+    # FK column has to exist in child, otherwise ignore
+    if not target_dataset.target_columns.filter(
+      target_column_name=fk_name,
+      active=True,
+    ).exists():
       continue
 
-    # Build mapping: parent BK -> child Stage expression
-    components = list(ref.key_components.all())
-    if not components:
+    # Try to build the expression via central function
+    try:
+      fk_expr = build_surrogate_fk_expression(ref)
+    except Exception:
+      # If something is missing (SK, BK-Mapping, Stage-Lineage ...), then no FK
       continue
 
-    mapping: dict[str, str] = {}
-    all_ok = True
-
-    for comp in components:
-      parent_bk_name = comp.to_column.target_column_name
-
-      child_stage_expr = _get_stage_expr_for_rawcore_col(comp.from_column)
-      if not child_stage_expr:
-        all_ok = False
-        break
-
-      mapping[parent_bk_name] = child_stage_expr
-
-    if not all_ok:
-      continue
-
-    # Rewrite expression
-    fk_expr_sql = _rewrite_parent_sk_expr(parent_expr, mapping)
-    fk_map[fk_name] = fk_expr_sql
+    fk_map[fk_name] = (
+      fk_expr.sql if hasattr(fk_expr, "sql") else str(fk_expr)
+    )
 
   return fk_map
+
+def _resolve_source_identity_id_for_raw(upstream_dataset: "TargetDataset") -> Optional[str]:
+  """
+  Try to resolve the source_identity_id for a given RAW TargetDataset.
+
+  Logic:
+    - Find the SourceDataset feeding this RAW dataset via its input_links.
+    - From that SourceDataset, look up its SourceDatasetGroupMembership.
+    - Return membership.source_identity_id if present.
+  """
+  # RAW TargetDataset -> its input_links point to a SourceDataset
+  src_input = (
+    upstream_dataset.input_links
+    .select_related("source_dataset")
+    .filter(active=True, source_dataset__isnull=False)
+    .order_by("id")
+    .first()
+  )
+
+  if not src_input or not src_input.source_dataset:
+    return None
+
+  source_dataset = src_input.source_dataset
+
+  # SourceDatasetGroupMembership has related_name="dataset_groups" on SourceDataset :contentReference[oaicite:0]{index=0}
+  membership = (
+    source_dataset.dataset_groups
+    .order_by("-is_primary_system", "id")
+    .first()
+  )
+
+  if not membership:
+    return None
+
+  return getattr(membership, "source_identity_id", None)
+
+def _resolve_source_identity_id_for_raw(
+  upstream_dataset: "TargetDataset",
+) -> Optional[str]:
+  """
+  Try to resolve the source_identity_id for a given RAW TargetDataset.
+
+  Logic:
+    - RAW TargetDataset has input_links pointing to a SourceDataset.
+    - From that SourceDataset, look up its SourceDatasetGroupMembership
+      (related_name='dataset_groups').
+    - Return membership.source_identity_id if present.
+  """
+  # RAW TargetDataset -> its input_links point to a SourceDataset
+  link = (
+    upstream_dataset.input_links
+    .select_related("source_dataset", "source_dataset__source_system")
+    .filter(active=True)
+    .order_by("id")
+    .first()
+  )
+  if not link or not link.source_dataset:
+    return None
+
+  source_dataset = link.source_dataset
+
+  # SourceDatasetGroupMembership: related_name="dataset_groups" on SourceDataset
+  membership = (
+    source_dataset.dataset_groups
+    .order_by("-is_primary_system", "id")
+    .first()
+  )
+  if not membership:
+    return None
+
+  identity_id = getattr(membership, "source_identity_id", None)
+  if not identity_id:
+    return None
+
+  return identity_id
+
+
+def _resolve_source_identity_id_for_source(source_dataset) -> str | None:
+  """
+  Resolve the source_identity_id for a SourceDataset if present,
+  otherwise return None.
+  """
+  memberships = getattr(source_dataset, "dataset_groups", None)
+  if not memberships:
+    return None
+
+  membership = memberships.first()
+  if not membership:
+    return None
+
+  return getattr(membership, "source_identity_id", None)
 
 
 # ------------------------------------------------------------------------------
@@ -235,8 +385,8 @@ def _build_single_select_for_upstream(
 
     - If not, we render NULL for this column in this branch.
 
-  The alias always uses target_dataset.target_column_name so the preview
-  shows the final shape.
+  A special case is the `source_identity_id` column, which is populated
+  per branch from SourceDatasetGroupMembership (if configured).
   """
   source_table = SourceTable(
     schema=upstream_dataset.target_schema.schema_name,
@@ -249,6 +399,9 @@ def _build_single_select_for_upstream(
     upstream_dataset.target_columns.values_list("target_column_name", flat=True)
   )
 
+  # Per-branch source identity id (e.g. 'SAP', 'NAV_01', ...)
+  identity_id = _resolve_source_identity_id_for_raw(upstream_dataset)
+
   tcols = (
     target_dataset.target_columns
     .filter(active=True)
@@ -258,11 +411,91 @@ def _build_single_select_for_upstream(
   for col in tcols:
     if col.surrogate_key_column and col.surrogate_expression:
       expr: Expr = RawSql(sql=col.surrogate_expression)
+
+    # Special handling for source_identity_id:
+    # In UNION branches we emit a literal per upstream if configured.
+    elif col.target_column_name == "source_identity_id" and identity_id is not None:
+      # Simple string literal, dialect-agnostic enough for v0.5
+      expr = RawSql(sql=f"'{identity_id}'")
+
     else:
       if col.target_column_name in upstream_col_names:
         expr = ColumnRef(table_alias="s", column_name=col.target_column_name)
       else:
         expr = RawSql("NULL")
+
+    logical.select_list.append(
+      SelectItem(expr=expr, alias=col.target_column_name)
+    )
+
+  return logical
+
+
+# ------------------------------------------------------------------------------
+# Helper: Build a SELECT for a single SourceDataset (UNION path)
+# ------------------------------------------------------------------------------
+def _build_single_select_for_source_stage(
+  target_dataset: TargetDataset,
+  source_dataset: SourceDataset,
+) -> LogicalSelect:
+  """
+  Build a LogicalSelect from a single SourceDataset for a STAGE target.
+
+  Used in multi-source STAGE scenarios where the stage dataset reads
+  directly from multiple sources (without a RAW layer).
+
+  For each TargetColumn in the stage dataset:
+
+    - If the column is 'source_identity_id', we inject a literal value
+      based on the SourceDatasetGroupMembership (e.g. 'aw1', 'aw2').
+    - Otherwise, if a matching SourceColumn exists by name, we select
+      that column from the source table using alias 's'.
+    - If there is no matching SourceColumn, we emit NULL for that column
+      in this branch.
+
+  The SELECT alias always uses target_column_name so that the UNION
+  branches line up structurally.
+  """
+  source_table = SourceTable(
+    schema=source_dataset.schema_name,
+    name=source_dataset.source_dataset_name,
+    alias="s",
+  )
+
+  logical = LogicalSelect(from_=source_table, select_list=[])
+
+  # Fast lookup of source columns by lowercased name
+  src_cols_by_name = {
+    sc.source_column_name.lower(): sc
+    for sc in source_dataset.source_columns.filter(integrate=True)
+  }
+
+  # Resolve identity id (may be None)
+  identity_id = _resolve_source_identity_id_for_source(source_dataset)
+
+  for col in (
+    target_dataset.target_columns
+    .filter(active=True)
+    .order_by("ordinal_position", "id")
+  ):
+    # Special handling for the artificial identity column
+    if col.target_column_name == "source_identity_id":
+      if identity_id is not None:
+        expr = RawSql(sql=f"'{identity_id}'")
+      else:
+        expr = RawSql(sql="NULL")
+
+    else:
+      # Normal mapping: try to find a source column with the same name
+      src_col = src_cols_by_name.get(col.target_column_name.lower())
+      if src_col:
+        expr = ColumnRef(
+          table_alias="s",
+          column_name=src_col.source_column_name,
+        )
+      else:
+        # No matching source column → NULL for this branch
+        expr = RawSql(sql="NULL")
 
     logical.select_list.append(
       SelectItem(expr=expr, alias=col.target_column_name)
@@ -278,43 +511,8 @@ def build_logical_select_for_target(target_dataset: TargetDataset):
   """
   Build a vendor-neutral logical representation (LogicalSelect or LogicalUnion)
   for the given TargetDataset, using dataset- and column-level lineage.
-
-  Behavior:
-
-    - raw:
-        FROM the SourceDataset (if present as input),
-        otherwise from an upstream TargetDataset (fallback),
-        otherwise from the raw target itself.
-
-    - stage:
-        - if multiple upstream RAW TargetDatasets exist:
-            build a UNION ALL between the individual raw SELECTs.
-        - if exactly one raw-upstream:
-            FROM that raw TargetDataset.
-        - if no raw-upstream:
-            FROM the first (optionally primary) SourceDataset,
-            otherwise from the stage target itself.
-
-    - rawcore:
-        FROM upstream stage TargetDataset if present,
-        otherwise from the rawcore target itself.
-
-    - other schemas:
-        FROM the target_dataset itself.
-
-  Columns:
-    - Surrogate-key columns with surrogate_expression → RawSql(...)
-    - FK surrogate columns (derived from outgoing TargetDatasetReference)
-      → RawSql(fk_expression_sql)
-    - Otherwise:
-        * Prefer upstream_target_column.target_column_name
-        * Else source_column.source_column_name
-        * Fallback: target_column_name
-
-      The SELECT alias always uses target_column_name so that
-      the preview shows the final target structure while the expression
-      reveals the true upstream names.
   """
+
   schema_short = target_dataset.target_schema.short_name
 
   inputs_qs = (
@@ -328,13 +526,14 @@ def build_logical_select_for_target(target_dataset: TargetDataset):
     .filter(active=True)
   )
 
-  # Build FK expressions now so they can be reused in all paths
   fk_expr_map = _build_fk_surrogate_expr_map(target_dataset)
 
-  # --------------------------------------------------------------------------
-  # 1) Special case: STAGE with multiple RAW upstreams -> UNION ALL
-  # --------------------------------------------------------------------------
+  # ==========================================================================
+  # 1) STAGE: MULTI-SOURCE (RAW or SOURCE) → UNION or RANKED UNION
+  # ==========================================================================
   if schema_short == "stage":
+
+    # -------- 1a) Multi-source via RAW -------------------------------------
     raw_inputs = [
       inp for inp in inputs_qs
       if inp.upstream_target_dataset
@@ -342,43 +541,64 @@ def build_logical_select_for_target(target_dataset: TargetDataset):
     ]
 
     if len(raw_inputs) > 1:
-      sub_selects: list[LogicalSelect] = []
+      sub_selects = []
+      identity_flags = []
+
       for inp in raw_inputs:
         raw_ds = inp.upstream_target_dataset
-        sub_sel = _build_single_select_for_upstream(target_dataset, raw_ds)
-        sub_selects.append(sub_sel)
+        sel = _build_single_select_for_upstream(target_dataset, raw_ds)
+        sub_selects.append(sel)
+        identity_flags.append(_resolve_source_identity_id_for_raw(raw_ds))
 
+      # For now, both identity and non-identity modes use a simple UNION ALL.
+      # Identity-mode still benefits from source_identity_id being part of
+      # the natural key; conflict prioritization for no-identity mode will
+      # be implemented once the logical plan and dialects support subqueries
+      # and window functions generically.
       return LogicalUnion(selects=sub_selects, union_type="ALL")
 
-  # --------------------------------------------------------------------------
-  # 2) Determine FROM source_table for single-path scenarios
-  # --------------------------------------------------------------------------
+    # -------- 1b) Multi-source via direct SourceDataset ---------------------
+    source_inputs = [inp for inp in inputs_qs if inp.source_dataset is not None]
+
+    if len(source_inputs) > 1:
+      sub_selects = []
+      identity_flags = []
+
+      for inp in source_inputs:
+        src = inp.source_dataset
+        sel = _build_single_select_for_source_stage(target_dataset, src)
+        sub_selects.append(sel)
+        identity_flags.append(_resolve_source_identity_id_for_source(src))
+
+      # Same here: use a plain UNION ALL for now.
+      return LogicalUnion(selects=sub_selects, union_type="ALL")
+
+    # -------------------- SINGLE-SOURCE STAGE (fall through) ----------------
+
+  # ==========================================================================
+  # 2) single-path FROM resolution (raw, stage, rawcore, fallback)
+  # ==========================================================================
   from_schema = target_dataset.target_schema.schema_name
   from_table = target_dataset.target_dataset_name
 
   if schema_short == "raw":
-    # Prefer direct SourceDataset input
     src_input = next(
       (inp for inp in inputs_qs if inp.source_dataset is not None),
       None,
     )
-    if src_input and src_input.source_dataset:
+    if src_input:
       sd = src_input.source_dataset
-      from_schema = sd.schema_name
-      from_table = sd.source_dataset_name
+      from_schema, from_table = sd.schema_name, sd.source_dataset_name
     else:
-      # Fallback: upstream TargetDataset if present
       up_input = next(
         (inp for inp in inputs_qs if inp.upstream_target_dataset is not None),
         None,
       )
-      if up_input and up_input.upstream_target_dataset:
+      if up_input:
         up = up_input.upstream_target_dataset
-        from_schema = up.target_schema.schema_name
-        from_table = up.target_dataset_name
+        from_schema, from_table = up.target_schema.schema_name, up.target_dataset_name
 
   elif schema_short == "stage":
-    # Here we are only in the single-raw or source-input case (multi-raw already handled)
     raw_input = next(
       (
         inp for inp in inputs_qs
@@ -387,19 +607,17 @@ def build_logical_select_for_target(target_dataset: TargetDataset):
       ),
       None,
     )
-    if raw_input and raw_input.upstream_target_dataset:
+    if raw_input:
       up = raw_input.upstream_target_dataset
-      from_schema = up.target_schema.schema_name
-      from_table = up.target_dataset_name
+      from_schema, from_table = up.target_schema.schema_name, up.target_dataset_name
     else:
       src_input = next(
         (inp for inp in inputs_qs if inp.source_dataset is not None),
         None,
       )
-      if src_input and src_input.source_dataset:
+      if src_input:
         sd = src_input.source_dataset
-        from_schema = sd.schema_name
-        from_table = sd.source_dataset_name
+        from_schema, from_table = sd.schema_name, sd.source_dataset_name
 
   elif schema_short == "rawcore":
     stage_input = next(
@@ -410,23 +628,16 @@ def build_logical_select_for_target(target_dataset: TargetDataset):
       ),
       None,
     )
-    if stage_input and stage_input.upstream_target_dataset:
+    if stage_input:
       up = stage_input.upstream_target_dataset
-      from_schema = up.target_schema.schema_name
-      from_table = up.target_dataset_name
+      from_schema, from_table = up.target_schema.schema_name, up.target_dataset_name
 
-  # Other schemas: keep default (target_dataset itself)
-
-  source_table = SourceTable(
-    schema=from_schema,
-    name=from_table,
-    alias="s",
-  )
+  # ==========================================================================
+  # 3) Build the LogicalSelect for the single-path scenario
+  # ==========================================================================
+  source_table = SourceTable(schema=from_schema, name=from_table, alias="s")
   logical = LogicalSelect(from_=source_table)
 
-  # --------------------------------------------------------------------------
-  # 3) SELECT list based on TargetColumns and column-level lineage
-  # --------------------------------------------------------------------------
   tcols = (
     target_dataset.target_columns
     .filter(active=True)
@@ -434,15 +645,12 @@ def build_logical_select_for_target(target_dataset: TargetDataset):
   )
 
   for col in tcols:
-    # Surrogate key column
     if col.surrogate_key_column and col.surrogate_expression:
-      expr: Expr = RawSql(sql=col.surrogate_expression)
+      expr = RawSql(sql=col.surrogate_expression)
 
-    # Surrogate FK column (hash based on parent SK)
     elif col.target_column_name in fk_expr_map:
       expr = RawSql(sql=fk_expr_map[col.target_column_name])
 
-    # Normal lineage
     else:
       col_input = (
         col.input_links
@@ -456,21 +664,16 @@ def build_logical_select_for_target(target_dataset: TargetDataset):
         .first()
       )
 
-      upstream_col_name: Optional[str] = None
+      upstream_col_name = (
+        col_input.upstream_target_column.target_column_name
+        if col_input and col_input.upstream_target_column
+        else col_input.source_column.source_column_name
+        if col_input and col_input.source_column
+        else col.target_column_name
+      )
 
-      if col_input and col_input.upstream_target_column:
-        upstream_col_name = col_input.upstream_target_column.target_column_name
-      elif col_input and col_input.source_column:
-        upstream_col_name = col_input.source_column.source_column_name
+      expr = ColumnRef(table_alias="s", column_name=upstream_col_name)
 
-      if upstream_col_name:
-        expr = ColumnRef(table_alias="s", column_name=upstream_col_name)
-      else:
-        # Fallback to the target column name
-        expr = ColumnRef(table_alias="s", column_name=col.target_column_name)
-
-    logical.select_list.append(
-      SelectItem(expr=expr, alias=col.target_column_name)
-    )
+    logical.select_list.append(SelectItem(expr=expr, alias=col.target_column_name))
 
   return logical
