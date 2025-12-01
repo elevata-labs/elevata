@@ -32,6 +32,7 @@ from metadata.models import (
   TargetDatasetReferenceComponent,
 )
 from metadata.rendering.builder import build_logical_select_for_target
+from metadata.rendering.expr import Concat, ColumnRef, Literal
 
 
 @pytest.mark.django_db
@@ -224,15 +225,30 @@ def test_fk_hash_matches_parent_surrogate_key():
 
   fk_expr = fk_items[0].expr
 
-  # Parent SK:
-  #   concat(col("bk1"), "~", col("bk1"), "|", col("bk2"), "~", col("bk2"))
-  #
-  # Expected child FK:
-  #   concat(col("bk1"), "~", col("child_bk1"), "|", col("bk2"), "~", col("child_bk2"))
-  expected_sql = (
-    'concat(col("bk1"), "~", col("child_bk1"), "|", col("bk2"), "~", col("child_bk2"))'
-  )
+  # We expect a Concat AST with the structure:
+  #   col("bk1"), "~", col("child_bk1"), "|", col("bk2"), "~", col("child_bk2")
+  assert isinstance(fk_expr, Concat)
+  parts = fk_expr.parts
 
-  actual_sql = getattr(fk_expr, "sql", None)
+  assert len(parts) == 7
 
-  assert actual_sql == expected_sql
+  assert isinstance(parts[0], ColumnRef)
+  assert parts[0].column_name == "bk1"
+
+  assert isinstance(parts[1], Literal)
+  assert parts[1].value == "~"
+
+  assert isinstance(parts[2], ColumnRef)
+  assert parts[2].column_name == "child_bk1"
+
+  assert isinstance(parts[3], Literal)
+  assert parts[3].value == "|"
+
+  assert isinstance(parts[4], ColumnRef)
+  assert parts[4].column_name == "bk2"
+
+  assert isinstance(parts[5], Literal)
+  assert parts[5].value == "~"
+
+  assert isinstance(parts[6], ColumnRef)
+  assert parts[6].column_name == "child_bk2"

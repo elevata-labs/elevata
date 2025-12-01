@@ -46,7 +46,7 @@ class RenameSpec:
 
 def validate_name(new_name: str, context: str) -> list[str]:
   """
-  Apply Elevata's shared naming rules with a specific context.
+  Apply elevata's shared naming rules with a specific context.
   Returns a list of error messages (empty if valid).
   """
   try:

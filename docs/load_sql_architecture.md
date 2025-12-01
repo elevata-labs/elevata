@@ -1,185 +1,148 @@
-# 🏗️ Load SQL Architecture
+# Load SQL Architecture
 
-> How elevata transforms metadata and lineage into executable SQL for Raw, Stage, and Rawcore —
-> covering the entire pipeline from logical plan to dialect-aware SQL rendering.
+This document describes how elevata transforms metadata into executable SQL for load operations. It reflects the architecture as of the current 0.5.x generation, with SQL generation unified across dialects via the Logical Plan and Expression AST.  
 
-This document complements the *Generation Logic*, *Incremental Load*, and *Dialect System* docs by describing
-how Load SQL is generated, what components participate, and how merge/delete SQL is constructed in a modular, vendor-neutral way.
+> **Note:** Until v1.0, elevata focuses primarily on generating SELECT-based load SQL. MERGE, DELETE-detection, and advanced write-paths are planned but not yet implemented.
 
 ---
 
-## 🧩 1. Overview
-Load SQL in elevata is produced through a multi-layer architecture:  
+# 1. Overview
 
-1. **Metadata Model** → Defines datasets, columns, lineage, natural keys  
-2. **Logical Plan Builder** → Converts lineage into a structured, dialect-agnostic plan  
-3. **SQL Renderer** → Translates logical plan into SQL text  
-4. **Dialect Adapter** → Applies vendor-specific syntax rules  
-5. **Load SQL Functions** → Generate full-load, merge, and delete-detection SQL  
+The load SQL pipeline turns metadata into **complete SQL statements** suitable for execution on various analytical backends.  
 
-The result: deterministic, readable, platform-portable SQL.
-
----
-
-## 🔗 2. Architecture Flow
-The SQL pipeline follows a strict sequence:
-
-```text
-TargetDataset
-   ↓ (lineage, keys, columns)
-LogicalPlanBuilder
-   ↓ (structured plan)
-SqlRenderer
-   ↓ (strings + dialect hooks)
-Active SqlDialect
-   ↓ (final SQL)
-Load SQL (full / merge / delete)
-```
-
-This separation keeps metadata clean, SQL deterministic, and dialect differences isolated.
-
----
-
-## 📐 3. Logical Plan Builder
-The logical plan is a neutral representation of the desired query, independent of SQL syntax.  
-It performs:  
-- resolving upstream datasets  
-- building select lists  
-- applying lineage mappings  
-- generating aliases  
-- determining join or union behavior  
-
-The plan does **not** contain SQL text — only structured objects.
-This makes it reusable across dialects.
-
-Example (conceptual):
-```
-LogicalSelect(
-  from = StageDataset,
-  columns = [
-    LogicalColumn(name="customer_id", source="stg.customer_id"),
-    LogicalColumn(name="city_name", source="stg.city"),
-    ...
-  ]
-)
-```
-
----
-
-## 🖋️ 4. SQL Renderer
-`SqlRenderer` turns the logical plan into SQL using systematic rendering rules:  
-- two-space indentation  
-- explicit aliasing for every target column  
-- stable table aliases  
-- deterministic column order  
-
-The renderer delegates quoting, hashing, concatenation, and merge patterns to the active dialect.
-
-This ensures:  
-- consistent output across platforms  
-- predictable diffs in UI and version control  
-
----
-
-## 🎛️ 5. Dialect Integration
-The renderer never references vendor-specific syntax directly.  
-All variations (identifier quoting, merge syntax, hashing, boolean rules) are handled by:
+High‑level flow:
 
 ```
-dialect = get_active_dialect()
+Metadata → Logical Plan → Expression AST → Dialect Rendering → SQL Load Statement
 ```
 
-Examples:  
-- DuckDB: `"identifier"`  
-- Snowflake: `"IDENTIFIER"`  
-- BigQuery: backtick quoting  
-- MSSQL: `[identifier]`  
-
-The dialect also provides:  
-- `render_merge_sql(context)`  
-- `render_delete_detection_sql(context)`  
-- `hash_expression()`  
-- `concat_expression()`  
+The system is designed so that:  
+- Metadata stays backend‑agnostic  
+- Logical Plans describe *what* is needed, not *how* it is written  
+- Dialects control syntactic differences  
+- Execution engines (DuckDB, Postgres, MSSQL, ...) remain fully decoupled
 
 ---
 
-## 🔄 6. Full Load SQL
-Full-load SQL is the simplest mode:  
-- truncate (if supported)  
-- `INSERT INTO rawcore SELECT ... FROM stage`  
+# 2. Logical Plans for Load Operations
 
-Logical steps:  
-1. Build logical select for the target dataset  
-2. Render SQL using dialect rules  
-3. Wrap in `INSERT INTO` target table  
+Elevata represents load operations using SQL primitives:  
 
-Full loads ignore incremental filters and delete detection.
+- `LogicalSelect` – core building block  
+- `LogicalUnion` – multi-source resolution  
+- `SubquerySource` – ranking, filtering, pre-aggregation  
+- (future) `LogicalMerge` – merge/update semantics  
+- (future) `LogicalDeleteDetect` – delete handling  
 
----
-
-## 🔄 7. Merge SQL
-Merge SQL is more complex and fully dialect-aware.
-
-Typical structure:  
-- join Stage and Rawcore on natural keys  
-- update changed attributes  
-- insert new rows  
-
-Since merge syntax differs heavily between platforms, the renderer produces a **merge context**:
-```
-MergeContext(
-  target = RawcoreDataset,
-  source = StageDataset,
-  key_columns = [...],
-  all_columns = [...]
-)
-```
-and delegates final SQL construction to the active dialect.
-
-DuckDB and MSSQL: native `MERGE INTO`  
-Some platforms: emulated via `UPDATE` + `INSERT`.
+The Logical Plan is intentionally **dialect-neutral**.
 
 ---
 
-## 🗑️ 8. Delete Detection SQL
-Delete detection removes Rawcore rows missing in upstream Stage datasets.
+# 3. Expression AST in Load SQL
 
-Renderer builds a structured delete context:
-```
-DeleteContext(
-  target = RawcoreDataset,
-  source = StageDataset,
-  key_columns = [...]
-)
-```
+During load generation, every column expression is represented as an AST node.  
 
-The dialect decides between:  
-- `NOT EXISTS` anti-join  
-- `EXCEPT`  
-- dialect-specific anti-semi join  
+Supported nodes include:  
+- `ColumnRef`  
+- `Literal`  
+- `ExprRef`  
+- `ConcatExpr`  
+- `ConcatWsExpr`  
+- `CoalesceExpr`  
+- `WindowFunctionExpr`  
+- `Hash256Expr`  
 
----
-
-## 🧬 9. Interaction with Lineage
-Lineage drives all crucial parts of SQL generation:  
-- natural keys → merge conditions  
-- column inputs → select expressions  
-- dataset-level lineage → FROM source and join structure  
-- transformation lineage → column expressions  
-
-This makes Load SQL fully metadata-driven and eliminates the need for manual ETL coding.
+The AST guarantees that:  
+- hashing is consistent across dialects  
+- CONCAT/COALESCE behave uniformly  
+- window functions are structured, not string‑built  
+- SQL remains predictable and comparable
 
 ---
 
-## 🚀 10. Future Enhancements
-Planned extensions include:  
-- multi-source merge support  
-- staging unions with incremental alignment  
-- materialization strategies (views vs. tables)  
-- column-level expression templates  
-- dialect capability validation / feature flags  
+# 4. Dialect Rendering
 
+After the Logical Plan is constructed, the load generator asks the selected dialect to turn AST + plan into SQL.
+
+```
+sql = dialect.render_select(plan)
+```
+
+Each dialect implements:  
+- identifier quoting (Postgres → "col", MSSQL → "col", DuckDB → "col")  
+- literal rendering (strings, numbers, nulls)  
+- hashing functions (SHA‑256 across all dialects)  
+- CONCAT / CONCAT_WS  
+- COALESCE  
+- window functions (ROW_NUMBER)  
+- subqueries and unions  
+
+This ensures consistent behavior while using native SQL syntax per backend.
+
+---
+
+# 5. Load Runner
+
+The **Load Runner CLI** (`elevata_load`) executes the SQL generated by the Logical Plan + dialect.  
+
+Features:  
+- resolves active profile  
+- reads target dataset metadata  
+- constructs Logical Plan  
+- generates SQL via dialect  
+- executes SQL or performs a dry‑run  
+
+Example:
+```bash
+python manage.py elevata_load customers_rawcore --dry-run
+```
+
+The Load Runner and SQL Preview use the **same generation pipeline**.
+
+---
+
+# 6. Planned Write-Path Extensions
+
+Although elevata currently focuses on read‑oriented load SQL (SELECT), the architecture is prepared for richer write operations.
+
+## 6.1 MERGE Operations
+A future Logical Plan node `LogicalMerge` will support:  
+- insert  
+- update (slowly changing dimensions)  
+- optional delete detection  
+
+## 6.2 Delete Detection
+A planned `LogicalDeleteDetect` node would:  
+- compare source and target surrogate keys  
+- identify deleted records  
+- emit dialect‑specific delete SQL
+
+## 6.3 Multi-Statement Loads
+Some backends require multi‑statement loads (e.g., temp tables → final insert). Logical Plans are ready to support sequence structures.
+
+---
+
+# 7. Deterministic Generation
+
+The load SQL generator is fully deterministic:  
+- stable BK ordering  
+- stable hashing patterns  
+- stable naming (`__src_rank_ord`)  
+- stable Logical Plan tree  
+
+This guarantees reproducible SQL, predictable diffs, and reliable migration workflows.
+
+---
+
+# 8. Summary
+
+Elevata’s load SQL architecture is built on three principles:  
+
+1. **Metadata-driven** – business modeling defines everything  
+2. **Dialect-neutral logical plans** – backend independence by design  
+3. **AST-based SQL generation** – correctness, portability, and composability  
+
+This ensures that SQL loads are stable, transparent, and backend‑portable, while leaving room for advanced merge/delete features in future versions.
 ---
 
 © 2025 elevata Labs — Internal Technical Documentation
-

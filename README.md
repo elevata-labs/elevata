@@ -1,7 +1,7 @@
 # elevata
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/elevata-labs/elevata/main/docs/logo.png" alt="elevata logo" width="260"/>
+  <img src="https://raw.githubusercontent.com/elevata-labs/elevata/main/docs/logo.png" alt="elevata logo" width="130"/>
 </p>
 
 **elevata** is an independent open-source project aiming to make modern data platforms radically simpler.  
@@ -22,174 +22,213 @@ By defining datasets, lineage, and transformation logic declaratively, you can g
 ## 🧭 What is elevata?
 
 **elevata** transforms metadata into architecture.  
-It reads source system metadata, derives logical and physical target structures, and enforces consistent, privacy-compliant data models — automatically.
+It reads source system metadata, derives logical and physical target structures, and enforces consistent, privacy-compliant data models — automatically.  
+It codifies architectural best practices, generates high-quality SQL, and provides a declarative way to build Raw → Stage → Core pipelines.
+
+The goal:  
+💡 **Turn metadata into executable, dialect-aware SQL pipelines** — reliably, transparently, and with full lineage.
 
 Where most tools stop at SQL generation, elevata goes further:  
-it defines **how a modern data architecture should look** — opinionated, governed, and reproducible.  
+it defines **how a modern data architecture should look** — opinionated, governed, reproducible.  
 *In other words: elevata brings structure, governance, and automation to modern data platforms — from metadata to SQL.*
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/elevata-labs/elevata/main/docs/elevata_v0_4_0.png" alt="elevata UI preview" width="700"/>
 </p>
 
----
+**elevata** uses Django models to define:
 
-## 💡 Philosophy & Design Principles
+- **datasets** (sources, raw, stage, core)
+- **business keys, surrogate keys, foreign keys**
+- **column expressions**
+- **incremental strategies**
+- **source systems & target systems**
+- **dependencies between datasets**
 
-elevata is not a query builder — it is a **data architecture engine**.  
-Its purpose is to take what is usually scattered across SQL scripts, YAML files, and undocumented conventions — and make it **explicit, governed, and automatable**.
+From this metadata, elevata generates:
 
-| Principle | Description |
-|------------|--------------|
-| 🧭 **Opinionated by design** | elevata enforces clear best practices for how data platforms are structured — from `raw` to `serving`. It removes ambiguity, so every dataset has a defined place and purpose. |
-| 🧠 **Metadata drives everything** | All logic lives in the metadata — datasets, keys, lineage, governance. This makes data architectures reproducible, transparent, and explainable. |
-| 🧩 **Convention over configuration** | Instead of infinite options, elevata provides intelligent defaults. Teams can override them — but only when they truly need to. |
-| 🔐 **Privacy by architecture** | Surrogate keys are generated through deterministic, pepper-based hashing. No lookups, no stored secrets, full DSGVO compliance. |
-| 🧮 **Declarative, not imperative** | The user declares *what* should exist, not *how* to code it. elevata generates the optimal technical representation. |
-| 🌍 **Tool independence** | External engines (like dbt) can consume elevata’s metadata, but elevata does not depend on them. It stands on its own — portable, transparent, future-proof. |
-| 🪄 **Lineage as first-class metadata** | Relationships between datasets and columns are explicit — not inferred. This makes SQL generation explainable and auditable. |
+- clean SQL (`SELECT`, `MERGE`, delete detection)
+- surrogate key expressions
+- foreign-key lineage expressions
+- multi-source stage pipelines
+- SQL previews with lineage
 
-
-> **In short:**  
-> elevata does for data architecture what version control did for code —  
-> it makes structure explicit, reproducible, and collaborative.
+Since v0.5.x, elevata includes a complete **LogicalPlan + Expression AST** engine, supporting multiple SQL dialects with deterministic rendering.
 
 ---
 
-## ⚙️ Key Features & Capabilities
+## 🧩 Architecture Overview
 
-- Modular SQL dialect layer enabling backend-specific SQL generation (DuckDB today, Postgres/MSSQL/Snowflake upcoming)
-- Automated generation of target datasets and columns 
-  from imported metadata, including PK propagation and surrogate key creation  
-- Deterministic, lookup-free surrogate keys (SHA-256 + runtime-loaded pepper)  
-- Full lineage model for datasets, columns, and relationships  
-- Lineage-aware target generation with dataset-level and column-level lineage
-- Stable `lineage_key` across renames ensures idempotent regeneration
-- Layer-specific input handling (Raw → Stage → Rawcore)
-- Modular `apply_all()` generation with deterministic column ordering
-- True lineage-based SQL Preview (UNION across multiple sources, field-level alignment)
-- Multi-source unification via shared `target_short_name`  
-- Integrated governance (sensitivity, ownership, access intent)  
-- Optional SQL rendering layer (dbt-compatible, but not dependent)  
-- Complete metadata persistence via Django ORM  
+elevata consists of the following layers:
 
----
+1. **Metadata Layer (Django models)**  
+   Defines datasets, columns, lineage, and configuration.
 
-## 🧩 Architectural Layers
+2. **LogicalPlan Layer**  
+   Vendor-neutral representation of `SELECT`, `UNION`, subqueries, window functions, column expressions, joins, filters, and more.
 
-elevata defines and enforces a clean five-layer target architecture:
+3. **Expression AST**  
+   Unified representation of literals, column refs, function calls, binary operations, concatenations, and window functions.
 
-| Layer | Purpose |
-|--------|----------|
-| **raw** | Original landing of data, 1:1 from source (audit & compliance) |
-| **stage** | Early technical normalization (flattening, type harmonization) |
-| **rawcore** | Technically harmonized core (surrogate keys, dedup, historization) |
-| **bizcore** | Business logic and truth layer — KPI-ready, regulated |
-| **serving** | Consumption layer for analytics, dashboards, and ML models |
+4. **SQL Dialects**  
+   DuckDB, Postgres, and MSSQL render SQL from the LogicalPlan. Hashing, quoting, and function differences are handled per dialect.
 
-Each layer is represented as a `TargetSchema` with defined defaults for materialization, historization, and governance and participates in a complete lineage chain.  
-From v0.3.0 onward, elevata maintains dataset- and column-level lineage between layers, forming the basis for its Logical SQL Preview engine.
-
-The following examples illustrate how elevata translates its metadata model into deterministic and auditable SQL.
+5. **SQL Preview Pipeline**  
+   Lineage-aware, dialect-aware, HTMX-enabled preview.
 
 ---
 
-## 🧮 Example: Deterministic Surrogate Key Generation (Privacy by Design)  
+## ✨ New in elevata v0.5.0
 
-*Surrogate keys in elevata are not random — they are deterministic, governed, and fully reproducible across systems.*
-```
-MANDT~100|KUNNR~4711|null_replaced
-↓ (runtime pepper)
-SHA-256 = sap_customer_key
-```
+Version 0.5.0 introduces the largest internal upgrade since the project began.
 
-- Unique and stable across systems  
-- No lookup required for FK propagation  
-- Fully DSGVO-compliant (hashed with runtime pepper)
+### 🔧 Multi-Dialect SQL Engine
+- New `SqlDialect` base class
+- Unified dialect registry & factory
+- Built-in dialects:
+  - **DuckDB** (reference dialect)
+  - **Postgres**
+  - **MSSQL**
+- Dialect-aware rendering of:
+  - identifiers
+  - literals
+  - functions
+  - `CONCAT` / `CONCAT_WS` / `COALESCE`
+  - window functions
+  - hashing (SHA256, `digest`, `HASHBYTES`)
 
----
+### 🧠 Hash DSL + Expression Engine Rewrite
+A new DSL defines hashing in a vendor-neutral way, for example:
 
-## 🧠 Example: Lineage-based SQL Preview
-
-elevata automatically generates SQL reflecting real upstream lineage.
-For instance, a `stage` dataset combining two `raw` tables:
-
-```sql
-SELECT
-  s1.businessentityid,
-  s1.firstname,
-  s1.middlename,
-  s1.lastname,
-  s1.title
-FROM "raw"."raw_aw1_person" AS s1
-
-UNION ALL
-
-SELECT
-  s2.businessentityid,
-  s2.firstname,
-  NULL AS middlename,
-  s2.lastname,
-  s2.title
-FROM "raw"."raw_aw2_person" AS s2
-```  
-And a `rawcore` dataset built from the stage layer:
-
-```sql
-SELECT
-  hash256(concat_ws('|', concat('businessentityid', '~', coalesce(s."businessentityid", 'null_replaced')), 'supersecretpeppervalue')) AS rc_aw_person_key,
-  s."businessentityid" AS business_entity_id,
-  s."firstname" AS first_name,
-  s."lastname" AS last_name
-FROM "stage"."stg_aw_person" AS s
+```text
+HASH256(
+  CONCAT_WS('|',
+    CONCAT('productid', '~', COALESCE({expr:productid}, 'null_replaced')),
+    'pepper'
+  )
+)
 ```
 
----
+This DSL is parsed into an expression AST and rendered differently per dialect.  
+It replaces the previous string-templated SQL approach.
 
-## 🚀 Roadmap
+### 🔄 Surrogate & Foreign Key Pipeline Rewrite
+- SK and FK expressions are now AST-based
+- Child-side FK hashing is aligned with parent SK logic
+- Identical execution semantics across DuckDB/Postgres/MSSQL
+- High test coverage for deterministic output
 
-### 🎯 Short Term (v0.4.x)
-**Sharper insight and smarter previews**  
-- Dynamic SQL previews with joins, filters, and contextual logic  
-- Interactive lineage validation and graph exploration  
-- Optimized UI for large-scale metadata models  
-- First test suite for model generation and lineage integrity  
+### 🔁 Multi-Source Stage Rewrite
+- **Identity mode** → simple `UNION ALL`
+- **Non-identity mode** → `ROW_NUMBER()` ranking with subqueries
+- No duplicate rows
+- Fully AST-driven
+- All Stage tests green
 
----
-
-### ⚙️ Mid-Term (v0.5–0.6)
-**From metadata to managed data**  
-- Support for major backends (BigQuery, Databricks, Fabric, Snowflake, …)  
-- Declarative export for CI/CD integration  
-- Role-based governance and fine-grained permissions  
-- Incremental refresh and data-change tracking for real workloads  
-
----
-
-### 🌌 Long Term (v1.0+)
-**From modeling to execution — elevata becomes a Lakehouse automation platform**  
-- Automatic generation of **fully orchestratable SQL pipelines** from lineage graphs  
-- Native orchestration via Airflow, Dagster, dbt-core, or the built-in elevata scheduler  
-- End-to-end dataset materialization with dependency awareness  
-- Metadata-driven optimization for cost, freshness, and reuse across the Lakehouse  
-
-> **Vision:** elevata will bridge the gap between design and operation.  
-> It will not only describe data — it will make data *move*.
+### 🖥️ SQL Preview Modernisation
+- HTMX live refresh
+- Dialect dropdown selector
+- Clean formatting via beautifier
+- Accurate lineage rendering
 
 ---
 
-📘 **More Documentation**  
-See the [`/docs`](docs/) folder for in-depth setup and technical design notes:  
-- [Getting Started Guide](docs/getting_started.md)  
-- [SQL Rendering & Alias Conventions](docs/sql_rendering_conventions.md)  
-- [Automatic Target Generation Logic](docs/generation_logic.md)  
-- [Secure Metadata Connectivity](docs/secure_metadata_connectivity.md)  
-- [Lineage Model & Logical Plan](docs/lineage_and_logical_plan.md)  
-- [SQL Preview & Rendering Pipeline](docs/sql_preview_pipeline.md)  
-- [Testing & Quality](docs/tests.md)  
-- [Dialect System](docs/dialect_system.md)  
-- [Load SQL Architecture](docs/load_sql_architecture.md)  
-- [Incremental Load Architecture](docs/incremental_load.md)  
+## 🔧 How SQL is generated in v0.5.0
+
+SQL is built from structured, deterministic building blocks instead of hand-written strings:
+
+1. **Metadata → LogicalPlan**  
+2. **LogicalPlan → Expression AST**  
+3. **Dialect renderer → SQL**  
+4. **Beautifier → final formatting**
+
+Benefits:
+
+- reliable identifier quoting
+- safe hashing & concatenation
+- vendor-neutral function handling
+- identical semantics across databases
+- clean and readable SQL for review
+
+---
+
+## 🌐 SQL Dialect Support
+
+| Dialect | Status | Notes |
+|---------|--------|-------|
+| DuckDB  | Stable | Canonical implementation |
+| Postgres | Stable | uses `digest()` + `encode()` for hashing |
+| MSSQL | Stable | uses `HASHBYTES` + `CONVERT` |
+
+All dialects produce bit-identical HASH256 results for surrogate and foreign keys.  
+All dialects support  
+
+- literal rendering
+- column reference rendering
+- function calls
+- window functions
+- subqueries in `FROM`
+- deterministic hashing
+
+You can extend elevata with custom dialects via:
+
+```python
+from metadata.rendering.dialects import register_dialect
+register_dialect(MyDialect)
+```
+
+---
+
+## 📚 Example Workflow
+
+1. Define your metadata in Django admin  
+2. Inspect lineage in the dataset detail view  
+3. Select the SQL dialect in the preview section  
+4. Review generated SQL  
+5. Run load pipelines via CLI (basic runner available; extended runner planned for v0.6.x)
+
+---
+
+## 📦 Load Runner CLI (preview)
+
+elevata currently ships with a minimal `elevata_load` management command.  
+A more powerful Load Runner CLI is planned for v0.6.x, including:
+
+- dry-run mode  
+- profiling  
+- dialect selection  
+- dependency graph execution  
+
+---
+
+## 🔮 Roadmap
+
+### v0.5.0 (current release)
+- Multi-dialect SQL engine  
+- MSSQL + Postgres dialects  
+- Hash DSL  
+- SK/FK hashing rewrite  
+- Multi-source Stage rewrite  
+- SQL Preview modernisation  
+
+### v0.6.x
+- Full Load Runner CLI  
+- Target system selector in profiles  
+- Improved incremental MERGE generation  
+- SCD/History-ready pipelines  
+
+### v0.7.x
+- Multi-source incremental loads  
+- Additional dialects (Snowflake, BigQuery, Databricks)  
+- Full pipeline orchestrator  
+
+---
+
+## 🛡️ Data Privacy (GDPR/DSGVO)
+
+elevata itself does not require personal data.  
+If used with customer datasets, responsibility for compliance remains with the implementing organisation.  
+The system supports pseudo-key hashing and consistent anonymisation strategies via its hashing DSL.
 
 ---
 
@@ -205,6 +244,7 @@ Breaking changes may occur before the 1.0 release as the metadata model stabiliz
 This project is an independent open-source initiative.  
 - It is not a consulting service.  
 - It is not a customer project.  
+- It does not store or process customer data.  
 - It is not in competition with any company.  
 
 The purpose of elevata is to contribute to the community by providing a metadata-driven framework for building data platforms.  

@@ -701,7 +701,7 @@ class TargetDataset(AuditFields):
         name="unique_target_dataset_per_schema",
       )
     ]
-    ordering = ["target_dataset_name"]
+    ordering = ["target_schema", "target_dataset_name"]
     verbose_name_plural = "Target Datasets"
 
   def __str__(self):

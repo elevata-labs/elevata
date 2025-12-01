@@ -317,7 +317,7 @@ class Migration(migrations.Migration):
             options={
                 'verbose_name_plural': 'Target Datasets',
                 'db_table': 'target_dataset',
-                'ordering': ['target_dataset_name'],
+                'ordering': ['target_schema', 'target_dataset_name'],
             },
         ),
         migrations.AddField(

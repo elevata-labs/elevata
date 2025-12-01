@@ -163,7 +163,7 @@ Once your metadata environment is ready, continue with:
 
 - [Automatic Target Generation Logic](generation_logic.md)
 - [SQL Rendering & Alias Conventions](sql_rendering_conventions.md)
-- [Lineage Model & Logical Plan](lineage_and_logical_plan.md)
+- [Lineage Model & Logical Plan](logical_plan.md)
 
 ---
 

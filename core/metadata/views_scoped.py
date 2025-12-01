@@ -84,7 +84,11 @@ class _ScopedChildView(GenericCRUDView):
     auto_filter_cfgs = self.build_auto_filter_config()
     qs = self.get_queryset()
     qs, active_filters = self.apply_auto_filters(request, qs, auto_filter_cfgs)
-    qs = qs.order_by("id")
+    if not qs.query.order_by:
+      if self.model._meta.ordering:
+        qs = qs.order_by(*self.model._meta.ordering)
+      else:
+        qs = qs.order_by("id")
 
     ctx = {
       "model": self.model,

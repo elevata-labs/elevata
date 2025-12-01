@@ -147,7 +147,7 @@ class GenericCRUDView(LoginRequiredMixin, View):
     # ------------------------------------------------------------------
     # Special case: surrogate key columns are always fully locked
     # ------------------------------------------------------------------
-    if model_name == "TargetColumn" and getattr(instance, "surrogate_key_column", False):
+    if model_name == "TargetColumn" and (getattr(instance, "surrogate_key_column", False) or getattr(instance, "foreign_key_column", False)):
       # For surrogate key columns we ignore schema-specific unlock rules.
       # They keep the full global lock set, just like in raw/stage.
       return base_locked
@@ -435,8 +435,18 @@ class GenericCRUDView(LoginRequiredMixin, View):
       if isinstance(f, models.ForeignKey):
         # Try to load all related objects (ordered by str)
         related_model = f.related_model
+
         try:
-          choices_list = [(str(o.pk), str(o)) for o in related_model.objects.all().order_by("pk")]
+          qs = related_model.objects.all()
+
+          # Use model's default ordering if defined, otherwise fallback to pk
+          if related_model._meta.ordering:
+            qs = qs.order_by(*related_model._meta.ordering)
+          else:
+            qs = qs.order_by("pk")
+
+          choices_list = [(str(o.pk), str(o)) for o in qs]
+
         except Exception:
           choices_list = []
 
@@ -541,8 +551,11 @@ class GenericCRUDView(LoginRequiredMixin, View):
     # Apply user-submitted filters from GET
     qs, active_filters = self.apply_auto_filters(request, qs, auto_filter_cfgs)
 
-    # Default ordering (keep what you had)
-    qs = qs.order_by("id")
+    # Default ordering
+    if self.model.__name__ == "TargetSchema":
+      qs = qs.order_by("id")
+    else:
+      qs = qs.order_by(*self.model._meta.ordering or ["id"])
 
     context = {
       "model": self.model,

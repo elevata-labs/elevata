@@ -39,6 +39,20 @@ class SourceTable:
 
 
 @dataclass
+class SubquerySource:
+  """
+  Logical representation of a subquery in a FROM or JOIN clause.
+
+  Example:
+    FROM (
+      SELECT ...
+    ) AS u
+  """
+  select: "LogicalSelect | LogicalUnion"
+  alias: str
+
+
+@dataclass
 class SelectItem:
   expr: Expr
   alias: Optional[str] = None
@@ -47,7 +61,7 @@ class SelectItem:
 @dataclass
 class Join:
   left_alias: str
-  right: SourceTable
+  right: SourceTable | SubquerySource
   on: Expr
   join_type: str = "inner"  # inner, left, etc.
 
@@ -57,7 +71,7 @@ class LogicalSelect:
   """
   Vendor-neutral logical SELECT statement.
   """
-  from_: SourceTable
+  from_: SourceTable | SubquerySource
   joins: List[Join] = field(default_factory=list)
   where: Optional[Expr] = None
   group_by: List[Expr] = field(default_factory=list)
@@ -76,7 +90,6 @@ class LogicalUnion:
   def to_sql(self, dialect):
     rendered = []
     for sel in self.selects:
-      rendered.append(sel.to_sql(dialect))
+      rendered.append(dialect.render_select(sel))
     sep = f"\nUNION {self.union_type}\n"
     return sep.join(rendered)
-

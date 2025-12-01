@@ -21,7 +21,7 @@ Contact: <https://github.com/elevata-labs/elevata>.
 """
 
 """
-TargetDataset rename operations for Elevata.
+TargetDataset rename operations for elevata.
 
 Uses the shared rename engine in rename_common.py to provide
 consistent validation, collision checks and atomic commit logic.
@@ -33,7 +33,7 @@ from .rename_common import RenameSpec, dry_run_rename, commit_rename
 
 def _ensure_targetdataset_rename_allowed(ds: TargetDataset) -> list[str]:
   """
-  Enforce Elevata rules for when a TargetDataset may be renamed.
+  Enforce elevata rules for when a TargetDataset may be renamed.
 
   Rules:
     - Only datasets in schema 'rawcore' are renameable.
@@ -70,7 +70,7 @@ def _targetdataset_spec(ds: TargetDataset) -> RenameSpec:
 def dry_run_targetdataset_rename(ds: TargetDataset, new_name: str) -> dict:
   """
   Validate a TargetDataset rename without persisting changes.
-  Applies Elevata system-managed rules + syntax / collision checks.
+  Applies elevata system-managed rules + syntax / collision checks.
   """
   rule_errors = _ensure_targetdataset_rename_allowed(ds)
   if rule_errors:
@@ -82,7 +82,7 @@ def dry_run_targetdataset_rename(ds: TargetDataset, new_name: str) -> dict:
 def commit_targetdataset_rename(ds: TargetDataset, new_name: str, user=None) -> dict:
   """
   Commit a TargetDataset rename atomically.
-  Applies Elevata system-managed rules before saving.
+  Applies elevata system-managed rules before saving.
   """
   rule_errors = _ensure_targetdataset_rename_allowed(ds)
   if rule_errors:

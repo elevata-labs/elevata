@@ -271,7 +271,33 @@ Contact: <https://github.com/elevata-labs/elevata>.
   {% if object and model_name == 'targetdataset' %}
     <hr>
 
-    <div class="mt-3 d-flex flex-wrap gap-2">
+    <div class="mt-3 d-flex flex-wrap align-items-center gap-3">
+
+      <!-- Dialect selector -->
+      <div class="d-flex align-items-center">
+        <label for="sql-dialect-select" class="me-2 mb-0 small">
+          SQL dialect:
+        </label>
+        <select
+          id="sql-dialect-select"
+          name="dialect"
+          class="form-select form-select-sm"
+          style="width:auto; min-width: 140px;"
+          hx-get="{% url 'targetdataset_sql_preview' object.id %}"
+          hx-target="#sql-preview"
+          hx-swap="innerHTML"
+          hx-include="#sql-dialect-select"
+          hx-trigger="change"
+        >
+          {% for name in SQL_DIALECT_CHOICES %}
+            <option value="{{ name }}"
+              {% if name == SQL_DIALECT_ACTIVE %}selected{% endif %}
+            >
+              {{ name|upper }}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
 
       <!-- Full SQL -->
       <button
@@ -280,6 +306,7 @@ Contact: <https://github.com/elevata-labs/elevata>.
         hx-get="{% url 'targetdataset_sql_preview' object.id %}"
         hx-target="#sql-preview"
         hx-swap="innerHTML"
+        hx-include="#sql-dialect-select"
         hx-on::before-request="this.setAttribute('disabled','disabled')"
         hx-on::after-request="this.removeAttribute('disabled')"
         hx-indicator="#loading-sql-{{ object.id }}"
@@ -288,7 +315,7 @@ Contact: <https://github.com/elevata-labs/elevata>.
         Full SQL
       </button>
 
-      <!-- MERGE SQL -->
+      <!-- Incremental MERGE -->
       <button
         type="button"
         class="btn btn-primary btn-sm"
@@ -296,6 +323,7 @@ Contact: <https://github.com/elevata-labs/elevata>.
         hx-get="{% url 'targetdataset_merge_sql_preview' object.id %}"
         hx-target="#sql-preview"
         hx-swap="innerHTML"
+        hx-include="#sql-dialect-select"
         hx-on::before-request="this.setAttribute('disabled','disabled')"
         hx-on::after-request="this.removeAttribute('disabled')"
         hx-indicator="#loading-sql-{{ object.id }}"
@@ -304,7 +332,7 @@ Contact: <https://github.com/elevata-labs/elevata>.
         Incremental MERGE
       </button>
 
-      <!-- DELETE detect SQL -->
+      <!-- Delete detection -->
       <button
         type="button"
         class="btn btn-primary btn-sm"
@@ -312,6 +340,7 @@ Contact: <https://github.com/elevata-labs/elevata>.
         hx-get="{% url 'targetdataset_delete_sql_preview' object.id %}"
         hx-target="#sql-preview"
         hx-swap="innerHTML"
+        hx-include="#sql-dialect-select"
         hx-on::before-request="this.setAttribute('disabled','disabled')"
         hx-on::after-request="this.removeAttribute('disabled')"
         hx-indicator="#loading-sql-{{ object.id }}"
@@ -329,6 +358,7 @@ Contact: <https://github.com/elevata-labs/elevata>.
       </div>
     </div>
 
+    <!-- Container that receives the rendered SQL -->
     <div id="sql-preview" class="mt-3"></div>
   {% endif %}
 

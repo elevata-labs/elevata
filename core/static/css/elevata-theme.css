@@ -495,7 +495,7 @@ td .badge + .badge {
 .lineage-title-box {
   background: var(--elevata-highlight-bg);
   color: var(--elevata-dark);
-  padding: 0.6rem 0.6rem;
+  padding: 0.3rem 0.3rem;
   border-radius: 0.5rem;
   font-weight: 600;
 }
@@ -619,7 +619,7 @@ footer:hover {
 
 .subnav .btn { margin-right: 0.25rem; }
 
-/* Elevata: grey background for non-editable fields (global + scoped forms) */
+/* elevata: grey background for non-editable fields (global + scoped forms) */
 .elevata-form input[readonly],
 .elevata-form input:disabled,
 .elevata-form select[readonly],

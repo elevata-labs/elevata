@@ -40,10 +40,9 @@ from metadata.forms import TargetColumnForm, TargetDatasetForm
 from metadata.models import SourceDataset, System, TargetDataset, TargetDatasetInput
 from metadata.ingestion.import_service import import_metadata_for_datasets
 
+from metadata.rendering.dialects import get_active_dialect
 from metadata.rendering.preview import build_sql_preview_for_target
 from metadata.rendering.load_sql import render_merge_sql, render_delete_missing_rows_sql
-from metadata.rendering.dialects import get_active_dialect
-
 
 from metadata.generation.validators import summarize_targetdataset_health
 
@@ -267,20 +266,25 @@ def generate_targets(request):
 def targetdataset_sql_preview(request, pk: int):
   dataset = get_object_or_404(TargetDataset, pk=pk)
 
+  dialect_name = request.GET.get("dialect") or None
+  dialect = get_active_dialect(dialect_name)
+
   try:
-    sql = build_sql_preview_for_target(dataset)
+    sql = build_sql_preview_for_target(dataset, dialect=dialect)
     return _render_sql_ok(sql)
   except Exception as e:
     return _render_sql_error("SQL preview failed", e)
-
+  
 
 @login_required
 @permission_required("metadata.view_targetdataset", raise_exception=True)
 def targetdataset_merge_sql_preview(request, pk):
   dataset = get_object_or_404(TargetDataset, pk=pk)
 
+  dialect_name = request.GET.get("dialect") or None
+  dialect = get_active_dialect(dialect_name)
+
   try:
-    dialect = get_active_dialect()
     sql = render_merge_sql(dataset, dialect)
     return _render_sql_ok(sql)
   except Exception as e:
@@ -292,8 +296,10 @@ def targetdataset_merge_sql_preview(request, pk):
 def targetdataset_delete_sql_preview(request, pk):
   dataset = get_object_or_404(TargetDataset, pk=pk)
 
+  dialect_name = request.GET.get("dialect") or None
+  dialect = get_active_dialect(dialect_name)
+
   try:
-    dialect = get_active_dialect()
     sql = render_delete_missing_rows_sql(dataset, dialect)
     return _render_sql_ok(sql)
   except Exception as e:
@@ -367,3 +373,16 @@ def targetdataset_lineage(request, pk):
   }
 
   return render(request, "metadata/lineage/targetdataset_lineage.html", context)
+
+def _inject_dialect_context(ctx):
+  """
+  Inject dialect hints and default active dialect into context.
+  Used by the detail template so the dialect dropdown can render.
+  """
+  from metadata.rendering.dialects import get_active_dialect
+  from metadata.constants import DIALECT_HINTS
+
+  dialect = get_active_dialect()
+  ctx["DIALECT_HINTS"] = DIALECT_HINTS
+  ctx["active_dialect_code"] = getattr(dialect, "DIALECT_NAME", "duckdb")
+  return ctx

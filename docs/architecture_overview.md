@@ -135,7 +135,7 @@ Metadata Model
 - [Generation Logic](generation_logic.md)
 - [Incremental Load Architecture](incremental_load.md)
 - [Load SQL Architecture](load_sql_architecture.md)
-- [Lineage Model & Logical Plan](lineage_and_logical_plan.md)
+- [Lineage Model & Logical Plan](logical_plan.md)
 - [Dialect System](dialect_system.md)
 
 ---

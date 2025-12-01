@@ -42,7 +42,7 @@ from metadata.models import (
   TargetColumn,
 )
 from metadata.rendering.builder import build_logical_select_for_target
-from metadata.rendering.logical_plan import LogicalSelect, LogicalUnion
+from metadata.rendering.logical_plan import LogicalSelect, LogicalUnion, SubquerySource
 from metadata.rendering.expr import RawSql
 
 

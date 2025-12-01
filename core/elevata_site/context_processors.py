@@ -25,8 +25,14 @@ from django.conf import settings
 from django.urls import reverse, NoReverseMatch
 from metadata.constants import (
   SUPPORTED_SQLALCHEMY, BETA_SQLALCHEMY, MANUAL_TYPES,
-  TYPE_SUPPORT_LABEL, TYPE_BADGE_CLASS, classify_type,
+  TYPE_SUPPORT_LABEL, TYPE_BADGE_CLASS,
 )
+
+from metadata.rendering.dialects.dialect_factory import (
+  get_available_dialect_names,
+  get_active_dialect_name,
+)
+
 
 def type_support(request):
   """
@@ -121,7 +127,24 @@ def crud_ui_config(request):
     "BADGE_CLASSES": badge_classes,
   }
 
+
 def elevata_version(request):
   """Expose current elevata framework version globally."""
   from django.conf import settings
   return {"ELEVATA_VERSION": getattr(settings, "ELEVATA_VERSION", "dev")}
+
+
+def sql_dialect_context(request):
+  """
+  Expose available SQL dialects + current active default to all templates.
+  """
+  choices = get_available_dialect_names()
+  try:
+    active = get_active_dialect_name()
+  except Exception:
+    active = choices[0] if choices else None
+
+  return {
+    "SQL_DIALECT_CHOICES": choices,
+    "SQL_DIALECT_ACTIVE": active,
+  }

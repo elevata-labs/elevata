@@ -22,25 +22,23 @@ Contact: <https://github.com/elevata-labs/elevata>.
 
 from __future__ import annotations
 
-from typing import List, Optional, TYPE_CHECKING
+from typing import Optional, TYPE_CHECKING
 import re
 
-from metadata.rendering.expr import (
-  Expr,
-  ColumnRef,
-  RawSql,
-)
 from metadata.rendering.logical_plan import (
   SourceTable,
   SelectItem,
   LogicalSelect,
   LogicalUnion,
+  SubquerySource,
 )
 from metadata.generation.naming import build_surrogate_key_name
+from metadata.rendering.expr import Expr
+from metadata.rendering.dsl import col, raw, row_number, parse_surrogate_dsl
 
 if TYPE_CHECKING:
   # Only for type hints, no runtime import -> no circular import
-  from metadata.models import TargetDataset, TargetColumn, TargetDatasetReference
+  from metadata.models import SourceDataset, TargetDataset, TargetColumn, TargetDatasetReference
 
 """
 Logical Query Builder for TargetDatasets.
@@ -142,25 +140,6 @@ def _rewrite_parent_sk_expr(parent_expr_sql: str, mapping: dict[str, str]) -> st
   return "".join(result)
 
 
-def _resolve_source_identity_id_for_raw(raw_ds):
-  """
-  Returns the identity name for a RAW dataset if it exists,
-  otherwise None.
-  """
-  # RAW → SourceDataset via TargetDatasetInput
-  inp = raw_ds.target_inputs.filter(source_dataset__isnull=False).first()
-  if not inp:
-    return None
-
-  src = inp.source_dataset
-  memberships = getattr(src, "dataset_groups", None)
-  if not memberships:
-    return None
-
-  mem = memberships.first()
-  return getattr(mem, "source_identity_id", None)
-
-
 def build_surrogate_fk_expression(reference: "TargetDatasetReference") -> Expr:
   """
   Build the surrogate FK expression for a single TargetDatasetReference.
@@ -218,7 +197,7 @@ def build_surrogate_fk_expression(reference: "TargetDatasetReference") -> Expr:
 
   # Returned object is compatible with sync_child_fk_column(), which expects
   # an Expr-like object with a .sql attribute (RawSql) or something similar.
-  return RawSql(sql=fk_expr_sql)
+  return raw(fk_expr_sql)
 
 # ------------------------------------------------------------------------------
 # Build FK surrogate expression map
@@ -274,41 +253,6 @@ def _build_fk_surrogate_expr_map(target_dataset: TargetDataset) -> dict[str, str
 
   return fk_map
 
-def _resolve_source_identity_id_for_raw(upstream_dataset: "TargetDataset") -> Optional[str]:
-  """
-  Try to resolve the source_identity_id for a given RAW TargetDataset.
-
-  Logic:
-    - Find the SourceDataset feeding this RAW dataset via its input_links.
-    - From that SourceDataset, look up its SourceDatasetGroupMembership.
-    - Return membership.source_identity_id if present.
-  """
-  # RAW TargetDataset -> its input_links point to a SourceDataset
-  src_input = (
-    upstream_dataset.input_links
-    .select_related("source_dataset")
-    .filter(active=True, source_dataset__isnull=False)
-    .order_by("id")
-    .first()
-  )
-
-  if not src_input or not src_input.source_dataset:
-    return None
-
-  source_dataset = src_input.source_dataset
-
-  # SourceDatasetGroupMembership has related_name="dataset_groups" on SourceDataset :contentReference[oaicite:0]{index=0}
-  membership = (
-    source_dataset.dataset_groups
-    .order_by("-is_primary_system", "id")
-    .first()
-  )
-
-  if not membership:
-    return None
-
-  return getattr(membership, "source_identity_id", None)
-
 def _resolve_source_identity_id_for_raw(
   upstream_dataset: "TargetDataset",
 ) -> Optional[str]:
@@ -321,7 +265,6 @@ def _resolve_source_identity_id_for_raw(
       (related_name='dataset_groups').
     - Return membership.source_identity_id if present.
   """
-  # RAW TargetDataset -> its input_links point to a SourceDataset
   link = (
     upstream_dataset.input_links
     .select_related("source_dataset", "source_dataset__source_system")
@@ -334,20 +277,15 @@ def _resolve_source_identity_id_for_raw(
 
   source_dataset = link.source_dataset
 
-  # SourceDatasetGroupMembership: related_name="dataset_groups" on SourceDataset
-  membership = (
-    source_dataset.dataset_groups
-    .order_by("-is_primary_system", "id")
-    .first()
-  )
+  memberships = getattr(source_dataset, "dataset_groups", None)
+  if not memberships:
+    return None
+
+  membership = memberships.order_by("-is_primary_system", "id").first()
   if not membership:
     return None
 
-  identity_id = getattr(membership, "source_identity_id", None)
-  if not identity_id:
-    return None
-
-  return identity_id
+  return getattr(membership, "source_identity_id", None)
 
 
 def _resolve_source_identity_id_for_source(source_dataset) -> str | None:
@@ -359,11 +297,58 @@ def _resolve_source_identity_id_for_source(source_dataset) -> str | None:
   if not memberships:
     return None
 
-  membership = memberships.first()
+  membership = memberships.order_by("-is_primary_system", "id").first()
   if not membership:
     return None
 
   return getattr(membership, "source_identity_id", None)
+
+
+def _resolve_source_identity_ordinal_for_raw(
+  upstream_dataset: "TargetDataset",
+) -> Optional[int]:
+  """
+  Resolve SourceDatasetGroupMembership.source_identity_ordinal
+  for a RAW TargetDataset, if present.
+  """
+  link = (
+    upstream_dataset.input_links
+    .select_related("source_dataset")
+    .filter(active=True)
+    .order_by("id")
+    .first()
+  )
+  if not link or not link.source_dataset:
+    return None
+
+  source_dataset = link.source_dataset
+  memberships = getattr(source_dataset, "dataset_groups", None)
+  if not memberships:
+    return None
+
+  membership = memberships.order_by("-is_primary_system", "id").first()
+  if not membership:
+    return None
+
+  return getattr(membership, "source_identity_ordinal", None)
+
+
+def _resolve_source_identity_ordinal_for_source(
+  source_dataset: "SourceDataset",
+) -> Optional[int]:
+  """
+  Resolve SourceDatasetGroupMembership.source_identity_ordinal
+  for a SourceDataset, if present.
+  """
+  memberships = getattr(source_dataset, "dataset_groups", None)
+  if not memberships:
+    return None
+
+  membership = memberships.order_by("-is_primary_system", "id").first()
+  if not membership:
+    return None
+
+  return getattr(membership, "source_identity_ordinal", None)
 
 
 # ------------------------------------------------------------------------------
@@ -408,25 +393,33 @@ def _build_single_select_for_upstream(
     .order_by("ordinal_position", "id")
   )
 
-  for col in tcols:
-    if col.surrogate_key_column and col.surrogate_expression:
-      expr: Expr = RawSql(sql=col.surrogate_expression)
+  for col_meta in tcols:
+    if col_meta.surrogate_key_column and col_meta.surrogate_expression:
+      # Parse SK DSL into an Expr tree; "s" is the source alias in this SELECT
+      expr: Expr = parse_surrogate_dsl(
+        col_meta.surrogate_expression,
+        table_alias="s",
+      )
 
     # Special handling for source_identity_id:
     # In UNION branches we emit a literal per upstream if configured.
-    elif col.target_column_name == "source_identity_id" and identity_id is not None:
+    elif col_meta.target_column_name == "source_identity_id" and identity_id is not None:
       # Simple string literal, dialect-agnostic enough for v0.5
-      expr = RawSql(sql=f"'{identity_id}'")
+      expr = raw(f"'{identity_id}'")
 
     else:
-      if col.target_column_name in upstream_col_names:
-        expr = ColumnRef(table_alias="s", column_name=col.target_column_name)
+      if col_meta.target_column_name in upstream_col_names:
+        expr = col(col_meta.target_column_name, "s")
       else:
-        expr = RawSql("NULL")
+        expr = raw("NULL")
 
     logical.select_list.append(
-      SelectItem(expr=expr, alias=col.target_column_name)
+      SelectItem(expr=expr, alias=col_meta.target_column_name)
     )
+
+  # Attach hidden rank ordinal based on SourceDatasetGroupMembership
+  ordinal = _resolve_source_identity_ordinal_for_raw(upstream_dataset)
+  _attach_hidden_rank_ordinal(logical, ordinal)
 
   return logical
 
@@ -473,33 +466,34 @@ def _build_single_select_for_source_stage(
   # Resolve identity id (may be None)
   identity_id = _resolve_source_identity_id_for_source(source_dataset)
 
-  for col in (
+  for tcol in (
     target_dataset.target_columns
     .filter(active=True)
     .order_by("ordinal_position", "id")
   ):
     # Special handling for the artificial identity column
-    if col.target_column_name == "source_identity_id":
+    if tcol.target_column_name == "source_identity_id":
       if identity_id is not None:
-        expr = RawSql(sql=f"'{identity_id}'")
+        expr = raw(f"'{identity_id}'")
       else:
-        expr = RawSql(sql="NULL")
+        expr = raw("NULL")
 
     else:
       # Normal mapping: try to find a source column with the same name
-      src_col = src_cols_by_name.get(col.target_column_name.lower())
+      src_col = src_cols_by_name.get(tcol.target_column_name.lower())
       if src_col:
-        expr = ColumnRef(
-          table_alias="s",
-          column_name=src_col.source_column_name,
-        )
+        expr = col(src_col.source_column_name, "s")
       else:
         # No matching source column → NULL for this branch
-        expr = RawSql(sql="NULL")
+        expr = raw("NULL")
 
     logical.select_list.append(
-      SelectItem(expr=expr, alias=col.target_column_name)
+      SelectItem(expr=expr, alias=tcol.target_column_name)
     )
+
+  # Attach hidden rank ordinal for this SourceDataset branch
+  ordinal = _resolve_source_identity_ordinal_for_source(source_dataset)
+  _attach_hidden_rank_ordinal(logical, ordinal)
 
   return logical
 
@@ -541,37 +535,52 @@ def build_logical_select_for_target(target_dataset: TargetDataset):
     ]
 
     if len(raw_inputs) > 1:
-      sub_selects = []
-      identity_flags = []
+      sub_selects: list[LogicalSelect] = []
+      identity_flags: list[Optional[str]] = []
 
       for inp in raw_inputs:
         raw_ds = inp.upstream_target_dataset
         sel = _build_single_select_for_upstream(target_dataset, raw_ds)
         sub_selects.append(sel)
+
         identity_flags.append(_resolve_source_identity_id_for_raw(raw_ds))
 
-      # For now, both identity and non-identity modes use a simple UNION ALL.
-      # Identity-mode still benefits from source_identity_id being part of
-      # the natural key; conflict prioritization for no-identity mode will
-      # be implemented once the logical plan and dialects support subqueries
-      # and window functions generically.
-      return LogicalUnion(selects=sub_selects, union_type="ALL")
+      union_plan = LogicalUnion(selects=sub_selects, union_type="ALL")
+
+      mode, _ = _detect_stage_identity_mode(identity_flags)
+
+      if mode == "identity":
+        # Identity-mode: no ranking, plain UNION ALL as top-level plan.
+        # Optional: remove hidden __src_rank_ord from branches for cleaner SQL.
+        _strip_hidden_rank_ordinal_from_union(union_plan)
+        return union_plan
+
+      # Non-identity-mode: use window-based ranking on top of the UNION.
+      return _build_ranked_stage_union(target_dataset, union_plan)
 
     # -------- 1b) Multi-source via direct SourceDataset ---------------------
     source_inputs = [inp for inp in inputs_qs if inp.source_dataset is not None]
 
     if len(source_inputs) > 1:
-      sub_selects = []
-      identity_flags = []
+      sub_selects: list[LogicalSelect] = []
+      identity_flags: list[Optional[str]] = []
 
       for inp in source_inputs:
         src = inp.source_dataset
         sel = _build_single_select_for_source_stage(target_dataset, src)
         sub_selects.append(sel)
+
         identity_flags.append(_resolve_source_identity_id_for_source(src))
 
-      # Same here: use a plain UNION ALL for now.
-      return LogicalUnion(selects=sub_selects, union_type="ALL")
+      union_plan = LogicalUnion(selects=sub_selects, union_type="ALL")
+
+      mode, _ = _detect_stage_identity_mode(identity_flags)
+
+      if mode == "identity":
+        _strip_hidden_rank_ordinal_from_union(union_plan)
+        return union_plan
+
+      return _build_ranked_stage_union(target_dataset, union_plan)
 
     # -------------------- SINGLE-SOURCE STAGE (fall through) ----------------
 
@@ -644,16 +653,28 @@ def build_logical_select_for_target(target_dataset: TargetDataset):
     .order_by("ordinal_position", "id")
   )
 
-  for col in tcols:
-    if col.surrogate_key_column and col.surrogate_expression:
-      expr = RawSql(sql=col.surrogate_expression)
+  for tcol in tcols:
+    # 1) Surrogate key column
+    if tcol.surrogate_key_column and tcol.surrogate_expression:
+      # Dialect-aware SK: parse DSL into Expr, then render via dialect
+      expr = parse_surrogate_dsl(
+        tcol.surrogate_expression,
+        table_alias="s",  # Source/FROM alias in this SELECT
+      )
 
-    elif col.target_column_name in fk_expr_map:
-      expr = RawSql(sql=fk_expr_map[col.target_column_name])
+    # 2) Foreign key hash column
+    elif tcol.target_column_name in fk_expr_map:
+      # FK: same DSL → AST treatment as SKs
+      fk_dsl = fk_expr_map[tcol.target_column_name]
+      expr = parse_surrogate_dsl(
+        fk_dsl,
+        table_alias="s",
+      )
 
+    # 3) Normal column: derive from upstream or fall back to same-name column
     else:
       col_input = (
-        col.input_links
+        tcol.input_links
         .select_related(
           "upstream_target_column",
           "source_column",
@@ -669,11 +690,204 @@ def build_logical_select_for_target(target_dataset: TargetDataset):
         if col_input and col_input.upstream_target_column
         else col_input.source_column.source_column_name
         if col_input and col_input.source_column
-        else col.target_column_name
+        else tcol.target_column_name
       )
 
-      expr = ColumnRef(table_alias="s", column_name=upstream_col_name)
+      expr = col(upstream_col_name, "s")
 
-    logical.select_list.append(SelectItem(expr=expr, alias=col.target_column_name))
+    logical.select_list.append(
+      SelectItem(expr=expr, alias=tcol.target_column_name)
+    )
 
   return logical
+
+
+def _detect_stage_identity_mode(
+  identity_flags: list[str | None],
+) -> tuple[str, str | None]:
+  """
+  Decide whether we are in identity-mode or non-identity-mode.
+
+  identity_flags contains, per input branch, either a concrete
+  source_identity_id (string) or None.
+
+  Rules:
+
+    - If at least one branch has no identity id (None):
+        -> non-identity-mode (ranking)
+    - If all branches have a non-null identity id:
+        -> identity-mode (no ranking needed)
+    - If the list is empty:
+        -> non-identity-mode (no multi-source case)
+  """
+  if not identity_flags:
+    # No inputs or not a multi-source case
+    return "non_identity", None
+
+  # Identity-mode if *all* branches have a non-null id
+  if all(flag is not None for flag in identity_flags):
+    return "identity", None
+
+  # At least one branch has no identity id -> enable ranking
+  return "non_identity", None
+
+
+def _attach_hidden_rank_ordinal(
+  logical: LogicalSelect,
+  ordinal: int | None,
+  alias: str = "__src_rank_ord",
+) -> LogicalSelect:
+  """
+  Ensure the given LogicalSelect has a hidden technical column used
+  for ranking priority.
+
+  The column is appended as the *last* select item with a literal
+  integer value per branch, derived from SourceDatasetGroupMembership.
+
+  It is *not* part of the TargetDataset's column metadata and will
+  not be projected in the final Stage SELECT.
+  """
+  if ordinal is None:
+    # Fallback priority if not set; you can decide another default
+    literal_sql = "999999"
+  else:
+    literal_sql = str(int(ordinal))
+
+  logical.select_list.append(
+    SelectItem(
+      expr=raw(literal_sql),
+      alias=alias,
+    )
+  )
+
+  return logical
+
+
+def _strip_hidden_rank_ordinal_from_union(
+  union_plan: LogicalUnion,
+  hidden_alias: str = "__src_rank_ord",
+) -> None:
+  """
+  Remove the hidden technical ranking column from all UNION branches.
+  Used in identity-mode where we do not need ranking logic at all.
+  """
+  for sel in union_plan.selects:
+    if not isinstance(sel, LogicalSelect):
+      continue
+    sel.select_list = [
+      item for item in sel.select_list
+      if item.alias != hidden_alias
+    ]
+
+
+def _get_stage_ranking_partition_exprs(
+  target_dataset: "TargetDataset",
+  table_alias: str,
+) -> list[Expr]:
+  """
+  Return the list of expressions that define the *business key* for de-duplication.
+
+  Typical pattern:
+    - use one or more stage columns that represent the natural key
+    - e.g. all TargetColumns with some flag 'business_key_column=True'
+  """
+  bk_cols = (
+    target_dataset.target_columns
+    .filter(active=True, business_key_column=True)
+    .order_by("ordinal_position", "id")
+  )
+
+  if not bk_cols:
+    # Fallback: there is no BK
+    raise ValueError(
+      f"Dataset '{target_dataset}' has no business key columns defined for "
+      f"multi-source Stage ranking."
+    )
+
+  exprs: list[Expr] = []
+  for col_meta in bk_cols:
+    exprs.append(col(col_meta.target_column_name, table_alias))
+
+  return exprs
+
+
+def _get_stage_ranking_order_exprs(
+  target_dataset: "TargetDataset",
+  table_alias: str,
+) -> list[Expr]:
+  """
+  ORDER BY expressions for Stage ranking.
+
+  With the hidden technical column '__src_rank_ord' attached per
+  UNION branch, the ranking order is simply based on that column.
+
+  Lower values mean higher priority.
+  """
+  return [
+    col("__src_rank_ord", table_alias),
+  ]
+
+
+def _build_ranked_stage_union(
+  target_dataset: "TargetDataset",
+  union_plan: LogicalUnion,
+  alias_all: str = "u_all",
+  alias_ranked: str = "r",
+) -> LogicalSelect:
+  """
+  Build ranked Stage SELECT using hidden __src_rank_ord.
+  """
+  inner_subquery = SubquerySource(select=union_plan, alias=alias_all)
+  rank_select = LogicalSelect(from_=inner_subquery)
+
+  tcols = (
+    target_dataset.target_columns
+    .filter(active=True)
+    .order_by("ordinal_position", "id")
+  )
+
+  # u_all.<target_column> plus ROW_NUMBER()
+  for col_meta in tcols:
+    rank_select.select_list.append(
+      SelectItem(
+        expr=col(col_meta.target_column_name, alias_all),
+        alias=col_meta.target_column_name,
+      )
+    )
+
+  # PARTITION BY business key columns (Stage columns)
+  partition_exprs = _get_stage_ranking_partition_exprs(
+    target_dataset=target_dataset,
+    table_alias=alias_all,
+  )
+
+  # ORDER BY hidden __src_rank_ord
+  order_exprs = _get_stage_ranking_order_exprs(
+    target_dataset=target_dataset,
+    table_alias=alias_all,
+  )
+
+  rn_expr = row_number(
+    partition_by=partition_exprs,
+    order_by=order_exprs
+  )
+
+  rank_select.select_list.append(
+    SelectItem(expr=rn_expr, alias="_rn")
+  )
+
+  # Outer SELECT: only real target columns, filter _rn = 1
+  outer_subquery = SubquerySource(select=rank_select, alias=alias_ranked)
+  final_select = LogicalSelect(from_=outer_subquery)
+
+  for col_meta in tcols:
+    final_select.select_list.append(
+      SelectItem(
+        expr=col(col_meta.target_column_name, alias_ranked),
+        alias=col_meta.target_column_name,
+      )
+    )
+
+  final_select.where = raw(f"{alias_ranked}._rn = 1")
+
+  return final_select

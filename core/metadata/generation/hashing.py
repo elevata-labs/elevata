@@ -50,12 +50,12 @@ def build_surrogate_expression(
   inner_parts: list[str] = []
   for col in ordered_cols:
     part = (
-      "concat("
+      "CONCAT("
       f"'{col}', '{pair_sep}', "
-      f"coalesce({{expr:{col}}}, '{null_token}')"
+      f"COALESCE({{expr:{col}}}, '{null_token}')"
       ")"
     )
-    inner_parts.append(part)
+    inner_parts.append(part)  
 
   # 3. Join components with comp_sep and append the pepper
   # We pass each concat(...) as separate argument to concat_ws
@@ -63,8 +63,8 @@ def build_surrogate_expression(
   inner_expression = ", ".join(inner_parts)
 
   expression = (
-    "hash256("
-    f"concat_ws('{comp_sep}', {inner_expression}, '{pepper}')"
+    "HASH256("
+    f"CONCAT_WS('{comp_sep}', {inner_expression}, '{pepper}')"
     ")"
   )
 

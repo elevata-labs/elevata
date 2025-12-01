@@ -71,6 +71,26 @@ class Literal(Expr):
 
 
 @dataclass
+class WindowSpec(Expr):
+  """Logical window specification for window functions."""
+  partition_by: List[Expr] = field(default_factory=list)
+  order_by: List[Expr] = field(default_factory=list)
+
+
+@dataclass
+class WindowFunction(Expr):
+  """
+  Generic window function expression, e.g.:
+
+    ROW_NUMBER() OVER (PARTITION BY ... ORDER BY ...)
+    SUM(amount) OVER (...)
+  """
+  name: str
+  args: List[Expr] = field(default_factory=list)
+  window: WindowSpec = field(default_factory=WindowSpec)
+
+
+@dataclass
 class RawSql(Expr):
   """
   Raw SQL expression coming directly from metadata (e.g. surrogate_expression
@@ -123,3 +143,19 @@ def COALESCE(*parts: Expr) -> Expr:
   """Vendor-neutral COALESCE."""
   return Coalesce(parts=list(parts))
 
+
+def row_number_over(
+  partition_by: List[Expr] | None = None,
+  order_by: List[Expr] | None = None,
+) -> WindowFunction:
+  """
+  Convenience helper for ROW_NUMBER() window expressions.
+  """
+  return WindowFunction(
+    name="ROW_NUMBER",
+    args=[],
+    window=WindowSpec(
+      partition_by=partition_by or [],
+      order_by=order_by or [],
+    ),
+  )

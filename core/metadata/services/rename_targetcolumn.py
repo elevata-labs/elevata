@@ -21,7 +21,7 @@ Contact: <https://github.com/elevata-labs/elevata>.
 """
 
 """
-TargetColumn rename operations for Elevata.
+TargetColumn rename operations for elevata.
 
 Uses the shared rename engine in rename_common.py to provide
 consistent validation, collision checks and atomic commit logic.
@@ -33,7 +33,7 @@ from .rename_common import RenameSpec, dry_run_rename, commit_rename
 
 def _ensure_targetcolumn_rename_allowed(col: TargetColumn) -> list[str]:
   """
-  Enforce Elevata rules for when a TargetColumn may be renamed.
+  Enforce elevata rules for when a TargetColumn may be renamed.
 
   Rules:
     - Only columns in schema 'rawcore' are renameable.
@@ -77,7 +77,7 @@ def _targetcolumn_spec(col: TargetColumn) -> RenameSpec:
 def dry_run_targetcolumn_rename(col: TargetColumn, new_name: str) -> dict:
   """
   Validate a TargetColumn rename without persisting changes.
-  Applies Elevata system-managed rules + syntax and collision checks.
+  Applies elevata system-managed rules + syntax and collision checks.
   """
   rule_errors = _ensure_targetcolumn_rename_allowed(col)
   if rule_errors:
@@ -89,7 +89,7 @@ def dry_run_targetcolumn_rename(col: TargetColumn, new_name: str) -> dict:
 def commit_targetcolumn_rename(col: TargetColumn, new_name: str, user=None) -> dict:
   """
   Commit a TargetColumn rename atomically.
-  Applies Elevata system-managed rules before saving.
+  Applies elevata system-managed rules before saving.
   Updates audit fields (updated_by, updated_at) if present.
   """
   rule_errors = _ensure_targetcolumn_rename_allowed(col)

@@ -28,8 +28,8 @@ import datetime
 from decimal import Decimal
 
 from .base import SqlDialect
-from ..expr import Expr, Cast, Concat, Coalesce, ColumnRef, FuncCall, Literal, RawSql
-from ..logical_plan import LogicalSelect, SelectItem, SourceTable, Join
+from ..expr import Expr, Cast, Concat, Coalesce, ColumnRef, FuncCall, Literal, RawSql, WindowFunction, WindowSpec
+from ..logical_plan import LogicalSelect, SelectItem, SourceTable, Join, SubquerySource
 
 
 class DuckDBDialect(SqlDialect):
@@ -44,6 +44,8 @@ class DuckDBDialect(SqlDialect):
   - HASH256 is mapped to SHA256(expr) for now (can be adapted if hex encoding is required).
   """
 
+  DIALECT_NAME = "duckdb"
+
   # ---------------------------------------------------------------------------
   # Identifier & literal helpers
   # ---------------------------------------------------------------------------
@@ -56,18 +58,6 @@ class DuckDBDialect(SqlDialect):
     escaped = name.replace('"', '""')
     return f'"{escaped}"'
 
-  def _render_literal(self, lit: Literal) -> str:
-    v = lit.value
-    if v is None:
-      return "NULL"
-    if isinstance(v, bool):
-      return "TRUE" if v else "FALSE"
-    if isinstance(v, (int, float)):
-      return repr(v)
-    # treat everything else as string
-    s = str(v).replace("'", "''")
-    return f"'{s}'"
-  
   def map_logical_type(
     self,
     logical_type,          # type: str
@@ -160,7 +150,36 @@ class DuckDBDialect(SqlDialect):
       return f"{name_upper}({args_sql})"
     
     if isinstance(expr, Literal):
-      return self._render_literal(expr)
+      return self.render_literal(expr.value)
+
+    if isinstance(expr, WindowFunction):
+      # Render function name and arguments
+      func_name = expr.name.upper()
+      if expr.args:
+        args_sql = ", ".join(self.render_expr(a) for a in expr.args)
+      else:
+        args_sql = ""
+      func_sql = f"{func_name}({args_sql})"
+
+      # Build OVER clause
+      win = expr.window or WindowSpec()
+      parts: list[str] = []
+
+      if win.partition_by:
+        part_sql = ", ".join(self.render_expr(e) for e in win.partition_by)
+        parts.append(f"PARTITION BY {part_sql}")
+
+      if win.order_by:
+        order_sql = ", ".join(self.render_expr(e) for e in win.order_by)
+        parts.append(f"ORDER BY {order_sql}")
+
+      over_body = " ".join(parts)
+      if not over_body:
+        over_body = ""  # OVER ()
+
+      if over_body:
+        return f"{func_sql} OVER ({over_body})"
+      return f"{func_sql} OVER ()"
 
     if isinstance(expr, RawSql):
       # Start from the raw SQL template string
@@ -239,9 +258,29 @@ class DuckDBDialect(SqlDialect):
     Render schema.table AS alias (schema is optional).
     """
     return self.render_table_alias(table.schema, table.name, table.alias)
+  
+  def _render_from_item(self, item: SourceTable | SubquerySource) -> str:
+    """
+    Render either a base table or a subquery in FROM/JOIN.
+    """
+    if isinstance(item, SourceTable):
+      return self.render_table_alias(item.schema, item.name, item.alias)
+
+    if isinstance(item, SubquerySource):
+      inner = item.select
+      # LogicalSelect vs LogicalUnion
+      if isinstance(inner, LogicalSelect):
+        inner_sql = self.render_select(inner)
+      else:
+        # LogicalUnion or other object with to_sql(dialect)
+        inner_sql = inner.to_sql(self)
+
+      return f"(\n{inner_sql}\n) AS {item.alias}"
+
+    raise TypeError(f"Unsupported FROM item: {type(item)!r}")
 
   def _render_join(self, join: Join) -> str:
-    right_sql = self._render_source_table(join.right)
+    right_sql = self._render_from_item(join.right)
     join_type = (join.join_type or "inner").upper()
     on_sql = self.render_expr(join.on)
     return f"{join_type} JOIN {right_sql} ON {on_sql}"
@@ -269,7 +308,7 @@ class DuckDBDialect(SqlDialect):
 
     # FROM ...
     parts.append("FROM")
-    parts.append("  " + self._render_source_table(select.from_))
+    parts.append("  " + self._render_from_item(select.from_))
 
     # JOINs
     for j in select.joins:

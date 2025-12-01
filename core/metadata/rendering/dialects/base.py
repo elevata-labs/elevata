@@ -25,8 +25,8 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import Sequence
 
-from ..expr import Expr, ColumnRef, Literal, FuncCall, Concat, Coalesce
-from ..logical_plan import LogicalSelect, SourceTable, SelectItem, Join
+from ..expr import Expr
+from ..logical_plan import LogicalSelect
 
 
 class SqlDialect(ABC):
@@ -160,13 +160,6 @@ class SqlDialect(ABC):
       return "*"
     return ", ".join(self.quote_ident(c) for c in columns)
   
-  def map_python_type(self, value) -> str:
-    """
-    Given a Python object (or a type), return an SQL type string.
-    E.g. str → VARCHAR, int → BIGINT, date → DATE.
-    """
-    raise NotImplementedError
-
   # ---------------------------------------------------------------------------
   # Expression helpers
   # ---------------------------------------------------------------------------

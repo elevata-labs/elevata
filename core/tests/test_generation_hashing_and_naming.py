@@ -49,7 +49,7 @@ def test_build_surrogate_expression_deterministic():
 
   # Both expressions should be identical because columns are sorted internally
   assert expr1 == expr2
-  assert "hash256(" in expr1
+  assert "HASH256(" in expr1
   assert "{expr:a}" in expr1
   assert "{expr:b}" in expr1
   assert "xyz" in expr1  # pepper included

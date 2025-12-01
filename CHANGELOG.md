@@ -9,36 +9,143 @@ This project adheres to [Semantic Versioning](https://semver.org/) and [Keep a C
 
 ### 🛣️ Roadmap
 
-#### **0.5.0 — Multi-Backend & UI Enhancements**
-- 🧩 Target-System Selector in Profiles  
-  (Choose processing backend: DuckDB, Postgres, MSSQL, Snowflake …)
-- 🐦 First additional SQL dialect  
-  (likely Postgres or MSSQL as the initial candidate)
-- 🔍 Pseudo-Lineage Graph in the UI (HTMX-based)
-- 🎛️ SQL Preview Modernisation  
-  (optional: simplified pipeline, improved formatting, caching)
-- 🚚 Load Runner CLI  
-  (execute, dry-run, profiling, integration with profiles)
-- 🔁 Multi-Source Incremental Loads  
-  (incremental refresh across multiple upstream datasets)
-
 #### **0.6.0 — Ecosystem & Developer Experience**
-- Extended test matrix across multiple dialects  
+- Extended test matrix across all dialects  
 - Data Quality / Metadata Rule Engine  
 - Improved diagnostics and error surfacing in the dialect layer  
-- Enhanced logging & observability for load runs
+- Enhanced logging & observability for load runs  
+- Optional: Load-run caching for SQL Preview pipeline  
 
 #### **0.7.0 — Productivity & Automation**
 - Automated schema-evolution detection  
-- Optional: Zero-Code Stewardship / Business-User UI  
-- Advanced dependency graph visualisation  
-- dbt-style generation path (optional)
+- Optional: Zero-Code Stewardship / simplified business-user UI  
+- Advanced dependency graph visualisation (expanded lineage features)  
+- dbt-style generation path (optional)  
+
+#### Future Ideas (Post-0.7)
+- Snowflake dialect  
+- BigQuery dialect  
+- Databricks SQL  
+- Fivetran/Hightouch-style push integration  
 
 ---
 📈 For the full roadmap, see [Project Readme](https://github.com/elevata-labs/elevata/blob/main/README.md)
 
 🧾 Licensed under the **AGPL-v3** — open, governed, and community-driven.  
 💡 *elevata keeps evolving — one small, meaningful release at a time.*
+
+---
+
+## [0.5.0] — 2025-12-01
+### 🛠️ Multi-Dialect Engine, MSSQL Support & Deterministic FK Hashing
+
+This release delivers the next major milestone of elevata’s SQL engine:
+full **multi-dialect SQL generation**, an extensible dialect factory,
+runtime dialect switching in the UI, and a complete rewrite of the
+surrogate-key and foreign-key hashing system using a vendor-neutral DSL AST.
+
+---
+
+## 🚀 Major Features
+
+### **1. Multi-Dialect SQL Rendering (Postgres, DuckDB, MSSQL)**
+- New pluggable dialect architecture (`SqlDialect`, `dialect_factory`).
+- Three fully operational dialects:
+  - **DuckDBDialect**
+  - **PostgresDialect**
+  - **MssqlDialect** (new)
+- Centralised dialect registry & runtime resolution via:
+  - profile  
+  - env (`ELEVATA_SQL_DIALECT`)  
+  - URL parameter in SQL preview  
+
+All SQL generation (preview + Load Runner) now passes through a unified,
+dialect-aware pipeline.
+
+---
+
+### **2. SQL Preview Dialect Selector (UI)**
+- New dropdown in TargetDataset detail view.
+- Instant SQL refresh via HTMX request.
+- Clean display of dialect-specific SQL functions (quoting, hashing, concat, types).
+
+---
+
+### **3. Deterministic, Cross-Dialect Hashing via DSL AST**
+A full rewrite of surrogate-key and FK hashing:
+
+- New DSL expression system (`Hash256Expression`, `ConcatWsExpression`, `Literal`, `ColumnRef`).
+- Dialect-specific SQL rendering happens **exclusively in dialect classes**.
+- Identical logical lineage yields identical hash values across vendors.
+- Fully deterministic ordering + null replacement semantics.
+- Clean child-lineage FK hashing:
+  - BK1, child BK1, BK2, child BK2…
+  - `~` and `|` literal separators, ordered alphabetically
+
+All existing hashing tests green after the rewrite.
+
+---
+
+### **4. Multi-Source Stage Identity Mode**
+- Correct logical union builder for Stage datasets with multiple upstream sources.
+- Clean identity (no ranking) vs. non-identity (ranking) handling.
+- Injected `source_identity_id` literal per upstream branch.
+- All multi-source identity tests fully passing.
+
+---
+
+### **5. Dialect-Aware FK Rendering**
+- Parent surrogate keys and child FK keys now rendered via DSL → dialect.
+- MSSQL: `CONVERT(VARCHAR(64), HASHBYTES('SHA2_256', …), 2)`
+- Postgres: `ENCODE(DIGEST(CONCAT_WS(...), 'sha256'), 'hex')`
+- DuckDB: `SHA256(CONCAT_WS(...))`
+
+---
+
+## 🔧 Internal Improvements
+- Entire `builder.py` cleaned, simplified, and refactored.
+- Unified `render_select_for_target()` and load-SQL paths.
+- Removed legacy manual hashing logic.
+- No raw SQL string assembly left in hashing pipeline.
+- Strict quoting rules per dialect.
+- Sauber extrahierte DSL operators (`col()`, `lit()`, `concat_ws()`, `hash256()`).
+
+---
+
+## 🧪 Testing
+- New tests:
+  - `test_dialect_postgres.py`
+  - `test_hashing_dialects.py`
+  - `test_fk_hashing.py`
+  - Full MSSQL hashing coverage
+- Updated test helpers for DSL AST inspection.
+- All Stage multi-source tests green after identity-mode rewrite.
+
+---
+
+## 📘 Documentation
+- Updated architecture docs:
+  - *Dialect System*
+  - *SQL Rendering Conventions*
+  - *Hashing Architecture*
+- README modernised with new capabilities and architecture.
+
+---
+
+## 🧭 Roadmap Shift
+With the 0.5.0 SQL backend complete, the next stage focuses on execution:
+
+- Load Runner CLI (Full, Merge, Dry-Run)
+- Caching & improved SQL formatting
+- Multi-source incremental merges
+- Additional dialects (Snowflake, BigQuery, Databricks)
+
+---
+
+**Impact**  
+Version **0.5.0** transforms elevata into a **true multi-backend SQL generator**  
+with deterministic hashing, dialect-specific rendering, and a stable architectural core  
+for future execution engines.
 
 ---
 

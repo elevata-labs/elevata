@@ -20,11 +20,6 @@ along with elevata. If not, see <https://www.gnu.org/licenses/>.
 Contact: <https://github.com/elevata-labs/elevata>.
 """
 
-"""
-elevata - Metadata-driven Data Platform Framework
-Multi-source stage tests: source_identity_id handling.
-"""
-
 import pytest
 
 from metadata.models import (
@@ -38,7 +33,7 @@ from metadata.models import (
   TargetColumn,
 )
 from metadata.rendering.builder import build_logical_select_for_target
-from metadata.rendering.logical_plan import LogicalUnion, LogicalSelect
+from metadata.rendering.logical_plan import LogicalUnion, LogicalSelect, SubquerySource
 
 
 @pytest.mark.django_db
@@ -219,19 +214,22 @@ def test_stage_union_injects_source_identity_id_per_upstream():
   # ---------------------------------------------------------------------------
   plan = build_logical_select_for_target(stage_ds)
 
-  # Must be a LogicalUnion with exactly two branches
+  # Top-level plan must now be a LogicalUnion
   assert isinstance(plan, LogicalUnion)
   assert len(plan.selects) == 2
   assert all(isinstance(sel, LogicalSelect) for sel in plan.selects)
 
-  # Helper to find the expression for source_identity_id in a LogicalSelect
+  # Helper to find the expression for source_identity_id in a branch SELECT
   def get_identity_expr(logical_select: LogicalSelect):
     items = [
       item
       for item in logical_select.select_list
       if item.alias == "source_identity_id"
     ]
-    assert len(items) == 1
+    assert len(items) == 1, (
+      "Each UNION branch must have exactly one select item aliased as "
+      "'source_identity_id'."
+    )
     return items[0].expr
 
   first_expr = get_identity_expr(plan.selects[0])

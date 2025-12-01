@@ -24,11 +24,9 @@ Contact: <https://github.com/elevata-labs/elevata>.
 Test for multi-source STAGE UNION:
 
 - A STAGE TargetDataset with two RAW upstream datasets should produce
-  a LogicalUnion.
+  a LogicalSelect that wraps a LogicalUnion.
 - Each branch in the UNION must populate the column `source_identity_id`
   with a source-specific literal, e.g. 'aw1' and 'aw2'.
-- This ensures that stage-union handling provides source identity lineage
-  across multiple upstream systems.
 """
 
 import pytest
@@ -45,7 +43,7 @@ from metadata.models import (
   TargetColumn,
 )
 from metadata.rendering.builder import build_logical_select_for_target
-from metadata.rendering.logical_plan import LogicalUnion
+from metadata.rendering.logical_plan import LogicalSelect, LogicalUnion, SubquerySource
 
 
 @pytest.mark.django_db
@@ -239,7 +237,7 @@ def test_stage_union_sets_source_identity_id_literal_per_branch():
 
   assert isinstance(logical, LogicalUnion), (
     "Expected build_logical_select_for_target to return a LogicalUnion "
-    "for multi-source STAGE datasets."
+    "for multi-source STAGE datasets.",  # identity-mode case
   )
   assert len(logical.selects) == 2, (
     f"Expected exactly 2 UNION branches, got {len(logical.selects)}"
@@ -251,7 +249,6 @@ def test_stage_union_sets_source_identity_id_literal_per_branch():
   branch_literals = []
 
   for sel in logical.selects:
-    # Locate SelectItem with alias 'source_identity_id'
     items = [
       si for si in sel.select_list
       if si.alias == "source_identity_id"
@@ -270,7 +267,6 @@ def test_stage_union_sets_source_identity_id_literal_per_branch():
 
     branch_literals.append(sql_literal)
 
-  # Validate that each branch has the correct literal identity id
   assert any("aw1" in lit for lit in branch_literals), (
     f"Expected one branch to use identity 'aw1', got: {branch_literals}"
   )

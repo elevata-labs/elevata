@@ -24,6 +24,7 @@ from __future__ import annotations
 
 from metadata.rendering.renderer import render_select_for_target
 from metadata.rendering.dialects import get_active_dialect
+from metadata.rendering.dialects.base import SqlDialect
 
 
 def beautify_sql(sql: str) -> str:
@@ -67,12 +68,13 @@ def beautify_sql(sql: str) -> str:
   return sql.strip()
 
 
-def build_sql_preview_for_target(target_ds) -> str:
+def build_sql_preview_for_target(dataset, dialect: SqlDialect | None = None) -> str:
   """
-  Build a dialect-aware, beautified SQL SELECT for a single TargetDataset.
+  Build the final SQL preview for a target dataset.
 
-  This is used by the UI preview and by tests.
+  If `dialect` is None, the active dialect is resolved from env/profile.
   """
-  dialect = get_active_dialect()
-  raw_sql = render_select_for_target(target_ds, dialect)
+  if dialect is None:
+    dialect = get_active_dialect()
+  raw_sql = render_select_for_target(dataset, dialect)
   return beautify_sql(raw_sql)

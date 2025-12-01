@@ -32,33 +32,46 @@ def test_logical_select_structure():
   assert sel.distinct is True
   assert sel.joins == []
 
+
 class DummySelect:
-  """Minimal mock for LogicalSelect.to_sql()."""
-  def __init__(self, sql):
+  """Minimal mock for a SELECT-like node with to_sql()."""
+
+  def __init__(self, sql: str):
     self._sql = sql
 
-  def to_sql(self, dialect):
+  def to_sql(self, dialect) -> str:
+    # Ignore the dialect and just return the stored SQL string.
     return self._sql
+
+
+class DummyDialect:
+  """
+  Minimal dialect that can be passed to LogicalUnion.to_sql().
+
+  It supports both possible implementations:
+
+    - calling sel.to_sql(dialect)
+    - calling dialect.render_select(sel)
+  """
+
+  def render_select(self, sel: DummySelect) -> str:
+    # Delegate back to the DummySelect, which ignores the dialect.
+    return sel.to_sql(self)
 
 
 def test_logical_union_to_sql_all():
   """Ensure UNION ALL correctly joins multiple SELECTs."""
+
   sel1 = DummySelect("SELECT * FROM t1")
   sel2 = DummySelect("SELECT * FROM t2")
 
   union = LogicalUnion([sel1, sel2], union_type="ALL")
-  sql = union.to_sql(dialect="ansi")
+
+  # Use dummy dialect so both implementations work:
+  # - sel.to_sql(dialect)
+  # - dialect.render_select(sel)
+  sql = union.to_sql(dialect=DummyDialect())
 
   assert "SELECT * FROM t1" in sql
   assert "SELECT * FROM t2" in sql
   assert "UNION ALL" in sql
-
-
-def test_logical_select_structure():
-  """Ensure LogicalSelect stores from_/joins/select_list correctly."""
-  table = SourceTable(schema="raw", name="customer", alias="c")
-
-  sel = LogicalSelect(from_=table, distinct=True)
-  assert sel.from_.alias == "c"
-  assert sel.distinct is True
-  assert sel.joins == []
