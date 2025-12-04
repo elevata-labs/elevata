@@ -138,29 +138,42 @@ class PostgresDialect(DuckDBDialect):
   # ---------------------------------------------------------
   def render_merge_statement(
     self,
-    target_qualified: str,
-    key_columns: list[str],
+    schema: str,
+    table: str,
+    select_sql: str,
+    unique_key_columns: list[str],
     update_columns: list[str],
-    insert_columns: list[str],
-    insert_values_sql: list[str],
-    source_select_sql: str
   ) -> str:
+    """
+    Implement incremental MERGE via INSERT .. ON CONFLICT.
 
-    key_list = ", ".join(self.quote_ident(c) for c in key_columns)
+    Contract:
+      - `select_sql` must produce columns whose names match the target columns.
+      - The column set must at least cover:
+        unique_key_columns + update_columns
+    """
+    target_qualified = self.quote_table(schema, table)
 
+    # ON CONFLICT uses the unique key columns
+    key_list = ", ".join(self.quote_ident(c) for c in unique_key_columns)
+
+    # Insert column order = keys first, then update columns
+    all_columns = unique_key_columns + [
+      c for c in update_columns if c not in unique_key_columns
+    ]
+    insert_col_list = ", ".join(self.quote_ident(c) for c in all_columns)
+
+    # ON CONFLICT DO UPDATE SET <col> = EXCLUDED.<col>
     update_assignments = ", ".join(
       f"{self.quote_ident(c)} = EXCLUDED.{self.quote_ident(c)}"
       for c in update_columns
     )
 
-    insert_col_list = ", ".join(self.quote_ident(c) for c in insert_columns)
-    insert_val_list = ", ".join(insert_values_sql)
-
-    sql = f"""
-    INSERT INTO {target_qualified} ({insert_col_list})
-    VALUES ({insert_val_list})
-    ON CONFLICT ({key_list})
-    DO UPDATE SET {update_assignments};
-    """
+    sql = (
+      f"INSERT INTO {target_qualified} ({insert_col_list})\n"
+      f"{select_sql}\n"
+      f"ON CONFLICT ({key_list})\n"
+      f"DO UPDATE SET {update_assignments};"
+    )
 
     return sql.strip()

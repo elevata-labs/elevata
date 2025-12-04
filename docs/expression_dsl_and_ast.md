@@ -1,8 +1,8 @@
-# Expression DSL & AST
+# ⚙️ Expression DSL & AST
 
-This document describes elevata’s vendor-neutral **Expression DSL** and its corresponding **Expression Abstract Syntax Tree (AST)**.
+This document describes elevata’s vendor-neutral **Expression DSL** (Domain Specific Language) and its corresponding **AST** (Expression Abstract Syntax Tree).  
 
-It forms the foundation of the new multi-dialect SQL engine and powers:  
+It forms the foundation of the multi-dialect SQL engine and powers:  
 - surrogate-key hashing  
 - foreign-key lineage hashing  
 - CONCAT/COALESCE operations  
@@ -12,16 +12,9 @@ It forms the foundation of the new multi-dialect SQL engine and powers:
 
 ---
 
-# 1. Purpose of the DSL & AST
+## 🔧 1. Purpose of the DSL & AST
 
-Before v0.5.x, expression rendering relied on direct SQL templates embedded in metadata or builder logic. This caused:  
-- inconsistent hashing across dialects  
-- non-deterministic surrogate keys  
-- metadata polluted with vendor-specific SQL  
-- brittle string concatenation logic  
-- difficulty introducing new SQL dialects  
-
-**The new architecture introduces:**  
+**The architecture introduces:**  
 - a safe, declarative **Expression DSL** stored in metadata  
 - a **parser** converting DSL → AST  
 - a **vendor-neutral AST** describing expressions  
@@ -35,7 +28,7 @@ This ensures:
 
 ---
 
-# 2. DSL → AST → SQL Rendering Pipeline
+## 🔧 2. DSL → AST → SQL Rendering Pipeline
 
 ```
 DSL string  →  DSL Parser  →  Expression AST  →  Dialect Renderer  →  Final SQL
@@ -72,9 +65,9 @@ Dialect renderings:
 
 ---
 
-# 3. DSL Syntax
+## 🔧 3. DSL Syntax
 
-## 3.1 Supported core functions
+### 🧩 3.1 Supported core functions
 
 | DSL Function | Description |  
 |--------------|-------------|  
@@ -87,14 +80,14 @@ Dialect renderings:
 
 The DSL is intentionally minimal and safe.
 
-## 3.2 Identifiers
+### 🧩 3.2 Identifiers
 - `COL(bk1)` and `COL("bk1")` behave equivalently.  
 - Dialects re-apply proper quoting.  
 
-## 3.3 Literals
+### 🧩 3.3 Literals
 String literals may be defined using `'...'` or `"..."`.
 
-## 3.4 Upstream Expression References
+### 🧩 3.4 Upstream Expression References
 Syntax:
 ```
 {expr:column_name}
@@ -103,7 +96,7 @@ This refers to an upstream expression already defined in the execution graph.
 
 ---
 
-# 4. DSL Parser
+## 🔧 4. DSL Parser
 
 Located in: `metadata/rendering/dsl.py`
 
@@ -122,40 +115,40 @@ Specialized rules:
 
 ---
 
-# 5. Expression AST Nodes
+## 🔧 5. Expression AST Nodes
 
 All expression classes derive from a common base.
 
-## 5.1 Primitive Nodes
-### `Literal(value)`
+### 🧩 5.1 Primitive Nodes
+#### 🔎 `Literal(value)`
 Represents a literal value in SQL.
 
-### `ColumnRef(column_name, table_alias=None)`
+#### 🔎 `ColumnRef(column_name, table_alias=None)`
 Represents a reference to a column.
 
-### `ExprRef(name)`
+#### 🔎 `ExprRef(name)`
 References an upstream-generated expression.
 
 ---
 
-## 5.2 Function Expression Nodes
-### `ConcatExpr(args)`
+### 🧩 5.2 Function Expression Nodes
+#### 🔎 `ConcatExpr(args)`
 Represents `CONCAT(a,b,...)`.
 
-### `ConcatWsExpr(separator, args)`
+#### 🔎 `ConcatWsExpr(separator, args)`
 Represents `CONCAT_WS(sep, ...)`.
 
-### `CoalesceExpr(a,b)`
+#### 🔎 `CoalesceExpr(a,b)`
 Represents `COALESCE(a,b)`.
 
-### `Hash256Expr(expr)`
+#### 🔎 `Hash256Expr(expr)`
 Vendor-neutral representation of SHA‑256 hashing.
 
 Each dialect chooses its own SQL form.
 
 ---
 
-# 6. Window Functions
+## 🔧 6. Window Functions
 
 Represented by:
 ```
@@ -175,7 +168,7 @@ Used primarily in multi-source Stage ranking mode.
 
 ---
 
-# 7. Subqueries in the AST
+## 🔧 7. Subqueries in the AST
 
 Subqueries are modeled using:
 ```
@@ -196,7 +189,7 @@ The dialect handles parenthesis placement and alias rendering.
 
 ---
 
-# 8. Dialect Rendering Responsibilities
+## 🔧 8. Dialect Rendering Responsibilities
 
 Each SQL dialect must render:  
 - literals  
@@ -216,7 +209,7 @@ Examples:
 
 ---
 
-# 9. Use in Surrogate & Foreign Keys
+## 🔧 9. Use in Surrogate & Foreign Keys
 
 The SK/FK hashing pipeline uses the DSL and AST exclusively.
 
@@ -229,7 +222,7 @@ Guarantees:
 
 ---
 
-# 10. Benefits of the DSL & AST
+## 🔧 10. Benefits of the DSL & AST
 
 - deterministic and reproducible SQL  
 - clean abstraction from vendor SQL  
@@ -238,18 +231,6 @@ Guarantees:
 - no SQL in metadata  
 - simple addition of new dialects  
 - supports window functions and subqueries  
-
----
-
-# 11. Planned Extensions
-
-Potential future additions:  
-- boolean expressions  
-- arithmetic  
-- CASE WHEN  
-- JSON/path expressions  
-- richer literal handling  
-- automatic type inference  
 
 ---
 

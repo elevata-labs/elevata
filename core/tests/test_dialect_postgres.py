@@ -55,3 +55,34 @@ def test_pg_literal_render():
   assert d.render_literal(42) == "42"
   assert d.render_literal(None) == "NULL"
   assert d.render_literal(True) == "TRUE"
+
+def test_pg_merge_statement_uses_insert_on_conflict_upsert():
+  d = PostgresDialect()
+
+  select_sql = "SELECT 1 AS id, 'x'::text AS payload"
+
+  sql = d.render_merge_statement(
+    schema="dw",
+    table="dim_customer",
+    select_sql=select_sql,
+    unique_key_columns=["id"],
+    update_columns=["payload"],
+  )
+
+  # Basic shape checks
+  lower = sql.lower()
+
+  # Should be an INSERT ... ON CONFLICT ... DO UPDATE statement
+  assert "insert into" in lower
+  assert "on conflict" in lower
+  assert "do update set" in lower
+
+  # The target table should appear, typically quoted
+  assert "dim_customer" in sql
+  assert "dw" in sql
+
+  # The key column must appear in the ON CONFLICT clause
+  assert "id" in sql  # we don't assert exact quoting, just presence
+
+  # The source SELECT should be embedded in the statement
+  assert "select 1 as id" in lower

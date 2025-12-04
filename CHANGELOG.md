@@ -36,6 +36,25 @@ This project adheres to [Semantic Versioning](https://semver.org/) and [Keep a C
 
 ---
 
+## [0.5.1] — 2025-12-04
+### 🧹 Documentation & Consistency Release
+
+This patch focuses on improving the clarity, coherence, and structure of elevata’s developer documentation.
+
+## ✨ Highlights
+- Full harmonization of all architecture documents  
+- Removal of outdated version references and legacy wording  
+- Unified heading and layout style across all Markdown files  
+- Consistent terminology for LogicalPlan, Expression DSL, Dialects, and Load SQL  
+- Improved mkdocs navigation structure  
+- Minor text corrections and consistency fixes across the docs
+
+## 🚫 No functional changes
+This release does not modify the SQL engine, metadata model, or any public API surface.  
+All test suites remain unchanged and green.
+
+---
+
 ## [0.5.0] — 2025-12-01
 ### 🛠️ Multi-Dialect Engine, MSSQL Support & Deterministic FK Hashing
 

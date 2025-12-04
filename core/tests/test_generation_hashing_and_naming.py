@@ -37,14 +37,14 @@ def test_build_surrogate_expression_deterministic():
     pepper="xyz",
     null_token="<NULL>",
     pair_sep="~",
-    comp_sep="||"
+    comp_sep="|"
   )
   expr2 = hashing.build_surrogate_expression(
     natural_key_cols=["a", "b"],
     pepper="xyz",
     null_token="<NULL>",
     pair_sep="~",
-    comp_sep="||"
+    comp_sep="|"
   )
 
   # Both expressions should be identical because columns are sorted internally

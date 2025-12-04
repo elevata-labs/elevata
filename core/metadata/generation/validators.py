@@ -128,7 +128,7 @@ def validate_bizcore_target_dataset(td: "TargetDataset") -> List[str]:
   """
   Validate BizCore-specific semantics for a single TargetDataset.
 
-  Rules v0.4.0 (non-strict, but helpful):
+  Rules (non-strict, but helpful):
   - Only validate if target_schema.short_name == 'bizcore'
   - Check that:
       * biz_entity_role is set

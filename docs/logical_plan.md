@@ -1,6 +1,6 @@
-# Logical Plan
+# ⚙️ Logical Plan
 
-This document describes the **Logical Plan** layer of elevata as of version **0.5.x**, updated to include:
+This document describes the **Logical Plan** layer of elevata, which includes:
 
 - Subqueries in the FROM clause  
 - Window Functions (ROW_NUMBER, etc.)  
@@ -11,7 +11,7 @@ This document describes the **Logical Plan** layer of elevata as of version **0.
 
 ---
 
-# 1. Purpose of the Logical Plan
+## 🔧 1. Purpose of the Logical Plan
 
 The Logical Plan is the **dialect-agnostic intermediate representation** between:
 
@@ -30,9 +30,9 @@ The Logical Plan:
 
 ---
 
-# 2. Core Node Types
+## 🔧 2. Core Node Types
 
-## 2.1 LogicalSelect
+### 🧩 2.1 LogicalSelect
 Represents a SELECT statement.  
 
 Fields:  
@@ -52,7 +52,7 @@ LogicalSelect(
 
 ---
 
-## 2.2 SelectItem
+### 🧩 2.2 SelectItem
 Represents a single column in the SELECT list.  
 
 Fields:  
@@ -61,14 +61,13 @@ Fields:
 
 ---
 
-## 2.3 Source Nodes
+### 🧩 2.3 Source Nodes
 
-### TableSource
+#### 🔎 TableSource
 ```
 TableSource(table_name, alias)
 ```
-
-### SubquerySource *(added in 0.5.x)*
+#### 🔎 SubquerySource
 Represents:
 ```
 (SELECT ...) AS alias
@@ -79,7 +78,7 @@ Used for:
 - derived tables  
 - complex transformations  
 
-### LogicalUnion
+### 🧩 2.4 LogicalUnion
 Represents a UNION or UNION ALL.
 
 Fields:
@@ -97,7 +96,7 @@ often wrapped in a SubquerySource.
 
 ---
 
-# 3. Window Functions (new in 0.5.x)
+## 🔧 3. Window Functions
 
 Window functions appear via:
 ```
@@ -124,11 +123,11 @@ Used primarily in Stage **non-identity** mode.
 
 ---
 
-# 4. Subqueries in Multi-Source Stage (new in 0.5.x)
+## 🔧 4. Subqueries in Multi-Source Stage
 
 Multi-source Stage requires optional ranking logic:
 
-## Identity Mode
+### 🧩 Identity Mode
 - Each upstream dataset contributes a `source_identity_id` literal.  
 - No ranking is needed.  
 - We use **raw UNION ALL**:  
@@ -137,11 +136,11 @@ Multi-source Stage requires optional ranking logic:
 LogicalUnion([sel1, sel2, ...])
 ```
 
-### No Subquery Required.
+### 🧩 No Subquery Required.
 
 ---
 
-## Non-Identity Mode
+### 🧩 Non-Identity Mode
 - UNION ALL is wrapped into a SubquerySource.  
 - Outer SELECT applies ROW_NUMBER and filters.  
 
@@ -162,7 +161,7 @@ LogicalSelect(
 
 ---
 
-# 5. Integration With Expression DSL & AST
+## 🔧 5. Integration With Expression DSL & AST
 
 All expressions inside the Logical Plan use the DSL/AST layer:  
 - column references  
@@ -176,7 +175,7 @@ This ensures cross-dialect consistency.
 
 ---
 
-# 6. Dialect Rendering Responsibilities
+## 🔧 6. Dialect Rendering Responsibilities
 
 Each dialect must render:  
 - SELECT lists  
@@ -188,23 +187,23 @@ Each dialect must render:
 
 Example dialect responsibilities:  
 
-### DuckDB
+### 🧩 DuckDB
 - window functions: identical to ANSI  
 - hashing: SHA256()  
 
-### Postgres
+### 🧩 Postgres
 - subqueries: `(SELECT ...) AS alias`  
 - hashing: `ENCODE(DIGEST(...), 'sha256'), 'hex')`  
 
-### MSSQL
+### 🧩 MSSQL
 - hashing via `HASHBYTES('SHA2_256', ...)`  
 - convert binary → hex via `CONVERT(VARCHAR(64), ..., 2)`  
 
 ---
 
-# 7. Logical Plan Rendering Rules (Dialect-Agnostic)
+## 🔧 7. Logical Plan Rendering Rules (Dialect-Agnostic)
 
-### 7.1 SELECT
+### 🧩 7.1 SELECT
 ```
 SELECT <select_list>
 FROM <source>
@@ -213,21 +212,21 @@ FROM <source>
 [ORDER BY <order_items>]
 ```
 
-### 7.2 UNION
+### 🧩 7.2 UNION
 ```
 SELECT ...
 UNION ALL
 SELECT ...
 ```
 
-### 7.3 Subquery
+### 🧩 7.3 Subquery
 ```
 (
   SELECT ...
 ) AS alias
 ```
 
-### 7.4 Window Function
+### 🧩 7.4 Window Function
 ```
 ROW_NUMBER() OVER (PARTITION BY ... ORDER BY ...)
 ```
@@ -239,21 +238,21 @@ Dialect modifies only:
 
 ---
 
-# 8. How the Builder Constructs Logical Plans
+## 🔧 8. How the Builder Constructs Logical Plans
 
 Key builder patterns:
 
-## 8.1 Single-Source Stage
+### 🧩 8.1 Single-Source Stage
 ```
 LogicalSelect(from_=TableSource(...))
 ```
 
-## 8.2 Multi-Source Stage Identity
+### 🧩 8.2 Multi-Source Stage Identity
 ```
 LogicalUnion([...])
 ```
 
-## 8.3 Multi-Source Stage Non-Identity
+### 🧩 8.3 Multi-Source Stage Non-Identity
 ```
 SubquerySource(
   select=LogicalSelect(
@@ -266,27 +265,14 @@ Outer filter applied via another LogicalSelect.
 
 ---
 
-# 9. Benefits of the 0.5.x Logical Plan
-
+# 9. Benefits of the Logical Plan
 - Supports subqueries as first-class citizens  
 - Vendor-neutral window functions  
 - Clean separation between logic and SQL syntax  
-- Easy extension with future nodes (CASE WHEN, JOIN, GROUPING SETS)  
+- Extensible architecture (CASE WHEN, JOIN, GROUPING SETS)  
 - Deterministic behavior for multi-source processing  
 - No vendor SQL stored in metadata  
 - Strict testability  
-
----
-
-# 10. Planned Extensions
-
-Future additions may include:  
-- JOIN node type (explicit join graph)  
-- CASE WHEN expr nodes  
-- arithmetic expressions  
-- JSON path expressions  
-- automatic type inference  
-- cost-based plan validator  
 
 ---
 

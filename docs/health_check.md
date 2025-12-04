@@ -1,4 +1,4 @@
-# Metadata Health Check
+# ⚙️ Metadata Health Check
 
 The **Metadata Health Check** is a central quality assurance mechanism in *elevata*.  
 It automatically inspects the entire metadata repository and detects:
@@ -15,7 +15,7 @@ The Health Check runs **purely on metadata** and **does not require an active da
 
 ---
 
-## Goals
+## 🔧 1. Goals
 
 The Health Check is designed to:
 
@@ -27,7 +27,7 @@ The Health Check is designed to:
 
 ---
 
-## Running the Health Check
+## 🔧 2. Running the Health Check
 
 You can run the check manually using the Django management command:
 
@@ -59,9 +59,9 @@ If no issues exist:
 ```python
   All target datasets look healthy. 🎉
 ```
-## What is Checked?
+## 🔧 3. What is Checked?
 
-### 1. Incremental Configuration
+### 🧩 3.1 Incremental Configuration
 The Health Check validates that:
 
 - `incremental_strategy` fits the effective materialization  
@@ -72,7 +72,7 @@ The Health Check validates that:
 
 ---
 
-### 2. Materialization Consistency
+### 🧩 3.2 Materialization Consistency
 
 - `merge` cannot be used on views  
 - serving layer datasets are never materialized as tables  
@@ -81,7 +81,7 @@ The Health Check validates that:
 
 ---
 
-### 3. BizCore Semantics
+### 🧩 3.3 BizCore Semantics
 
 The following rules are checked:
 
@@ -93,7 +93,7 @@ The following rules are checked:
 
 ---
 
-### 4. Dependency Integrity
+### 🧩 3.4 Dependency Integrity
 
 Ensures:
 
@@ -104,7 +104,7 @@ Ensures:
 
 ---
 
-## Where the Health Check Appears in the UI
+## 🔧 4. Where the Health Check Appears in the UI
 
 - Each **TargetDataset → Lineage** page displays a highlighted warning box  
 - A badge summarises the health state (`OK`, `WARN`, `ERROR`)  
@@ -118,7 +118,7 @@ Example:
 
 ---
 
-## When to Use It
+## 🔧 5. When to Use It
 
 Run the Health Check:
 
@@ -130,7 +130,7 @@ Run the Health Check:
 
 ---
 
-## Extensibility
+## 🔧 6. Extensibility
 
 The Health Check framework is modular.  
 Additional rule sets can be added easily, for example:
@@ -146,7 +146,7 @@ Validators live in: `metadata/generation/validators.py` and follow a simple reus
 
 ---
 
-## Summary
+## 🔧 7. Summary
 
 The Metadata Health Check provides:
 

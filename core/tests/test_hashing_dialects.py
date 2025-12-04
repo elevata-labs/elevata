@@ -24,7 +24,7 @@ from metadata.rendering.dsl import parse_surrogate_dsl
 from metadata.rendering.dialects.dialect_factory import get_active_dialect
 
 
-DSL = "HASH256(CONCAT_WS('||', COALESCE({expr:a}, '<NULL>'), 'pepper'))"
+DSL = "HASH256(CONCAT_WS('|', COALESCE({expr:a}, '<NULL>'), 'pepper'))"
 
 
 def _render(dialect_name: str) -> str:

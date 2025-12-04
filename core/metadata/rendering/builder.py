@@ -404,7 +404,7 @@ def _build_single_select_for_upstream(
     # Special handling for source_identity_id:
     # In UNION branches we emit a literal per upstream if configured.
     elif col_meta.target_column_name == "source_identity_id" and identity_id is not None:
-      # Simple string literal, dialect-agnostic enough for v0.5
+      # Simple string literal, dialect-agnostic enough for now
       expr = raw(f"'{identity_id}'")
 
     else:

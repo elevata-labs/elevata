@@ -27,7 +27,7 @@ This module is separate from the SELECT preview rendering and focuses on:
 - full refresh loads
 - incremental loads (append, merge, snapshot)
 
-For v0.4.0 we implement:
+For now we implement:
 
 - full refresh loads (INSERT-based)
 - merge-based incrementals with optional delete detection
@@ -317,7 +317,7 @@ def render_merge_sql(td: TargetDataset, dialect) -> str:
   """
   Render a backend-aware MERGE statement for a target dataset.
 
-  For v0.4.0 the intended semantics are:
+  For now the intended semantics are:
 
     - rawcore:
       MERGE rawcore (integrated table) FROM stage (snapshot of the latest extract)

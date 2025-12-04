@@ -26,8 +26,11 @@ This index gives you an overview of all major topics and how they fit together.
   Includes dataset types (RAW, STAGE, CORE, …), dependencies and generation rules.
 
 - [Incremental Load Architecture](incremental_load.md)  
-  Incremental patterns, MERGE semantics, deletion handling, and how elevata models change propagation.
-- [Load SQL Architecture](load_sql_architecture.md)
+  Incremental patterns, MERGE semantics, deletion handling, and how elevata models change propagation.  
+
+- [Load SQL Architecture](load_sql_architecture.md)  
+  How elevata transforms lineage and metadata into executable SQL through the logical plan,  
+  renderer, and dialect adapters — covering full loads, merge operations, and delete detection. 
 
 ---
 
@@ -53,7 +56,7 @@ This index gives you an overview of all major topics and how they fit together.
   How datasets depend on each other, how lineage is represented, and how the Logical Plan encodes queries.
 
 - [Expression DSL & AST](expression_dsl_and_ast.md)  
-  The vendor-neutral expression DSL (HASH256, CONCAT_WS, COALESCE, COL, …), the AST, and how dialects render it.
+  The vendor-neutral expression DSL (Domain Specific Language) (HASH256, CONCAT_WS, COALESCE, COL, …), the AST (Abstract Syntax Tree), and how dialects render it.
 
 - [Hashing Architecture](hashing_architecture.md)  
   Surrogate key and foreign key hashing: deterministic rules, cross-dialect SHA-256, null handling and pepper strategy.
@@ -86,7 +89,7 @@ This index gives you an overview of all major topics and how they fit together.
   The top-level README from the Git repository (architecture, goals, roadmap).
 
 - [Changelog](changelog_ref.md)  
-  Release history, including the 0.5.x multi-dialect engine and hashing rewrite.
+  Release history
 
 ---
 
@@ -119,4 +122,7 @@ A personal open-source initiative exploring the future of declarative data archi
 
 ---
 
-_Last updated: 2025-12-01_
+_Last updated: 2025-12-04_
+
+© 2025 elevata Labs  
+Built with purpose. Rendered with precision. 🪶

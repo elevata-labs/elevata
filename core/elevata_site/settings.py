@@ -43,7 +43,7 @@ from utils.db import build_metadata_database_url
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(find_dotenv(filename=".env", raise_error_if_not_found=False))
 
-ELEVATA_VERSION = "0.5.0"
+ELEVATA_VERSION = "0.5.1"
 
 ELEVATA_PROFILES_PATH = os.getenv("ELEVATA_PROFILES_PATH", str((BASE_DIR.parent / "config" / "elevata_profiles.yaml")))
 

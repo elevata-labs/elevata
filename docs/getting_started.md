@@ -1,11 +1,11 @@
-# 🚀 Getting Started with elevata
+# ⚙️ Getting Started with elevata
 
 > The practical guide to setting up your elevata metadata environment  
 > — from installation to first successful metadata import.
 
 ---
 
-## 🧩 1. Prerequisites
+## 🔧 1. Prerequisites
 
 Before you start, make sure the following are available:
 
@@ -23,7 +23,7 @@ Optional but helpful:
 
 ---
 
-## ⚙️ 2. Environment Setup
+## 🔧 2. Environment Setup
 
 First clone the repo  
 
@@ -62,9 +62,9 @@ SEC_DEV_PEPPER=supersecretpeppervalue
 ```
 ---
 
-## 🏗️ 3. Initialize the Metadata Database
+## 🔧 3. Initialize the Metadata Database
 
-### 🛢️ Option SQLite (recommended for first-time setup)
+### 🧩 Option SQLite (recommended for first-time setup)
 
 If you just want to explore elevata or run metadata generation locally,  
 you don’t need PostgreSQL — SQLite works out of the box.
@@ -85,7 +85,7 @@ python manage.py createsuperuser
 This will create a local file `db.sqlite3` in your project root.  
 Perfect for demos, prototyping, or CI pipelines.
 
-### 🛢️ Option PostgreSQL (for shared or production environments)
+### 🧩 Option PostgreSQL (for shared or production environments)
 
 If you prefer PostgreSQL for shared or production use, install postgres extras:
 
@@ -118,7 +118,7 @@ python manage.py createsuperuser
 
 ---
 
-## 🧮 4. Explore the Metadata UI
+## 🔧 4. Explore the Metadata UI
 
 Start the development server:
 ```bash
@@ -126,26 +126,26 @@ python manage.py runserver
 ```
 Then open [http://localhost:8000](http://localhost:8000) and log in with your superuser credentials.
 
-You can now:
-- Trigger **auto-import of source system metadata**
-- Inspect **source datasets and columns**
-- Define **integration rules** (`integrate = True`)
-- Trigger **target auto-generation**
+You can now:  
+- Trigger **auto-import of source system metadata**  
+- Inspect **source datasets and columns**  
+- Define **integration rules** (`integrate = True`)  
+- Trigger **target auto-generation**  
 - Preview **auto-generated** SQL renderings (starting with DuckDB dialect)
 
 ---
 
-## 🔑 5. Secure Connectivity (optional)
+## 🔧 5. Secure Connectivity (optional)
 
 If you’re connecting to production metadata systems,
 use environment variables instead of plain-text passwords.
 
 For advanced setups, see  
-➡️ [`secure_metadata_connectivity.md`](secure_metadata_connectivity.md)
+[`secure_metadata_connectivity.md`](secure_metadata_connectivity.md)
 
 ---
 
-## 🧰 6. Useful Commands
+## 🔧 6. Useful Commands
 
 | Purpose | Command |
 |----------|---------|
@@ -157,7 +157,7 @@ For advanced setups, see
 
 ---
 
-## 🧭 Next Steps
+## 🔧 Next Steps
 
 Once your metadata environment is ready, continue with:
 

@@ -1,14 +1,13 @@
-# 🏛️ elevata Architecture Overview
+# ⚙️ elevata Architecture Overview
 
 > A high-level view of how elevata transforms metadata into executable SQL — from ingestion to lineage,
 > from logical plans to dialect-aware rendering.
 
-This overview connects the core concepts behind **Generation Logic**, **Incremental Load**, **Load SQL Architecture**,
-**Lineage & Logical Plan**, and the **Dialect System** into one visual narrative.
+This overview connects the core concepts behind **Generation Logic**, **Incremental Load**, **Load SQL Architecture**, **Lineage & Logical Plan**, and the **Dialect System** into one visual narrative.
 
 ---
 
-## 🧩 Core Architecture at a Glance
+## 🔧 1. Core Architecture at a Glance
 
 ```text
 Source Metadata (DB reflection, APIs)
@@ -36,45 +35,45 @@ This flow represents the central principle of elevata:
 
 ---
 
-## 🧱 Architecture Layers
+## 🔧 2. Architecture Layers
 
-### 1. Metadata Ingestion Layer
-- Reads schema, columns, keys from source systems
-- Normalizes metadata into elevata’s internal models
+### 🧩 2.1 Metadata Ingestion Layer
+- Reads schema, columns, keys from source systems  
+- Normalizes metadata into elevata’s internal models  
 - No SQL generation occurs here
 
-### 2. Generation Layer
-- Creates TargetDatasets in Raw, Stage, Rawcore
-- Injects surrogate keys where required
+### 🧩 2.2 Generation Layer
+- Creates TargetDatasets in Raw, Stage, Rawcore  
+- Injects surrogate keys where required  
 - Produces column mappings based entirely on lineage
 
-### 3. Lineage Layer
-- Establishes dataset-level and column-level lineage
-- Feeds the Logical Plan Builder
+### 🧩 2.3 Lineage Layer
+- Establishes dataset-level and column-level lineage  
+- Feeds the Logical Plan Builder  
 - Ensures traceability from source to Rawcore
 
-### 4. Logical Plan Layer
-- Builds structured plans (not SQL!)
-- Vendor-neutral representation of SELECT, JOIN, UNION logic
+### 🧩 2.4 Logical Plan Layer
+- Builds structured plans (not SQL!)  
+- Vendor-neutral representation of SELECT, JOIN, UNION logic  
 - Used by Raw → Stage → Rawcore previews and loads
 
-### 5. SQL Rendering Layer
-- Applies formatting rules (indentation, aliasing, column order)
-- Hands off dialect-specific tasks to the dialect adapter
+### 🧩 2.5 SQL Rendering Layer
+- Applies formatting rules (indentation, aliasing, column order)  
+- Hands off dialect-specific tasks to the dialect adapter  
 - Deterministic output for UI and CI
 
-### 6. Dialect Adapter Layer
-- Implements quoting, merge syntax, hashing, concatenation
+### 🧩 2.6 Dialect Adapter Layer
+- Implements quoting, merge syntax, hashing, concatenation  
 - Ensures SQL runs identically across platforms (DuckDB, MSSQL, Snowflake, ...)
 
-### 7. Load SQL Layer
-- Full load: INSERT INTO ... SELECT
-- Incremental merge: upsert logic based on natural key lineage
+### 🧩 2.7 Load SQL Layer
+- Full load: INSERT INTO ... SELECT  
+- Incremental merge: upsert logic based on natural key lineage  
 - Delete detection: anti-join removal of missing rows
 
 ---
 
-## 🔄 Incremental Processing Path
+## 🔧 3. Incremental Processing Path
 
 ```text
 Stage Dataset
@@ -86,15 +85,15 @@ Delete Detection
 Rawcore Dataset
 ```
 
-**Only two strategies are currently implemented:**
-- `full`
-- `merge`
+**These two strategies are currently implemented:**  
+- `full`  
+- `merge`  
 
 Both operate exclusively between **Stage → Rawcore**.
 
 ---
 
-## 🎛️ Dialect Resolution Overview
+## 🔧 4. Dialect Resolution Overview
 
 ```text
 ELEVATA_SQL_DIALECT env var  →  Dialect Adapter (override)
@@ -102,14 +101,14 @@ Active Profile (elevata_profiles.yaml)  →  Dialect Adapter
 DuckDBDialect (fallback)  →  Dialect Adapter
 ```
 
-The resolution order is:
-1. Environment override
-2. Profile definition
+The resolution order is:  
+1. Environment override  
+2. Profile definition  
 3. DuckDB fallback
 
 ---
 
-## 🧬 Unified SQL Generation Pipeline
+## 🔧 5. Unified SQL Generation Pipeline
 
 ```text
 Metadata Model
@@ -121,21 +120,21 @@ Metadata Model
 
 ---
 
-## 🚀 Why This Architecture Matters
-- **Vendor neutrality** via dialect adapters
-- **Determinism** via SQL rendering rules
-- **Traceability** via lineage-driven logic
-- **Extensibility** (new dialects, strategies, materializations)
-- **Incremental ready** with merge + delete detection
+## 🔧 6. Why This Architecture Matters
+- **Vendor neutrality** via dialect adapters  
+- **Determinism** via SQL rendering rules  
+- **Traceability** via lineage-driven logic  
+- **Extensibility** (new dialects, strategies, materializations)  
+- **Incremental ready** with merge + delete detection  
 - **Safe for CI/CD** — predictable SQL for diffing and testing
 
 ---
 
-## 📚 Related Documents
-- [Generation Logic](generation_logic.md)
-- [Incremental Load Architecture](incremental_load.md)
-- [Load SQL Architecture](load_sql_architecture.md)
-- [Lineage Model & Logical Plan](logical_plan.md)
+## 🔧 7. Related Documents
+- [Generation Logic](generation_logic.md)  
+- [Incremental Load Architecture](incremental_load.md)  
+- [Load SQL Architecture](load_sql_architecture.md)  
+- [Lineage Model & Logical Plan](logical_plan.md)  
 - [Dialect System](dialect_system.md)
 
 ---

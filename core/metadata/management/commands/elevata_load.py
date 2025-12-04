@@ -20,11 +20,11 @@ along with elevata. If not, see <https://www.gnu.org/licenses/>.
 Contact: <https://github.com/elevata-labs/elevata>.
 """
 
-# metadata/management/commands/elevata_load.py
-
 from __future__ import annotations
 
 from typing import Any
+
+import logging
 
 from django.core.management.base import BaseCommand, CommandError
 
@@ -33,6 +33,9 @@ from metadata.config.targets import get_target_system
 from metadata.models import TargetDataset
 from metadata.rendering.dialects import get_active_dialect
 from metadata.rendering.load_sql import render_load_sql_for_target
+from metadata.rendering.load_planner import build_load_plan
+
+logger = logging.getLogger(__name__)
 
 
 class Command(BaseCommand):
@@ -98,6 +101,14 @@ class Command(BaseCommand):
       help="Do not print the generated SQL (useful for future integrations).",
     )
 
+    parser.add_argument(
+      "--debug-plan",
+      dest="debug_plan",
+      action="store_true",
+      help="Print a short debug representation of the resolved LoadPlan.",
+    )
+
+
   def handle(self, *args: Any, **options: Any) -> None:
     target_name: str = options["target_name"]
     schema_short: str | None = options["schema_short"]
@@ -105,6 +116,7 @@ class Command(BaseCommand):
     target_system_name: str | None = options["target_system_name"]
     execute: bool = options["execute"]
     no_print: bool = options["no_print"]
+    debug_plan: bool = bool(options.get("debug_plan", False))
 
     # 1) Resolve TargetDataset
     td = self._resolve_target_dataset(target_name, schema_short)
@@ -121,10 +133,52 @@ class Command(BaseCommand):
     # 4) Resolve dialect (env → profile → fallback)
     dialect = get_active_dialect(dialect_name)
 
-    # 5) Render load SQL
+    # 5) Build LoadPlan and optionally print debug info
+    load_plan = build_load_plan(td)
+
+    if debug_plan:
+      self.stdout.write("")
+      self.stdout.write(self.style.WARNING("-- LoadPlan debug:"))
+
+      mode = getattr(load_plan, "mode", None)
+      handle_deletes = bool(getattr(load_plan, "handle_deletes", False))
+      schema_short = getattr(td.target_schema, "short_name", None)
+
+      # sehr einfache Heuristik: wann *kann* Delete Detection greifen?
+      delete_detection_enabled = (
+        mode == "merge"
+        and handle_deletes
+        and schema_short == "rawcore"
+      )
+
+      self.stdout.write(f"  mode           = {mode}")
+      self.stdout.write(f"  handle_deletes = {handle_deletes}")
+
+      incr_src = getattr(td, "incremental_source", None)
+      incr_src_name = getattr(incr_src, "source_dataset_name", None) if incr_src else None
+      self.stdout.write(f"  incremental_source = {incr_src_name}")
+      self.stdout.write(f"  delete_detection_enabled = {delete_detection_enabled}")
+      self.stdout.write("")
+
+    # 6) Logging: Start of run
+    logger.info(
+      "elevata_load starting",
+      extra={
+        "target_dataset_id": getattr(td, "id", None),
+        "target_dataset_name": td.target_dataset_name,
+        "target_schema": td.target_schema.short_name,
+        "profile": profile.name,
+        "target_system": system.short_name,
+        "target_system_type": system.type,
+        "dialect": dialect.__class__.__name__,
+        "execute": execute,
+      },
+    )
+
+    # 7) Render load SQL
     sql = render_load_sql_for_target(td, dialect)
 
-    # 6) Dry-run vs execute
+    # 8) Dry-run vs execute
     if not no_print:
       self.stdout.write("")
       self.stdout.write(self.style.NOTICE(f"-- Profile: {profile.name}"))
@@ -132,6 +186,17 @@ class Command(BaseCommand):
       self.stdout.write(self.style.NOTICE(f"-- Dialect: {dialect.__class__.__name__}"))
       self.stdout.write("")
       self.stdout.write(sql)
+
+    # 9) Logging: Ende of run
+    logger.info(
+      "elevata_load finished",
+      extra={
+        "target_dataset_id": getattr(td, "id", None),
+        "target_dataset_name": td.target_dataset_name,
+        "sql_length": len(sql or ""),
+        "execute": execute,
+      },
+    )
 
     if execute:
       # TODO: implement execution against the target system connection.

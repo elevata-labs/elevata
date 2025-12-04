@@ -1,11 +1,11 @@
-# ⚡ Incremental Load Architecture
+# ⚙️ Incremental Load Architecture
 
 > How elevata performs metadata-driven incremental processing — merge-based upserts, delete detection,
 > and lineage-driven keys across the Stage → Rawcore pipeline.
 
 ---
 
-## 🧩 Overview
+## 🔧 1. Overview
 The incremental loading framework in elevata provides a **metadata-driven, deterministic** way to keep Rawcore
 datasets up to date. It relies entirely on the metadata model — especially lineage — rather than hardcoded mapping rules.
 
@@ -17,18 +17,17 @@ Currently implemented strategies:
 - **full** → full rebuild  
 - **merge** → incremental upsert based on natural key lineage  
 
-Additional strategies such as `append` and `snapshot` are *planned but not implemented yet* and therefore not documented here.
 
 Incremental pipelines always operate **between Stage and Rawcore**, never directly from source systems.
 
 ---
 
-## 🧠 Core Concepts
+## 🔧 2. Core Concepts
 
-### Metadata-driven behavior
+### 🧩 Metadata-driven behavior
 Incremental behavior is determined solely by metadata. No external configuration or custom SQL is needed.
 
-### Lineage as the authoritative contract
+### 🧩 Lineage as the authoritative contract
 Lineage defines:  
 - which columns form the natural key  
 - how Stage maps to Rawcore  
@@ -37,22 +36,22 @@ Lineage defines:
 
 This eliminates the need for a separate incremental field map.
 
-### Stable surrogate keys
+### 🧩 Stable surrogate keys
 Rawcore surrogate keys are deterministic hash keys derived from the natural key and environment-specific pepper.
 They are **never** used for merging.
 
 ---
 
-## 🔄 Incremental Strategies
+## 🔧 3. Incremental Strategies
 
-### Full Load
+### 🧩 Full Load
 A full load recreates or truncates the Rawcore table and inserts *all* upstream rows.
 Used when:  
 - initial load  
 - upstream structure changed heavily  
 - incremental strategy is intentionally disabled  
 
-### Merge Load (Incremental Upsert)
+### 🧩 Merge Load (Incremental Upsert)
 A merge load performs:  
 1. **INSERT** new records  
 2. **UPDATE** existing records when upstream attributes changed  
@@ -65,7 +64,7 @@ The Metadata Health Check prevents invalid configurations.
 
 ---
 
-## 🗑️ Delete Detection
+## 🔧 4. Delete Detection
 If `handle_deletes=True`, elevata generates a dialect-aware anti-join delete.
 
 Example pattern:
@@ -86,7 +85,7 @@ Key characteristics:
 
 ---
 
-## 🧬 Lineage-Driven Mapping
+## 🔧 5. Lineage-Driven Mapping
 Lineage determines all mappings:  
 - natural key → merge condition  
 - business keys → stable grain  
@@ -103,7 +102,7 @@ Example effects:
 
 ---
 
-## 🖋️ SQL Rendering & Dialect Abstraction
+## 🔧 6. SQL Rendering & Dialect Abstraction
 All incremental SQL uses the active SQL dialect:
 ```python
 dialect = get_active_dialect()
@@ -116,18 +115,6 @@ The dialect determines:
 - delete detection patterns  
 
 DuckDB is the default fallback dialect to ensure consistent behavior when no active profile is set.
-
----
-
-## 🚀 Future Enhancements
-Future work will extend incremental loading capabilities:  
-- multi-source incrementals (multiple Stage inputs)  
-- alternative merge policies (e.g. soft-delete, SCD-lite)  
-- batch-optimized delete detection  
-- incremental snapshots  
-- dialect-specific performance tuning  
-
-These features will be documented when implemented.
 
 ---
 

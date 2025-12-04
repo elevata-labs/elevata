@@ -1,10 +1,10 @@
-# Generation Logic
+# ⚙️ Generation Logic
 
-This document describes how elevata transforms *metadata* into a structured, dialect-neutral **Logical Plan** and then into optimized SQL through the Expression AST and dialect adapters. It reflects the architecture as of v0.5.x and is intentionally version-agnostic.
+This document describes how elevata transforms *metadata* into a structured, dialect-neutral **Logical Plan** and then into optimized SQL through the Expression AST and dialect adapters.
 
 ---
 
-# 1. Overview
+## 🔧 1. Overview
 
 elevata follows a simple principle:
 
@@ -20,39 +20,39 @@ Metadata → Logical Plan → Expression AST → Dialect Rendering → SQL
 
 ---
 
-# 2. Dataset Types & Generation Rules
+## 🔧 2. Dataset Types & Generation Rules
 
 The generation logic depends heavily on the dataset type.
 
-## 2.1 RAW
+### 🧩 2.1 RAW
 - Direct mapping from source fields  
 - Column expressions are simple column references  
 - No surrogate keys or transformations
 
-## 2.2 STAGE
+### 🧩 2.2 STAGE
 STAGE layers unify multiple upstream sources:
 
-### Identity Mode
+#### 🔎 Identity Mode
 Used when the upstream provides a `source_identity_id`.  
 - No ranking logic  
 - Multi-source is handled via `UNION ALL`  
 - Each branch injects a literal identity ID
 
-### Non-Identity Mode
+#### 🔎 Non-Identity Mode
 Used when multiple upstream sources require conflict resolution.  
 - All branches are UNIONed  
 - Wrapped into a subquery  
 - A `ROW_NUMBER() OVER (...)` window assigns a rank  
 - Only rows with rank = 1 are selected
 
-## 2.3 CORE / BUSINESS
+### 🧩 2.3 CORE / BUSINESS
 - Surrogate keys are generated from BK columns  
 - Foreign keys reference parent surrogate key structure  
 - Expression AST builds deterministic hashing expressions
 
 ---
 
-# 3. Column Expression Generation
+## 🔧 3. Column Expression Generation
 
 Each target column is associated with a **Column Mapping** and an expression. Expressions are built using the **Expression DSL** and then parsed into the Expression AST.  
 
@@ -70,14 +70,14 @@ The builder never writes SQL directly.
 
 ---
 
-# 4. Business Keys & Surrogate Keys
+## 🔧 4. Business Keys & Surrogate Keys
 
-## 4.1 Business Keys (BK)
+### 🧩 4.1 Business Keys (BK)
 - Defined in metadata per dataset  
 - Sorted lexicographically for deterministic ordering  
 - Used as inputs to surrogate key expressions
 
-## 4.2 Surrogate Key Expression
+### 🧩 4.2 Surrogate Key Expression
 Surrogate keys use a fully dialect-agnostic hashing pattern:  
 
 - Each BK yields a *pair expression*: `CONCAT(name, '~', COALESCE(value, 'null_replaced'))`  
@@ -89,7 +89,7 @@ The resulting Expression AST is rendered differently depending on the dialect.
 
 ---
 
-# 5. Foreign Keys
+## 🔧 5. Foreign Keys
 
 Foreign keys reuse the exact same hashing structure as the parent surrogate key, but with child column references.
 
@@ -103,7 +103,7 @@ This guarantees SK/FK parity across dialects.
 
 ---
 
-# 6. Expression AST
+## 🔧 6. Expression AST
 
 All expressions use a vendor-neutral AST:  
 - `ColumnRef`  
@@ -119,7 +119,7 @@ The AST is consumed by the dialect renderer, which decides on actual SQL syntax.
 
 ---
 
-# 7. Logical Plan Construction
+## 🔧 7. Logical Plan Construction
 
 Logical Plans represent SQL structures without dialect specifics.  
 
@@ -127,11 +127,10 @@ Main node types:
 - `LogicalSelect`  
 - `LogicalUnion`  
 - `SubquerySource`  
-- `LogicalJoin` (future)  
 
 Examples:
 
-### Single-source STAGE
+### 🧩 Single-source STAGE
 ```
 LogicalSelect(
   from_=source,
@@ -139,14 +138,14 @@ LogicalSelect(
 )
 ```
 
-### Multi-source STAGE (identity mode)
+### 🧩 Multi-source STAGE (identity mode)
 ```
 LogicalSelect(
   from_=LogicalUnion([branch1, branch2])
 )
 ```
 
-### Multi-source STAGE (non-identity mode)
+### 🧩 Multi-source STAGE (non-identity mode)
 ```
 LogicalSelect(
   from_=SubquerySource(
@@ -162,7 +161,7 @@ LogicalSelect(
 
 ---
 
-# 8. Dialect Rendering
+## 🔧 8. Dialect Rendering
 
 After Logical Plan + AST construction, SQL is produced by:
 
@@ -182,7 +181,7 @@ The Logical Plan and AST guarantee correctness; the dialect guarantees syntactic
 
 ---
 
-# 9. Deterministic Generation
+## 🔧 9. Deterministic Generation
 
 elevata enforces determinism:  
 - Sorted BK pairs  
@@ -197,7 +196,7 @@ This ensures:
 
 ---
 
-# 10. Summary
+## 🔧 10. Summary
 
 The generation logic is the heart of elevata:  
 - metadata describes the transformation  

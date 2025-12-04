@@ -1,4 +1,4 @@
-# SQL Preview Pipeline
+# ⚙️ SQL Preview Pipeline
 
 This document describes how elevata generates SQL previews inside the UI. It covers:  
 
@@ -12,7 +12,7 @@ The preview pipeline uses the **same generator** that produces the actual load S
 
 ---
 
-## 1. End-to-End Flow
+## 🔧 1. End-to-End Flow
 
 When the user opens a TargetDataset detail page and clicks **“Show SQL Preview”**, the following pipeline runs:
 
@@ -29,7 +29,7 @@ Step-by-step:
 2. **Logical Plan generation**
    - The builder creates a `LogicalSelect`, `LogicalUnion`, or `SubquerySource` depending on dataset type.  
    - Multi-source Stage datasets produce subqueries and window functions.  
-   - Incremental models may produce `MERGE` plans in later releases.  
+   - Incremental models may produce `MERGE` plans.  
 
 3. **Expression AST construction**
    - Column expressions (including hashing) are translated into AST nodes.  
@@ -55,7 +55,7 @@ Step-by-step:
 
 ---
 
-## 2. Logical Plan → SQL Rendering
+## 🔧 2. Logical Plan → SQL Rendering
 
 The Logical Plan is a structured representation that abstracts SQL syntax.  
 
@@ -78,11 +78,11 @@ This ensures that the preview accurately reflects the actual SQL generator.
 
 ---
 
-## 3. Dialect Handling in the UI
+## 🔧 3. Dialect Handling in the UI
 
 The SQL preview page includes a dropdown for selecting dialects.
 
-### 3.1 User selection
+### 🧩 3.1 User selection
 
 When the user changes the dropdown, HTMX makes a request to:
 
@@ -90,7 +90,7 @@ When the user changes the dropdown, HTMX makes a request to:
 /metadata/target-datasets/<id>/sql-preview/?dialect=<dialect_name>
 ```
 
-### 3.2 Backend processing
+### 🧩 3.2 Backend processing
 
 The view calls:
 
@@ -99,13 +99,13 @@ dialect = get_active_dialect(request.GET.get("dialect"))
 sql = render_select_for_target(dataset, dialect)
 ```
 
-### 3.3 Response
+### 🧩 3.3 Response
 
 The returned HTML fragment replaces only the preview block. The rest of the page remains unchanged.
 
 ---
 
-## 4. HTMX Integration
+## 🔧 4. HTMX Integration
 
 HTMX provides:  
 
@@ -113,7 +113,7 @@ HTMX provides:
 - reduced server load  
 - fast interaction for switching dialects
 
-### 4.1 Trigger
+### 🧩 4.1 Trigger
 
 A button in the TargetDataset detail view triggers the initial preview load:
 
@@ -121,7 +121,7 @@ A button in the TargetDataset detail view triggers the initial preview load:
 <button hx-get=".../sql-preview" hx-target="#sql-preview-area">Show SQL</button>
 ```
 
-### 4.2 Dialect switch
+### 🧩 4.2 Dialect switch
 
 The dropdown uses:
 
@@ -129,7 +129,7 @@ The dropdown uses:
 <select hx-get=".../sql-preview" hx-target="#sql-preview-area" name="dialect">...</select>
 ```
 
-### 4.3 Server response
+### 🧩 4.3 Server response
 
 The view returns only:
 
@@ -143,22 +143,16 @@ No full page reloads occur.
 
 ---
 
-## 5. Caching Considerations
+## 🔧 5. Caching Considerations
 
 Currently the SQL preview is regenerated on every request. In practice:  
 
 - Logical Plan generation is lightweight  
 - SQL rendering is fast even for large DAGs  
 
-Future versions may add:  
-- preview caching  
-- dialect-specific cache keys  
-- invalidation on metadata edits  
-- background generation
-
 ---
 
-## 6. Error Handling
+## 🔧 6. Error Handling
 
 If SQL generation fails (rare), the preview area displays:  
 
@@ -169,7 +163,7 @@ Errors are never swallowed silently.
 
 ---
 
-## 7. Why Preview and Load Use the Same Engine
+## 🔧 7. Why Preview and Load Use the Same Engine
 
 elevata does **not** generate a separate preview version of the SQL.  
 
@@ -185,7 +179,7 @@ If the preview looks correct, the actual load SQL is correct.
 
 ---
 
-## 8. Summary
+## 🔧 8. Summary
 
 The SQL Preview pipeline provides:  
 

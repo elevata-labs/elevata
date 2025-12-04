@@ -23,7 +23,7 @@ Contact: <https://github.com/elevata-labs/elevata>.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Sequence
+from typing import Sequence, Any
 
 from ..expr import Expr
 from ..logical_plan import LogicalSelect

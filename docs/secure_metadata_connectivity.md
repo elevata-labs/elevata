@@ -1,11 +1,11 @@
-# 🔐 Secure Metadata Connectivity
+# ⚙️ Secure Metadata Connectivity
 
 > How elevata securely manages credentials, runtime secrets, and dynamic profiles  
 > — without storing sensitive data in plain text.
 
 ---
 
-## 🧩 1. Overview
+## 🔧 1. Overview
 
 elevata separates **connectivity profiles** (technical connection info)  
 from **runtime secrets** (passwords, tokens, peppers) for both security and portability.
@@ -22,7 +22,7 @@ All metadata transport is strictly read-only for external clients
 
 ---
 
-## 🧱 2. The Profile Architecture
+## 🔧 2. The Profile Architecture
 
 Profiles are located in `core/config/` and follow a clear naming pattern:
 
@@ -47,7 +47,7 @@ profiles:
 ```
 ---
 
-## ⚙️ 3. Runtime Secret Resolution
+## 🔧 3. Runtime Secret Resolution
 
 Secrets like passwords or peppers are never stored in the YAML file.  
 They are dynamically resolved by `profiles.py`, which merges data from:
@@ -76,10 +76,11 @@ the runtime always pulls the correct, environment-scoped pepper.
 
 ---
 
-## 🔑 4. Pepper and Surrogate Keys
+## 🔧 4. Pepper and Surrogate Keys
 
-The pepper is a random secret string used to salt deterministic hash keys.
-It makes surrogate key generation both non-reversible and dataset-consistent.
+The pepper is a random secret string used to salt deterministic hash keys.  
+It makes surrogate key generation both non-reversible and dataset-consistent.  
+pepper must be stable per environment
 
 Each environment should have its own distinct pepper value.
 
@@ -97,7 +98,7 @@ but cannot be reversed or matched across environments.
 
 --- 
 
-## 🧠 5. Using the Profile Resolver
+## 🔧 5. Using the Profile Resolver
 
 At runtime, elevata uses the resolver in core/metadata/config/profiles.py
 to dynamically select the right connection and inject secrets:
@@ -116,7 +117,7 @@ The function will:
 
 ---
 
-## 🧰 6. Debugging Tips
+## 🔧 6. Debugging Tips
 
 | Symptom                            | Likely Cause                      | Fix                                            |
 |------------------------------------|------------------------------------|------------------------------------------------|
@@ -125,7 +126,7 @@ The function will:
 
 ---
 
-## 🧭 7. Security Best Practices
+## 🔧 7. Security Best Practices
 
 ✅ Never commit `.env` files to Git  
 ✅ Use `.env.example` with dummy values for reference  
@@ -135,7 +136,7 @@ The function will:
 
 ---
 
-## 📚 Related Docs
+## 🔧 8. Related Docs
 
 - [Getting Started Guide](getting_started.md)
 - [Automatic Target Generation Logic](generation_logic.md)

@@ -1,10 +1,10 @@
-# Supported Source Backends
+# ⚙️ Supported Source Backends
 
 This document provides an overview of supported database platforms, tested SQLAlchemy dialects, and connection URI examples for **elevata**.
 
 ---
 
-## 🧩 General Pattern
+## 🔧 1. General Pattern
 
 All connections use the standard **SQLAlchemy URI** format:
 ```
@@ -26,7 +26,7 @@ SEC_DEV_CONN_MSSQL_SAP=mssql+pyodbc://user:pwd@sql01,1433/SAPDB?driver=ODBC%20Dr
 
 ---
 
-## ✅ Fully Supported Backends
+## 🔧 2. Fully Supported Backends
 
 | Type | Label | Driver / Package | Reflection Support | Example URI |
 |------|--------|------------------|--------------------|-------------|
@@ -43,7 +43,7 @@ SEC_DEV_CONN_MSSQL_SAP=mssql+pyodbc://user:pwd@sql01,1433/SAPDB?driver=ODBC%20Dr
 
 ---
 
-## ⚙️ Connection Notes
+## 🔧 3. Connection Notes
 
 - Use **URL-encoded driver names** (e.g. `ODBC%20Driver%2018%20for%20SQL%20Server`).
 - Backslashes in paths should be replaced by slashes (`C:/path/file.db`).
@@ -52,7 +52,7 @@ SEC_DEV_CONN_MSSQL_SAP=mssql+pyodbc://user:pwd@sql01,1433/SAPDB?driver=ODBC%20Dr
 
 ---
 
-## 🧪 Beta Dialects (Reflection may be limited)
+## 🔧 4. Beta Dialects (Reflection may be limited)
 
 - `trino` / `presto`
 - `clickhouse`
@@ -61,16 +61,6 @@ SEC_DEV_CONN_MSSQL_SAP=mssql+pyodbc://user:pwd@sql01,1433/SAPDB?driver=ODBC%20Dr
 - `hana`
 
 You can register these manually under `System.type` if you want to experiment — elevata will attempt a generic reflection, but may not retrieve primary/foreign key details.
-
----
-
-## 🚧 Future Roadmap
-
-Upcoming additions:
-
-- Azure Fabric & Synapse (via MSSQL dialect)
-- REST & Flat-file connectors
-- Structured (non-URI) connection support: JSON / KeyVault references
 
 ---
 

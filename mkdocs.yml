@@ -55,33 +55,33 @@ nav:
   - Home: index.md
 
   - Getting Started:
-      - Getting Started: getting_started.md
-      - Secure Metadata Connectivity: secure_metadata_connectivity.md
+      - ⚙️ Getting Started: getting_started.md
+      - ⚙️ Secure Metadata Connectivity: secure_metadata_connectivity.md
 
   - Metadata Model & Generation:
-      - Generation Logic: generation_logic.md
-      - Incremental Load Architecture: incremental_load.md
-      - Load SQL Architecture: load_sql_architecture.md
+      - ⚙️ Generation Logic: generation_logic.md
+      - ⚙️ Incremental Load Architecture: incremental_load.md
+      - ⚙️ Load SQL Architecture: load_sql_architecture.md
 
   - SQL Rendering & Dialects:
-      - SQL Rendering Conventions: sql_rendering_conventions.md
-      - Dialect System: dialect_system.md
-      - Target Backends: target_backends.md
+      - ⚙️ SQL Rendering Conventions: sql_rendering_conventions.md
+      - ⚙️ Dialect System: dialect_system.md
+      - ⚙️ Target Backends: target_backends.md
 
   - Concepts:
-      - Architecture Overview: architecture_overview.md
-      - Lineage Model & Logical Plan: logical_plan.md
-      - Expression DSL & AST: expression_dsl_and_ast.md
-      - Hashing Architecture: hashing_architecture.md
-      - SQL Preview & Rendering Pipeline: sql_preview_pipeline.md
-      - Metadata Health Check: health_check.md
+      - ⚙️ Architecture Overview: architecture_overview.md
+      - ⚙️ Lineage Model & Logical Plan: logical_plan.md
+      - ⚙️ Expression DSL & AST: expression_dsl_and_ast.md
+      - ⚙️ Hashing Architecture: hashing_architecture.md
+      - ⚙️ SQL Preview & Rendering Pipeline: sql_preview_pipeline.md
+      - ⚙️ Metadata Health Check: health_check.md
 
   - Source Integration:
-      - Source Backends: source_backends.md
+      - ⚙️ Source Backends: source_backends.md
 
   - Testing & Quality:
-      - Test Setup & Guidelines: tests.md
+      - ⚙️ Test Setup & Guidelines: tests.md
 
   - Project:
-      - Main Project README: readme_ref.md
-      - Changelog: changelog_ref.md
+      - ⚙️ Main Project README: readme_ref.md
+      - ⚙️ Changelog: changelog_ref.md

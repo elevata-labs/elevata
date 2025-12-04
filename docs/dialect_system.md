@@ -1,4 +1,4 @@
-# SQL Dialect System
+# ⚙️ SQL Dialect System
 
 This document describes the **SQL Dialect System**, including:  
 
@@ -7,17 +7,15 @@ This document describes the **SQL Dialect System**, including:
 - runtime dialect selection (profiles, environment, UI)  
 - DuckDB, Postgres, and MSSQL implementations  
 - rendering rules for identifiers, literals, expressions, window functions, and subqueries  
-- hashing and string operations via the Expression DSL & AST  
-
-It replaces the older pre–0.5.x dialect description.  
+- hashing and string operations via the Expression DSL & AST
 
 ---
 
-## 1. Role of the Dialect System
+## 🔧 1. Role of the Dialect System
 
 The Dialect System abstracts all SQL-vendor differences.  
 
-High-level pipeline:  
+High-level pipeline:
 
 ```text
 LogicalPlan  →  Expression AST  →  SqlDialect renderer  →  final SQL string
@@ -36,7 +34,7 @@ The **LogicalPlan** and **Expression AST** are vendor-neutral. Only `SqlDialect`
 
 ---
 
-## 2. `SqlDialect` Base Class
+## 🔧 2. `SqlDialect` Base Class
 
 All dialects extend a shared base class, conceptually:
 
@@ -64,7 +62,7 @@ Helper methods inside dialects (e.g. `quote_ident`, `_render_literal`, `_render_
 
 ---
 
-## 3. Dialect Registry & Factory
+## 🔧 3. Dialect Registry & Factory
 
 Dialects are registered via a central registry defined in `dialect_factory.py`.  
 
@@ -99,7 +97,7 @@ This allows:
 
 ---
 
-## 4. Runtime Dialect Selection
+## 🔧 4. Runtime Dialect Selection
 
 Dialect selection follows a layered strategy:  
 
@@ -114,11 +112,10 @@ In the **SQL Preview UI**, the user selects a dialect from a dropdown. The selec
 
 ---
 
-## 5. Identifier Rendering
+## 🔧 5. Identifier Rendering
 
 All dialects receive **unquoted** identifiers from the LogicalPlan / AST and apply quoting rules themselves.  
 
-Current strategy (v0.5.x):  
 
 - DuckDB: `"identifier"`  
 - Postgres: `"identifier"`  
@@ -132,7 +129,7 @@ Rules:
 
 ---
 
-## 6. Literal Rendering
+## 🔧 6. Literal Rendering
 
 Literals are rendered via dialect helpers, typically:
 
@@ -152,7 +149,7 @@ There is **no dialect-specific SQL** stored in metadata; only `SqlDialect` decid
 
 ---
 
-## 7. Expression Rendering (DSL AST)
+## 🔧 7. Expression Rendering (DSL AST)
 
 All expressions in the LogicalPlan are built from the **Expression DSL & AST**.  
 
@@ -169,7 +166,7 @@ Key node types include:
 
 The dialect implements `render_expr(expr)` by pattern-matching on node types.  
 
-### Example: CONCAT and CONCAT_WS
+### 🧩 Example: CONCAT and CONCAT_WS
 
 DSL:
 ```text
@@ -186,23 +183,23 @@ All dialects share the same function names here; differences emerge mainly aroun
 
 ---
 
-## 8. Hashing (HASH256)
+## 🔧 8. Hashing (HASH256)
 
 `Hash256Expr(inner)` is the dialect-neutral representation of SHA-256 hashing.  
 
 Each dialect chooses how to implement it:  
 
-### DuckDB
+### 🧩 DuckDB
 ```sql
 SHA256(<expr>)
 ```
 
-### Postgres
+### 🧩 Postgres
 ```sql
 ENCODE(DIGEST(<expr>, 'sha256'), 'hex')
 ```
 
-### MSSQL
+### 🧩 MSSQL
 ```sql
 CONVERT(VARCHAR(64), HASHBYTES('SHA2_256', <expr>), 2)
 ```
@@ -213,7 +210,7 @@ The inner `<expr>` itself is typically a `CONCAT_WS('|', ...)` expression built 
 
 ---
 
-## 9. Window Functions
+## 🔧 9. Window Functions
 
 Window functions such as `ROW_NUMBER()` are represented at the AST level by `WindowFunctionExpr`.  
 
@@ -232,9 +229,9 @@ These are heavily used in **multi-source Stage non-identity mode** to compute `_
 
 ---
 
-## 10. Subqueries & UNION Rendering
+## 🔧 10. Subqueries & UNION Rendering
 
-### Subqueries
+### 🧩 Subqueries
 
 Represented by `SubquerySource(select, alias)` in the LogicalPlan.  
 
@@ -248,7 +245,7 @@ Rendered as:
 
 Dialects can apply their own line-breaking / formatting rules, but the structure is identical.
 
-### UNION / UNION ALL
+### 🧩 UNION / UNION ALL
 
 Represented by `LogicalUnion(selects=[...], union_type='ALL'|'DISTINCT')`.  
 
@@ -266,7 +263,7 @@ Again, only identifier/literal rendering and optional formatting differ by diale
 
 ---
 
-## 11. Dialect Feature Summary
+## 🔧 11. Dialect Feature Summary
 
 | Feature              | DuckDB   | Postgres | MSSQL   |  
 |----------------------|----------|----------|---------|  
@@ -278,11 +275,10 @@ Again, only identifier/literal rendering and optional formatting differ by diale
 | Subqueries in FROM   | ✓        | ✓        | ✓       |  
 | UNION / UNION ALL    | ✓        | ✓        | ✓       |  
 
-All three dialects are first-class citizens in v0.5.x.
 
 ---
 
-## 12. Adding a New Dialect
+## 🔧 12. Adding a New Dialect
 
 To add a new dialect:  
 
@@ -311,7 +307,7 @@ No changes to metadata are required — all dialect logic is encapsulated.
 
 ---
 
-## 13. Testing Strategy
+## 🔧 13. Testing Strategy
 
 The Dialect System is validated via:  
 
@@ -333,9 +329,9 @@ If all dialect tests pass, the multi-dialect engine behaves consistently.
 
 ---
 
-## 14. Summary
+## 🔧 14. Summary
 
-In v0.5.x, the Dialect System is the backbone of elevata’s multi-backend strategy:  
+The Dialect System is the backbone of elevata’s multi-backend strategy:  
 
 - SQL is generated from a vendor-neutral LogicalPlan + AST  
 - dialects implement only the final rendering  
@@ -346,7 +342,7 @@ This architecture ensures that elevata can support more backends (Snowflake, Big
 
 ---
 
-## 📚 Related Documents
+## 🔧 Related Documents
 
 - [Logical Plan & Lineage](logical_plan.md)  
 - [SQL Rendering & Conventions](sql_rendering_conventions.md)  

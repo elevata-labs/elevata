@@ -1,17 +1,17 @@
-# 🧪 Test Setup & Guidelines
+# ⚙️ Test Setup & Guidelines
 
 Automated testing ensures the long-term reliability and maintainability of the metadata generation platform.  
-This chapter describes the structure, conventions, and execution of all test suites — from database-integrated lineage validation to pure logic modules such as naming, hashing, and validators.
+This chapter describes the structure, conventions, and execution of all test suites — from database-integrated lineage validation to pure logic modules such as naming, hashing, and validators.  
 
-The goal is to keep the test environment pragmatic yet powerful:
-- **Realistic database tests** verify dataset and lineage creation using Django’s ORM.
-- **Pure logic tests** ensure correctness of naming, hashing, and SQL generation — without any database dependency.
-- **Template tests** define the expected behavior of the upcoming SQL Preview pipeline.
+The goal is to keep the test environment pragmatic yet powerful:  
+- **Realistic database tests** verify dataset and lineage creation using Django’s ORM.  
+- **Pure logic tests** ensure correctness of naming, hashing, and SQL generation — without any database dependency.  
+- **Template tests** define the expected behavior of the upcoming SQL Preview pipeline.  
 
 Together, these tests form the foundation for confident releases and safe refactoring across the platform.
 
 
-## Overview
+## 🔧 1. Overview
 
 This project uses **pytest** with **pytest-django** for both database-integrated and pure-logic testing.  
 All tests are located in `core/tests/` and organized by logical area.
@@ -20,12 +20,12 @@ All tests are located in `core/tests/` and organized by logical area.
 |--------|--------|---------------|
 | **Database / Metadata** | Validates `TargetDataset`, `TargetDatasetInput`, and lineage integrity. | `test_target_lineage.py` |
 | **Generation (Logic)** | Tests for hashing, naming, and validators. | `test_generation_hashing_and_naming.py`, `test_generation_validators.py` |
-| **SQL Preview (Templates)** | Prepared templates for preview/renderer logic. Currently skipped until the preview pipeline is wired. | `test_sql_preview_*.py` |
+| **SQL Preview (Templates)** | These template tests show expected behavior for preview rendering. | `test_sql_preview_*.py` |
 | **Smoke & Import Tests** | Sanity check for Django setup and module imports. | `test_smoke.py` |
 
 ---
 
-## Running Tests
+## 🔧 2. Running Tests
 
 From the project root:
 
@@ -33,7 +33,7 @@ From the project root:
 # Run all tests
 python runtests.py
 ```
-## Database Tests
+## 🔧 3. Database Tests
 
 Tests that use Django models automatically create a **temporary test database** (e.g. `test_elevata`) and destroy it afterward.  
 Your production data is never touched.
@@ -49,7 +49,7 @@ These fixtures provide a realistic `Raw → Stage → Rawcore` dataset chain for
 
 ---
 
-## Logic-Only Tests
+## 🔧 4. Logic-Only Tests
 
 Logic-based modules (e.g. `hashing`, `naming`, `validators`, `logical_plan`)  
 are tested purely in memory — no Django setup or migrations required.
@@ -64,10 +64,10 @@ Examples:
 
 ---
 
-## Skipped SQL Preview Tests
+## 🔧 5. Skipped SQL Preview Tests
 
-Files under `test_sql_preview_*` are **template tests** for the future SQL Preview pipeline.  
-They describe expected output patterns but are **currently skipped** until the preview or renderer implementation is complete.
+Files under `test_sql_preview_*` are **template tests** for the future SQL Preview pipeline.
+They describe expected output patterns.
 
 To activate them later:  
 
@@ -80,9 +80,9 @@ Example command once wired:
 ```bash
 python runtests.py
 ```
-## Local and CI Execution
+## 🔧 6. Local and CI Execution
 
-### Local execution
+### 🧩 Local execution
 
 Run all tests using:
 
@@ -97,7 +97,7 @@ Run only tests matching a keyword:
 ```bash
 python runtests.py -k "hashing"
 ```
-## CI Integration
+## 🔧 7. CI Integration
 
 If you use GitHub Actions or GitLab CI, your step can simply call the same command:
 
@@ -113,7 +113,7 @@ Optional flags:
 
 ---
 
-## Conventions
+## 🔧 8. Conventions
 
 - **Indentation:** 2 spaces (consistent with project code style)  
 - **Comments:** English, concise, and descriptive  
@@ -125,7 +125,7 @@ Optional flags:
 
 ---
 
-## Recommended Next Steps
+## 🔧 9. Recommended Next Steps
 
 - Add `pytest-cov` for coverage tracking:
   ```bash

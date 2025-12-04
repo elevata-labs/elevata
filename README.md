@@ -53,7 +53,7 @@ From this metadata, elevata generates:
 - multi-source stage pipelines
 - SQL previews with lineage
 
-Since v0.5.x, elevata includes a complete **LogicalPlan + Expression AST** engine, supporting multiple SQL dialects with deterministic rendering.
+elevata includes a complete **LogicalPlan + Expression AST** engine that supports multiple SQL dialects with deterministic rendering.
 
 ---
 
@@ -68,114 +68,13 @@ elevata consists of the following layers:
    Vendor-neutral representation of `SELECT`, `UNION`, subqueries, window functions, column expressions, joins, filters, and more.
 
 3. **Expression AST**  
-   Unified representation of literals, column refs, function calls, binary operations, concatenations, and window functions.
+   The Abstract Syntax Tree provides unified representation of literals, column refs, function calls, binary operations, concatenations, and window functions.
 
 4. **SQL Dialects**  
    DuckDB, Postgres, and MSSQL render SQL from the LogicalPlan. Hashing, quoting, and function differences are handled per dialect.
 
 5. **SQL Preview Pipeline**  
    Lineage-aware, dialect-aware, HTMX-enabled preview.
-
----
-
-## ✨ New in elevata v0.5.0
-
-Version 0.5.0 introduces the largest internal upgrade since the project began.
-
-### 🔧 Multi-Dialect SQL Engine
-- New `SqlDialect` base class
-- Unified dialect registry & factory
-- Built-in dialects:
-  - **DuckDB** (reference dialect)
-  - **Postgres**
-  - **MSSQL**
-- Dialect-aware rendering of:
-  - identifiers
-  - literals
-  - functions
-  - `CONCAT` / `CONCAT_WS` / `COALESCE`
-  - window functions
-  - hashing (SHA256, `digest`, `HASHBYTES`)
-
-### 🧠 Hash DSL + Expression Engine Rewrite
-A new DSL defines hashing in a vendor-neutral way, for example:
-
-```text
-HASH256(
-  CONCAT_WS('|',
-    CONCAT('productid', '~', COALESCE({expr:productid}, 'null_replaced')),
-    'pepper'
-  )
-)
-```
-
-This DSL is parsed into an expression AST and rendered differently per dialect.  
-It replaces the previous string-templated SQL approach.
-
-### 🔄 Surrogate & Foreign Key Pipeline Rewrite
-- SK and FK expressions are now AST-based
-- Child-side FK hashing is aligned with parent SK logic
-- Identical execution semantics across DuckDB/Postgres/MSSQL
-- High test coverage for deterministic output
-
-### 🔁 Multi-Source Stage Rewrite
-- **Identity mode** → simple `UNION ALL`
-- **Non-identity mode** → `ROW_NUMBER()` ranking with subqueries
-- No duplicate rows
-- Fully AST-driven
-- All Stage tests green
-
-### 🖥️ SQL Preview Modernisation
-- HTMX live refresh
-- Dialect dropdown selector
-- Clean formatting via beautifier
-- Accurate lineage rendering
-
----
-
-## 🔧 How SQL is generated in v0.5.0
-
-SQL is built from structured, deterministic building blocks instead of hand-written strings:
-
-1. **Metadata → LogicalPlan**  
-2. **LogicalPlan → Expression AST**  
-3. **Dialect renderer → SQL**  
-4. **Beautifier → final formatting**
-
-Benefits:
-
-- reliable identifier quoting
-- safe hashing & concatenation
-- vendor-neutral function handling
-- identical semantics across databases
-- clean and readable SQL for review
-
----
-
-## 🌐 SQL Dialect Support
-
-| Dialect | Status | Notes |
-|---------|--------|-------|
-| DuckDB  | Stable | Canonical implementation |
-| Postgres | Stable | uses `digest()` + `encode()` for hashing |
-| MSSQL | Stable | uses `HASHBYTES` + `CONVERT` |
-
-All dialects produce bit-identical HASH256 results for surrogate and foreign keys.  
-All dialects support  
-
-- literal rendering
-- column reference rendering
-- function calls
-- window functions
-- subqueries in `FROM`
-- deterministic hashing
-
-You can extend elevata with custom dialects via:
-
-```python
-from metadata.rendering.dialects import register_dialect
-register_dialect(MyDialect)
-```
 
 ---
 
@@ -203,7 +102,7 @@ A more powerful Load Runner CLI is planned for v0.6.x, including:
 
 ## 🔮 Roadmap
 
-### v0.5.0 (current release)
+### v0.5.x
 - Multi-dialect SQL engine  
 - MSSQL + Postgres dialects  
 - Hash DSL  
