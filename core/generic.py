@@ -65,7 +65,7 @@ class GenericCRUDView(LoginRequiredMixin, View):
   success_url = None
   action = "list"
 
-  list_exclude = {"id", "created_at", "created_by", "updated_at", "updated_by", "is_system_managed", "lineage_key"}
+  list_exclude = {"id", "created_at", "created_by", "updated_at", "updated_by", "is_system_managed", "lineage_key", "retired_at"}
   form_exclude = {"id", "created_at", "created_by", "updated_at", "updated_by", "is_system_managed", "lineage_key"}
 
   # --------------------------------------------------
@@ -145,28 +145,49 @@ class GenericCRUDView(LoginRequiredMixin, View):
     schema_short_name = self._get_schema_short_name_for_instance(instance)
 
     # ------------------------------------------------------------------
-    # Special case: surrogate key columns are always fully locked
+    # Special case: surrogate key / foreign-key columns are always fully locked
     # ------------------------------------------------------------------
-    if model_name == "TargetColumn" and (getattr(instance, "surrogate_key_column", False) or getattr(instance, "foreign_key_column", False)):
-      # For surrogate key columns we ignore schema-specific unlock rules.
-      # They keep the full global lock set, just like in raw/stage.
+    if model_name == "TargetColumn" and (
+      getattr(instance, "surrogate_key_column", False)
+      or getattr(instance, "foreign_key_column", False)
+    ):
       return base_locked
 
     # ------------------------------------------------------------------
-    # Schema-specific overrides (for non-surrogate columns)
+    # History datasets and their columns are always fully locked.
+    # Schema overrides must not unlock any fields here.
+    # ------------------------------------------------------------------
+    dataset_name = None
+    if model_name == "TargetDataset":
+      dataset_name = getattr(instance, "target_dataset_name", None)
+    elif model_name == "TargetColumn":
+      td = getattr(instance, "target_dataset", None)
+      if td is not None:
+        dataset_name = getattr(td, "target_dataset_name", None)
+        if schema_short_name is None:
+          schema = getattr(td, "target_schema", None)
+          schema_short_name = getattr(schema, "short_name", None)
+
+    if (
+      schema_short_name == "rawcore"
+      and isinstance(dataset_name, str)
+      and dataset_name.endswith("_hist")
+    ):
+      # fully locked, no schema-based unlocks
+      return base_locked
+
+    # ------------------------------------------------------------------
+    # Schema-specific overrides (for non-history, non-SK columns)
     # ------------------------------------------------------------------
     if not schema_short_name:
       return base_locked
 
     schema_overrides = sysman_cfg_all.get("schema_overrides", {})
-    schema_cfg = schema_overrides.get(schema_short_name, {})
-    model_override = schema_cfg.get(model_name, {})
+    model_override = schema_overrides.get(schema_short_name, {}).get(model_name, {})
 
-    # Unlock: remove fields from the base locked set
     unlock_fields = model_override.get("unlock", [])
     base_locked.difference_update(unlock_fields)
 
-    # Lock extra: add fields that should be locked in addition to the base set
     extra_fields = model_override.get("lock_extra", [])
     base_locked.update(extra_fields)
 

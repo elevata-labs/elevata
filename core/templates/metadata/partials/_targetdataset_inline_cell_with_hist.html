@@ -1,0 +1,31 @@
+<!--
+elevata - Metadata-driven Data Platform Framework
+Copyright © 2025 Ilona Tag
+
+This file is part of elevata.
+
+elevata is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of
+the License, or (at your option) any later version.
+
+elevata is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with elevata. If not, see <https://www.gnu.org/licenses/>.
+
+Contact: <https://github.com/elevata-labs/elevata>.
+-->
+
+{# First: normal cell for the renamed dataset (HTMX target) #}
+{% include "metadata/partials/_targetdataset_inline_cell.html" with ds=ds only %}
+
+{# Additionally update the corresponding *_hist cell out-of-band, if present #}
+{% if hist_ds %}
+  <div id="tds-cell-{{ hist_ds.id }}" hx-swap-oob="true">
+    {% include "metadata/partials/_targetdataset_inline_cell.html" with ds=hist_ds only %}
+  </div>
+{% endif %}

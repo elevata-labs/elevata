@@ -20,6 +20,7 @@ along with elevata. If not, see <https://www.gnu.org/licenses/>.
 Contact: <https://github.com/elevata-labs/elevata>.
 """
 
+from django.db import transaction
 from typing import Dict, List
 from metadata.models import (
   SourceDataset,
@@ -27,6 +28,8 @@ from metadata.models import (
   TargetDataset,
   TargetColumn,
   TargetColumnInput,
+  TargetDatasetReference,
+  TargetDatasetReferenceComponent,
 )
 from metadata.generation import rules, naming, security
 from metadata.generation.mappers import (
@@ -80,7 +83,7 @@ class TargetGenerationService:
           "raw": 10,
           "stage": 20,
           "rawcore": 30,
-          # später: "bizcore": 40, "serving": 50, ...
+          # later: "bizcore": 40, "serving": 50, ...
       }
 
       schemas = list(qs)
@@ -183,7 +186,6 @@ class TargetGenerationService:
       memberships = getattr(source_dataset, "dataset_groups", None)
       has_identity = False
       if memberships is not None:
-        # adjust field name if it differs in your model
         for m in memberships.all():
           ident = getattr(m, "source_identity_id", None)
           if ident:
@@ -222,7 +224,7 @@ class TargetGenerationService:
 
     # 5. If this schema wants surrogate keys, create surrogate key column FIRST
     if getattr(target_schema, "surrogate_keys_enabled", False):
-      pepper = security.get_runtime_pepper()  # your helper that resolves the pepper from env/profile
+      pepper = security.get_runtime_pepper()
       surrogate_col = build_surrogate_key_column_draft(
         target_dataset_name=dataset_draft.target_dataset_name,
         natural_key_colnames=natural_key_colnames,
@@ -308,7 +310,7 @@ class TargetGenerationService:
         if schema.short_name == "raw" and not rules.dataset_creates_raw_object(src_ds):
           continue
 
-        # Bundle erzeugen
+        # Create bundle
         bundle = self.build_dataset_bundle(
           source_dataset=src_ds,
           target_schema=schema,
@@ -370,7 +372,7 @@ class TargetGenerationService:
 
     Rules:
     - If none of the source datasets in this bucket is incremental -> 'full'
-    - If at least one source dataset is incremental               -> use
+    - If at least one source dataset is incremental                -> use
       target_schema.incremental_strategy_default (fallback to 'full').
     """
     # Any incremental source in this bucket?
@@ -386,48 +388,48 @@ class TargetGenerationService:
   def _get_or_create_target_dataset(self, target_schema, dataset_draft, src_list, combination_mode):
     """
     Find or create the TargetDataset for this bucket, based on lineage_key
-    (schema + source_dataset IDs), with a fallback to name-based matching
-    for older rows.
+    (schema + source_dataset IDs), with a fallback to name-based matching.
+
+    Robust against legacy rows (without lineage_key) and duplicate calls.
     """
     lineage_key = self.build_lineage_key_for_bucket(target_schema, src_list)
     incremental_strategy = self._determine_incremental_strategy(target_schema, src_list)
     incremental_source = self._determine_incremental_source(src_list)
 
-    # Only store incremental_source for non-full strategies
+    historize = getattr(target_schema, "default_historize", False)
+
     if incremental_strategy == "full":
       incremental_source = None
 
-    target_dataset_obj = TargetDataset.objects.filter(
+    # 1) Preferred lookup: by lineage_key (excluding *_hist in rawcore)
+    qs = TargetDataset.objects.filter(
       target_schema=target_schema,
       lineage_key=lineage_key,
-    ).first()
+    )
+    if target_schema.short_name == "rawcore":
+      qs = qs.exclude(target_dataset_name__endswith="_hist")
 
-    # Fallback: legacy rows that only have the old auto-generated name
-    if target_dataset_obj is None:
-      existing_by_name = TargetDataset.objects.filter(
-        target_schema=target_schema,
-        target_dataset_name=dataset_draft.target_dataset_name,
-      ).first()
-      if existing_by_name is not None:
-        if not existing_by_name.lineage_key:
-          existing_by_name.lineage_key = lineage_key
-          existing_by_name.save(update_fields=["lineage_key"])
-        target_dataset_obj = existing_by_name
-
+    target_dataset_obj = qs.first()
     created = False
+
+    # 2) If nothing by lineage_key: try get_or_create by name
     if target_dataset_obj is None:
-      target_dataset_obj = TargetDataset.objects.create(
+      defaults = {
+        "description": dataset_draft.description,
+        "is_system_managed": dataset_draft.is_system_managed,
+        "combination_mode": combination_mode,
+        "lineage_key": lineage_key,
+        "incremental_strategy": incremental_strategy,
+        "incremental_source": incremental_source,
+        "historize": historize,
+      }
+      target_dataset_obj, created = TargetDataset.objects.get_or_create(
         target_schema=target_schema,
         target_dataset_name=dataset_draft.target_dataset_name,
-        description=dataset_draft.description,
-        is_system_managed=dataset_draft.is_system_managed,
-        combination_mode=combination_mode,
-        lineage_key=lineage_key,
-        incremental_strategy=incremental_strategy,
-        incremental_source=incremental_source,
+        defaults=defaults,
       )
-      created = True
     else:
+      # 3) Existing dataset found by lineage_key: update mutable fields
       changed = False
       if target_dataset_obj.description != dataset_draft.description:
         target_dataset_obj.description = dataset_draft.description
@@ -448,11 +450,277 @@ class TargetGenerationService:
         if target_dataset_obj.incremental_source != incremental_source:
           target_dataset_obj.incremental_source = incremental_source
           changed = True
+      if changed:
+        target_dataset_obj.save()
 
+    # 4) If we found per name (created == False), lineage_key
+    #    or the Incremental columns cannot fit
+    if not created:
+      changed = False
+      if target_dataset_obj.lineage_key != lineage_key:
+        target_dataset_obj.lineage_key = lineage_key
+        changed = True
+      if getattr(target_schema, "is_system_managed", False):
+        if target_dataset_obj.incremental_strategy != incremental_strategy:
+          target_dataset_obj.incremental_strategy = incremental_strategy
+          changed = True
+        if target_dataset_obj.incremental_source != incremental_source:
+          target_dataset_obj.incremental_source = incremental_source
+          changed = True
       if changed:
         target_dataset_obj.save()
 
     return target_dataset_obj, created
+
+
+  @transaction.atomic
+  def ensure_hist_dataset_for_rawcore(self, rawcore_td: TargetDataset) -> TargetDataset | None:
+    """
+    Ensure that a *_hist TargetDataset exists for the given rawcore dataset and
+    is schema-synced to its columns.
+
+    - Hist dataset lives in the same TargetSchema as the rawcore dataset
+    - Name pattern: <rawcore_name>_hist
+    - First column: <rawcore_name>_hist_key (surrogate key for the history row)
+    - Then: a 1:1 copy of all rawcore columns (same order)
+    - Finally: version_started_at, version_ended_at, version_state, load_run_id
+
+    Dataset-level link is via lineage_key so that renames of the rawcore
+    dataset name are propagated safely without creating a second hist dataset.
+
+    This implementation is deliberately defensive: it removes any existing
+    columns for the hist dataset before rebuilding them to avoid uniqueness
+    conflicts on (target_dataset, target_column_name) and (target_dataset, ordinal_position).
+    """
+    schema = rawcore_td.target_schema
+
+    # Only rawcore datasets participate in history tracking
+    if schema.short_name != "rawcore":
+      return None
+
+    # Respect per-dataset historization flag
+    if not rawcore_td.historize:
+      return None
+
+    # Do not accidentally create hist for hist datasets themselves
+    if rawcore_td.target_dataset_name.endswith("_hist"):
+      return None
+
+    hist_name = f"{rawcore_td.target_dataset_name}_hist"
+    lineage_key = rawcore_td.lineage_key
+
+    # Locate hist dataset by lineage_key if available
+    hist_td: TargetDataset | None = None
+    if lineage_key:
+      hist_td = (
+        TargetDataset.objects
+        .filter(
+          target_schema=schema,
+          lineage_key=lineage_key,
+          target_dataset_name__endswith="_hist",
+        )
+        .first()
+      )
+
+    if hist_td is None:
+      # No hist dataset for this lineage yet -> create it with the current name
+      defaults = {
+        "description": f"History table for {rawcore_td.target_dataset_name}",
+        "handle_deletes": False,
+        "historize": False,  # no history of history
+        "is_system_managed": True,
+      }
+      if lineage_key:
+        defaults["lineage_key"] = lineage_key
+
+      hist_td, _ = TargetDataset.objects.get_or_create(
+        target_schema=schema,
+        target_dataset_name=hist_name,
+        defaults=defaults,
+      )
+
+      if lineage_key and hist_td.lineage_key != lineage_key:
+        hist_td.lineage_key = lineage_key
+        hist_td.save(update_fields=["lineage_key"])
+
+    else:
+      # Hist dataset exists for this lineage -> keep name + lineage in sync
+      changed = False
+      if hist_td.target_dataset_name != hist_name:
+        hist_td.target_dataset_name = hist_name
+        changed = True
+      if lineage_key and hist_td.lineage_key != lineage_key:
+        hist_td.lineage_key = lineage_key
+        changed = True
+      if hist_td.historize:
+        hist_td.historize = False
+        changed = True
+      if hist_td.handle_deletes:
+        hist_td.handle_deletes = False
+        changed = True
+      if not hist_td.is_system_managed:
+        hist_td.is_system_managed = True
+        changed = True
+      if changed:
+        hist_td.save()
+
+    # Remove any reference components that point to hist columns,
+    # otherwise PROTECT will block deleting those columns.
+    TargetDatasetReferenceComponent.objects.filter(
+      from_column__target_dataset=hist_td,
+    ).delete()
+
+    # If there also exists a to_column and hist appears in that:
+    TargetDatasetReferenceComponent.objects.filter(
+      to_column__target_dataset=hist_td,
+    ).delete()
+
+    TargetDatasetReference.objects.filter(
+      referencing_dataset=hist_td,
+    ).delete()
+
+    TargetDatasetReference.objects.filter(
+      referenced_dataset=hist_td,
+    ).delete()
+
+    TargetColumnInput.objects.filter(
+      upstream_target_column__target_dataset=hist_td,
+    ).delete()
+
+    # Now it is safe to delete all hist-columns
+    TargetColumn.objects.filter(target_dataset=hist_td).delete()
+
+    next_ord = 1
+
+    # Small helper to enforce "delete then create" per name,
+    # even if there are rests for any reason.
+    def _create_hist_column(
+      name: str,
+      datatype: str,
+      nullable: bool = True,
+      surrogate_key: bool = False,
+      max_length: int | None = None,
+      decimal_precision=None,
+      decimal_scale=None,
+      description: str | None = None,
+      business_key: bool = False,
+      surrogate_expression: str | None = None,
+    ) -> TargetColumn:
+
+      nonlocal next_ord
+      # Ensure there is really no column with this name left
+      TargetColumn.objects.filter(
+        target_dataset=hist_td,
+        target_column_name=name,
+      ).delete()
+
+      kwargs = {
+        "target_dataset": hist_td,
+        "target_column_name": name,
+        "ordinal_position": next_ord,
+        "datatype": datatype,
+        "nullable": nullable,
+        "is_system_managed": True,
+      }
+      if max_length is not None:
+        kwargs["max_length"] = max_length
+      if decimal_precision is not None:
+        kwargs["decimal_precision"] = decimal_precision
+      if decimal_scale is not None:
+        kwargs["decimal_scale"] = decimal_scale
+      if description is not None:
+        kwargs["description"] = description
+      if surrogate_key:
+        kwargs["surrogate_key_column"] = True
+      if business_key:
+        kwargs["business_key_column"] = True
+      if surrogate_expression is not None:
+        kwargs["surrogate_expression"] = surrogate_expression
+
+      col = TargetColumn.objects.create(**kwargs)
+      next_ord += 1
+      return col
+
+    # Copy all rawcore columns (including entity SK) with lineage links
+    rawcore_cols = list(
+      rawcore_td.target_columns.order_by("ordinal_position", "target_column_name")
+    )
+
+    rc_sk_col = next(
+      (c for c in rawcore_cols if c.surrogate_key_column),
+      None,
+    )
+
+    hist_sk_expression = None
+    if rc_sk_col is not None and getattr(schema, "surrogate_keys_enabled", False):
+      natural_key_colnames = [
+        rc_sk_col.target_column_name,
+        "version_started_at",
+      ]
+
+      # build_surrogate_key_column_draft knows Pepper & Separators
+      pepper = self.pepper
+      sk_draft = build_surrogate_key_column_draft(
+        target_dataset_name=hist_name,
+        natural_key_colnames=natural_key_colnames,
+        pepper=pepper,
+        ordinal=1,
+        null_token=schema.surrogate_key_null_token,
+        pair_sep=schema.surrogate_key_pair_separator,
+        comp_sep=schema.surrogate_key_component_separator,
+      )
+      hist_sk_expression = sk_draft.surrogate_expression
+
+    hist_sk_name = f"{hist_name}_key"
+    _create_hist_column(
+      name=hist_sk_name,
+      datatype="string",
+      nullable=False,
+      surrogate_key=True,
+      max_length=64,
+      description=f"Surrogate key for history rows of {rawcore_td.target_dataset_name}.",
+      surrogate_expression=hist_sk_expression,
+    )
+
+    for rc_col in rawcore_cols:
+      hist_col = _create_hist_column(
+        name=rc_col.target_column_name,
+        datatype=rc_col.datatype,
+        nullable=True,
+        max_length=rc_col.max_length,
+        decimal_precision=rc_col.decimal_precision,
+        decimal_scale=rc_col.decimal_scale,
+        description=rc_col.description,
+        business_key=bool(rc_sk_col and rc_col.id == rc_sk_col.id),
+      )
+      TargetColumnInput.objects.create(
+        target_column=hist_col,
+        upstream_target_column=rc_col,
+      )
+
+    # Technical versioning columns
+    tech_columns = [
+      ("version_started_at", "datetime",
+      "Timestamp at which this version became active.", True),
+      ("version_ended_at", "datetime",
+      "Timestamp at which this version was superseded or closed.", False),
+      ("version_state", "string",
+      "State of this version: 'new', 'changed', or 'deleted'.", False),
+      ("load_run_id", "string",
+      "Identifier of the load run which created or updated this history row.", False),
+    ]
+
+    for name, dt, desc, is_bk in tech_columns:
+      _create_hist_column(
+        name=name,
+        datatype=dt,
+        nullable=True,
+        description=desc,
+        business_key=is_bk,
+      )
+      
+    return hist_td
+
 
   def _ensure_surrogate_key_draft_names(self, target_dataset_obj, column_drafts):
     """
@@ -639,7 +907,7 @@ class TargetGenerationService:
     for col_draft in column_drafts:
       src_col_id = getattr(col_draft, "source_column_id", None)
 
-      # 4a. Resolve upstream column (Stage/Rawcore)
+      # Resolve upstream column (Stage/Rawcore)
       upstream_col = None
 
       if target_schema.short_name == "stage" and src_col_id and upstream_raw_ds is not None:
@@ -687,7 +955,7 @@ class TargetGenerationService:
               .first()
             )
 
-      # 4b. Find existing TargetColumn
+      # Find existing TargetColumn
       existing_col = None
 
       if target_schema.short_name == "rawcore" and upstream_col is not None:
@@ -725,7 +993,7 @@ class TargetGenerationService:
           target_column_name=col_draft.target_column_name,
         ).first()
 
-      # 4c. Upsert column itself
+      # Upsert column itself
       if existing_col is not None:
         target_col_obj = existing_col
         changed = False
@@ -816,7 +1084,7 @@ class TargetGenerationService:
       created_or_updated += 1
       generator_columns.append(target_col_obj)
 
-      # 4d. Maintain TargetColumnInput lineage
+      # Maintain TargetColumnInput lineage
       if target_schema.short_name == "raw":
         TargetColumnInput.objects.filter(
           target_column=target_col_obj,
@@ -882,7 +1150,7 @@ class TargetGenerationService:
             defaults={},
           )
 
-    # 4e. Normalize ordinals for system-managed schemas
+    # Normalize ordinals for system-managed schemas
     if is_sys_managed_schema:
       all_cols = list(
         TargetColumn.objects.filter(target_dataset=target_dataset_obj)
@@ -1017,6 +1285,11 @@ class TargetGenerationService:
         target_schema=target_schema,
         column_drafts=column_drafts,
       )
+
+      # 6) Optional: history dataset for rawcore
+      if target_schema.short_name == "rawcore":
+        # Only create hist dataset when historization is enabled on this dataset
+        self.ensure_hist_dataset_for_rawcore(target_dataset_obj)
 
     return (
       f"{len(buckets)} target datasets and {total_columns} target columns generated/updated."

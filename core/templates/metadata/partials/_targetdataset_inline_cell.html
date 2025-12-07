@@ -27,8 +27,8 @@ Contact: <https://github.com/elevata-labs/elevata>.
     - Uses HTMX to trigger dry-run/commit via targetdataset_rename endpoint
 -->
 
-{% with schema_short=ds.target_schema.short_name %}
-  {% if schema_short in "raw,stage" %}
+{% with schema_short=ds.target_schema.short_name dataset_name=ds.target_dataset_name %}
+  {% if schema_short == "raw" or schema_short == "stage" or schema_short == "rawcore" and dataset_name|slice:"-5:" == "_hist" %}
     <div id="tds-cell-{{ ds.id }}" class="form-control-plaintext d-flex align-items-center gap-1">
       <span>{{ ds.target_dataset_name }}</span>
       <i class="bi bi-ban text-muted" title="System-managed: rename not allowed"></i>

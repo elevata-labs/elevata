@@ -36,6 +36,32 @@ This project adheres to [Semantic Versioning](https://semver.org/) and [Keep a C
 
 ---
 
+## [0.5.2] — 2025-12-07
+### 🛠️ Metadata stability & History (HIST) foundation
+
+This release significantly improves the robustness, determinism, and safety of 
+history metadata generation in the RAWCORE schema.
+
+## ✨ Highlights
+
+### Metadata / Historization
+- Deterministic generation of *_hist datasets based on lineage_key.  
+- Robust schema sync between RAWCORE and *_hist (idempotent, safe deletes).  
+- History SK expression based on rawcore SK + version_started_at.  
+- History BK definition: rawcore SK + version_started_at.  
+- History datasets and columns are fully system-managed (no UI unlock).
+
+### Signals & UI
+- Automatic *_hist sync on dataset rename and column changes in rawcore.  
+- Inline rename refreshes both rawcore and corresponding *_hist rows.  
+- Inline editing is disabled for *_hist datasets and columns.  
+
+### SQL Preview
+- build_sql_preview_for_target returns a clear comment for history targets instead of misleading SQL.
+- Tests added to guard the _hist-preview behaviour.
+
+---
+
 ## [0.5.1] — 2025-12-04
 ### 🧹 Documentation & Consistency Release
 

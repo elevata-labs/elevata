@@ -74,7 +74,26 @@ def build_sql_preview_for_target(dataset, dialect: SqlDialect | None = None) -> 
 
   If `dialect` is None, the active dialect is resolved from env/profile.
   """
+
   if dialect is None:
     dialect = get_active_dialect()
+
+  # History datasets do not have a dedicated query yet.
+  # We return a descriptive comment instead of a misleading SELECT.
+  schema = getattr(dataset, "target_schema", None)
+  schema_short = getattr(schema, "short_name", None)
+  name = getattr(dataset, "target_dataset_name", None)
+
+  if (
+    schema_short == "rawcore"
+    and isinstance(name, str)
+    and name.endswith("_hist")
+  ):
+    raw_sql = (
+      f"-- SQL preview for history dataset {name} is not implemented yet.\n"
+      f"-- Use the corresponding rawcore dataset for preview and load logic.\n"
+    )
+    return beautify_sql(raw_sql)
+
   raw_sql = render_select_for_target(dataset, dialect)
   return beautify_sql(raw_sql)

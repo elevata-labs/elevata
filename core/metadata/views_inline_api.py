@@ -22,13 +22,14 @@ Contact: <https://github.com/elevata-labs/elevata>.
 
 import json
 from django.shortcuts import get_object_or_404, render
-from django.http import JsonResponse
 from django.views.decorators.http import require_POST
 from django.contrib.auth.decorators import login_required
 
 from metadata.models import TargetColumn, TargetDataset
 from metadata.services.rename_targetdataset import dry_run_targetdataset_rename, commit_targetdataset_rename
 from metadata.services.rename_targetcolumn import dry_run_targetcolumn_rename, commit_targetcolumn_rename
+from metadata.generation.target_generation_service import TargetGenerationService
+
 
 def _is_htmx(request) -> bool:
   """
@@ -121,9 +122,26 @@ def targetdataset_rename(request, pk: int):
       },
     )
 
+  # Reload renamed dataset to pick up the final state
   ds.refresh_from_db()
+
+  # Explicitly sync history AFTER the full rename (dataset + columns) is done.
+  hist_ds = None
+  schema = getattr(ds, "target_schema", None)
+  if (
+    schema is not None
+    and schema.short_name == "rawcore"
+    and ds.historize
+    and not ds.target_dataset_name.endswith("_hist")
+  ):
+    svc = TargetGenerationService()
+    hist_ds = svc.ensure_hist_dataset_for_rawcore(ds)
+
   return render(
     request,
-    "metadata/partials/_targetdataset_inline_cell.html",
-    {"ds": ds},
+    "metadata/partials/_targetdataset_inline_cell_with_hist.html",
+    {
+      "ds": ds,
+      "hist_ds": hist_ds,
+    },
   )

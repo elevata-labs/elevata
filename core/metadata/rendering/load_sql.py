@@ -315,51 +315,49 @@ def _find_stage_upstream_for_rawcore(td: TargetDataset):
 
 def render_merge_sql(td: TargetDataset, dialect) -> str:
   """
-  Render a backend-aware MERGE statement for a target dataset.
+  Render a backend-aware MERGE / upsert statement for a target dataset.
 
-  For now the intended semantics are:
+  Semantics:
 
-    - rawcore:
-      MERGE rawcore (integrated table) FROM stage (snapshot of the latest extract)
+  - rawcore:
+      Merge the integrated rawcore table from its upstream stage snapshot,
+      matching on the natural_key_fields (business key).
 
-    - other schemas:
-      merge is currently not supported and will raise an error
+  - other schemas:
+      merge is currently not supported and will raise a ValueError.
 
   Assumptions:
     - td.incremental_strategy == 'merge'
     - effective materialization type is 'table'
     - natural_key_fields define the business key in both stage and rawcore
-
   """
-  if not dialect.supports_merge:
-    raise NotImplementedError(
-      f"Dialect {dialect.__class__.__name__} does not support MERGE-based loads. "
-      f"Use incremental_strategy='full' for {td.target_dataset_name}."
+  # Safety guard: this helper must only be used for merge datasets
+  # when an explicit incremental_strategy is configured.
+  incremental_strategy = getattr(td, "incremental_strategy", None)
+  if incremental_strategy is not None and incremental_strategy != "merge":
+    raise ValueError(
+      f"render_merge_sql called for non-merge dataset {getattr(td, 'id', '?')}"
     )
 
-  plan = build_load_plan(td)
-  if plan.mode != "merge":
-    raise ValueError(f"render_merge_sql called for non-merge dataset {td.id}")
-
+  # Only rawcore targets are currently supported for merge
   if td.target_schema.short_name != "rawcore":
     raise ValueError(
-      f"render_merge_sql is currently only supported for rawcore targets "
-      f"(got schema={td.target_schema.short_name} for dataset {td.id})."
+      f"Merge loads are only supported for rawcore targets, "
+      f"got schema={td.target_schema.short_name!r} for {td.target_dataset_name}."
     )
 
-  # Resolve integrated target table (rawcore)
+  # Find upstream stage dataset
+  stage_td = _find_stage_upstream_for_rawcore(td)
+  if not stage_td:
+    raise ValueError(
+      f"Could not resolve upstream stage dataset for rawcore target {td.target_dataset_name}."
+    )
+
+  # Resolve fully-qualified target and source table names
   target_schema_name = td.target_schema.schema_name
   target_table_name = td.target_dataset_name
   target_full = dialect.quote_table(target_schema_name, target_table_name)
   target_alias = "t"
-
-  # Resolve stage upstream as the merge source
-  stage_td = _find_stage_upstream_for_rawcore(td)
-  if not stage_td:
-    raise ValueError(
-      f"rawcore target {td.id} has merge strategy but no upstream stage dataset "
-      f"could be resolved from TargetDatasetInput."
-    )
 
   source_schema_name = stage_td.target_schema.schema_name
   source_table_name = stage_td.target_dataset_name
@@ -375,43 +373,50 @@ def render_merge_sql(td: TargetDataset, dialect) -> str:
       f"TargetDataset {td.id} has merge strategy but no natural_key_fields defined."
     )
 
+  # All target columns in stable order
   target_cols = list(_get_target_columns_in_order(td))
   non_key_cols = [c for c in target_cols if c.target_column_name not in key_cols]
-
-  q = dialect.quote_ident
 
   # Expressions per target column from the logical SELECT
   expr_map = _get_rendered_column_exprs_for_target(td, dialect)
 
+  # If the dialect explicitly opts out of native MERGE support, use the
+  # UPDATE + INSERT fallback strategy.
+  supports_merge = getattr(dialect, "supports_merge", True)
+  if not supports_merge:
+    return _render_update_then_insert_sql(
+      td=td,
+      dialect=dialect,
+      source_full=source_full,
+      source_alias=source_alias,
+      target_full=target_full,
+      target_alias=target_alias,
+      key_cols=key_cols,
+      expr_map=expr_map,
+      target_cols=target_cols,
+    )
+
   # ON predicate: t.pk = <expr_for_pk_from_stage>
   on_clauses: list[str] = []
   for col in key_cols:
-    # right side: same expression which is used in full select too
     rhs_sql = expr_map.get(col)
     if not rhs_sql:
-      # Fallback: classic s."col", if something is missing
-      rhs_sql = f'{source_alias}.{q(col)}'
-
+      # Fallback: simple s."col" if the expression map does not contain it
+      rhs_sql = f"{source_alias}.{q(col)}"
     on_clauses.append(
-      f'{target_alias}.{q(col)} = {rhs_sql}'
+      f"{target_alias}.{q(col)} = {rhs_sql}"
     )
+  on_clause = " AND\n      ".join(on_clauses)
 
-  on_expr = " AND ".join(on_clauses)
-
-  # UPDATE SET col = <expr_for_col> for all non-key columns
+  # UPDATE SET col = <expr_for_col_from_stage>
   update_assignments: list[str] = []
   for c in non_key_cols:
     col_name = c.target_column_name
     value_sql = expr_map.get(col_name)
-
     if not value_sql:
       # Fallback: classic s."col" reference, if something is unexpectedly missing
       value_sql = f"{source_alias}.{q(col_name)}"
-
-    update_assignments.append(
-      f"{q(col_name)} = {value_sql}"
-    )
-
+    update_assignments.append(f"{q(col_name)} = {value_sql}")
   update_clause = ",\n      ".join(update_assignments)
 
   # INSERT (cols) VALUES (<expr_for_col>, ...)
@@ -424,20 +429,18 @@ def render_merge_sql(td: TargetDataset, dialect) -> str:
     if not value_sql:
       value_sql = f"{source_alias}.{q(col_name)}"
     insert_values.append(value_sql)
-
   insert_vals_sql = ", ".join(insert_values)
 
+  # Final MERGE statement; we emit a generic MERGE INTO ... USING ... ON ...
   sql_parts: list[str] = []
-  sql_parts.append(
-    f"MERGE INTO {target_full} AS {target_alias}"
-  )
-  sql_parts.append(
-    f"USING {source_full} AS {source_alias}"
-  )
-  sql_parts.append(f"ON {on_expr}")
-  sql_parts.append("")  # blank line
 
-  # Standard update branch
+  sql_parts.append(
+    f"MERGE INTO {target_full} AS {target_alias}\n"
+    f"USING {source_full} AS {source_alias}\n"
+    f"ON {on_clause}\n"
+  )
+
+  # Update branch
   sql_parts.append(
     "WHEN MATCHED THEN\n"
     f"  UPDATE SET\n"
@@ -452,6 +455,84 @@ def render_merge_sql(td: TargetDataset, dialect) -> str:
   )
 
   return "\n".join(sql_parts)
+
+
+def _render_update_then_insert_sql(
+  td: TargetDataset,
+  dialect,
+  source_full: str,
+  source_alias: str,
+  target_full: str,
+  target_alias: str,
+  key_cols: list[str],
+  expr_map: dict[str, str],
+  target_cols: Sequence[TargetColumn],
+) -> str:
+  """
+  Fallback implementation for dialects that do not support native MERGE.
+
+  Strategy:
+    1) UPDATE target t
+       SET non-key columns = expressions from source
+       FROM source s
+       WHERE business-key join
+
+    2) INSERT INTO target (...)
+       SELECT expressions FROM source s
+       WHERE NOT EXISTS (SELECT 1 FROM target t WHERE business-key join)
+  """
+  q = dialect.quote_ident
+
+  # Build join predicate based on business key
+  join_predicates: list[str] = []
+  for col in key_cols:
+    rhs_sql = expr_map.get(col) or f"{source_alias}.{q(col)}"
+    join_predicates.append(f"{target_alias}.{q(col)} = {rhs_sql}")
+  on_expr = " AND ".join(join_predicates)
+
+  # UPDATE branch: only non-key columns are updated
+  non_key_cols = [c for c in target_cols if c.target_column_name not in key_cols]
+  update_assignments: list[str] = []
+  for c in non_key_cols:
+    col_name = c.target_column_name
+    value_sql = expr_map.get(col_name) or f"{source_alias}.{q(col_name)}"
+    update_assignments.append(f"{q(col_name)} = {value_sql}")
+  update_clause = ", ".join(update_assignments)
+
+  update_sql = (
+    f"UPDATE {target_full} AS {target_alias}\n"
+    f"SET {update_clause}\n"
+    f"FROM {source_full} AS {source_alias}\n"
+    f"WHERE {on_expr};"
+  )
+
+  # INSERT branch: insert rows that do not yet exist in the target
+  insert_columns = [c.target_column_name for c in target_cols]
+  insert_cols_sql = ", ".join(q(c) for c in insert_columns)
+
+  select_values: list[str] = []
+  for col_name in insert_columns:
+    value_sql = expr_map.get(col_name) or f"{source_alias}.{q(col_name)}"
+    select_values.append(value_sql)
+  select_values_sql = ", ".join(select_values)
+
+  not_exists_predicates: list[str] = []
+  for col in key_cols:
+    rhs_sql = expr_map.get(col) or f"{source_alias}.{q(col)}"
+    not_exists_predicates.append(f"{target_alias}.{q(col)} = {rhs_sql}")
+  not_exists_join = " AND ".join(not_exists_predicates)
+
+  insert_sql = (
+    f"INSERT INTO {target_full} ({insert_cols_sql})\n"
+    f"SELECT {select_values_sql}\n"
+    f"FROM {source_full} AS {source_alias}\n"
+    f"WHERE NOT EXISTS (\n"
+    f"  SELECT 1 FROM {target_full} AS {target_alias}\n"
+    f"  WHERE {not_exists_join}\n"
+    f");"
+  )
+
+  return update_sql + "\n\n" + insert_sql
 
 
 def render_full_refresh_sql(td: TargetDataset, dialect) -> str:
@@ -492,6 +573,21 @@ def render_load_sql_for_target(td: TargetDataset, dialect) -> str:
 
   Uses the LoadPlan to decide which concrete renderer to call.
   """
+  schema = getattr(td, "target_schema", None)
+  schema_short = getattr(schema, "short_name", None)
+  name = getattr(td, "target_dataset_name", None)
+
+  # History datasets: load SQL not implemented yet.
+  if (
+    schema_short == "rawcore"
+    and isinstance(name, str)
+    and name.endswith("_hist")
+  ):
+    return (
+      f"-- Load SQL for history dataset {name} is not implemented yet.\n"
+      f"-- Load the corresponding rawcore table instead.\n"
+    )
+
   plan = build_load_plan(td)
 
   if plan.mode == "full":

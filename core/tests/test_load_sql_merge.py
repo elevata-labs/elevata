@@ -24,10 +24,12 @@ import textwrap
 
 import pytest
 
+from types import SimpleNamespace
+
 from metadata.rendering.load_planner import LoadPlan
 from metadata.rendering.load_sql import (
   render_merge_sql,
-  _get_target_columns_in_order,
+  render_load_sql_for_target,
 )
 from metadata.rendering.dialects.duckdb import DuckDBDialect
 
@@ -98,21 +100,14 @@ def test_render_merge_sql_basic_happy_path(monkeypatch):
   stage_td = FakeStageTargetDataset()
   dialect = DuckDBDialect()
 
-  # 1) build_load_plan → return merge mode
-  def fake_build_load_plan(target_dataset):
-    assert target_dataset is td
-    return LoadPlan(mode="merge", handle_deletes=False, historize=False)
-
-  monkeypatch.setattr(load_sql, "build_load_plan", fake_build_load_plan)
-
-  # 2) _find_stage_upstream_for_rawcore → return our fake stage dataset
+  # 1) _find_stage_upstream_for_rawcore → return our fake stage dataset
   def fake_find_stage_upstream_for_rawcore(target_dataset):
     assert target_dataset is td
     return stage_td
 
   monkeypatch.setattr(load_sql, "_find_stage_upstream_for_rawcore", fake_find_stage_upstream_for_rawcore)
 
-  # 3) _get_target_columns_in_order → define key + non-key columns
+  # 2) _get_target_columns_in_order → define key + non-key columns
   def fake_get_target_columns_in_order(target_dataset):
     assert target_dataset is td
     return [
@@ -123,7 +118,7 @@ def test_render_merge_sql_basic_happy_path(monkeypatch):
 
   monkeypatch.setattr(load_sql, "_get_target_columns_in_order", fake_get_target_columns_in_order)
 
-  # 4) _get_rendered_column_exprs_for_target → expressions for UPDATE/INSERT
+  # 3) _get_rendered_column_exprs_for_target → expressions for UPDATE/INSERT
   def fake_get_rendered_column_exprs_for_target(target_dataset, dialect_):
     assert target_dataset is td
     assert isinstance(dialect_, DuckDBDialect)
@@ -180,20 +175,14 @@ def test_render_merge_sql_basic_happy_path(monkeypatch):
   assert 's."city"' in normalized
 
 
-def test_render_merge_sql_raises_for_non_merge_mode(monkeypatch):
+def test_render_merge_sql_raises_for_non_merge_mode():
   """
-  If build_load_plan returns a non-merge mode, render_merge_sql should
-  raise a ValueError.
+  If a dataset has an incremental_strategy other than 'merge',
+  render_merge_sql should raise a ValueError.
   """
-  from metadata.rendering import load_sql
-
   td = FakeTargetDataset()
+  td.incremental_strategy = "full"  # explicitly not 'merge'
   dialect = DuckDBDialect()
-
-  def fake_build_load_plan(target_dataset):
-    return LoadPlan(mode="full", handle_deletes=False, historize=False)
-
-  monkeypatch.setattr(load_sql, "build_load_plan", fake_build_load_plan)
 
   with pytest.raises(ValueError) as excinfo:
     render_merge_sql(td, dialect)
@@ -247,3 +236,65 @@ def test_render_merge_sql_raises_if_no_natural_key_fields(monkeypatch):
     render_merge_sql(td, dialect)
 
   assert "no natural_key_fields defined" in str(excinfo.value)
+
+
+def test_render_load_sql_for_target_merge_includes_delete_and_merge(monkeypatch):
+  """
+  For merge load mode, render_load_sql_for_target should prefix the MERGE
+  statement with delete-detection SQL when delete detection is active.
+  """
+  from metadata.rendering import load_sql
+
+  td = FakeTargetDataset()
+  dialect = DuckDBDialect()
+
+  # Plan: mode=merge, handle_deletes=True (logic is inside delete renderer)
+  plan = SimpleNamespace(mode="merge", handle_deletes=True)
+  monkeypatch.setattr(load_sql, "build_load_plan", lambda _td: plan)
+
+  # Stub both renderers to focus purely on routing behavior
+  monkeypatch.setattr(
+    load_sql,
+    "render_delete_missing_rows_sql",
+    lambda _td, _dialect: "-- DELETE MISSING ROWS",
+  )
+  monkeypatch.setattr(
+    load_sql,
+    "render_merge_sql",
+    lambda _td, _dialect: "-- MERGE STATEMENT",
+  )
+
+  sql = render_load_sql_for_target(td, dialect)
+
+  # Delete should come first, then a blank line, then MERGE
+  assert sql.startswith("-- DELETE MISSING ROWS")
+  assert "\n\n-- MERGE STATEMENT" in sql
+
+def test_render_load_sql_for_target_merge_without_delete(monkeypatch):
+  """
+  When delete detection does not yield any SQL, render_load_sql_for_target
+  should return only the MERGE statement.
+  """
+  from metadata.rendering import load_sql
+
+  td = FakeTargetDataset()
+  dialect = DuckDBDialect()
+
+  plan = SimpleNamespace(mode="merge", handle_deletes=False)
+  monkeypatch.setattr(load_sql, "build_load_plan", lambda _td: plan)
+
+  # No delete SQL generated
+  monkeypatch.setattr(
+    load_sql,
+    "render_delete_missing_rows_sql",
+    lambda _td, _dialect: None,
+  )
+  monkeypatch.setattr(
+    load_sql,
+    "render_merge_sql",
+    lambda _td, _dialect: "-- MERGE ONLY",
+  )
+
+  sql = render_load_sql_for_target(td, dialect)
+
+  assert sql.strip() == "-- MERGE ONLY"

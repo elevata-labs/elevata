@@ -43,7 +43,7 @@ from utils.db import build_metadata_database_url
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(find_dotenv(filename=".env", raise_error_if_not_found=False))
 
-ELEVATA_VERSION = "0.5.1"
+ELEVATA_VERSION = "0.5.2"
 
 ELEVATA_PROFILES_PATH = os.getenv("ELEVATA_PROFILES_PATH", str((BASE_DIR.parent / "config" / "elevata_profiles.yaml")))
 
@@ -77,7 +77,7 @@ INSTALLED_APPS = [
   'django.contrib.sessions',
   'django.contrib.messages',
   'django.contrib.staticfiles',
-  'metadata',
+  'metadata.apps.MetadataConfig',
 ]
 
 MIDDLEWARE = [
@@ -286,12 +286,16 @@ ELEVATA_CRUD = {
       "schema_overrides": {
         "raw": {
           "TargetColumn": {
-            "unlock": [],
+            "unlock": [
+              "active",
+            ],
           },
         },
         "stage": {
           "TargetColumn": {
-            "unlock": [],
+            "unlock": [
+              "active",
+            ],
           },
         },
         "rawcore": {
@@ -387,6 +391,62 @@ ELEVATA_CRUD = {
       ],
     },
     "badges": {
+      "System": [
+        {
+          "field": "is_source", 
+          "class_map": {
+            "True": "badge badge-sk",
+            "False": "",
+            "default": "",
+          },
+          "label_map": {
+            "True": "Source",
+            "False": "",
+            "default": "",
+          },
+        },
+        {
+          "field": "is_target", 
+          "class_map": {
+            "True": "badge badge-pii-low",
+            "False": "",
+            "default": "",
+          },
+          "label_map": {
+            "True": "Target",
+            "False": "",
+            "default": "",
+          },
+        },
+        {
+          "field": "active", 
+          "class_map": {
+            "True": "",
+            "False": "badge badge-health-warning",
+            "default": "",
+          },
+          "label_map": {
+            "True": "",
+            "False": "Retired",
+            "default": "",
+          },
+        },
+      ],
+      "SourceDataset": [
+        {
+          "field": "active", 
+          "class_map": {
+            "True": "",
+            "False": "badge badge-health-warning",
+            "default": "",
+          },
+          "label_map": {
+            "True": "",
+            "False": "Retired",
+            "default": "",
+          },
+        },
+      ],
       "SourceColumn": [
         {
           "field": "primary_key_column", 
@@ -413,6 +473,34 @@ ELEVATA_CRUD = {
             "special_category_data": "Special",
             "personal_data": "Personal",
             "none": "",
+            "default": "",
+          },
+        },
+      ],
+      "TargetDataset": [
+        {
+          "field": "historize", 
+          "class_map": {
+            "True": "badge badge-sk",
+            "False": "",
+            "default": "",
+          },
+          "label_map": {
+            "True": "Historize",
+            "False": "",
+            "default": "",
+          },
+        },
+        {
+          "field": "active", 
+          "class_map": {
+            "True": "",
+            "False": "badge badge-health-warning",
+            "default": "",
+          },
+          "label_map": {
+            "True": "",
+            "False": "Retired",
             "default": "",
           },
         },
@@ -469,6 +557,19 @@ ELEVATA_CRUD = {
             "special_category_data": "Special",
             "personal_data": "Personal",
             "none": "",
+            "default": "",
+          },
+        },
+        {
+          "field": "active", 
+          "class_map": {
+            "True": "",
+            "False": "badge badge-health-warning",
+            "default": "",
+          },
+          "label_map": {
+            "True": "",
+            "False": "Retired",
             "default": "",
           },
         },

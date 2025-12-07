@@ -36,7 +36,16 @@ The hashing engine is:
   - `~` between field name & value  
   - `|` between BK pairs  
 - null replacement literal: `'null_replaced'`  
-- system-wide pepper: e.g. `'pepper'`  
+- system-wide pepper: e.g. `'pepper'`  ^
+
+### 🧩 2.3 History Surrogate Keys
+- History SK reuses the parent rawcore SK structure:  
+  - natural key columns: [rawcore_sk_column, "version_started_at"].  
+  - same hashing DSL & AST (CONCAT_WS, COALESCE, HASH256, pepper).
+- This ensures:  
+  - BK for history = rawcore SK + version_started_at.  
+  - joinability between rawcore and history later (if needed).  
+  - _hist never defines its own FK hashes; all FK semantics stay in the rawcore layer.  
 
 ---
 

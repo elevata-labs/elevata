@@ -5,3 +5,7 @@ class MetadataConfig(AppConfig):
   name = "metadata"
   label = "metadata"
   verbose_name = "Metadata"
+
+  def ready(self) -> None:
+    # Import signal handlers to connect them
+    from . import signals  # noqa: F401

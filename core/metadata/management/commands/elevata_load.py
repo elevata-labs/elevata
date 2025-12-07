@@ -23,6 +23,7 @@ Contact: <https://github.com/elevata-labs/elevata>.
 from __future__ import annotations
 
 from typing import Any
+import time
 
 import logging
 
@@ -105,7 +106,10 @@ class Command(BaseCommand):
       "--debug-plan",
       dest="debug_plan",
       action="store_true",
-      help="Print a short debug representation of the resolved LoadPlan.",
+      help=(
+        "Print the resolved LoadPlan (mode, handle_deletes, historize, "
+        "delete_detection_enabled) before the SQL."
+      ),
     )
 
 
@@ -176,7 +180,10 @@ class Command(BaseCommand):
     )
 
     # 7) Render load SQL
+    start_ts = time.perf_counter()
     sql = render_load_sql_for_target(td, dialect)
+    render_ms = (time.perf_counter() - start_ts) * 1000.0
+    sql_length = len(sql)
 
     # 8) Dry-run vs execute
     if not no_print:
@@ -184,6 +191,8 @@ class Command(BaseCommand):
       self.stdout.write(self.style.NOTICE(f"-- Profile: {profile.name}"))
       self.stdout.write(self.style.NOTICE(f"-- Target system: {system.short_name} (type={system.type})"))
       self.stdout.write(self.style.NOTICE(f"-- Dialect: {dialect.__class__.__name__}"))
+      self.stdout.write(self.style.NOTICE(f"-- SQL length: {sql_length} chars"))
+      self.stdout.write(self.style.NOTICE(f"-- Render time: {render_ms:.1f} ms"))
       self.stdout.write("")
       self.stdout.write(sql)
 

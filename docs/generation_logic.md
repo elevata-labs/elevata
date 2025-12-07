@@ -50,6 +50,26 @@ Used when multiple upstream sources require conflict resolution.
 - Foreign keys reference parent surrogate key structure  
 - Expression AST builds deterministic hashing expressions
 
+### 🧩 2.4 RAWCORE & HISTORY (HIST)
+
+#### 🔎 RAWCORE:
+- historizable layer, source for *_hist.  
+- historize=True controls if a _hist-dataset is generated.
+
+#### 🔎 HISTORY (*_hist):
+- lives in the same TargetSchema as rawcore.  
+- naming: `<rawcore_name>_hist`.  
+- generated automatically and fully system-managed.  
+- schema structure:  
+  - `<rawcore_name>_hist_key` (history SK),  
+  - 1:1 copy of rawcore columns (including rawcore SK),  
+  - version_started_at, version_ended_at, version_state, load_run_id.  
+- linkage:  
+  - dataset-level via lineage_key (rename-safe),
+  - column-level via TargetColumnInput from rawcore → hist.
+- current limitation:
+  - no independent load SQL for *_hist yet; previews return a comment instead of SQL.
+
 ---
 
 ## 🔧 3. Column Expression Generation
@@ -203,6 +223,7 @@ The generation logic is the heart of elevata:
 - Logical Plan formalizes the operation  
 - Expression AST encodes column semantics  
 - Dialect renders valid SQL  
+- Deterministic generation of Historization datasets (no manual maintenance)  
 
 This architecture supports multiple SQL backends without changing metadata or Logical Plans.
 

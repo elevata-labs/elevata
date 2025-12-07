@@ -30,8 +30,8 @@ Contact: <https://github.com/elevata-labs/elevata>.
     - URL name: 'api_targetcolumn_rename'
 -->
 
-{% with schema_short=col.target_dataset.target_schema.short_name %}
-  {% if col.surrogate_key_column or col.foreign_key_column or schema_short in "raw,stage" %}
+{% with schema_short=col.target_dataset.target_schema.short_name dataset_name=col.target_dataset.target_dataset_name %}
+  {% if col.surrogate_key_column or col.foreign_key_column or schema_short == "raw" or schema_short == "stage" or schema_short == "rawcore" and dataset_name|slice:"-5:" == "_hist" %}
     <div id="tc-cell-{{ col.id }}" class="form-control-plaintext d-flex align-items-center gap-1">
       <span>{{ col.target_column_name }}</span>
       <i class="bi bi-ban text-muted" title="System-managed: rename not allowed"></i>
