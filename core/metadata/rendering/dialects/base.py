@@ -35,12 +35,37 @@ class SqlDialect(ABC):
   Implementations translate Expr / LogicalSelect into final SQL strings.
   """
 
+  def get_execution_engine(self, system) -> "BaseExecutionEngine":
+    raise NotImplementedError(
+      f"{self.__class__.__name__} does not provide an execution engine."
+    )
+
   @abstractmethod
   def quote_ident(self, name: str) -> str:
     """
     Quote an identifier (schema, table, column) according to the dialect.
     """
     raise NotImplementedError
+
+
+  def should_quote(self, name: str) -> bool:
+    """
+    Decide whether identifier must be quoted.
+    Rules:
+      - empty or None → quote
+      - contains whitespace or not alnum/_ → quote
+      - starts with digit → quote
+      - all-uppercase/lowercase safe sql keywords → quote
+    """
+    if not name:
+      return True
+    if name[0].isdigit():
+      return True
+    if not name.replace("_", "").isalnum():
+      return True
+    # future: check dialect keyword lists
+    return False
+
 
   @abstractmethod
   def render_expr(self, expr: Expr) -> str:
@@ -76,7 +101,8 @@ class SqlDialect(ABC):
   @property
   def supports_merge(self) -> bool:
     """Whether this dialect supports a native MERGE statement."""
-    return True  # DuckDB, MSSQL, Snowflake etc. → True; others may override to False
+    # Dialects must explicitly opt in by overriding this property.
+    return False
 
   @property
   def supports_delete_detection(self) -> bool:
@@ -84,26 +110,36 @@ class SqlDialect(ABC):
     Whether delete detection is supported as a first-class operation
     (either via DELETE ... NOT EXISTS, DELETE USING, etc.).
     """
-    return True
+    # Dialects must explicitly opt in by overriding this property.
+    return False
 
 
   # -------------------------------------------------------------------------
   # Generic helpers built on top of quote_ident
   # -------------------------------------------------------------------------
 
-  def quote_table(self, schema: str | None, name: str) -> str:
+  def render_identifier(self, name: str) -> str:
     """
-    Quote a table name with optional schema, e.g.:
+    Apply quoting only when necessary.
+    """
+    if self.should_quote(name):
+      return self.quote_ident(name)
+    return name
 
-      quote_table("rawcore", "customer") -> "rawcore"."customer"
-      quote_table(None, "customer")      -> "customer"
+
+  def render_table_identifier(self, schema: str | None, name: str) -> str:
     """
-    name_sql = self.quote_ident(name)
+    Render a table identifier with optional schema.
+
+      render_table_identifier("rawcore", "customer") -> rawcore.customer (quoted as needed)
+      render_table_identifier(None, "customer")      -> customer (quoted as needed)
+    """
+    name_sql = self.render_identifier(name)
     if schema:
-      schema_sql = self.quote_ident(schema)
+      schema_sql = self.render_identifier(schema)
       return f"{schema_sql}.{name_sql}"
     return name_sql
-  
+
 
   def literal(self, value: Any) -> str:
     """
@@ -146,7 +182,7 @@ class SqlDialect(ABC):
       render_table_alias("rawcore", "customer", "c")
       -> "rawcore"."customer" AS c
     """
-    base = self.quote_table(schema, name)
+    base = self.render_table_identifier(schema, name)
     if alias:
       return f"{base} AS {alias}"
     return base
@@ -235,4 +271,9 @@ class SqlDialect(ABC):
     between target (alias t) and stage (alias s), e.g.:
       ['t."customer_id" = s."customer_id"', 't."partner_id" = s."partner_id"']
     """
+    raise NotImplementedError
+  
+
+class BaseExecutionEngine:
+  def execute(self, sql: str) -> int | None:
     raise NotImplementedError

@@ -31,13 +31,17 @@ from metadata.rendering.load_sql import (
 
 class DummyDialectNoMerge:
   supports_merge = False
+  supports_delete_detection = False
 
-  def quote_ident(self, name: str) -> str:
-    return f'"{name}"'
+  def render_identifier(self, name: str) -> str:
+    # For tests we keep it simple: no quoting logic, just return the name
+    return name
 
-  def quote_table(self, schema: str, table: str) -> str:
-    return f'{schema}."{table}"'
-
+  def render_table_identifier(self, schema: str | None, name: str) -> str:
+    if schema:
+      return f"{schema}.{name}"
+    return name
+  
 class DummyDialectWithMerge(DummyDialectNoMerge):
   supports_merge = True
 
@@ -85,10 +89,11 @@ def test_update_then_insert_sql_builds_expected_structure():
   assert "WHERE NOT EXISTS" in sql
 
   # Join predicate based on business key
-  assert 't."bk1" = s."bk1"' in sql
+  assert 't.bk1 = s."bk1"' in sql
 
   # Non-key column updated via expression
-  assert ' "col_a" = UPPER(s."col_a")' in sql or '\"col_a\" = UPPER' in sql
+  assert 'col_a = UPPER(s."col_a")' in sql
+
 
 def test_render_merge_sql_uses_fallback_when_merge_not_supported(monkeypatch):
   # Fake rawcore td
@@ -136,8 +141,8 @@ def test_render_merge_sql_uses_fallback_when_merge_not_supported(monkeypatch):
 
   # No MERGE, but UPDATE + INSERT
   assert "MERGE INTO" not in sql
-  assert "UPDATE rawcore.\"customer\" AS t" in sql
-  assert "INSERT INTO rawcore.\"customer\"" in sql
+  assert "UPDATE rawcore.customer AS t" in sql
+  assert "INSERT INTO rawcore.customer" in sql
 
 
 def test_render_merge_sql_uses_native_merge_when_supported(monkeypatch):
@@ -180,7 +185,7 @@ def test_render_merge_sql_uses_native_merge_when_supported(monkeypatch):
   sql = render_merge_sql(td, dialect)
 
   # Now we expect a MERGE statement
-  assert sql.startswith("MERGE INTO rawcore.\"customer\" AS t")
-  assert "USING stage.\"customer_stage\" AS s" in sql
+  assert sql.startswith("MERGE INTO rawcore.customer AS t")
+  assert "USING stage.customer_stage AS s" in sql
   assert "WHEN MATCHED THEN" in sql
   assert "WHEN NOT MATCHED THEN" in sql

@@ -29,15 +29,28 @@ from metadata.rendering.dialects.duckdb import DuckDBDialect
 
 
 class DummyDialectNoDelete:
-  """Minimal dialect stub without delete detection capability."""
+  """
+  Minimal dialect stub without delete detection capability.
+
+  Important: supports_delete_detection = False so that
+  render_delete_missing_rows_sql raises NotImplementedError.
+  """
   supports_delete_detection = False
+
+  def render_identifier(self, name: str) -> str:
+    # For tests we keep it simple: no quoting logic, just return the name
+    return name
+
+  def render_table_identifier(self, schema: str | None, name: str) -> str:
+    if schema:
+      return f"{schema}.{name}"
+    return name
 
 
 class FakeTargetSchema:
   def __init__(self, schema_name: str, short_name: str):
     self.schema_name = schema_name
     self.short_name = short_name
-
 
 class FakeTargetDataset:
   def __init__(
@@ -54,6 +67,17 @@ class FakeTargetDataset:
     self.natural_key_fields = natural_key_fields or []
     # keep minimal attributes that render_delete_missing_rows_sql expects
     self.incremental_source = None
+
+    # 🔹 NEW: minimal RelatedManager-Stubs für input_links
+    class FakeRelatedManager:
+      def select_related(self, *args, **kwargs):
+        return self
+      def filter(self, *args, **kwargs):
+        return self
+      def first(self):
+        return None
+
+    self.input_links = FakeRelatedManager()
 
 
 def test_render_delete_missing_rows_sql_raises_if_dialect_has_no_delete_detection():
@@ -107,3 +131,147 @@ def test_render_delete_missing_rows_sql_returns_comment_for_non_rawcore(monkeypa
   assert "handle_deletes=True" in sql
   assert "only implemented for rawcore" in sql
   assert "No delete detection SQL generated" in sql
+
+
+def test_render_delete_missing_rows_sql_returns_comment_if_no_incremental_source(monkeypatch):
+  """
+  If handle_deletes is active but incremental_source is not set,
+  the function should return a diagnostic comment instead of DELETE SQL.
+  """
+  from metadata.rendering import load_sql
+
+  td = FakeTargetDataset()
+  dialect = DuckDBDialect()
+
+  # Merge mode + handle_deletes=True so we hit the inner guards
+  plan = SimpleNamespace(mode="merge", handle_deletes=True)
+  monkeypatch.setattr(load_sql, "build_load_plan", lambda _td: plan)
+
+  # Simulate a valid scope filter so we do not exit earlier
+  monkeypatch.setattr(
+    load_sql,
+    "_build_incremental_scope_filter_for_target",
+    lambda _td: "1 = 1",
+  )
+
+  # incremental_source stays None (default in FakeTargetDataset)
+
+  sql = render_delete_missing_rows_sql(td, dialect)
+
+  assert "incremental_source is not set" in sql
+  assert "No delete detection SQL generated" in sql
+
+
+class DummyDialectWithDelete:
+  """
+  Dialect stub *with* delete detection support.
+
+  This mirrors the signature used in load_sql.render_delete_missing_rows_sql:
+  we expect keyword arguments target_schema, target_table, stage_schema,
+  stage_table, join_predicates, scope_filter.
+  """
+
+  def __init__(self):
+    self.supports_delete_detection = True
+    self.calls: list[dict] = []
+
+  def render_identifier(self, name: str) -> str:
+    # For tests: no quoting logic
+    return name
+
+  def render_table_identifier(self, schema: str | None, name: str) -> str:
+    if schema:
+      return f"{schema}.{name}"
+    return name
+
+  def render_delete_detection_statement(
+    self,
+    *,
+    target_schema: str,
+    target_table: str,
+    stage_schema: str,
+    stage_table: str,
+    join_predicates,
+    scope_filter: str,
+  ) -> str:
+    """Record call parameters and return dummy SQL."""
+    self.calls.append(
+      {
+        "target_schema": target_schema,
+        "target_table": target_table,
+        "stage_schema": stage_schema,
+        "stage_table": stage_table,
+        "join_predicates": list(join_predicates),
+        "scope_filter": scope_filter,
+      }
+    )
+    return "-- dummy delete detection sql"
+
+
+def test_render_delete_missing_rows_sql_happy_path_calls_dialect(monkeypatch):
+  """
+  Happy-path integration test: when all preconditions are met,
+  render_delete_missing_rows_sql should delegate to the dialect and
+  return its SQL string.
+  """
+  from metadata.rendering import load_sql
+
+  td = FakeTargetDataset(
+    schema_name="dw_rawcore",
+    schema_short_name="rawcore",
+    dataset_name="rc_customer",
+    natural_key_fields=["customer_id"],
+  )
+  dialect = DummyDialectWithDelete()
+
+  monkeypatch.setattr(
+    load_sql,
+    "_get_rendered_column_exprs_for_target",
+    lambda _td, _dialect: {"customer_id": "s.customer_id"},
+  )
+
+  class StageSchema:
+    def __init__(self):
+      self.schema_name = "stage"
+      self.short_name = "stage"
+
+  class StageTD:
+    def __init__(self):
+      self.target_schema = StageSchema()
+      self.target_dataset_name = "stg_customer"
+
+  stage_td = StageTD()
+  td.incremental_source = stage_td
+
+  # Merge mode with delete handling enabled
+  plan = SimpleNamespace(mode="merge", handle_deletes=True)
+  monkeypatch.setattr(load_sql, "build_load_plan", lambda _td: plan)
+
+  # Minimal scope filter
+  monkeypatch.setattr(
+    load_sql,
+    "_build_incremental_scope_filter_for_target",
+    lambda _td: "(t.load_ts > {{DELTA_CUTOFF}})",
+  )
+
+  # Stage upstream lookup
+  monkeypatch.setattr(
+    load_sql,
+    "_find_stage_upstream_for_rawcore",
+    lambda _td: stage_td,
+  )
+
+  sql = render_delete_missing_rows_sql(td, dialect)
+
+  # The SQL comes directly from DummyDialectWithDelete
+  assert "-- dummy delete detection sql" in sql
+  assert len(dialect.calls) == 1
+
+  call = dialect.calls[0]
+  assert call["target_schema"] == "dw_rawcore"
+  assert call["target_table"] == "rc_customer"
+  assert call["stage_schema"] == "stage"
+  assert call["stage_table"] == "stg_customer"
+  assert "(t.load_ts > {{DELTA_CUTOFF}})" in call["scope_filter"]
+  # One join predicate for our single natural key
+  assert call["join_predicates"] == ["t.customer_id = s.customer_id"]

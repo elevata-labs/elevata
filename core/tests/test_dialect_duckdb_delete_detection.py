@@ -45,7 +45,7 @@ def test_render_delete_detection_statement_basic():
   assert "DELETE FROM" in normalized
   assert "rawcore" in normalized
   assert "rc_customer" in normalized
-  assert '"stage"."stg_customer" AS s' in normalized
+  assert "stage.stg_customer AS s" in normalized
 
   # Business key join
   assert 't."customer_id" = s."customer_id"' in normalized

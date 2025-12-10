@@ -49,6 +49,21 @@ class MssqlDialect(DuckDBDialect):
 
   DIALECT_NAME = "mssql"
 
+
+  # ---------------------------------------------------------------------------
+  # Capabilities
+  # ---------------------------------------------------------------------------
+
+  @property
+  def supports_merge(self) -> bool:
+    """SQL Server supports native MERGE statements."""
+    return True
+
+  @property
+  def supports_delete_detection(self) -> bool:
+    """Delete detection is implemented via DELETE + NOT EXISTS."""
+    return True
+
   # ---------------------------------------------------------------------------
   # Identifier quoting
   # ---------------------------------------------------------------------------
@@ -192,11 +207,10 @@ class MssqlDialect(DuckDBDialect):
     Note:
       OBJECT_ID('<schema>.<table>', 'U') is used to detect existing tables.
     """
-    full = self.quote_table(schema, table)
-    object_id = f"{schema}.{table}" if schema else table
+    full = self.render_table_identifier(schema, table)
 
     return (
-      f"IF OBJECT_ID('{object_id}', 'U') IS NOT NULL\n"
+      f"IF OBJECT_ID('{full}', 'U') IS NOT NULL\n"
       f"  DROP TABLE {full};\n"
       f"SELECT * INTO {full}\n"
       f"FROM (\n{select_sql}\n) AS src;"
@@ -206,5 +220,5 @@ class MssqlDialect(DuckDBDialect):
     """
     Standard INSERT INTO ... <select> for SQL Server.
     """
-    full = self.quote_table(schema, table)
+    full = self.render_table_identifier(schema, table)
     return f"INSERT INTO {full}\n{select_sql}"

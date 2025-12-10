@@ -54,9 +54,20 @@ def build_load_plan(target_dataset: TargetDataset) -> LoadPlan:
 
   This does NOT generate any SQL yet, it only describes the load mode.
   """
-
+  schema = getattr(target_dataset, "target_schema", None)
+  schema_short = getattr(schema, "short_name", None)
+  dataset_name = getattr(target_dataset, "target_dataset_name", "")
   mat_type = getattr(target_dataset, "materialization_type", "table")
   strategy = getattr(target_dataset, "incremental_strategy", "full")
+
+  # 0) History datasets: no dedicated load strategy yet.
+  # They will eventually get their own history load mode.
+  if schema_short == "rawcore" and dataset_name.endswith("_hist"):
+    return LoadPlan(
+      mode="full",
+      handle_deletes=False,
+      historize=False,
+    )
 
   # 1) Views / logical models: no separate load step, just SELECT/VIEW
   if mat_type == "view":
@@ -75,6 +86,7 @@ def build_load_plan(target_dataset: TargetDataset) -> LoadPlan:
     )
 
   if strategy == "append":
+    # Append-only loads do not perform delete detection or updates.
     return LoadPlan(
       mode="append",
       handle_deletes=False,
@@ -82,10 +94,24 @@ def build_load_plan(target_dataset: TargetDataset) -> LoadPlan:
     )
 
   if strategy == "merge":
+    # Merge is only meaningful for rawcore with keys and incremental_source.
+    natural_keys = getattr(target_dataset, "natural_key_fields", None)
+    has_keys = bool(natural_keys)
+    incremental_source = getattr(target_dataset, "incremental_source", None)
+    has_source = incremental_source is not None
+
+    if schema_short == "rawcore" and has_keys and has_source:
+      return LoadPlan(
+        mode="merge",
+        handle_deletes=bool(getattr(target_dataset, "handle_deletes", False)),
+        historize=bool(getattr(target_dataset, "historize", False)),
+      )
+
+    # Fallback if prerequisites for merge are not met
     return LoadPlan(
-      mode="merge",
-      handle_deletes=bool(getattr(target_dataset, "handle_deletes", False)),
-      historize=bool(getattr(target_dataset, "historize", False)),
+      mode="full",
+      handle_deletes=False,
+      historize=False,
     )
 
   if strategy == "snapshot":

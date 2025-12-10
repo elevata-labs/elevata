@@ -36,10 +36,10 @@ Other modes (append, snapshot) still return descriptive SQL comments
 as placeholders.
 """
 
-from typing import Sequence
+from typing import Sequence, Any, Dict
 import re
 
-from metadata.models import TargetDataset, TargetColumn
+from metadata.models import TargetDataset, TargetColumn, TargetColumnInput
 from metadata.rendering.load_planner import build_load_plan
 from metadata.rendering.renderer import render_select_for_target
 from metadata.rendering.builder import build_logical_select_for_target
@@ -154,38 +154,10 @@ def _build_incremental_scope_filter_for_target(td: TargetDataset) -> str | None:
   return " ".join(expr.split())
 
 
-def _get_surrogate_expressions_for_target(td: TargetDataset, dialect) -> dict[str, str]:
-  """
-  Return a mapping of target_column_name -> rendered surrogate key expression
-  for all surrogate_key_columns of this target dataset.
-
-  The expressions are taken from the same logical SELECT that is used for
-  preview / full load, so the semantics stay consistent.
-  """
-  # Find surrogate-key columns (by target name)
-  sk_names = set(
-    td.target_columns
-    .filter(surrogate_key_column=True, surrogate_expression__isnull=False)
-    .values_list("target_column_name", flat=True)
-  )
-  if not sk_names:
-    return {}
-
-  plan = build_logical_select_for_target(td)
-  if not isinstance(plan, LogicalSelect):
-    # For rawcore we expect a single SELECT, no UNION
-    # (if this ever changes, we should revisit this helper).
-    raise TypeError(
-      f"Expected LogicalSelect for {td.target_dataset_name}, "
-      f"got {type(plan).__name__}."
-    )
-
-  mapping: dict[str, str] = {}
-  for item in plan.select_list:
-    if item.alias in sk_names:
-      mapping[item.alias] = dialect.render_expr(item.expr)
-
-  return mapping
+def get_rawcore_name_from_hist(hist_name: str) -> str:
+  if hist_name and hist_name.endswith("_hist"):
+    return hist_name[:-5]
+  return hist_name
 
 
 def render_delete_missing_rows_sql(td: TargetDataset, dialect) -> str | None:
@@ -263,7 +235,7 @@ def render_delete_missing_rows_sql(td: TargetDataset, dialect) -> str | None:
 
   target_alias = "t"
   source_alias = "s"
-  q = dialect.quote_ident
+  q = dialect.render_identifier
 
   join_predicates: list[str] = []
   for col_name in key_cols:
@@ -356,15 +328,15 @@ def render_merge_sql(td: TargetDataset, dialect) -> str:
   # Resolve fully-qualified target and source table names
   target_schema_name = td.target_schema.schema_name
   target_table_name = td.target_dataset_name
-  target_full = dialect.quote_table(target_schema_name, target_table_name)
+  target_full = dialect.render_table_identifier(target_schema_name, target_table_name)
   target_alias = "t"
 
   source_schema_name = stage_td.target_schema.schema_name
   source_table_name = stage_td.target_dataset_name
-  source_full = dialect.quote_table(source_schema_name, source_table_name)
+  source_full = dialect.render_table_identifier(source_schema_name, source_table_name)
   source_alias = "s"
 
-  q = dialect.quote_ident
+  q = dialect.render_identifier
 
   # Business key columns shared between stage and rawcore
   key_cols = td.natural_key_fields
@@ -481,7 +453,7 @@ def _render_update_then_insert_sql(
        SELECT expressions FROM source s
        WHERE NOT EXISTS (SELECT 1 FROM target t WHERE business-key join)
   """
-  q = dialect.quote_ident
+  q = dialect.render_identifier
 
   # Build join predicate based on business key
   join_predicates: list[str] = []
@@ -567,26 +539,381 @@ def render_snapshot_sql(td: TargetDataset, dialect) -> str:
   )
 
 
+def render_hist_incremental_sql(td: TargetDataset, dialect) -> str:
+  """
+  Renderer for *_hist datasets.
+
+  Returns:
+    - a descriptive SCD Type 2 comment block,
+    - plus *real* SQL for changed rows (UPDATE),
+    - plus *real* SQL for deleted business keys (UPDATE),
+    - and, for real TargetDataset instances, INSERT statements
+      for changed and new business keys.
+  """
+  schema = getattr(td, "target_schema", None)
+  schema_name = getattr(schema, "schema_name", "<unknown_schema>")
+  hist_name = getattr(td, "target_dataset_name", "<unknown_table>")
+
+  # rawcore_name may be needed later for diagnostic or routing purposes.
+  rawcore_name = get_rawcore_name_from_hist(hist_name)
+
+  comment = (
+    f"-- History load for {schema_name}.{hist_name} is not implemented yet.\n"
+    f"-- Planned SCD Type 2 semantics based on:\n"
+    f"--   * surrogate key for history rows\n"
+    f"--   * row_hash for change detection\n"
+    f"--   * version_started_at / version_ended_at\n"
+    f"--   * version_state ('new', 'changed', 'deleted')\n"
+    f"--   * load_run_id and load_timestamp provided by executor\n"
+    f"--\n"
+    f"-- Real SQL for new, changed and deleted business keys follows below.\n"
+  )
+
+  changed_update_sql = render_hist_changed_update_sql(td, dialect)
+  delete_sql = render_hist_delete_sql(td, dialect)
+
+  parts: list[str] = [
+    comment,
+    "",
+    changed_update_sql,
+    "",
+    delete_sql,
+  ]
+
+  # only real TargetDataset instances (with int-PK) get the INSERT blocks.
+  has_pk = isinstance(getattr(td, "id", None), int)
+
+  if has_pk:
+    changed_insert_sql = render_hist_changed_insert_sql(td, dialect)
+    new_insert_sql = render_hist_new_insert_sql(td, dialect)
+    parts.extend([
+      "",
+      changed_insert_sql,
+      "",
+      new_insert_sql,
+    ])
+  else:
+    # Dummy context (e.g. tests with DummyHistTargetDataset):
+    # No ORM access, only append a remark.
+    parts.append(
+      "\n-- INSERT statements for changed/new rows are omitted "
+      "because this is not a real TargetDataset instance.\n"
+    )
+
+  return "\n".join(parts) + "\n"
+
+
+def render_hist_delete_sql(td: TargetDataset, dialect) -> str:
+  """
+  Generate the real SQL statement for marking deleted rows
+  in the history table. This is the first active piece of the
+  SCD Type 2 pipeline.
+  """
+  schema = td.target_schema
+  schema_name = schema.schema_name
+  hist_name = td.target_dataset_name
+
+  if not hist_name.endswith("_hist"):
+    raise ValueError("render_hist_delete_sql called for non-hist dataset.")
+
+  # Corresponding rawcore name
+  rawcore_name = get_rawcore_name_from_hist(hist_name)
+
+  # Surrogate key name is always: <rawcorename>_key
+  sk_name = dialect.render_identifier(f"{rawcore_name}_key")
+
+  return (
+    f"UPDATE {dialect.render_table_identifier(schema_name, hist_name)} AS h\n"
+    f"SET\n"
+    f"  version_ended_at = {{ load_timestamp }},\n"
+    f"  version_state    = 'deleted',\n"
+    f"  load_run_id      = {{ load_run_id }}\n"
+    f"WHERE h.version_ended_at IS NULL\n"
+    f"  AND NOT EXISTS (\n"
+    f"    SELECT 1\n"
+    f"    FROM {dialect.render_table_identifier(schema_name, rawcore_name)} AS r\n"
+    f"    WHERE r.{sk_name} = h.{sk_name}\n"
+    f"  );"
+  )
+
+
+def render_hist_changed_update_sql(td: TargetDataset, dialect) -> str:
+  """
+  Generate the real SQL statement for closing changed rows in the
+  history table (same business key, different row_hash).
+  """
+  schema = td.target_schema
+  schema_name = schema.schema_name
+  hist_name = td.target_dataset_name
+
+  if not hist_name.endswith("_hist"):
+    raise ValueError("render_hist_changed_update_sql called for non-hist dataset.")
+
+  # Corresponding rawcore table and its surrogate key
+  rawcore_name = get_rawcore_name_from_hist(hist_name)
+  sk_name = dialect.render_identifier(f"{rawcore_name}_key")
+
+  return (
+    f"UPDATE {dialect.render_table_identifier(schema_name, hist_name)} AS h\n"
+    f"SET\n"
+    f"  version_ended_at = {{ load_timestamp }},\n"
+    f"  version_state    = 'changed',\n"
+    f"  load_run_id      = {{ load_run_id }}\n"
+    f"WHERE h.version_ended_at IS NULL\n"
+    f"  AND EXISTS (\n"
+    f"    SELECT 1\n"
+    f"    FROM {dialect.render_table_identifier(schema_name, rawcore_name)} AS r\n"
+    f"    WHERE r.{sk_name} = h.{sk_name}\n"
+    f"      AND r.row_hash <> h.row_hash\n"
+    f"  );"
+  )
+
+def _get_hist_insert_columns(td: TargetDataset, dialect) -> tuple[list[str], list[str]]:
+  """
+  Returns a pair:
+    (history_table_columns, rawcore_select_columns)
+  for INSERT INTO ... SELECT ...
+
+  Left side (history_table_columns):
+    - Already rendered column identifiers for the history table
+      (quoted as needed).
+
+  Right side (rawcore_select_columns):
+    - SQL expressions to select from the rawcore alias (usually "r"),
+      using dialect-safe identifier rendering.
+  """
+  hist_tn = td.target_dataset_name
+  if not hist_tn.endswith("_hist"):
+    raise ValueError("_get_hist_insert_columns called for non-hist dataset")
+
+  rawcore_name = get_rawcore_name_from_hist(hist_tn)
+  sk_name_hist = f"{rawcore_name}_hist_key"
+  sk_name_raw = f"{rawcore_name}_key"
+
+  q = dialect.render_identifier
+  raw_alias = "r"
+
+  hist_cols: list[str] = []
+  rawcore_cols: list[str] = []
+
+  # 1. History SK first → target column name on the hist table
+  hist_cols.append(q(sk_name_hist))
+  rawcore_cols.append(f"{raw_alias}.{q(sk_name_raw)}")
+
+  # 2. Rawcore columns via lineage (all non-SK upstream columns)
+  rawcore_inputs = (
+    TargetColumnInput.objects
+    .filter(target_column__target_dataset=td)
+    .select_related("upstream_target_column")
+    .order_by("target_column__ordinal_position")
+  )
+
+  for tci in rawcore_inputs:
+    rc_col = tci.upstream_target_column
+    if rc_col is not None and not rc_col.surrogate_key_column:
+      col_name = rc_col.target_column_name
+      hist_cols.append(q(col_name))
+      rawcore_cols.append(f"{raw_alias}.{q(col_name)}")
+
+  # 3. row_hash (persists changes)
+  hist_cols.append(q("row_hash"))
+  rawcore_cols.append(f"{raw_alias}.{q('row_hash')}")
+
+  # 4. Versioning metadata (only left side, right side = constants)
+  hist_cols.extend([
+    q("version_started_at"),
+    q("version_ended_at"),
+    q("version_state"),
+    q("load_run_id"),
+  ])
+
+  rawcore_cols.extend([
+    "{{ load_timestamp }}",
+    "NULL",
+    "'changed'",  # default for changed path
+    "{{ load_run_id }}",
+  ])
+
+  return hist_cols, rawcore_cols
+
+
+def render_hist_changed_insert_sql(td: TargetDataset, dialect) -> str:
+  schema = td.target_schema
+  hist_name = td.target_dataset_name
+  schema_name = schema.schema_name
+
+  rawcore_name = get_rawcore_name_from_hist(hist_name)
+  sk_name_raw = dialect.render_identifier(f"{rawcore_name}_key")
+
+  hist_cols, rawcore_cols = _get_hist_insert_columns(td, dialect)
+
+  return (
+    f"INSERT INTO {dialect.render_table_identifier(schema_name, hist_name)} (\n"
+    f"  " + ",\n  ".join(hist_cols) + "\n"
+    f")\n"
+    f"SELECT\n"
+    f"  " + ",\n  ".join(rawcore_cols) + "\n"
+    f"FROM {dialect.render_table_identifier(schema_name, rawcore_name)} AS r\n"
+    f"WHERE EXISTS (\n"
+    f"  SELECT 1\n"
+    f"  FROM {dialect.render_table_identifier(schema_name, hist_name)} AS h\n"
+    f"  WHERE h.version_ended_at = {{ load_timestamp }}\n"
+    f"    AND h.version_state = 'changed'\n"
+    f"    AND h.{sk_name_raw} = r.{sk_name_raw}\n"
+    f");"
+  )
+
+
+def render_hist_new_insert_sql(td: TargetDataset, dialect) -> str:
+  schema = td.target_schema
+  hist_name = td.target_dataset_name
+  schema_name = schema.schema_name
+
+  rawcore_name = get_rawcore_name_from_hist(hist_name)
+  sk_name_raw = dialect.render_identifier(f"{rawcore_name}_key")
+
+  hist_cols, rawcore_cols = _get_hist_insert_columns(td, dialect)
+
+  # last col → override state from 'changed'
+  rawcore_cols = list(rawcore_cols)
+  rawcore_cols[-2] = "'new'"  # version_state
+
+  return (
+    f"INSERT INTO {dialect.render_table_identifier(schema_name, hist_name)} (\n"
+    f"  " + ",\n  ".join(hist_cols) + "\n"
+    f")\n"
+    f"SELECT\n"
+    f"  " + ",\n  ".join(rawcore_cols) + "\n"
+    f"FROM {dialect.render_table_identifier(schema_name, rawcore_name)} AS r\n"
+    f"WHERE NOT EXISTS (\n"
+    f"  SELECT 1\n"
+    f"  FROM {dialect.render_table_identifier(schema_name, hist_name)} AS h\n"
+    f"  WHERE h.{sk_name_raw} = r.{sk_name_raw}\n"
+    f");"
+  )
+
+
+def render_hist_changed_insert_template(td: TargetDataset) -> str:
+  """
+  Comment-only template for the 'insert new versions for changed rows'
+  part of the SCD Type 2 history load.
+
+  This is *not* executed yet, but documents the intended SQL pattern.
+  """
+  schema = td.target_schema
+  schema_name = schema.schema_name
+  hist_name = td.target_dataset_name
+
+  if not hist_name.endswith("_hist"):
+    raise ValueError("render_hist_changed_insert_template called for non-hist dataset.")
+
+  rawcore_name = hist_name[:-5]
+  sk_name = f"{rawcore_name}_key"
+
+  return (
+    f"--\n"
+    f"-- 2) Insert new *versions* for changed rows:\n"
+    f"--\n"
+    f"-- INSERT INTO {schema_name}.{hist_name} (\n"
+    f"--   /* TODO: history-row SK column, e.g. {rawcore_name}_hist_key */\n"
+    f"--   /* TODO: all rawcore columns (including {sk_name}, row_hash, ...) */\n"
+    f"--   /* TODO: version_started_at, version_ended_at, version_state, load_run_id */\n"
+    f"-- )\n"
+    f"-- SELECT\n"
+    f"--   /* TODO: history SK expression based on ({sk_name}, version_started_at) */\n"
+    f"--   /* TODO: r.* columns in the right order */\n"
+    f"--   {{ load_timestamp }}      AS version_started_at,\n"
+    f"--   NULL                      AS version_ended_at,\n"
+    f"--   'changed'                 AS version_state,\n"
+    f"--   {{ load_run_id }}         AS load_run_id\n"
+    f"-- FROM {schema_name}.{rawcore_name} AS r\n"
+    f"-- WHERE EXISTS (\n"
+    f"--   SELECT 1\n"
+    f"--   FROM {schema_name}.{hist_name} AS h\n"
+    f"--   WHERE h.version_ended_at = {{ load_timestamp }}\n"
+    f"--     AND h.version_state    = 'changed'\n"
+    f"--     AND h.{sk_name}        = r.{sk_name}\n"
+    f"-- );\n"
+  )
+
+
+def build_load_run_summary(
+  td: TargetDataset,
+  dialect: Any,
+  plan: Any | None = None,
+) -> Dict[str, Any]:
+  """
+  Build a small, serializable summary of how this dataset will be loaded.
+
+  This is used by the elevata_load command for logging and debug output.
+  """
+  if plan is None:
+    plan = build_load_plan(td)
+
+  schema = getattr(td.target_schema, "short_name", None) or getattr(
+    td.target_schema,
+    "schema_name",
+    None,
+  )
+
+  if dialect is None:
+    dialect_name = "<unknown>"
+  else:
+    dialect_name = getattr(
+      dialect,
+      "DIALECT_NAME",
+      dialect.__class__.__name__.lower(),
+    )
+
+  return {
+    "schema": schema,
+    "dataset": td.target_dataset_name,
+    "mode": getattr(plan, "mode", None),
+    "handle_deletes": bool(getattr(plan, "handle_deletes", False)),
+    "historize": bool(getattr(plan, "historize", False)),
+    "dialect": dialect_name,
+  }
+
+
+def format_load_run_summary(summary: Dict[str, Any]) -> str:
+  """
+  Return a compact, human-readable one-line description of a load run.
+
+  Example:
+    [duckdb] rawcore.rc_customer mode=merge, deletes=True, historize=False
+  """
+  schema = summary.get("schema") or "?"
+  dataset = summary.get("dataset") or "?"
+  mode = summary.get("mode") or "?"
+  dialect = summary.get("dialect") or "?"
+  handle_deletes = bool(summary.get("handle_deletes"))
+  historize = bool(summary.get("historize"))
+
+  return (
+    f"[{dialect}] {schema}.{dataset} "
+    f"mode={mode}, deletes={handle_deletes}, historize={historize}"
+  )
+
+
 def render_load_sql_for_target(td: TargetDataset, dialect) -> str:
   """
   High-level entry point for load SQL generation.
 
   Uses the LoadPlan to decide which concrete renderer to call.
   """
+
+  # Special case: history datasets – use dedicated history renderer.
+  # Guarded with getattr so DummyTargetDataset in tests still works.
   schema = getattr(td, "target_schema", None)
   schema_short = getattr(schema, "short_name", None)
   name = getattr(td, "target_dataset_name", None)
 
-  # History datasets: load SQL not implemented yet.
   if (
     schema_short == "rawcore"
     and isinstance(name, str)
     and name.endswith("_hist")
   ):
-    return (
-      f"-- Load SQL for history dataset {name} is not implemented yet.\n"
-      f"-- Load the corresponding rawcore table instead.\n"
-    )
+    return render_hist_incremental_sql(td, dialect)
 
   plan = build_load_plan(td)
 
@@ -611,4 +938,3 @@ def render_load_sql_for_target(td: TargetDataset, dialect) -> str:
     f"-- Unsupported load mode '{plan.mode}' for {td.target_dataset_name}.\n"
     f"-- Please check incremental_strategy and materialization_type."
   )
-

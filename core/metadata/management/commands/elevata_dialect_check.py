@@ -30,7 +30,7 @@ from django.core.management.base import BaseCommand
 
 from metadata.rendering.dialects import get_active_dialect
 from metadata.rendering.dialects.dialect_factory import get_available_dialect_names
-
+from metadata.rendering.dialects import diagnostics as diag_mod
 
 CheckFunc = Callable[[Any], None]
 
@@ -109,12 +109,16 @@ class Command(BaseCommand):
 
     for name in dialect_names:
       dialect = get_active_dialect(name)
+      diag = diag_mod.collect_dialect_diagnostics(dialect)
 
       self.stdout.write("")
       self.stdout.write(self.style.HTTP_INFO(f"Dialect: {name} ({dialect.__class__.__name__})"))
-      self.stdout.write(f"  supports_merge           = {getattr(dialect, 'supports_merge', False)}")
+      self.stdout.write(f"  supports_merge                 {getattr(dialect, 'supports_merge', False)}")
       self.stdout.write(
-        f"  supports_delete_detection = {getattr(dialect, 'supports_delete_detection', False)}"
+        f"  supports_delete_detection      {getattr(dialect, 'supports_delete_detection', False)}"
+      )
+      self.stdout.write(
+        f"  supports_hash_expression       {diag.supports_hash_expression}"
       )
 
       # Prepare some sample values

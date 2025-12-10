@@ -27,9 +27,19 @@ import re
 import datetime
 from decimal import Decimal
 
-from .base import SqlDialect
+from .base import SqlDialect, BaseExecutionEngine
 from ..expr import Expr, Cast, Concat, Coalesce, ColumnRef, FuncCall, Literal, RawSql, WindowFunction, WindowSpec
 from ..logical_plan import LogicalSelect, SelectItem, SourceTable, Join, SubquerySource
+
+
+class DuckDbExecutionEngine(BaseExecutionEngine):
+  def __init__(self, system):
+    raise NotImplementedError(
+      f"DuckDB execution is not wired yet for system '{system.short_name}'."
+    )
+
+  def execute(self, sql: str) -> int | None:
+    raise NotImplementedError("DuckDB execution is not implemented yet.")
 
 
 class DuckDBDialect(SqlDialect):
@@ -45,6 +55,23 @@ class DuckDBDialect(SqlDialect):
   """
 
   DIALECT_NAME = "duckdb"
+
+  def get_execution_engine(self, system):
+    return DuckDbExecutionEngine(system)
+
+  # ---------------------------------------------------------------------------
+  # Capabilities
+  # ---------------------------------------------------------------------------
+
+  @property
+  def supports_merge(self) -> bool:
+    """DuckDB supports a native MERGE statement."""
+    return True
+
+  @property
+  def supports_delete_detection(self) -> bool:
+    """DuckDB supports delete detection via DELETE + NOT EXISTS."""
+    return True
 
   # ---------------------------------------------------------------------------
   # Identifier & literal helpers
@@ -116,8 +143,8 @@ class DuckDBDialect(SqlDialect):
   def render_expr(self, expr: Expr) -> str:
     if isinstance(expr, ColumnRef):
       if expr.table_alias:
-        return f"{expr.table_alias}.{self.quote_ident(expr.column_name)}"
-      return self.quote_ident(expr.column_name)
+        return f"{expr.table_alias}.{self.render_identifier(expr.column_name)}"
+      return self.render_identifier(expr.column_name)
 
     if isinstance(expr, Cast):
       inner = self.render_expr(expr.expr)
@@ -342,14 +369,14 @@ class DuckDBDialect(SqlDialect):
     """
     CREATE OR REPLACE TABLE schema.table AS <select>
     """
-    full = self.quote_table(schema, table)
+    full = self.render_table_identifier(schema, table)
     return f"CREATE OR REPLACE TABLE {full} AS\n{select_sql}"
 
   def render_insert_into_table(self, schema: str, table: str, select_sql: str) -> str:
     """
     INSERT INTO schema.table <select>
     """
-    full = self.quote_table(schema, table)
+    full = self.render_table_identifier(schema, table)
     return f"INSERT INTO {full}\n{select_sql}"
 
   def render_merge_statement(
@@ -377,24 +404,24 @@ class DuckDBDialect(SqlDialect):
       Columns that should be updated on MATCHED
     """
 
-    full = self.quote_table(schema, table)
+    full = self.render_table_identifier(schema, table)
 
     # Build ON condition (t.pk = s.pk AND ...)
     on_clause = " AND ".join(
-      f"t.{self.quote_ident(c)} = s.{self.quote_ident(c)}"
+      f"t.{self.render_identifier(c)} = s.{self.render_identifier(c)}"
       for c in unique_key_columns
     )
 
     # Build UPDATE clause
     update_assignments = ", ".join(
-      f"{self.quote_ident(col)} = s.{self.quote_ident(col)}"
+      f"{self.render_identifier(col)} = s.{self.render_identifier(col)}"
       for col in update_columns
     )
 
     # INSERT column lists
     all_cols = unique_key_columns + update_columns
-    col_list = ", ".join(self.quote_ident(c) for c in all_cols)
-    val_list = ", ".join(f"s.{self.quote_ident(c)}" for c in all_cols)
+    col_list = ", ".join(self.render_identifier(c) for c in all_cols)
+    val_list = ", ".join(f"s.{self.render_identifier(c)}" for c in all_cols)
 
     return f"""
       MERGE INTO {full} AS t
@@ -418,7 +445,7 @@ class DuckDBDialect(SqlDialect):
     """
     DuckDB implementation of delete detection using DELETE + NOT EXISTS.
     """
-    q = self.quote_ident
+    q = self.render_identifier
 
     target_qualified = f'{q(target_schema)}.{q(target_table)}'
     stage_qualified = f'{q(stage_schema)}.{q(stage_table)}'

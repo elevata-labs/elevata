@@ -37,6 +37,7 @@ class DialectDiagnostics:
   class_name: str
   supports_merge: bool
   supports_delete_detection: bool
+  supports_hash_expression: bool
 
   # Literal rendering examples
   literal_true: str
@@ -68,15 +69,21 @@ def collect_dialect_diagnostics(dialect: SqlDialect) -> DialectDiagnostics:
   # Expression helpers: use very small synthetic examples
   concat_expr = dialect.concat_expression(["'a'", "'b'", "'c'"])
 
-  # Hash sample: hash simple concatenation (actual hashing implementation
-  # lives in the dialect; we only verify that it does not blow up).
-  hash_expr = dialect.hash_expression(concat_expr)
+  # Hash sample: hash simple concatenation.
+  # If the dialect does not implement hashing yet, mark it as unsupported.
+  try:
+    hash_expr = dialect.hash_expression(concat_expr)
+    supports_hash_expression = True
+  except NotImplementedError:
+    hash_expr = "<hash_expression not supported>"
+    supports_hash_expression = False
 
   return DialectDiagnostics(
     name=getattr(dialect, "DIALECT_NAME", dialect.__class__.__name__.lower()),
     class_name=dialect.__class__.__name__,
     supports_merge=dialect.supports_merge,
     supports_delete_detection=dialect.supports_delete_detection,
+    supports_hash_expression=supports_hash_expression,
     literal_true=literal_true,
     literal_false=literal_false,
     literal_null=literal_null,

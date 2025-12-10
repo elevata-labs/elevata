@@ -63,3 +63,12 @@ def test_hash_expression_unknown_algo_falls_back_to_sha256():
 
   sql = dialect.hash_expression("payload", algo="unknown_algo")
   assert sql == "SHA256(payload)"
+
+def test_render_identifier_quoting():
+  d = DuckDBDialect()
+  assert d.render_identifier("customer") == "customer"
+  assert d.render_identifier("CustomerName") == "CustomerName"
+  assert d.render_identifier("1invalid") == '"1invalid"'
+  assert d.render_identifier("sales-order") == '"sales-order"'
+  # We don't yet detect SQL keywords; we only assert we get *some* string back.
+  assert isinstance(d.render_identifier("select"), str)

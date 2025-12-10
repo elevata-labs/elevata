@@ -34,9 +34,14 @@ class DummyDialect:
     self.supports_delete_detection = True
     self.calls: list[dict] = []
 
-  def quote_ident(self, ident: str) -> str:
-    # Simple quoting similar to real dialects
-    return f'"{ident}"'
+  def render_identifier(self, name: str) -> str:
+    # For tests we keep it simple: no quoting logic, just return the name
+    return name
+
+  def render_table_identifier(self, schema: str | None, name: str) -> str:
+    if schema:
+      return f"{schema}.{name}"
+    return name
 
   def render_delete_detection_statement(
     self,
@@ -272,9 +277,10 @@ def test_delete_detection_happy_path_calls_dialect_with_expected_args(monkeypatc
 
   # join_predicates should follow natural_key_fields order
   assert call["join_predicates"] == [
-    't."business_id" = s."business_id"',
-    't."system_id" = s."system_id"',
+    't.business_id = s."business_id"',
+    't.system_id = s."system_id"',
   ]
+
 
 def test_delete_detection_falls_back_to_simple_source_ref_if_expr_missing(monkeypatch):
   td = _make_td(
@@ -319,7 +325,6 @@ def test_delete_detection_falls_back_to_simple_source_ref_if_expr_missing(monkey
   assert len(dialect.calls) == 1
 
   call = dialect.calls[0]
-  # Fallback: t."missing_key" = s."missing_key"
   assert call["join_predicates"] == [
-    't."missing_key" = s."missing_key"',
-  ]
+    't.missing_key = s.missing_key',
+    ]

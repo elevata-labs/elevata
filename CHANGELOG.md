@@ -36,6 +36,41 @@ This project adheres to [Semantic Versioning](https://semver.org/) and [Keep a C
 
 ---
 
+## [0.5.3] — 2025-12-10
+### 🔹 Historization Structure & Dialect Engine Enhancements
+
+This release completes the metadata foundation required for full historized
+incremental loading in v0.6.0. It finalizes *_hist dataset structure, ensures
+cross-dialect consistency, and extends SQL rendering to use dialect-driven
+identifier rules.
+
+## ✨ Highlights
+
+### Metadata / Historization
+- Automatic creation and maintenance of `<dataset>_hist` datasets in RAWCORE
+- Full rename propagation for datasets and columns
+- All *_hist fields are system-managed and read-only
+- New technical field in RAWCORE: `row_hash` for change detection (persisted expression)
+- Versioning strategy established:
+  - `version_started_at` inclusive, `version_ended_at` exclusive
+  - open-ended validity via max timestamp
+  - `version_state` (`current`, `changed`, `deleted`)
+
+### SQL Generation / Dialects
+- Unified `render_identifier()` and `render_table_identifier()` for consistent quoting
+- All SQL generation now uses dialect identifier rendering
+- Delete detection routing tested and guarded per dialect capability
+
+### Load Runner
+- `elevata_load` supports `--execute` with safe stub execution via `ExecutionEngine`
+- Logging improvements and full dry-run support remain functional
+
+### Testing & Stability
+- Expanded test coverage for historization and dialect routing
+- Full suite green across merge, delete detection & *_hist scenarios
+
+---
+
 ## [0.5.2] — 2025-12-07
 ### 🛠️ Metadata stability & History (HIST) foundation
 

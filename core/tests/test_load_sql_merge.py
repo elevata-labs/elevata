@@ -157,12 +157,14 @@ def test_render_merge_sql_basic_happy_path(monkeypatch):
   assert "USING" in normalized and "AS s" in normalized
 
   # ON clause with natural key
-  assert 't."customer_id" = s."customer_id"' in normalized
+  # Left side now uses the smarter render_identifier() and no longer quotes
+  assert "t.customer_id = s." in normalized
+  assert 's."customer_id"' in normalized
 
   # UPDATE assigns non-key columns from source
   assert 'UPDATE SET' in normalized
-  assert ' "name" = s."name"' in normalized or '\"name\" = s.\"name\"' in normalized
-  assert ' "city" = s."city"' in normalized or '\"city\" = s.\"city\"' in normalized
+  assert 'name = s."name"' in normalized
+  assert 'city = s."city"' in normalized
 
   # INSERT includes all columns
   assert "INSERT (" in normalized

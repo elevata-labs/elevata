@@ -38,6 +38,7 @@ from metadata.generation.mappers import (
   map_source_column_to_target_column, 
   build_surrogate_key_column_draft,
 )
+from metadata.rendering.dialects import get_active_dialect
 
 class TargetGenerationService:
   """
@@ -45,8 +46,18 @@ class TargetGenerationService:
   from SourceDatasets + TargetSchemas (raw, stage, rawcore, serving, ...).
   """
 
+  # Columns that must never be overwritten by a source-mapped column
+  GLOBAL_TECHNICAL_COLUMN_NAMES = {
+    "row_hash",
+    "version_started_at",
+    "version_ended_at",
+    "version_state",
+    "load_run_id",
+  }
+
   def __init__(self, pepper: str | None = None):
     self.pepper = pepper or security.get_runtime_pepper()
+
 
   def get_relevant_source_datasets(self) -> List[SourceDataset]:
     """
@@ -63,6 +74,77 @@ class TargetGenerationService:
       .select_related("source_system")
       .prefetch_related("source_columns")
     )
+
+
+  def _ensure_no_reserved_name_conflict(self, col_draft, reserved_names: set):
+    """
+    If a source-mapped column conflicts with a reserved technical column name,
+    rename the target column draft by appending '_src'.
+    """
+    if col_draft.target_column_name in reserved_names:
+      original = col_draft.target_column_name
+      new_name = f"{original}_src"
+      col_draft.target_column_name = new_name
+
+      # also update ordinal to a unique value later
+      col_draft.ordinal_position = None
+
+      # Add optional description note for traceability
+      desc = col_draft.description or ""
+      col_draft.description = (
+        f"{desc} (Renamed from '{original}' to avoid conflict with a reserved"
+        " technical column name.)"
+      )
+
+
+  def _build_row_hash_expression(self, all_columns, target_schema) -> str:
+    """
+    Build a dialect-agnostic DSL expression for row_hash, based on all
+    non-key, non-technical columns of a dataset.
+
+    Pattern (simplified):
+
+      HASH256(
+        CONCAT_WS(pair_sep,
+          CONCAT(col1, comp_sep, COALESCE({expr:col1}, null_token)),
+          CONCAT(col2, comp_sep, COALESCE({expr:col2}, null_token)),
+          ...,
+          'pepper'
+        )
+      )
+    """
+    dialect_neutral_cols: list[str] = []
+
+    for col in all_columns:
+      if getattr(col, "surrogate_key_column", False):
+        continue
+      if getattr(col, "business_key_column", False):
+        continue
+
+      name = col.target_column_name
+
+      if name in self.GLOBAL_TECHNICAL_COLUMN_NAMES:
+        continue
+      if name.startswith("version_"):
+        continue
+
+      dialect_neutral_cols.append(name)
+
+    if not dialect_neutral_cols:
+      return "HASH256('no_columns')"
+
+    null_token = getattr(target_schema, "surrogate_key_null_token", "null")
+    pair_sep = getattr(target_schema, "surrogate_key_pair_separator", "|")
+
+    value_exprs = [
+      f"COALESCE({{expr:{name}}}, '{null_token}')"
+      for name in dialect_neutral_cols
+    ]
+
+    args = [f"'{pair_sep}'"] + value_exprs
+
+    inner = ", ".join(args)
+    return f"HASH256(CONCAT_WS({inner}))"
 
 
   def get_target_schemas_in_scope(self) -> List[TargetSchema]:
@@ -222,6 +304,13 @@ class TargetGenerationService:
             c.target_column_name for c in natural_key_cols
           ]
 
+    # 4c. Prevent naming conflicts with technical / SK column names
+    reserved_names = set(self.GLOBAL_TECHNICAL_COLUMN_NAMES)
+    reserved_names.add(f"{dataset_draft.target_dataset_name}_key")
+
+    for col in mapped_columns:
+      self._ensure_no_reserved_name_conflict(col, reserved_names)
+
     # 5. If this schema wants surrogate keys, create surrogate key column FIRST
     if getattr(target_schema, "surrogate_keys_enabled", False):
       pepper = security.get_runtime_pepper()
@@ -250,6 +339,31 @@ class TargetGenerationService:
         continue
       col.ordinal_position = ordinal_counter
       column_drafts.append(col)
+      ordinal_counter += 1
+
+    # 8. Add row_hash only for rawcore datasets
+    if target_schema.short_name == "rawcore":
+      row_hash_expr = self._build_row_hash_expression(
+        column_drafts,
+        target_schema,
+      )
+
+      row_hash_col = TargetColumnDraft(
+        target_column_name="row_hash",
+        datatype="STRING",
+        max_length=64,
+        decimal_precision=None,
+        decimal_scale=None,
+        nullable=False,
+        business_key_column=False,
+        surrogate_key_column=False,
+        artificial_column=True,
+        lineage_origin="technical",
+        source_column_id=None,
+        ordinal_position=ordinal_counter,
+        surrogate_expression=row_hash_expr,
+      )
+      column_drafts.append(row_hash_col)
       ordinal_counter += 1
 
     return {

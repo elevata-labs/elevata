@@ -27,6 +27,8 @@ These tests validate that the diagnostics module can build a consistent
 snapshot for all registered dialects.
 """
 
+import pytest
+
 from metadata.rendering.dialects.dialect_factory import (
   get_available_dialect_names,
   get_active_dialect,
@@ -35,6 +37,12 @@ from metadata.rendering.dialects.diagnostics import (
   collect_dialect_diagnostics,
   snapshot_all_dialects,
 )
+
+from metadata.rendering.dialects import diagnostics as diag_mod
+from metadata.rendering.dialects import dialect_factory
+from metadata.rendering.dialects.duckdb import DuckDBDialect
+from metadata.rendering.dialects.postgres import PostgresDialect
+from metadata.rendering.dialects.mssql import MssqlDialect
 
 
 def test_collect_dialect_diagnostics_for_each_registered_dialect():
@@ -84,3 +92,65 @@ def test_snapshot_all_dialects_returns_all_registered_names():
       "sample_hash256",
     ]:
       assert key in as_dict
+
+
+def test_snapshot_all_dialects_runs_without_error():
+  """All registered dialects should produce a diagnostics snapshot."""
+  snapshots = diag_mod.snapshot_all_dialects()
+
+  available = set(dialect_factory.get_available_dialect_names())
+  assert set(snapshots.keys()) == available
+
+  for name, diag in snapshots.items():
+    # Basic invariants
+    assert diag.name
+    assert diag.class_name
+    # Capabilities must be boolean flags
+    assert isinstance(diag.supports_merge, bool)
+    assert isinstance(diag.supports_delete_detection, bool)
+    assert isinstance(diag.supports_hash_expression, bool)
+    # Literal samples should be non-empty strings
+    assert isinstance(diag.literal_true, str)
+    assert isinstance(diag.literal_false, str)
+    assert isinstance(diag.literal_null, str)
+
+
+def test_duckdb_capabilities_and_hash_support():
+  """DuckDB should explicitly opt into merge, delete detection and hashing."""
+  dialect = DuckDBDialect()
+  diag = diag_mod.collect_dialect_diagnostics(dialect)
+
+  assert diag.name == DuckDBDialect.DIALECT_NAME
+  assert diag.supports_merge is True
+  assert diag.supports_delete_detection is True
+  assert diag.supports_hash_expression is True
+
+  # The sample hash expression should wrap the concat expression
+  assert "SHA256" in diag.sample_hash256.upper()
+  assert "a" in diag.sample_concat
+
+
+def test_postgres_capabilities_and_hash_support():
+  dialect = PostgresDialect()
+  diag = collect_dialect_diagnostics(dialect)
+
+  assert diag.name == PostgresDialect.DIALECT_NAME
+  assert diag.supports_merge is True
+  assert diag.supports_delete_detection is True
+  assert diag.supports_hash_expression is True
+  # pgcrypto-style hash
+  assert "DIGEST" in diag.sample_hash256.upper()
+  assert "ENCODE" in diag.sample_hash256.upper()
+
+
+def test_mssql_capabilities_and_hash_support():
+  dialect = MssqlDialect()
+  diag = collect_dialect_diagnostics(dialect)
+
+  assert diag.name == MssqlDialect.DIALECT_NAME
+  assert diag.supports_merge is True
+  assert diag.supports_delete_detection is True
+  assert diag.supports_hash_expression is True
+  # HASHBYTES-based hash
+  assert "HASHBYTES" in diag.sample_hash256.upper()
+  assert "CONVERT" in diag.sample_hash256.upper()

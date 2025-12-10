@@ -121,4 +121,201 @@ This ensures that SQL loads are stable, transparent, and backend‑portable, whi
 
 ---
 
+## 🔧 8. Load observability & debugging
+
+The load SQL pipeline not only generates SQL, it also exposes lightweight  
+observability hooks that make load runs traceable and debuggable across  
+profiles, target systems, and dialects.
+
+### 🧩 8.1 Load run summary
+
+Before generating load SQL, the system builds a small summary for each target
+dataset:  
+
+- `schema` – logical schema short name (e.g. `rawcore`)  
+- `dataset` – target dataset name (e.g. `rc_aw_sales_order`)  
+- `mode` – load mode chosen by the planner (`full`, `append`, `merge`, `snapshot`, …)  
+- `handle_deletes` – whether delete detection is active for this run  
+- `historize` – whether the dataset participates in historization  
+- `dialect` – active SQL dialect name (e.g. `duckdb`, `postgres`, `mssql`)  
+
+This summary is created by helper functions in the load SQL layer  
+(`build_load_run_summary(...)`, `format_load_run_summary(...)`) and is used  
+by the `elevata_load` command for logging and debug output.
+
+### 🧩 8.2 Batch and load run IDs
+
+Each invocation of `elevata_load` generates a **batch run ID** that acts as  
+a logical wrapper for all datasets processed in that command:  
+
+- `batch_run_id` – one per command invocation (even if only one dataset is loaded)  
+- `load_run_id` – one per dataset within the batch  
+
+This allows grouping all per-dataset runs that belong to the same batch  
+(e.g. a nightly job that refreshes multiple RAWCORE targets).
+
+### 🧩 8.3 CLI logging
+
+The `elevata_load` management command logs both start and end of each dataset  
+load using the load run summary and IDs above. Logged attributes include:  
+
+- `batch_run_id`, `load_run_id`  
+- target dataset ID and name  
+- target schema, profile, target system and dialect  
+- chosen load mode (`mode`, `handle_deletes`, `historize`)  
+- SQL length and render time  
+- start/end timestamps (for duration calculations)  
+
+In dry-run mode, the command prints the load run summary alongside the
+generated SQL, for example:
+
+```text
+-- Load summary: [duckdb] rawcore.rc_aw_sales_order mode=merge, deletes=True, historize=False
+```
+
+This makes it easy to understand how a dataset would be loaded before any
+execution layer is wired up.
+
+### 🧩 8.4 Future: warehouse-level load run log
+
+The current architecture is designed so that the same summary data can later  
+be written into a warehouse-side load_run_log table (per target system).  
+Such a table would be used for reporting use cases like:  
+
+- "When was this dataset last successfully loaded?"  
+- "Which datasets were part of a given batch run?"  
+
+DDL and execution for this warehouse-level log are intentionally deferred  
+until the execution layer (execute=True in elevata_load) is fully wired.
+
+> **Next planned step**
+>
+> Warehouse-level logging for reporting:
+> - insert per load_run into `<meta>.load_run_log`
+> - track success/error & rows affected
+> - show “data freshness” in BI
+
+---
+
+## 🔧 9. CLI usage examples
+
+The `elevata_load` management command supports different usage scenarios —  
+from printing SQL for a single target dataset to executing multiple loads in a batch.
+
+> These examples use read-only / dry-run mode by default.
+> Execution (`--execute`) will be enabled later in the roadmap.
+
+### 🧩 9.1 Preview generated SQL for one target dataset
+
+```bash
+python manage.py elevata_load rc_aw_sales_order --schema rawcore
+```
+
+This prints a load summary and the generated SQL to stdout.
+
+### 🧩 9.2 Preview SQL for a specific dialect and target system
+
+```bash
+python manage.py elevata_load rc_aw_sales_order --schema rawcore --dialect duckdb --target-system local_duckdb
+```
+
+Useful to verify dialect differences (SQL syntax, merge support, …).
+
+### 🧩 9.3 Debug end-to-end LoadPlan (no execution)
+
+```bash
+python manage.py elevata_load rc_customer --schema rawcore --debug-plan
+```
+
+Outputs:  
+
+- Load mode (`merge`, `append`, …)  
+- Delete-detection / historization flags  
+- Logical plan (`repr`)  
+- SELECT preview  
+- Load SQL  
+
+Helpful while developing or supporting new datasets.
+
+### 🧩 9.4 Generate SQL silently (no console output)
+
+```bash
+python manage.py elevata_load rc_supplier --schema rawcore --no-print
+```
+
+Useful for automation where output is handled by logging only.
+
+### 🧩 9.5 Logging to structured JSON (application logs only)
+
+```bash
+python manage.py elevata_load rc_product --schema rawcore --log-json
+```
+
+Downstream log shipping / ingestion tools can parse the JSON metadata.
+
+### 🧩 9.6 Run by schema (load multiple datasets at once)
+
+```bash
+python manage.py elevata_load --schema rawcore
+```
+
+All historized `rawcore` targets will be planned and logged under one
+**batch_run_id**, allowing full-batch reporting later.
+
+### 🧩 9.7 Execute SQL in the target system (*future*)
+
+```bash
+python manage.py elevata_load rc_customer --schema rawcore --execute
+```
+
+---
+
+#### 🔎 Tip: combine flags
+
+```bash
+python manage.py elevata_load rc_aw_product --schema rawcore --debug-plan --log-json
+```
+
+Perfect for troubleshooting CI/CD pipelines.
+
+### 🧩 Summary Table
+
+| Scenario | Command | Output |
+|---------|---------|--------|
+| Single dataset preview | `dataset_name` | SQL printed |
+| Profile/system override | `--target-system ...` | SQL adapts to environment |
+| Plan inspection | `--debug-plan` | logical plan + SQL |
+| Quiet automation | `--no-print` | log only |
+| Log ingestion | `--log-json` | structured JSON |
+| Batch support | `--schema ...` | multiple load_run_ids in one batch_run_id |
+| Execution | `--execute` *(soon)* | executes in warehouse |
+
+---
+
+## 🔧10. Execute mode (`--execute`)
+
+The `elevata_load` management command exposes a flag:
+
+```bash
+python manage.py elevata_load <target_name> --schema rawcore --execute
+```
+
+Intern this will:  
+- resolve the active SQL dialect and target system,  
+- ask the dialect for an execution engine (dialect.get_execution_engine(system)),
+- call engine.execute(sql) for the rendered load statement.  
+
+However, at the moment no dialect provides a fully wired execution engine yet.  
+The current behaviour is:
+- --execute is accepted by the CLI,  
+- the dialect returns a stub execution engine,  
+- the engine raises NotImplementedError,  
+- elevata_load converts this into a CommandError with a clear message,  
+e.g. "DuckDB execution is not wired yet for system 'dwh'."  
+
+This keeps the execution contract and CLI stable, while postponing the actual  
+warehouse integration (connections, transactions, load-run logging) to a later version.
+
+---
+
 © 2025 elevata Labs — Internal Technical Documentation

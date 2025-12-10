@@ -41,6 +41,20 @@ class PostgresDialect(DuckDBDialect):
 
   DIALECT_NAME = "postgres"
 
+  # ---------------------------------------------------------------------------
+  # Capabilities
+  # ---------------------------------------------------------------------------
+
+  @property
+  def supports_merge(self) -> bool:
+    """PostgreSQL supports merge via INSERT ... ON CONFLICT."""
+    return True
+
+  @property
+  def supports_delete_detection(self) -> bool:
+    """Delete detection is implemented via generic DELETE ... NOT EXISTS patterns."""
+    return True
+
   # ---------------------------------------------------------
   # Identifier quoting
   # ---------------------------------------------------------
@@ -152,20 +166,20 @@ class PostgresDialect(DuckDBDialect):
       - The column set must at least cover:
         unique_key_columns + update_columns
     """
-    target_qualified = self.quote_table(schema, table)
+    target_qualified = self.render_table_identifier(schema, table)
 
     # ON CONFLICT uses the unique key columns
-    key_list = ", ".join(self.quote_ident(c) for c in unique_key_columns)
+    key_list = ", ".join(self.render_identifier(c) for c in unique_key_columns)
 
     # Insert column order = keys first, then update columns
     all_columns = unique_key_columns + [
       c for c in update_columns if c not in unique_key_columns
     ]
-    insert_col_list = ", ".join(self.quote_ident(c) for c in all_columns)
+    insert_col_list = ", ".join(self.render_identifier(c) for c in all_columns)
 
     # ON CONFLICT DO UPDATE SET <col> = EXCLUDED.<col>
     update_assignments = ", ".join(
-      f"{self.quote_ident(c)} = EXCLUDED.{self.quote_ident(c)}"
+      f"{self.render_identifier(c)} = EXCLUDED.{self.render_identifier(c)}"
       for c in update_columns
     )
 

@@ -23,8 +23,7 @@ LogicalPlan  →  Expression AST  →  SqlDialect renderer  →  final SQL strin
 
 Each dialect is responsible for:  
 
-- identifier quoting  
-- literal rendering  
+- identifier quoting  - literal rendering  
 - expression rendering (DSL AST)  
 - function names and argument patterns  
 - window functions  
@@ -307,7 +306,37 @@ No changes to metadata are required — all dialect logic is encapsulated.
 
 ---
 
-## 🔧 13. Testing Strategy
+## 🔧 13. Identifier vs. Table Identifier Rendering
+
+Dialects implement two distinct methods for rendering identifiers:
+
+| Method | Responsibility | Example Output |
+|--------|----------------|----------------|
+| `render_identifier(name: str) -> str` | Renders a single identifier only (e.g., column name) | `"customer_id"` |
+| `render_table_identifier(schema: str \| None, name: str) -> str` | Renders a schema-qualified table reference | `"rawcore"."rc_customer"` |
+
+### Usage in SQL Generation
+
+```python
+col_sql = dialect.render_identifier(col_name)
+tbl_sql = dialect.render_table_identifier(schema_name, table_name)
+```
+
+This separation ensures that:
+- table-level quoting rules do not affect column expressions
+- engines without schemas can pass `None` for `schema`
+- identifiers remain valid for cross-schema and cross-dialect SQL
+
+### Dialect Support Summary
+
+| Feature | DuckDB | Postgres | MSSQL |
+|--------|--------|----------|------|
+| Identifier quoting | `"..."` | `"..."` | `"..."` |
+| Schema-qualified tables via `render_table_identifier` | ✓ | ✓ | ✓ |
+
+---
+
+## 🔧 14. Testing Strategy
 
 The Dialect System is validated via:  
 
@@ -329,7 +358,7 @@ If all dialect tests pass, the multi-dialect engine behaves consistently.
 
 ---
 
-## 🔧 14. Summary
+## 🔧 15. Summary
 
 The Dialect System is the backbone of elevata’s multi-backend strategy:  
 
@@ -339,6 +368,103 @@ The Dialect System is the backbone of elevata’s multi-backend strategy:
 - adding new engines is straightforward  
 
 This architecture ensures that elevata can support more backends (Snowflake, BigQuery, Databricks, …) without changing core metadata or generation logic.
+
+---
+
+## 🔧 16. Dialect diagnostics & health check
+
+The Dialect System exposes a lightweight diagnostics layer to verify that all
+registered SQL dialects behave as expected.
+
+Diagnostics can be accessed in two ways:
+
+1. **Programmatic API**  
+2. **CLI command** via `manage.py elevata_dialect_check`
+
+### 🧩 16.1 Programmatic diagnostics
+
+The module `metadata.rendering.dialects.diagnostics` provides convenience
+functions to inspect all dialects at once:
+
+- `collect_dialect_diagnostics(dialect)`  
+- `snapshot_all_dialects()`
+
+Each snapshot contains:
+
+- `name` / `class_name`
+- `supports_merge`
+- `supports_delete_detection`
+- `supports_hash_expression`
+- example literal renderings (TRUE/FALSE/NULL/date)
+- example expressions for CONCAT and HASH256
+
+This is useful for debugging and for asserting capabilities in tests, without
+having to introspect each dialect manually.:contentReference[oaicite:0]{index=0}
+
+### 🧩 16.2 CLI: `elevata_dialect_check`
+
+For a quick end-to-end smoke test of all registered SQL dialects, use:
+
+```bash
+python manage.py elevata_dialect_check
+```
+
+This command:  
+- discovers all registered dialects (DuckDB, Postgres, MSSQL, …),  
+- prints basic capabilities:  
+  - `supports_merge`  
+  - `supports_delete_detection`  
+- runs a set of small self-checks per dialect:  
+  - identifier quoting (`quote_ident`)  
+  - literal rendering for strings, numbers, booleans, dates, datetimes, decimals  
+  - `concat_expression(...)`  
+  - `hash_expression(...)`  
+  - (optionally) `render_create_replace_table(...)`  
+  - (optionally) `render_insert_into_table(...)`  
+  - (optionally) `render_merge_statement(...)`  
+  - (optionally) `render_delete_detection_statement(...)`  
+- reports each check as:  
+  - OK → check succeeded  
+  - N/I → NotImplementedError (feature not implemented yet)  
+  - FAIL → any other exception  
+
+Example usage:
+
+```python
+# Run diagnostics for all dialects
+python manage.py elevata_dialect_check
+
+# Restrict diagnostics to a single dialect
+python manage.py elevata_dialect_check --dialect duckdb
+python manage.py elevata_dialect_check --dialect postgres
+```
+
+This is intentionally non-invasive: it only renders SQL; it does not execute it  
+against a live database. The command is meant as a quick guardrail during  
+development and CI to detect regressions in dialect implementations early.
+
+---
+
+## 🔧 17. Execution engines
+
+Each SQL dialect can optionally provide an execution engine that knows how to  
+run SQL statements against a concrete target system.  
+
+The base interface lives in `rendering/dialects/base.py`:  
+
+- `BaseExecutionEngine.execute(sql: str) -> int | None`  
+- `SqlDialect.get_execution_engine(system) -> BaseExecutionEngine`  
+
+Concrete dialects (e.g. `DuckDBDialect`) implement their own execution engine
+in the same module:  
+
+- `DuckDBDialect.get_execution_engine(system)` returns a `DuckDbExecutionEngine`  
+- `DuckDbExecutionEngine` implements `execute(sql: str)`  
+
+At the moment, the execution engines are intentionally wired as **stubs**:  
+they raise a `NotImplementedError` to signal that real warehouse execution has not been enabled yet.  
+This allows the CLI and load planner to expose a stable contract (`--execute` flag, engine lookup)  
+without requiring a full connection-management story for each target system.
 
 ---
 
