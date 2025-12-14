@@ -30,7 +30,11 @@ This index gives you an overview of all major topics and how they fit together.
 
 - [Load SQL Architecture](load_sql_architecture.md)  
   How elevata transforms lineage and metadata into executable SQL through the logical plan,  
-  renderer, and dialect adapters — covering full loads, merge operations, and delete detection. 
+  renderer, and dialect adapters — covering full loads, merge operations, and delete detection.  
+
+- [Historization Architecture](historization_architecture.md)  
+  Complete SCD Type 2 historization model: versioning, change detection, deletion,  
+  surrogate keys, lineage-based attribute mapping, and SQL generation.  
 
 ---
 

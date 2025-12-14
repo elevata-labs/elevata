@@ -671,7 +671,15 @@ def build_logical_select_for_target(target_dataset: TargetDataset):
         table_alias="s",
       )
 
-    # 3) Normal column: derive from upstream or fall back to same-name column
+    # 3) Any other surrogate / technical expression (e.g. row_hash)
+    elif tcol.surrogate_expression:
+      # Technical / derived column: compute it at this layer (rawcore)
+      expr = parse_surrogate_dsl(
+        tcol.surrogate_expression,
+        table_alias="s",
+      )
+
+    # 4) Normal column: derive from upstream or fall back to same-name column
     else:
       col_input = (
         tcol.input_links

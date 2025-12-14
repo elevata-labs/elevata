@@ -164,6 +164,9 @@ SHA256(CONCAT_WS('|', ...))
 ```
 
 ### 🧩 Postgres
+
+> On PostgreSQL, SHA256 hashing relies on the pgcrypto extension.
+
 ```
 ENCODE(
   DIGEST(CONCAT_WS('|', ...), 'sha256'),

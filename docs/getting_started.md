@@ -40,7 +40,9 @@ source .venv/bin/activate   # on Linux / macOS
 .venv\Scripts\activate      # on Windows
 ```
 
-Install dependencies:
+### 🧩 2.1 Installation
+
+Install base dependencies (required):
 
 ```bash
 pip install -r requirements/base.txt
@@ -60,6 +62,29 @@ DB_ENGINE=sqlite # or postgres
 # Pepper value for deterministic surrogate keys
 SEC_DEV_PEPPER=supersecretpeppervalue
 ```
+
+Install the target backend you want to execute against:
+
+#### 🔎 DuckDB target:
+
+```bash
+pip install -r requirements/duckdb.txt
+```
+
+#### 🔎 PostgreSQL target:
+
+```bash
+pip install -r requirements/postgres.txt
+```
+
+#### 🔎 MSSQL target:
+
+```bash
+pip install -r requirements/mssql.txt
+```
+
+> If you only want SQL preview / SQL generation (no --execute), requirements/base.txt is sufficient.
+
 ---
 
 ## 🔧 3. Initialize the Metadata Database

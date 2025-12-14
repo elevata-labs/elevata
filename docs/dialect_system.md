@@ -461,10 +461,119 @@ in the same module:
 - `DuckDBDialect.get_execution_engine(system)` returns a `DuckDbExecutionEngine`  
 - `DuckDbExecutionEngine` implements `execute(sql: str)`  
 
-At the moment, the execution engines are intentionally wired as **stubs**:  
-they raise a `NotImplementedError` to signal that real warehouse execution has not been enabled yet.  
-This allows the CLI and load planner to expose a stable contract (`--execute` flag, engine lookup)  
-without requiring a full connection-management story for each target system.
+---
+
+## 🔧 18. Dialect Parity Checklist
+
+> **Purpose**  
+> This checklist defines the *mandatory contract* every officially supported dialect must fulfill in order to support `--execute`, auto‑provisioning, and observability consistently across DuckDB, PostgreSQL, and MSSQL.  
+>
+> The goal is **behavioral parity**, not identical SQL syntax.
+
+### 🧩 18.1 Core Rendering Contract (SQL Preview & Generation)
+
+Every dialect **must implement** the core SQL rendering primitives so that SQL preview and generated SQL behave consistently.  
+
+**Required methods:**  
+- `render_identifier(name: str) -> str`  
+- `render_table_identifier(schema: str | None, name: str) -> str`  
+- `render_literal(value: Any) -> str`  
+- `render_expr(expr: Expr) -> str`  
+- `render_select(select: LogicalSelect | LogicalUnion | ...) -> str`  
+- `cast_expression(expr: Expr, target_type: str) -> str`  
+
+**Required parity guarantees (v0.6.x):**  
+- Deterministic `HASH256` rendering (hex‑encoded, 64 characters)  
+- Consistent `CONCAT` / `CONCAT_WS` semantics  
+- Window functions parity (`ROW_NUMBER`, partitioning, ordering)  
+- Nested subqueries and `UNION` rendering parity  
+
+### 🧩 18.2 Execution Contract (`--execute`)
+
+Every dialect that is considered *supported* **must provide a working execution engine**.  
+
+**Required methods:**  
+- `get_execution_engine(system) -> BaseExecutionEngine`  
+- `BaseExecutionEngine.execute(sql: str) -> int | None`  
+
+**Execution expectations:**   
+- Executes multi‑statement SQL safely  
+- Uses the resolved target connection (`system.security["connection_string"]`)  
+- Raises clear, actionable exceptions on connection or SQL errors  
+- Returns affected row counts where the backend supports it (optional)  
+
+> Dialects without a working execution engine are considered *render‑only* and must not be advertised as fully supported targets.  
+
+### 🧩 18.3 Auto‑Provisioning Contract (Warehouse‑Side DDL)
+
+All supported dialects must support *idempotent* warehouse provisioning.  
+
+**Required methods:**  
+- `render_create_schema_if_not_exists(schema: str) -> str`  
+- `render_create_table_if_not_exists(td: TargetDataset) -> str`  
+- `render_create_load_run_log_if_not_exists(meta_schema: str) -> str`  
+
+**Rules:**  
+- DDL must be safe to execute multiple times  
+- No destructive operations (no DROP)  
+- Target table DDL must be derived from `TargetColumn` metadata  
+
+**Dialect notes:**  
+- DuckDB: avoid unsupported constraints (PRIMARY KEY / IDENTITY may fail)  
+- MSSQL: use `IF OBJECT_ID(...) IS NULL` patterns  
+- PostgreSQL: `CREATE TABLE IF NOT EXISTS` is supported  
+
+### 🧩 18.4 Observability & Run Logging Contract
+
+Every supported dialect must support warehouse‑level execution logging.  
+
+**Required method:**  
+- `render_insert_load_run_log(...) -> str`  
+
+**Canonical log fields:**  
+- `batch_run_id`, `load_run_id`  
+- `target_schema`, `target_dataset`, `target_dataset_id`  
+- `target_system`, `target_system_type`, `profile`, `dialect`  
+- `load_mode`, `handle_deletes`, `historize`  
+- `started_at`, `finished_at`  
+- `render_ms`, `execution_ms`  
+- `sql_length`, `rows_affected`  
+- `load_status`, `error_message`  
+
+The physical schema of `meta.load_run_log` must match this contract exactly.
+
+### 🧩 18.5 Incremental & Historization Contract
+
+Dialects that support incremental pipelines (Rawcore / History) must be able to execute:  
+
+- New‑row inserts  
+- Changed‑row handling (close previous version + insert new version)  
+- Delete detection SQL  
+- Delete marking in history (`version_state = 'deleted'`)  
+
+Dialect implementations must render the required SQL primitives consistently; architectural details are specified in:  
+- [Load SQL Architecture](load_sql_architecture.md)  
+- [Historization Architecture](historization_architecture.md) 
+
+### 🧩 18.6 Diagnostics & Parity Validation
+
+Every supported dialect must pass a minimal diagnostic suite:  
+
+- Render‑only smoke tests  
+- Identifier quoting tests  
+- Literal escaping tests  
+- HASH256 output consistency tests  
+- Minimal merge / historization render tests (where applicable)  
+
+Execution parity is validated by:  
+- Running `--execute` on all supported targets  
+- Verifying schema provisioning, table provisioning, and run logging  
+
+---
+
+> **Summary**  
+> A dialect is only considered *fully supported* in elevata when it satisfies **all sections 18.1 – 18.6**.  
+> Partial implementations must be clearly marked as *render‑only* or *experimental*.
 
 ---
 
@@ -473,6 +582,7 @@ without requiring a full connection-management story for each target system.
 - [Logical Plan & Lineage](logical_plan.md)  
 - [SQL Rendering & Conventions](sql_rendering_conventions.md)  
 - [Load SQL Architecture](load_sql_architecture.md)  
+- [Historization Architecture](historization_architecture.md)  
 - [SQL Preview Pipeline](sql_preview_pipeline.md)  
 - [Source Backends](source_backends.md)  
 - [Target Backends](target_backends.md)  

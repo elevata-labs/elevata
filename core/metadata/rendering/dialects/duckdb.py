@@ -26,20 +26,100 @@ from typing import List
 import re
 import datetime
 from decimal import Decimal
+import os
+import duckdb
 
 from .base import SqlDialect, BaseExecutionEngine
 from ..expr import Expr, Cast, Concat, Coalesce, ColumnRef, FuncCall, Literal, RawSql, WindowFunction, WindowSpec
 from ..logical_plan import LogicalSelect, SelectItem, SourceTable, Join, SubquerySource
+from metadata.ingestion.types_map import (
+  STRING, INTEGER, BIGINT, DECIMAL, FLOAT, BOOLEAN, DATE, TIME, TIMESTAMP, BINARY, UUID, JSON
+)
 
 
 class DuckDbExecutionEngine(BaseExecutionEngine):
+  """
+  Execution engine for DuckDB based on the target system's security configuration.
+
+  Expected patterns for system.security:
+
+  - security is a dict:
+      {"connection_string": "duckdb:///./core/dwh.duckdb"}
+    or
+      {"dsn": "duckdb:///./core/dwh.duckdb"}
+    or
+      {"url": "duckdb:///./core/dwh.duckdb"}
+
+  - security is a plain string:
+      "duckdb:///./core/dwh.duckdb"
+
+  The engine extracts the database path and connects via duckdb.connect(path).
+  """
+
   def __init__(self, system):
-    raise NotImplementedError(
-      f"DuckDB execution is not wired yet for system '{system.short_name}'."
-    )
+    self.system = system
+    security = getattr(system, "security", None)
+
+    conn_str = None
+
+    # Case 1: security is a dict with a connection string
+    if isinstance(security, dict):
+      conn_str = (
+        security.get("connection_string")
+        or security.get("dsn")
+        or security.get("url")
+        or security.get("database")
+      )
+
+    # Case 2: security is directly a string
+    elif isinstance(security, str):
+      conn_str = security
+
+    if not conn_str:
+      raise ValueError(
+        f"DuckDB system '{system.short_name}' has no usable connection string "
+        f"in security. Expected security['connection_string'] or a string value."
+      )
+
+    # Normalize DuckDB-style connection string:
+    #   duckdb:///./core/dwh.duckdb  -> ./core/dwh.duckdb
+    #   duckdb:///:memory:           -> :memory:
+    # Otherwise treat the value as direct database path.
+    if conn_str.startswith("duckdb:///"):
+      db_path = conn_str[len("duckdb:///"):]
+    else:
+      db_path = conn_str
+
+    if not db_path:
+      raise ValueError(
+        f"No database path could be derived from DuckDB connection string: {conn_str!r}"
+      )
+
+    self._database = db_path
 
   def execute(self, sql: str) -> int | None:
-    raise NotImplementedError("DuckDB execution is not implemented yet.")
+    """
+    Execute SQL against DuckDB. Supports multi-statement SQL.
+    Returns the rowcount of the final statement where applicable.
+    """
+    if not sql:
+      return 0
+
+    conn = duckdb.connect(self._database)
+    try:
+      cursor = conn.execute(sql)
+      rowcount = None
+      try:
+        rowcount = cursor.rowcount
+      except Exception:
+        # Some statements don't have a meaningful rowcount
+        rowcount = None
+
+      conn.commit()
+    finally:
+      conn.close()
+
+    return rowcount
 
 
 class DuckDBDialect(SqlDialect):
@@ -62,7 +142,6 @@ class DuckDBDialect(SqlDialect):
   # ---------------------------------------------------------------------------
   # Capabilities
   # ---------------------------------------------------------------------------
-
   @property
   def supports_merge(self) -> bool:
     """DuckDB supports a native MERGE statement."""
@@ -74,9 +153,8 @@ class DuckDBDialect(SqlDialect):
     return True
 
   # ---------------------------------------------------------------------------
-  # Identifier & literal helpers
+  # Identifier quoting
   # ---------------------------------------------------------------------------
-
   def quote_ident(self, name: str) -> str:
     """
     Quote an identifier using DuckDB's double-quote style.
@@ -85,6 +163,9 @@ class DuckDBDialect(SqlDialect):
     escaped = name.replace('"', '""')
     return f'"{escaped}"'
 
+  # ---------------------------------------------------------------------------
+  # Logical type mapping
+  # ---------------------------------------------------------------------------
   def map_logical_type(
     self,
     logical_type,          # type: str
@@ -139,7 +220,6 @@ class DuckDBDialect(SqlDialect):
   # ---------------------------------------------------------------------------
   # Expression rendering
   # ---------------------------------------------------------------------------
-
   def render_expr(self, expr: Expr) -> str:
     if isinstance(expr, ColumnRef):
       if expr.table_alias:
@@ -233,14 +313,18 @@ class DuckDBDialect(SqlDialect):
    
     raise TypeError(f"Unsupported expression type for DuckDBDialect: {type(expr)!r}")
   
-
+  # ---------------------------------------------------------
+  # Concatenation
+  # ---------------------------------------------------------
   def concat_expression(self, parts):
     # parts are already rendered SQL expressions
     if not parts:
       return "''"
     return "(" + " || ".join(parts) + ")"
 
-
+  # ---------------------------------------------------------
+  # Hash expression
+  # ---------------------------------------------------------
   def hash_expression(self, expr: str, algo: str = "sha256") -> str:
     algo_lower = algo.lower()
     if algo_lower in ("sha256", "hash256"):
@@ -248,7 +332,9 @@ class DuckDBDialect(SqlDialect):
     # fallback: still SHA256 for unknown algos for now
     return f"SHA256({expr})"
   
-
+  # ---------------------------------------------------------------------------
+  # Literal rendering
+  # ---------------------------------------------------------------------------
   def render_literal(self, value):
     if value is None:
       return "NULL"
@@ -271,15 +357,15 @@ class DuckDBDialect(SqlDialect):
 
     raise TypeError(f"Unsupported literal type: {type(value)}")
 
-
+  # ---------------------------------------------------------------------------
+  # Type casting
+  # ---------------------------------------------------------------------------
   def cast_expression(self, expr: str, target_type: str) -> str:
     return f"CAST({expr} AS {target_type})"
-
 
   # ---------------------------------------------------------------------------
   # SELECT rendering
   # ---------------------------------------------------------------------------
-
   def _render_source_table(self, table: SourceTable) -> str:
     """
     Render schema.table AS alias (schema is optional).
@@ -362,9 +448,15 @@ class DuckDBDialect(SqlDialect):
     return "\n".join(parts)
 
   # ---------------------------------------------------------------------------
+  # Truncate table
+  # ---------------------------------------------------------------------------
+  def render_truncate_table(self, schema: str, table: str) -> str:
+    qtbl = self.render_table_identifier
+    return f"DELETE FROM {qtbl(schema, table)};"
+
+  # ---------------------------------------------------------------------------
   # Incremental / MERGE Rendering
   # ---------------------------------------------------------------------------
-
   def render_create_replace_table(self, schema: str, table: str, select_sql: str) -> str:
     """
     CREATE OR REPLACE TABLE schema.table AS <select>
@@ -474,3 +566,217 @@ class DuckDBDialect(SqlDialect):
       f'DELETE FROM {target_qualified} AS t\n'
       f'WHERE {where_sql};'
     )
+
+  # ---------------------------------------------------------------------------
+  # DDL statements
+  # ---------------------------------------------------------------------------
+  def render_create_schema_if_not_exists(self, schema: str) -> str:
+    """
+    DuckDB supports CREATE SCHEMA IF NOT EXISTS.
+    """
+    q = self.render_identifier
+    return f"CREATE SCHEMA IF NOT EXISTS {q(schema)};"
+  
+
+  def render_create_table_if_not_exists(self, td) -> str:
+    """
+    Create the target dataset table based on TargetColumn metadata.
+    DuckDB supports CREATE TABLE IF NOT EXISTS.
+    """
+    schema_name = td.target_schema.schema_name
+    table_name = td.target_dataset_name
+
+    q = self.render_identifier
+    qtbl = self.render_table_identifier
+
+    # Ensure columns are rendered in deterministic order
+    cols = []
+    for c in td.target_columns.all().order_by("ordinal_position"):
+      col_name = c.target_column_name
+      if col_name in ("version_started_at", "version_ended_at"):
+        col_type = "TIMESTAMP"
+      elif col_name == "version_state":
+        col_type = "VARCHAR(16)"
+      elif col_name == "load_run_id":
+        col_type = "VARCHAR(36)"
+      else:
+        col_type = self._render_canonical_type_duckdb(
+          datatype=c.datatype,
+          max_length=c.max_length,
+          decimal_precision=c.decimal_precision,
+          decimal_scale=c.decimal_scale,
+        )
+      nullable = "" if c.nullable else " NOT NULL"
+      cols.append(f"{q(col_name)} {col_type}{nullable}")
+
+    cols_sql = ",\n  ".join(cols) if cols else ""
+
+    return f"""
+      CREATE TABLE IF NOT EXISTS {qtbl(schema_name, table_name)} (
+        {cols_sql}
+      );
+    """.strip()
+  
+
+  def _render_canonical_type_duckdb(
+    self,
+    *,
+    datatype: str,
+    max_length=None,
+    decimal_precision=None,
+    decimal_scale=None,
+  ) -> str:
+    t = (datatype or "").upper()
+
+    if t == STRING:
+      if max_length:
+        return f"VARCHAR({int(max_length)})"
+      return "VARCHAR"
+
+    if t == INTEGER:
+      return "INTEGER"
+    if t == BIGINT:
+      return "BIGINT"
+
+    if t == DECIMAL:
+      if decimal_precision and decimal_scale is not None:
+        return f"DECIMAL({int(decimal_precision)},{int(decimal_scale)})"
+      if decimal_precision:
+        return f"DECIMAL({int(decimal_precision)})"
+      return "DECIMAL"
+
+    if t == FLOAT:
+      return "DOUBLE"
+
+    if t == BOOLEAN:
+      return "BOOLEAN"
+
+    if t == DATE:
+      return "DATE"
+    if t == TIME:
+      return "TIME"
+    if t == TIMESTAMP:
+      return "TIMESTAMP"
+
+    if t == BINARY:
+      return "BLOB"
+
+    if t == UUID:
+      return "UUID"
+
+    if t == JSON:
+      return "JSON"
+
+    return "VARCHAR"
+
+
+  # ---------------------------------------------------------------------------
+  # Logging
+  # ---------------------------------------------------------------------------
+  def render_create_load_run_log_if_not_exists(self, meta_schema: str) -> str:
+    """
+    Create meta schema and load_run_log table if they do not exist.
+    """
+    q = self.render_identifier
+    full = f"{q(meta_schema)}.{q('load_run_log')}"
+
+    return """
+      CREATE SCHEMA IF NOT EXISTS {meta_schema};
+
+      CREATE TABLE IF NOT EXISTS {full} (
+        id                 BIGINT,
+        batch_run_id       VARCHAR(36) NOT NULL,
+        load_run_id        VARCHAR(36) NOT NULL,
+        target_schema      VARCHAR(128) NOT NULL,
+        target_dataset     VARCHAR(256) NOT NULL,
+        target_dataset_id  BIGINT NULL,
+        target_system      VARCHAR(128) NOT NULL,
+        target_system_type VARCHAR(64) NOT NULL,
+        profile            VARCHAR(128) NOT NULL,
+        load_mode          VARCHAR(32) NOT NULL,
+        handle_deletes     BOOLEAN NOT NULL,
+        historize          BOOLEAN NOT NULL,
+        dialect            VARCHAR(64) NOT NULL,
+        started_at         TIMESTAMP NOT NULL,
+        finished_at        TIMESTAMP NOT NULL,
+        render_ms          DOUBLE PRECISION NOT NULL,
+        execution_ms       DOUBLE PRECISION NULL,
+        sql_length         BIGINT NOT NULL,
+        rows_affected      BIGINT NULL,
+        load_status        VARCHAR(16) NOT NULL,
+        error_message      TEXT NULL
+      );
+    """.strip().format(
+      meta_schema=q(meta_schema),
+      full=full,
+    )
+
+
+  def render_insert_load_run_log(
+    self,
+    meta_schema: str,
+    batch_run_id: str,
+    load_run_id: str,
+    summary: dict[str, object],
+    profile,
+    system,
+    started_at,
+    finished_at,
+    render_ms: float,
+    execution_ms: float | None,
+    sql_length: int,
+    rows_affected: int | None,
+    load_status: str,
+    error_message: str | None,
+  ) -> str:
+    qtbl = self.render_table_identifier
+    lit = self.render_literal
+
+    table = qtbl(meta_schema, "load_run_log")
+
+    return f"""
+      INSERT INTO {table} (
+        batch_run_id,
+        load_run_id,
+        target_schema,
+        target_dataset,
+        target_dataset_id,
+        target_system,
+        target_system_type,
+        profile,
+        load_mode,
+        handle_deletes,
+        historize,
+        dialect,
+        started_at,
+        finished_at,
+        render_ms,
+        execution_ms,
+        sql_length,
+        rows_affected,
+        load_status,
+        error_message
+      )
+      VALUES (
+        {lit(batch_run_id)},
+        {lit(load_run_id)},
+        {lit(summary.get("schema"))},
+        {lit(summary.get("dataset"))},
+        {lit(summary.get("target_dataset_id"))},
+        {lit(system.short_name)},
+        {lit(system.type)},
+        {lit(profile.name)},
+        {lit(summary.get("mode"))},
+        {lit(summary.get("handle_deletes"))},
+        {lit(summary.get("historize"))},
+        {lit(self.DIALECT_NAME)},
+        {lit(started_at)},
+        {lit(finished_at)},
+        {lit(render_ms)},
+        {lit(execution_ms)},
+        {lit(sql_length)},
+        {lit(rows_affected)},
+        {lit(load_status)},
+        {lit(error_message)},
+      );
+    """.strip()

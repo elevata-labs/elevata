@@ -26,6 +26,8 @@ import os
 from typing import Optional
 
 from metadata.models import System
+from metadata.config.profiles import load_profile
+from metadata.secrets.resolver import resolve_ref_template_value
 
 
 def resolve_target_system_name(explicit: Optional[str] = None) -> str:
@@ -57,6 +59,9 @@ def get_target_system(explicit: Optional[str] = None) -> System:
   Ensures:
     - the system exists
     - the system is marked as a target (is_target = True)
+
+  Additionally attaches runtime-only security:
+    system.security["connection_string"]
   """
   name = resolve_target_system_name(explicit)
 
@@ -74,4 +79,17 @@ def get_target_system(explicit: Optional[str] = None) -> System:
       "Set is_target=True in the admin if this system should be used as a target."
     )
 
+  # Resolve connection string via profile template + provider chain (env / key vault / ...)
+  profile = load_profile(None)
+  conn_str = resolve_ref_template_value(
+    profiles_path=None,
+    ref_template=profile.secret_ref_template,
+    type=system.type,
+    short_name=system.short_name,
+  )
+
+  # Attach runtime-only security payload (System model intentionally does not persist secrets)
+  system.security = {"connection_string": conn_str}
+
   return system
+  

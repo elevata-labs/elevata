@@ -7,32 +7,73 @@ This project adheres to [Semantic Versioning](https://semver.org/) and [Keep a C
 
 ## [Unreleased]
 
-### 🛣️ Roadmap
-
-#### **0.6.0 — Ecosystem & Developer Experience**
-- Extended test matrix across all dialects  
-- Data Quality / Metadata Rule Engine  
-- Improved diagnostics and error surfacing in the dialect layer  
-- Enhanced logging & observability for load runs  
-- Optional: Load-run caching for SQL Preview pipeline  
-
-#### **0.7.0 — Productivity & Automation**
-- Automated schema-evolution detection  
-- Optional: Zero-Code Stewardship / simplified business-user UI  
-- Advanced dependency graph visualisation (expanded lineage features)  
-- dbt-style generation path (optional)  
-
-#### Future Ideas (Post-0.7)
-- Snowflake dialect  
-- BigQuery dialect  
-- Databricks SQL  
-- Fivetran/Hightouch-style push integration  
+### Added
+- (nothing yet)
+### Changed
+- (nothing yet)
+### Fixed
+- (nothing yet)
 
 ---
 📈 For the full roadmap, see [Project Readme](https://github.com/elevata-labs/elevata/blob/main/README.md)
 
 🧾 Licensed under the **AGPL-v3** — open, governed, and community-driven.  
 💡 *elevata keeps evolving — one small, meaningful release at a time.*
+
+---
+
+## [0.6.0] – 2025-12-14
+
+### 🚀 Warehouse-Native Execution & SCD Historization
+This release introduces the foundation for a fully warehouse-native execution framework.  
+elevata now manages entire data load pipelines end-to-end — from metadata to SQL generation to execution, historization and observability.
+
+### ✨ Major Features
+
+#### 1. Execution Engine (`--execute`)
+elevata can now execute rendered SQL directly against target systems, measure performance, record affected rows, and log complete run metadata.  
+This shifts elevata beyond SQL rendering into a full pipeline engine.
+
+#### 2. Full SCD Type 2 Historization
+A deterministic, metadata-driven historization framework:  
+- automatic change detection via row-hash  
+- version closing for changed and deleted keys  
+- insertion of new and changed versions  
+- lineage-aware attribute propagation  
+
+#### 3. Metadata-Driven Incremental Merge Loads
+Complete incremental pipeline including:  
+- new-row inserts  
+- changed-row updates  
+- delete detection  
+- MERGE or UPDATE+INSERT fallback depending on dialect
+
+#### 4. Auto-Provisioning of Warehouse Structures
+elevata can automatically create:  
+- target schemas (raw, stage, rawcore, ...)  
+- the `meta.load_run_log` table  
+- all required objects for execution and logging  
+
+Controlled via `.env` flags.
+
+#### 5. Warehouse-Level Load Logging
+A new table `meta.load_run_log` provides full observability into load executions:  
+- load mode, historization flags, dialect  
+- start/end timestamps, render/execution duration  
+- rows affected, error messages, status  
+- batch and run identifiers  
+
+#### 6. Documentation Expansion
+- New historization architecture document  
+- Extended execution, logging, and provisioning sections  
+- Revised dialect and SQL generation chapters  
+
+### 🧪 Testing Improvements
+- Deterministic SQL tests for merge and historization pipelines  
+- Combined historization pipeline tests  
+- Prepared E2E execution flow for dialect-specific execution engines  
+
+> This release establishes the execution foundation on which future orchestration, validation and automation layers will be built.
 
 ---
 

@@ -22,11 +22,48 @@ Contact: <https://github.com/elevata-labs/elevata>.
 
 from __future__ import annotations
 
+import pyodbc
+
 import datetime
 from decimal import Decimal
 from typing import Sequence
 
+from .base import BaseExecutionEngine
 from .duckdb import DuckDBDialect
+from metadata.ingestion.types_map import (
+  STRING, INTEGER, BIGINT, DECIMAL, FLOAT, BOOLEAN, DATE, TIME, TIMESTAMP, BINARY, UUID, JSON
+)
+
+
+class MssqlExecutionEngine(BaseExecutionEngine):
+  def __init__(self, system):
+    conn_str = None
+    if system.security:
+      conn_str = system.security.get("connection_string")
+
+    if not conn_str:
+      raise ValueError(
+        f"MSSQL system '{system.short_name}' has no usable connection string in security."
+      )
+
+    self.conn_str = conn_str
+
+  def execute(self, sql: str) -> int | None:
+    conn = pyodbc.connect(self.conn_str, autocommit=False)
+    try:
+      cursor = conn.cursor()
+      cursor.execute(sql)
+      conn.commit()
+
+      try:
+        return cursor.rowcount
+      except Exception:
+        return None
+    except Exception:
+      conn.rollback()
+      raise
+    finally:
+      conn.close()
 
 
 class MssqlDialect(DuckDBDialect):
@@ -49,11 +86,12 @@ class MssqlDialect(DuckDBDialect):
 
   DIALECT_NAME = "mssql"
 
+  def get_execution_engine(self, system):
+    return MssqlExecutionEngine(system)
 
   # ---------------------------------------------------------------------------
   # Capabilities
   # ---------------------------------------------------------------------------
-
   @property
   def supports_merge(self) -> bool:
     """SQL Server supports native MERGE statements."""
@@ -67,7 +105,6 @@ class MssqlDialect(DuckDBDialect):
   # ---------------------------------------------------------------------------
   # Identifier quoting
   # ---------------------------------------------------------------------------
-
   def quote_ident(self, name: str) -> str:
     """
     Quote identifiers with double quotes.
@@ -80,9 +117,8 @@ class MssqlDialect(DuckDBDialect):
     return f'"{escaped}"'
 
   # ---------------------------------------------------------------------------
-  # Type mapping
+  # Logical type mapping
   # ---------------------------------------------------------------------------
-
   def map_logical_type(
     self,
     logical_type,          # type: str
@@ -161,7 +197,6 @@ class MssqlDialect(DuckDBDialect):
   # ---------------------------------------------------------------------------
   # Literal rendering
   # ---------------------------------------------------------------------------
-
   def render_literal(self, value):
     if value is None:
       return "NULL"
@@ -190,16 +225,21 @@ class MssqlDialect(DuckDBDialect):
     raise TypeError(f"Unsupported literal type for MssqlDialect: {type(value)}")
 
   # ---------------------------------------------------------------------------
-  # CAST
+  # Type casting
   # ---------------------------------------------------------------------------
-
   def cast_expression(self, expr: str, target_type: str) -> str:
     return f"CAST({expr} AS {target_type})"
 
   # ---------------------------------------------------------------------------
-  # Load helpers (full load / incremental)
+  # Truncate table
   # ---------------------------------------------------------------------------
+  def render_truncate_table(self, schema: str, table: str) -> str:
+    qtbl = self.render_table_identifier
+    return f"TRUNCATE TABLE {qtbl(schema, table)};"
 
+  # ---------------------------------------------------------------------------
+  # Incremental / MERGE Rendering
+  # ---------------------------------------------------------------------------
   def render_create_replace_table(self, schema: str, table: str, select_sql: str) -> str:
     """
     Emulate CREATE OR REPLACE TABLE via DROP IF EXISTS + SELECT INTO.
@@ -222,3 +262,235 @@ class MssqlDialect(DuckDBDialect):
     """
     full = self.render_table_identifier(schema, table)
     return f"INSERT INTO {full}\n{select_sql}"
+  
+  # ---------------------------------------------------------------------------
+  # DDL statements
+  # ---------------------------------------------------------------------------
+  def render_create_schema_if_not_exists(self, schema: str) -> str:
+    """
+    SQL Server uses IF NOT EXISTS on sys.schemas.
+    """
+    return f"""
+      IF NOT EXISTS (SELECT 1 FROM sys.schemas WHERE name = '{schema}')
+      BEGIN
+        EXEC('CREATE SCHEMA {schema}');
+      END;
+    """.strip()
+  
+
+  def render_create_table_if_not_exists(self, td) -> str:
+    """
+    Create the target dataset table based on TargetColumn metadata.
+    SQL Server requires IF OBJECT_ID(...) checks (no CREATE TABLE IF NOT EXISTS).
+    """
+    schema_name = td.target_schema.schema_name
+    table_name = td.target_dataset_name
+
+    q = self.render_identifier
+    qtbl = self.render_table_identifier
+
+    cols = []
+    for c in td.target_columns.all().order_by("ordinal_position"):
+      col_name = c.target_column_name
+
+      # Technical historization fields: enforce stable, efficient types.
+      if col_name in ("version_started_at", "version_ended_at"):
+        col_type = "DATETIME2"
+      elif col_name == "version_state":
+        col_type = "NVARCHAR(16)"
+      elif col_name == "load_run_id":
+        col_type = "NVARCHAR(36)"
+      else:
+        col_type = self._render_canonical_type_mssql(
+          datatype=c.datatype,
+          max_length=c.max_length,
+          decimal_precision=c.decimal_precision,
+          decimal_scale=c.decimal_scale,
+        )
+      nullable = " NULL" if c.nullable else " NOT NULL"
+      cols.append(f"{q(col_name)} {col_type}{nullable}")
+
+    cols_sql = ",\n  ".join(cols) if cols else ""
+    full_name = f"{schema_name}.{table_name}"  # used in OBJECT_ID()
+
+    return f"""
+      IF OBJECT_ID(N'{full_name}', N'U') IS NULL
+      BEGIN
+        CREATE TABLE {qtbl(schema_name, table_name)} (
+          {cols_sql}
+        );
+      END;
+    """.strip()
+
+
+  def _render_canonical_type_mssql(
+    self,
+    *,
+    datatype: str,
+    max_length=None,
+    decimal_precision=None,
+    decimal_scale=None,
+  ) -> str:
+    """
+    Map elevata canonical types (TargetColumn.datatype) to SQL Server SQL types.
+    """
+    t = (datatype or "").upper()
+
+    if t == STRING:
+      if max_length:
+        return f"NVARCHAR({int(max_length)})"
+      return "NVARCHAR(MAX)"
+
+    if t == INTEGER:
+      return "INT"
+    if t == BIGINT:
+      return "BIGINT"
+
+    if t == DECIMAL:
+      if decimal_precision and decimal_scale is not None:
+        return f"DECIMAL({int(decimal_precision)},{int(decimal_scale)})"
+      if decimal_precision:
+        return f"DECIMAL({int(decimal_precision)})"
+      return "DECIMAL(38,10)"
+
+    if t == FLOAT:
+      return "FLOAT"
+
+    if t == BOOLEAN:
+      return "BIT"
+
+    if t == DATE:
+      return "DATE"
+    if t == TIME:
+      return "TIME"
+    if t == TIMESTAMP:
+      return "DATETIME2"
+
+    if t == BINARY:
+      return "VARBINARY(MAX)"
+
+    if t == UUID:
+      return "UNIQUEIDENTIFIER"
+
+    if t == JSON:
+      return "NVARCHAR(MAX)"
+
+    return "NVARCHAR(MAX)"
+
+
+  # ---------------------------------------------------------------------------
+  # Logging
+  # ---------------------------------------------------------------------------
+  def render_create_load_run_log_if_not_exists(self, meta_schema: str) -> str:
+    """
+    Create meta schema and load_run_log table for SQL Server.
+    """
+    return f"""
+      IF NOT EXISTS (SELECT 1 FROM sys.schemas WHERE name = '{meta_schema}')
+      BEGIN
+        EXEC('CREATE SCHEMA {meta_schema};');
+      END;
+
+      IF NOT EXISTS (
+        SELECT 1
+        FROM sys.tables t
+        JOIN sys.schemas s ON t.schema_id = s.schema_id
+        WHERE t.name = 'load_run_log'
+          AND s.name = '{meta_schema}'
+      )
+      BEGIN
+        CREATE TABLE {meta_schema}.load_run_log (
+          id                 BIGINT IDENTITY(1,1) PRIMARY KEY,
+          batch_run_id       NVARCHAR(36) NOT NULL,
+          load_run_id        NVARCHAR(36) NOT NULL,
+          target_schema      NVARCHAR(128) NOT NULL,
+          target_dataset     NVARCHAR(256) NOT NULL,
+          target_dataset_id  BIGINT NULL,
+          target_system      NVARCHAR(128) NOT NULL,
+          target_system_type NVARCHAR(64) NOT NULL,
+          profile            NVARCHAR(128) NOT NULL,
+          load_mode          NVARCHAR(32) NOT NULL,
+          handle_deletes     BIT NOT NULL,
+          historize          BIT NOT NULL,
+          dialect            NVARCHAR(64) NOT NULL,
+          started_at         DATETIME2 NOT NULL,
+          finished_at        DATETIME2 NOT NULL,
+          render_ms          FLOAT NOT NULL,
+          execution_ms       FLOAT NULL,
+          sql_length         BIGINT NOT NULL,
+          rows_affected      BIGINT NULL,
+          load_status        NVARCHAR(16) NOT NULL,
+          error_message      NVARCHAR(MAX) NULL
+        );
+      END;
+    """.strip()
+
+
+  def render_insert_load_run_log(
+    self,
+    meta_schema: str,
+    batch_run_id: str,
+    load_run_id: str,
+    summary: dict[str, object],
+    profile,
+    system,
+    started_at,
+    finished_at,
+    render_ms: float,
+    execution_ms: float | None,
+    sql_length: int,
+    rows_affected: int | None,
+    load_status: str,
+    error_message: str | None,
+  ) -> str:
+    qtbl = self.render_table_identifier
+    lit = self.render_literal
+
+    table = qtbl(meta_schema, "load_run_log")
+
+    return f"""
+      INSERT INTO {table} (
+        batch_run_id,
+        load_run_id,
+        target_schema,
+        target_dataset,
+        target_dataset_id,
+        target_system,
+        target_system_type,
+        profile,
+        load_mode,
+        handle_deletes,
+        historize,
+        dialect,
+        started_at,
+        finished_at,
+        render_ms,
+        execution_ms,
+        sql_length,
+        rows_affected,
+        load_status,
+        error_message
+      )
+      VALUES (
+        {lit(batch_run_id)},
+        {lit(load_run_id)},
+        {lit(summary.get("schema"))},
+        {lit(summary.get("dataset"))},
+        {lit(summary.get("target_dataset_id"))},
+        {lit(system.short_name)},
+        {lit(system.type)},
+        {lit(profile.name)},
+        {lit(summary.get("mode"))},
+        {lit(summary.get("handle_deletes"))},
+        {lit(summary.get("historize"))},
+        {lit(self.DIALECT_NAME)},
+        {lit(started_at)},
+        {lit(finished_at)},
+        {lit(render_ms)},
+        {lit(execution_ms)},
+        {lit(sql_length)},
+        {lit(rows_affected)},
+        {lit(load_status)},
+        {lit(error_message)}
+      );
+    """.strip()

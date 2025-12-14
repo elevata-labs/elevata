@@ -24,9 +24,9 @@ from __future__ import annotations
 
 from typing import Any
 import time
-
 import logging
-
+import os
+import re
 import uuid
 from django.utils.timezone import now
 
@@ -44,6 +44,177 @@ from metadata.rendering.load_sql import (
 from metadata.rendering.load_planner import build_load_plan
 
 logger = logging.getLogger(__name__)
+
+
+def _get_bool_env(name: str, default: bool) -> bool:
+  """Read a boolean flag from the environment (supports true/false/1/0/yes/no)."""
+  value = os.getenv(name)
+  if value is None:
+    return default
+  value = value.strip().lower()
+  if value in ("1", "true", "yes", "y", "on"):
+    return True
+  if value in ("0", "false", "no", "n", "off"):
+    return False
+  return default
+
+
+AUTO_PROVISION_SCHEMAS = _get_bool_env("ELEVATA_AUTO_PROVISION_SCHEMAS", True)
+AUTO_PROVISION_TABLES = _get_bool_env("ELEVATA_AUTO_PROVISION_TABLES", True)
+AUTO_PROVISION_META_LOG = _get_bool_env("ELEVATA_AUTO_PROVISION_META_LOG", True)
+META_SCHEMA_NAME = os.getenv("ELEVATA_META_SCHEMA_NAME", "meta")
+
+
+def ensure_target_schema(engine, dialect, schema_name: str, auto_provision: bool) -> None:
+  """
+  Ensure that the physical target schema exists in the warehouse.
+
+  Safe to call multiple times. Does nothing when auto_provision is False
+  or when the dialect does not implement the required helper.
+  """
+  if not auto_provision:
+    return
+
+  # Some test dialects (DummyDialect) do not implement this hook.
+  if not hasattr(dialect, "render_create_schema_if_not_exists"):
+    return
+
+  ddl = dialect.render_create_schema_if_not_exists(schema_name)
+  if not ddl:
+    return
+
+  engine.execute(ddl)
+
+
+def ensure_target_table(engine, dialect, td, auto_provision: bool) -> None:
+  """
+  Ensure the physical target table exists in the warehouse.
+
+  Safe to call multiple times. Does nothing when auto_provision is False
+  or when the dialect does not implement the required helper.
+  """
+  if not auto_provision:
+    return
+
+  if not hasattr(dialect, "render_create_table_if_not_exists"):
+    return
+
+  ddl = dialect.render_create_table_if_not_exists(td)
+  if not ddl:
+    return
+
+  engine.execute(ddl)
+
+
+def ensure_load_run_log_table(engine, dialect, meta_schema: str, auto_provision: bool) -> None:
+  """
+  Ensure that the warehouse-level load_run_log table exists.
+
+  Safe to call multiple times. Does nothing when auto_provision is False
+  or when the dialect does not implement the required helper.
+  """
+  if not auto_provision:
+    return
+
+  if not hasattr(dialect, "render_create_load_run_log_if_not_exists"):
+    return
+
+  ddl = dialect.render_create_load_run_log_if_not_exists(meta_schema)
+  if not ddl:
+    return
+
+  engine.execute(ddl)
+
+
+def _looks_like_cross_system_sql(sql: str, target_schema: str) -> bool:
+  """
+  Heuristic: detect SQL that likely references non-target objects.
+
+  We only inspect schema-qualified objects in FROM / JOIN clauses to avoid
+  false positives from alias.column expressions in SELECT lists.
+  """
+  if not sql:
+    return False
+
+  tgt = (target_schema or "").strip().strip('"').strip("[").strip("]").lower()
+
+  allowed_schemas = {
+    tgt,
+    "raw",
+    "stage",
+    "rawcore",
+    "meta",
+    "information_schema",
+    "pg_catalog",
+    "duckdb",
+    "main",
+    "sys",  # MSSQL system schema
+    "dbo",  # common MSSQL default schema (harmless)
+  }
+
+  # Match FROM/JOIN <schema>.<table> (quoted or unquoted)
+  # Examples:
+  #   FROM raw.raw_aw1_product AS s
+  #   JOIN [raw].[raw_aw1_product] s
+  #   FROM "raw"."raw_aw1_product"
+  from_join_pattern = re.compile(
+    r"""
+    \b(?:from|join)\s+
+    (?:
+      (?:"(?P<s1>[^"]+)"|\[(?P<s2>[^\]]+)\]|(?P<s3>[A-Za-z_][A-Za-z0-9_]*))
+    )
+    \s*\.\s*
+    (?:
+      "(?P<t1>[^"]+)"|\[(?P<t2>[^\]]+)\]|(?P<t3>[A-Za-z_][A-Za-z0-9_]*)
+    )
+    """,
+    re.IGNORECASE | re.VERBOSE,
+  )
+
+  for m in from_join_pattern.finditer(sql):
+    schema = (m.group("s1") or m.group("s2") or m.group("s3") or "").strip().lower()
+    if schema and schema not in allowed_schemas:
+      return True
+
+  return False
+
+
+def _render_literal_for_dialect(dialect, value):
+  # prefer dialect.render_literal if available
+  fn = getattr(dialect, "render_literal", None)
+  if callable(fn):
+    return fn(value)
+  return dialect.literal(value)
+
+
+def apply_runtime_placeholders(sql: str, *, dialect, load_run_id: str, load_timestamp) -> str:
+  if not sql:
+    return sql
+
+  ts_sql = _render_literal_for_dialect(dialect, load_timestamp)
+  id_sql = _render_literal_for_dialect(dialect, load_run_id)
+
+  # support both "{{ load_timestamp }}" and "{ load_timestamp }" variants
+  sql = re.sub(r"\{\{\s*load_timestamp\s*\}\}", ts_sql, sql)
+  sql = re.sub(r"\{\s*load_timestamp\s*\}", ts_sql, sql)
+
+  sql = re.sub(r"\{\{\s*load_run_id\s*\}\}", id_sql, sql)
+  sql = re.sub(r"\{\s*load_run_id\s*\}", id_sql, sql)
+
+  return sql
+
+
+def should_truncate_before_load(td, load_plan) -> bool:
+  schema_short = getattr(td.target_schema, "short_name", None)
+  mode = getattr(load_plan, "mode", None)
+
+  if schema_short in ("stage", "raw"):
+    return True
+
+  if schema_short == "rawcore" and mode == "full":
+    return True
+
+  return False
 
 
 class Command(BaseCommand):
@@ -118,6 +289,30 @@ class Command(BaseCommand):
         "delete_detection_enabled) before the SQL."
       ),
     )
+
+
+  def _resolve_target_dataset(self, target_name: str, schema_short: str | None) -> TargetDataset:
+    """
+    Resolve a TargetDataset by target_dataset_name and optional schema short_name.
+    """
+    qs = TargetDataset.objects.filter(target_dataset_name=target_name)
+
+    if schema_short:
+      qs = qs.filter(target_schema__short_name=schema_short)
+
+    try:
+      return qs.get()
+    except TargetDataset.DoesNotExist as exc:
+      raise CommandError(
+        f"TargetDataset with name='{target_name}'"
+        + (f" and schema='{schema_short}'" if schema_short else "")
+        + " not found."
+      ) from exc
+    except TargetDataset.MultipleObjectsReturned as exc:
+      raise CommandError(
+        f"Multiple TargetDatasets found for name='{target_name}'. "
+        "Please specify --schema to disambiguate."
+      ) from exc
 
 
   def handle(self, *args: Any, **options: Any) -> None:
@@ -226,7 +421,7 @@ class Command(BaseCommand):
       self.stdout.write("")
       self.stdout.write(sql)
 
-    # 9) Logging: Ende of run
+    # 9) Logging: end of run (render phase)
     logger.info(
       "elevata_load finished",
       extra={
@@ -245,36 +440,99 @@ class Command(BaseCommand):
       },
     )
 
-    if execute:
-      # TODO: implement execution against the target system connection.
-      # This will use:
-      #   - profile.secret_ref_template / overrides
-      #   - the resolved System (type + short_name)
-      #   - a secret provider (env, Azure Key Vault, ...)
+    if not execute:
+      return
 
+    # 10) Execute mode: run SQL and log to warehouse
+    engine = dialect.get_execution_engine(system)
+
+    # Ensure target schema exists (optional auto-provision)
+    ensure_target_schema(
+      engine=engine,
+      dialect=dialect,
+      schema_name=td.target_schema.schema_name,
+      auto_provision=AUTO_PROVISION_SCHEMAS,
+    )
+
+    # Ensure target table exists (optional auto-provision)
+    ensure_target_table(
+      engine=engine,
+      dialect=dialect,
+      td=td,
+      auto_provision=AUTO_PROVISION_TABLES,
+    )
+
+    # Ensure meta.load_run_log exists (optional auto-provision)
+    ensure_load_run_log_table(
+      engine=engine,
+      dialect=dialect,
+      meta_schema=META_SCHEMA_NAME,
+      auto_provision=AUTO_PROVISION_META_LOG,
+    )
+
+    exec_start_ts = time.perf_counter()
+    exec_started_at = now()
+
+    rows_affected: int | None = None
+    load_status = "success"
+    error_message: str | None = None
+
+    # Guardrail: execute mode is target-only (no cross-system/source connectivity yet)
+    if _looks_like_cross_system_sql(sql, td.target_schema.schema_name):
       raise CommandError(
-        "Execute mode is not implemented yet. Use --dry-run (default) to inspect the SQL."
+        "Execute mode currently supports target-only SQL. "
+        "This dataset SQL appears to reference source objects outside the target schema "
+        "(e.g. 'Production.Product'). "
+        "Please ingest/load the raw table into the target first (or seed it), "
+        "then run downstream layers (rawcore/hist) using --execute."
       )
 
-  def _resolve_target_dataset(self, target_name: str, schema_short: str | None) -> TargetDataset:
-    """
-    Resolve a TargetDataset by target_dataset_name and optional schema short_name.
-    """
-    qs = TargetDataset.objects.filter(target_dataset_name=target_name)
-
-    if schema_short:
-      qs = qs.filter(target_schema__short_name=schema_short)
+    if should_truncate_before_load(td, load_plan):
+      trunc_sql = dialect.render_truncate_table(
+        schema=td.target_schema.schema_name,
+        table=td.target_dataset_name,
+      )
+      engine.execute(trunc_sql)
 
     try:
-      return qs.get()
-    except TargetDataset.DoesNotExist as exc:
-      raise CommandError(
-        f"TargetDataset with name='{target_name}'"
-        + (f" and schema='{schema_short}'" if schema_short else "")
-        + " not found."
-      ) from exc
-    except TargetDataset.MultipleObjectsReturned as exc:
-      raise CommandError(
-        f"Multiple TargetDatasets found for name='{target_name}'. "
-        "Please specify --schema to disambiguate."
-      ) from exc
+      exec_ts = now()  # or started_at of execution
+      sql_exec = apply_runtime_placeholders(
+        sql,
+        dialect=dialect,
+        load_run_id=load_run_id,
+        load_timestamp=exec_ts,
+      )
+      rows_affected = engine.execute(sql_exec)
+
+    except Exception as exc:
+      load_status = "error"
+      error_message = str(exc)
+
+    exec_finished_at = now()
+    execution_ms = (time.perf_counter() - exec_start_ts) * 1000.0
+
+    # Insert warehouse log row (only if the dialect supports it)
+    if hasattr(dialect, "render_insert_load_run_log"):
+      log_insert_sql = dialect.render_insert_load_run_log(
+        meta_schema=META_SCHEMA_NAME,
+        batch_run_id=batch_run_id,
+        load_run_id=load_run_id,
+        summary=summary,
+        profile=profile,
+        system=system,
+        started_at=started_at,
+        finished_at=finished_at,
+        render_ms=render_ms,
+        execution_ms=execution_ms,
+        sql_length=sql_length,
+        rows_affected=rows_affected,
+        load_status=load_status,
+        error_message=error_message,
+      )
+      if log_insert_sql:
+        engine.execute(log_insert_sql)
+
+    # Optionally re-raise error after logging
+    if load_status == "error":
+      raise CommandError(f"Load execution failed: {error_message}")
+

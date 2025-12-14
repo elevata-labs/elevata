@@ -29,6 +29,11 @@ from ..expr import Expr
 from ..logical_plan import LogicalSelect
 
 
+class BaseExecutionEngine:
+  def execute(self, sql: str) -> int | None:
+    raise NotImplementedError
+
+
 class SqlDialect(ABC):
   """
   Base interface for SQL dialects.
@@ -40,6 +45,28 @@ class SqlDialect(ABC):
       f"{self.__class__.__name__} does not provide an execution engine."
     )
 
+  # ---------------------------------------------------------------------------
+  # Capabilities (can be overridden by concrete dialects)
+  # ---------------------------------------------------------------------------
+  @property
+  def supports_merge(self) -> bool:
+    """Whether this dialect supports a native MERGE statement."""
+    # Dialects must explicitly opt in by overriding this property.
+    return False
+
+  @property
+  def supports_delete_detection(self) -> bool:
+    """
+    Whether delete detection is supported as a first-class operation
+    (either via DELETE ... NOT EXISTS, DELETE USING, etc.).
+    """
+    # Dialects must explicitly opt in by overriding this property.
+    return False
+  
+
+  # ---------------------------------------------------------------------------
+  # Identifier quoting
+  # ---------------------------------------------------------------------------
   @abstractmethod
   def quote_ident(self, name: str) -> str:
     """
@@ -66,58 +93,9 @@ class SqlDialect(ABC):
     # future: check dialect keyword lists
     return False
 
-
-  @abstractmethod
-  def render_expr(self, expr: Expr) -> str:
-    raise NotImplementedError
-
-  @abstractmethod
-  def render_select(self, select: LogicalSelect) -> str:
-    raise NotImplementedError
-  
-  # ---------------------------------------------------------------------------
-  # Literal Rendering
-  # ---------------------------------------------------------------------------
-  @abstractmethod
-  def render_literal(self, value) -> str:
-    """
-    Render a Python value as a SQL literal.
-    Must handle None, bool, int, float, str, date, datetime, Decimal.
-    """
-
-  # ---------------------------------------------------------------------------
-  # Type Casting
-  # ---------------------------------------------------------------------------
-  @abstractmethod
-  def cast_expression(self, expr: str, target_type: str) -> str:
-    """
-    Wrap the given SQL expression in a dialect-specific CAST expression.
-    """
-  
-  # ---------------------------------------------------------------------------
-  # Capabilities (can be overridden by concrete dialects)
-  # ---------------------------------------------------------------------------
-
-  @property
-  def supports_merge(self) -> bool:
-    """Whether this dialect supports a native MERGE statement."""
-    # Dialects must explicitly opt in by overriding this property.
-    return False
-
-  @property
-  def supports_delete_detection(self) -> bool:
-    """
-    Whether delete detection is supported as a first-class operation
-    (either via DELETE ... NOT EXISTS, DELETE USING, etc.).
-    """
-    # Dialects must explicitly opt in by overriding this property.
-    return False
-
-
   # -------------------------------------------------------------------------
   # Generic helpers built on top of quote_ident
   # -------------------------------------------------------------------------
-
   def render_identifier(self, name: str) -> str:
     """
     Apply quoting only when necessary.
@@ -195,11 +173,17 @@ class SqlDialect(ABC):
     if not columns:
       return "*"
     return ", ".join(self.quote_ident(c) for c in columns)
-  
-  # ---------------------------------------------------------------------------
-  # Expression helpers
-  # ---------------------------------------------------------------------------
 
+  # ---------------------------------------------------------------------------
+  # Expression rendering
+  # ---------------------------------------------------------------------------
+  @abstractmethod
+  def render_expr(self, expr: Expr) -> str:
+    raise NotImplementedError
+
+  # ---------------------------------------------------------
+  # Concatenation
+  # ---------------------------------------------------------
   @abstractmethod
   def concat_expression(self, parts: Sequence[str]) -> str:
     """
@@ -211,6 +195,9 @@ class SqlDialect(ABC):
     """
     raise NotImplementedError
 
+  # ---------------------------------------------------------
+  # Hash Expression
+  # ---------------------------------------------------------
   def hash_expression(self, expr: str, algo: str = "sha256") -> str:
     """
     Build a dialect-specific hashing expression around `expr`.
@@ -221,12 +208,47 @@ class SqlDialect(ABC):
     raise NotImplementedError(
       f"{self.__class__.__name__} does not implement hash_expression()"
     )
-  
 
-  # -------------------------------------------------------------------------
-  # Load SQL helpers (full load / incremental / delete detection)
-  # -------------------------------------------------------------------------
+  # ---------------------------------------------------------------------------
+  # Literal Rendering
+  # ---------------------------------------------------------------------------
+  @abstractmethod
+  def render_literal(self, value) -> str:
+    """
+    Render a Python value as a SQL literal.
+    Must handle None, bool, int, float, str, date, datetime, Decimal.
+    """
 
+  # ---------------------------------------------------------------------------
+  # Type Casting
+  # ---------------------------------------------------------------------------
+  @abstractmethod
+  def cast_expression(self, expr: str, target_type: str) -> str:
+    """
+    Wrap the given SQL expression in a dialect-specific CAST expression.
+    """
+
+  # ---------------------------------------------------------------------------
+  # SELECT rendering
+  # ---------------------------------------------------------------------------
+  @abstractmethod
+  def render_select(self, select: LogicalSelect) -> str:
+    raise NotImplementedError
+
+  # ---------------------------------------------------------------------------
+  # Truncate table
+  # ---------------------------------------------------------------------------
+  def render_truncate_table(self, *, schema: str, table: str) -> str:
+    """
+    Default implementation: DELETE FROM (safe, widely supported).
+    Dialects can override with TRUNCATE TABLE for performance.
+    """
+    full = self.render_table_identifier(schema, table)
+    return f"DELETE FROM {full};"
+    
+  # ---------------------------------------------------------------------------
+  # Incremental / MERGE Rendering
+  # ---------------------------------------------------------------------------
   def render_create_replace_table(self, schema: str, table: str, select_sql: str) -> str:
     """
     Optional helper: CREATE OR REPLACE TABLE schema.table AS <select>.
@@ -272,8 +294,63 @@ class SqlDialect(ABC):
       ['t."customer_id" = s."customer_id"', 't."partner_id" = s."partner_id"']
     """
     raise NotImplementedError
-  
 
-class BaseExecutionEngine:
-  def execute(self, sql: str) -> int | None:
-    raise NotImplementedError
+  # ---------------------------------------------------------------------------
+  # DDL statements
+  # ---------------------------------------------------------------------------
+  def render_create_schema_if_not_exists(self, schema: str) -> str:
+    """
+    Return DDL that creates the given schema if it does not exist.
+    Must be idempotent and safe to run multiple times.
+    """
+    raise NotImplementedError(
+      f"{self.__class__.__name__} does not implement render_create_schema_if_not_exists()"
+    )
+  
+  def render_create_table_if_not_exists(self, td) -> str:
+    """
+    Return DDL that creates the target dataset table based on TargetColumn metadata
+    if it does not exist. Must be idempotent.
+    """
+    raise NotImplementedError(
+      f"{self.__class__.__name__} does not implement render_create_table_if_not_exists()"
+    )
+
+  # ---------------------------------------------------------------------------
+  # Logging
+  # ---------------------------------------------------------------------------
+  def render_create_load_run_log_if_not_exists(self, meta_schema: str) -> str:
+    """
+    Return DDL that creates the meta.load_run_log table if it does not exist.
+    Must be idempotent and safe to run multiple times.
+    """
+    raise NotImplementedError(
+      f"{self.__class__.__name__} does not implement render_create_load_run_log_if_not_exists()"
+    )
+
+  def render_insert_load_run_log(
+    self,
+    meta_schema: str,
+    batch_run_id: str,
+    load_run_id: str,
+    summary: dict[str, object],
+    profile,
+    system,
+    started_at,
+    finished_at,
+    render_ms: float,
+    execution_ms: float | None,
+    sql_length: int,
+    rows_affected: int | None,
+    load_status: str,
+    error_message: str | None,
+  ) -> str:
+    """
+    Render an INSERT INTO meta.load_run_log (...) VALUES (...) statement.
+
+    Dialects should use their own render_literal / render_table_identifier
+    helpers to safely render all values and identifiers.
+    """
+    raise NotImplementedError(
+      f"{self.__class__.__name__} does not implement render_insert_load_run_log()"
+    )

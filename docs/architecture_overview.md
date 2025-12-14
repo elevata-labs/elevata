@@ -126,7 +126,8 @@ Metadata Model
 - **Traceability** via lineage-driven logic  
 - **Extensibility** (new dialects, strategies, materializations)  
 - **Incremental ready** with merge + delete detection  
-- **Safe for CI/CD** — predictable SQL for diffing and testing
+- **Safe for CI/CD** — predictable SQL for diffing and testing  
+- **Execution & Logging** are part of the system
 
 ---
 

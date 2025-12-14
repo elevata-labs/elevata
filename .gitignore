@@ -34,6 +34,9 @@ elevata_profiles.y*
 # SQLite database
 *.sqlite*
 
+# DuckDB database
+*.duckdb
+
 # Jupyter Notebooks
 .ipynb_checkpoints
 

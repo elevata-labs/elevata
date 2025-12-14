@@ -558,7 +558,7 @@ def render_hist_incremental_sql(td: TargetDataset, dialect) -> str:
   rawcore_name = get_rawcore_name_from_hist(hist_name)
 
   comment = (
-    f"-- History load for {schema_name}.{hist_name} is not implemented yet.\n"
+    f"-- History load for {schema_name}.{hist_name} (SCD Type 2).\n"
     f"-- Planned SCD Type 2 semantics based on:\n"
     f"--   * surrogate key for history rows\n"
     f"--   * row_hash for change detection\n"
@@ -622,18 +622,39 @@ def render_hist_delete_sql(td: TargetDataset, dialect) -> str:
   # Surrogate key name is always: <rawcorename>_key
   sk_name = dialect.render_identifier(f"{rawcore_name}_key")
 
+  is_mssql = getattr(dialect, "DIALECT_NAME", "").lower() == "mssql"
+
+  hist_tbl = dialect.render_table_identifier(schema_name, hist_name)
+  rc_tbl = dialect.render_table_identifier(schema_name, rawcore_name)
+
+  if is_mssql:
+    return (
+      "UPDATE h\n"
+      "SET\n"
+      f"  version_ended_at = {{{{ load_timestamp }}}},\n"
+      "  version_state    = 'deleted',\n"
+      f"  load_run_id      = {{{{ load_run_id }}}}\n"
+      f"FROM {hist_tbl} h\n"
+      "WHERE h.version_ended_at IS NULL\n"
+      "  AND NOT EXISTS (\n"
+      "    SELECT 1\n"
+      f"    FROM {rc_tbl} r\n"
+      f"    WHERE r.{sk_name} = h.{sk_name}\n"
+      "  );"
+    )
+
   return (
-    f"UPDATE {dialect.render_table_identifier(schema_name, hist_name)} AS h\n"
-    f"SET\n"
-    f"  version_ended_at = {{ load_timestamp }},\n"
-    f"  version_state    = 'deleted',\n"
-    f"  load_run_id      = {{ load_run_id }}\n"
-    f"WHERE h.version_ended_at IS NULL\n"
-    f"  AND NOT EXISTS (\n"
-    f"    SELECT 1\n"
-    f"    FROM {dialect.render_table_identifier(schema_name, rawcore_name)} AS r\n"
+    f"UPDATE {hist_tbl} AS h\n"
+    "SET\n"
+    f"  version_ended_at = {{{{ load_timestamp }}}},\n"
+    "  version_state    = 'deleted',\n"
+    f"  load_run_id      = {{{{ load_run_id }}}}\n"
+    "WHERE h.version_ended_at IS NULL\n"
+    "  AND NOT EXISTS (\n"
+    "    SELECT 1\n"
+    f"    FROM {rc_tbl} AS r\n"
     f"    WHERE r.{sk_name} = h.{sk_name}\n"
-    f"  );"
+    "  );"
   )
 
 
@@ -653,19 +674,41 @@ def render_hist_changed_update_sql(td: TargetDataset, dialect) -> str:
   rawcore_name = get_rawcore_name_from_hist(hist_name)
   sk_name = dialect.render_identifier(f"{rawcore_name}_key")
 
+  is_mssql = getattr(dialect, "DIALECT_NAME", "").lower() == "mssql"
+
+  hist_tbl = dialect.render_table_identifier(schema_name, hist_name)
+  rc_tbl = dialect.render_table_identifier(schema_name, rawcore_name)
+
+  if is_mssql:
+    return (
+      "UPDATE h\n"
+      "SET\n"
+      f"  version_ended_at = {{{{ load_timestamp }}}},\n"
+      "  version_state    = 'changed',\n"
+      f"  load_run_id      = {{{{ load_run_id }}}}\n"
+      f"FROM {hist_tbl} h\n"
+      "WHERE h.version_ended_at IS NULL\n"
+      "  AND EXISTS (\n"
+      "    SELECT 1\n"
+      f"    FROM {rc_tbl} r\n"
+      f"    WHERE r.{sk_name} = h.{sk_name}\n"
+      "      AND r.row_hash <> h.row_hash\n"
+      "  );"
+    )
+
   return (
-    f"UPDATE {dialect.render_table_identifier(schema_name, hist_name)} AS h\n"
-    f"SET\n"
-    f"  version_ended_at = {{ load_timestamp }},\n"
-    f"  version_state    = 'changed',\n"
-    f"  load_run_id      = {{ load_run_id }}\n"
-    f"WHERE h.version_ended_at IS NULL\n"
-    f"  AND EXISTS (\n"
-    f"    SELECT 1\n"
-    f"    FROM {dialect.render_table_identifier(schema_name, rawcore_name)} AS r\n"
+    f"UPDATE {hist_tbl} AS h\n"
+    "SET\n"
+    f"  version_ended_at = {{{{ load_timestamp }}}},\n"
+    "  version_state    = 'changed',\n"
+    f"  load_run_id      = {{{{ load_run_id }}}}\n"
+    "WHERE h.version_ended_at IS NULL\n"
+    "  AND EXISTS (\n"
+    "    SELECT 1\n"
+    f"    FROM {rc_tbl} AS r\n"
     f"    WHERE r.{sk_name} = h.{sk_name}\n"
-    f"      AND r.row_hash <> h.row_hash\n"
-    f"  );"
+    "      AND r.row_hash <> h.row_hash\n"
+    "  );"
   )
 
 def _get_hist_insert_columns(td: TargetDataset, dialect) -> tuple[list[str], list[str]]:
@@ -695,9 +738,10 @@ def _get_hist_insert_columns(td: TargetDataset, dialect) -> tuple[list[str], lis
 
   hist_cols: list[str] = []
   rawcore_cols: list[str] = []
+  added: set[str] = set()
 
   # 1. History SK first → target column name on the hist table
-  hist_cols.append(q(sk_name_hist))
+  hist_cols.append(q(sk_name_hist)); added.add(sk_name_hist)
   rawcore_cols.append(f"{raw_alias}.{q(sk_name_raw)}")
 
   # 2. Rawcore columns via lineage (all non-SK upstream columns)
@@ -712,12 +756,16 @@ def _get_hist_insert_columns(td: TargetDataset, dialect) -> tuple[list[str], lis
     rc_col = tci.upstream_target_column
     if rc_col is not None and not rc_col.surrogate_key_column:
       col_name = rc_col.target_column_name
-      hist_cols.append(q(col_name))
-      rawcore_cols.append(f"{raw_alias}.{q(col_name)}")
+      if col_name not in added:
+        hist_cols.append(q(col_name))
+        rawcore_cols.append(f"{raw_alias}.{q(col_name)}")
+        added.add(col_name)
 
-  # 3. row_hash (persists changes)
-  hist_cols.append(q("row_hash"))
-  rawcore_cols.append(f"{raw_alias}.{q('row_hash')}")
+  # 3) row_hash (only if not already included)
+  if "row_hash" not in added:
+    hist_cols.append(q("row_hash"))
+    rawcore_cols.append(f'{raw_alias}.{q("row_hash")}')
+    added.add("row_hash")
 
   # 4. Versioning metadata (only left side, right side = constants)
   hist_cols.extend([
@@ -733,6 +781,24 @@ def _get_hist_insert_columns(td: TargetDataset, dialect) -> tuple[list[str], lis
     "'changed'",  # default for changed path
     "{{ load_run_id }}",
   ])
+
+  # Defensive guard: prevent duplicate columns in INSERT lists
+  # (e.g. row_hash may appear via lineage and also be appended explicitly).
+  def _unquote_ident(x: str) -> str:
+    x = x.strip()
+    if x.startswith('"') and x.endswith('"') and len(x) >= 2:
+      return x[1:-1]
+    if x.startswith("[") and x.endswith("]") and len(x) >= 2:
+      return x[1:-1]
+    return x
+
+  unquoted = [_unquote_ident(c) for c in hist_cols]
+  dupes = sorted({c for c in unquoted if unquoted.count(c) > 1})
+  if dupes:
+    raise ValueError(
+      f"Duplicate history insert columns detected: {dupes}. "
+      "This indicates a metadata/lineage overlap (e.g. row_hash duplicated)."
+    )
 
   return hist_cols, rawcore_cols
 
@@ -757,7 +823,7 @@ def render_hist_changed_insert_sql(td: TargetDataset, dialect) -> str:
     f"WHERE EXISTS (\n"
     f"  SELECT 1\n"
     f"  FROM {dialect.render_table_identifier(schema_name, hist_name)} AS h\n"
-    f"  WHERE h.version_ended_at = {{ load_timestamp }}\n"
+    f"  WHERE h.version_ended_at = {{{{ load_timestamp }}}}\n"
     f"    AND h.version_state = 'changed'\n"
     f"    AND h.{sk_name_raw} = r.{sk_name_raw}\n"
     f");"
@@ -822,15 +888,15 @@ def render_hist_changed_insert_template(td: TargetDataset) -> str:
     f"-- SELECT\n"
     f"--   /* TODO: history SK expression based on ({sk_name}, version_started_at) */\n"
     f"--   /* TODO: r.* columns in the right order */\n"
-    f"--   {{ load_timestamp }}      AS version_started_at,\n"
+    f"--   {{{{ load_timestamp }}}}      AS version_started_at,\n"
     f"--   NULL                      AS version_ended_at,\n"
     f"--   'changed'                 AS version_state,\n"
-    f"--   {{ load_run_id }}         AS load_run_id\n"
+    f"--   {{{{ load_run_id }}}}         AS load_run_id\n"
     f"-- FROM {schema_name}.{rawcore_name} AS r\n"
     f"-- WHERE EXISTS (\n"
     f"--   SELECT 1\n"
     f"--   FROM {schema_name}.{hist_name} AS h\n"
-    f"--   WHERE h.version_ended_at = {{ load_timestamp }}\n"
+    f"--   WHERE h.version_ended_at = {{{{ load_timestamp }}}}\n"
     f"--     AND h.version_state    = 'changed'\n"
     f"--     AND h.{sk_name}        = r.{sk_name}\n"
     f"-- );\n"

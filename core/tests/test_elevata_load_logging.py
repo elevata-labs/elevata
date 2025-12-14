@@ -28,13 +28,27 @@ import pytest
 
 from metadata.management.commands.elevata_load import Command as ElevataLoadCommand
 from django.core.management.base import CommandError
+from metadata.rendering.dialects.base import BaseExecutionEngine  # oder wo BaseExecutionEngine liegt
+
+
+class DummyExecutionEngine(BaseExecutionEngine):
+  def __init__(self):
+    pass
+
+  def execute(self, sql: str) -> int | None:
+    # For testing we don't actually execute anything.
+    # We just pretend it worked and return a fake rowcount.
+    return 0
 
 
 class DummyTargetDataset:
   def __init__(self, name: str = "sap_customer", schema_short: str = "rawcore") -> None:
     self.id = 123
     self.target_dataset_name = name
-    self.target_schema = SimpleNamespace(short_name=schema_short)
+    self.target_schema = SimpleNamespace(
+      short_name=schema_short,
+      schema_name=schema_short,  # in tests: schema_name == short_name
+    )
 
 
 class DummyProfile:
@@ -49,7 +63,33 @@ class DummySystem:
 
 
 class DummyDialect:
-  pass
+  DIALECT_NAME = "dummy"
+
+  # ... deine bisherigen Methoden (render_xxx, etc.)
+
+  def get_execution_engine(self, system):
+    # In tests we return a no-op execution engine
+    return DummyExecutionEngine()
+
+  def render_truncate_table(self, *, schema: str, table: str) -> str:
+    # Tests don't execute, but the command expects a truncate statement.
+    return f"-- truncate {schema}.{table}"
+
+  def literal(self, value):
+    # Minimal literal renderer for tests only.
+    if value is None:
+      return "NULL"
+    if isinstance(value, bool):
+      return "1" if value else "0"
+    if isinstance(value, (int, float)):
+      return str(value)
+    s = str(value).replace("'", "''")
+    return f"'{s}'"
+
+  def render_literal(self, value):
+    # Some code paths prefer render_literal; delegate to literal for tests.
+    return self.literal(value)
+
 
 def test_elevata_load_logs_start_and_finish_and_prints_header(monkeypatch, caplog):
   cmd = ElevataLoadCommand()
@@ -130,7 +170,7 @@ def test_elevata_load_logs_start_and_finish_and_prints_header(monkeypatch, caplo
   assert getattr(finish, "sql_length") == len("-- generated load sql")
   assert getattr(finish, "execute") is False
 
-def test_elevata_load_execute_logs_then_raises_commanderror(monkeypatch, caplog):
+def test_elevata_load_execute_logs_without_raising(monkeypatch, caplog):
   cmd = ElevataLoadCommand()
   cmd.stdout = io.StringIO()
 
@@ -160,24 +200,19 @@ def test_elevata_load_execute_logs_then_raises_commanderror(monkeypatch, caplog)
 
   logger_name = "metadata.management.commands.elevata_load"
 
+  # We expect the command to run without raising, but to log start + finish
   with caplog.at_level(logging.INFO, logger=logger_name):
-    with pytest.raises(CommandError) as excinfo:
-      cmd.handle(
-        target_name="sap_customer",
-        schema_short="rawcore",
-        dialect_name=None,
-        target_system_name=None,
-        execute=True,
-        no_print=True,
-      )
+    cmd.handle(
+      target_name="sap_customer",
+      schema_short="rawcore",
+      dialect_name=None,
+      target_system_name=None,
+      execute=True,
+      no_print=True,
+    )
 
-  # CommandError message should be the existing "execute not implemented" text
-  assert "Execute mode is not implemented yet" in str(excinfo.value)
-
-  # We should still see both start + finish logs
   start_records = [r for r in caplog.records if r.getMessage() == "elevata_load starting"]
   finish_records = [r for r in caplog.records if r.getMessage() == "elevata_load finished"]
 
   assert len(start_records) == 1
   assert len(finish_records) == 1
-

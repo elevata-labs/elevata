@@ -33,7 +33,7 @@ it defines **how a modern data architecture should look** — opinionated, gover
 *In other words: elevata brings structure, governance, and automation to modern data platforms — from metadata to SQL.*
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/elevata-labs/elevata/main/docs/elevata_v0_5_2.png" alt="elevata UI preview" width="700"/>
+  <img src="https://raw.githubusercontent.com/elevata-labs/elevata/main/docs/elevata_v0_6_0.png" alt="elevata UI preview" width="700"/>
 </p>
 
 **elevata** uses Django models to define:
@@ -84,7 +84,7 @@ elevata consists of the following layers:
 2. Inspect lineage in the dataset detail view  
 3. Select the SQL dialect in the preview section  
 4. Review generated SQL  
-5. Run load pipelines via CLI (basic runner available; extended runner planned for v0.6.x)
+5. Run load pipelines via CLI (warehouse-native execution supported)
 
 ---
 
@@ -102,25 +102,85 @@ A more powerful Load Runner CLI is planned for v0.6.x, including:
 
 ## 🔮 Roadmap
 
-### v0.5.x
-- Multi-dialect SQL engine  
-- MSSQL + Postgres dialects  
-- Hash DSL  
-- SK/FK hashing rewrite  
-- Multi-source Stage rewrite  
-- SQL Preview modernisation  
-- Deterministic Historization table generation  
+elevata is evolving from a SQL-generation layer into a **metadata-driven, warehouse-native data platform engine**.  
+The roadmap reflects this direction: structured, ambitious, and aligned with elevata’s long-term vision.
 
-### v0.6.x
-- Full Load Runner CLI  
-- Target system selector in profiles  
-- Improved incremental MERGE generation  
-- SCD/History-ready pipelines  
+---
 
-### v0.7.x
-- Multi-source incremental loads  
-- Additional dialects (Snowflake, BigQuery, Databricks)  
-- Full pipeline orchestrator  
+## **v0.6.x — Platform Foundation (Current Release Line)**
+> *elevata becomes executable.*  
+
+- Introduction of the Execution Engine (`--execute`)  
+- Warehouse-level logging through `meta.load_run_log`  
+- Full SCD Type 2 historization (metadata-driven, deterministic)  
+- Incremental MERGE pipelines (MERGE or UPDATE+INSERT fallback)  
+- Automatic provisioning of schemas and meta objects  
+- Extended architectural documentation  
+- Improved SQL preview and diagnostic load summaries  
+
+**Goal of 0.6:**  
+elevata transitions from a modeling/SQL layer into an **end-to-end load execution engine**.
+
+---
+
+## **v0.7.x — Productivity & Governance Layer**
+> *More automation. More insight. More developer experience.*
+
+- **Metadata-driven ingestion (optional)**  
+  Extracts data from introspected source systems into raw target tables using existing source metadata.  
+  Focus on deterministic, reproducible loads (no transformation logic in ingestion).  
+
+- **Automated schema evolution detection**  
+  Detects warehouse–model drifts, identifies breaking changes.
+
+- **Data Quality & Metadata Rule Engine**  
+  Rule-based validation directly inside the load pipeline (nullability, domains, patterns, etc.).
+
+- **Column-level lineage & impact analysis**  
+  Rich dependency graphing and change-impact visibility.
+
+- **Developer tooling & debugger**  
+  Deep SQL preview, AST inspection, execution diagnostics, step-wise load traceability.
+
+- **Optional: simplified steward interface**  
+  Lightweight UI for business/data owners to view datasets and rules.
+
+**Goal of 0.7:**  
+elevata becomes **governable, productive, and capable of sourcing its own data**.
+
+---
+
+## **v0.8.x — Platform Orchestration Layer**
+> *The next logical step: elevata as an orchestrable warehouse engine.*  
+
+- Warehouse-native task orchestration (retries, idempotency, scheduling)  
+- Dependency graph & automatic pipeline ordering  
+- Multi-dataset batch execution with parallelization  
+- Integrations for Airflow / Dagster / Prefect  
+- Extended execution monitor (latency, throughput, volume, change rates)
+
+**Goal of 0.8:**  
+elevata becomes a **self-contained data platform core**, orchestrable without external wrappers.
+
+---
+
+## **Future Directions (Post-0.8)**
+> *Long-term ambitions and ecosystem expansion.*
+
+- Additional dialects: **Snowflake**, **BigQuery**, **Databricks SQL**
+- Extended catalog capabilities (contracts, schema registry, dataset capabilities)  
+- Warehouse-native metadata and observability enhancements  
+- Optional source/target sync mechanisms (metadata-driven)  
+- Native metrics layer & query insights
+
+---
+
+### ✨ Design Principles Reflected in the Roadmap
+
+- **Metadata-first:** SQL, historization, incremental logic and execution are derived from declarative definitions.  
+- **Deterministic & lineage-aware:** Every transformation is predictable and auditable.  
+- **Warehouse-native:** elevata optimizes for SQL systems and treats the warehouse as the execution environment.  
+- **Extensible:** Dialects, rules, orchestrators and catalog integrations can grow as the platform evolves.
 
 ---
 

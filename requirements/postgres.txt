@@ -8,4 +8,4 @@
 # It is not code, but part of the build and configuration setup.
 # ======================================================
 
-psycopg[binary]
+psycopg2

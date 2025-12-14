@@ -33,6 +33,7 @@ from .expr import (
   Literal,
   Concat,
   Coalesce,
+  Cast,
   row_number_over as _row_number_over,
 )
 
@@ -102,8 +103,12 @@ def concat_ws_expr(sep: str, exprs: List[Expr]) -> Expr:
 def coalesce_expr(expr: Expr, null_value: str) -> Expr:
   """
   Vendor-neutral COALESCE(expr, null_value)
+
+  Note:
+    For hashing / key generation we normalize to string to avoid type coercion
+    errors (e.g. INT + 'null_replaced').
   """
-  return Coalesce([expr, Literal(null_value)])
+  return Coalesce([Cast(expr=expr, target_type="string"), Literal(null_value)])
 
 
 def hash_expr(expr: Expr) -> Expr:
@@ -194,8 +199,14 @@ def parse_surrogate_dsl(dsl: str, table_alias: str | None = None) -> Expr:
     parts = _split_args(inner)
     if len(parts) != 2:
       raise ValueError("COALESCE must have exactly 2 arguments")
+
     left = parse_surrogate_dsl(parts[0], table_alias)
     right = parse_surrogate_dsl(parts[1], table_alias)
+
+    # Cast left side to string to avoid type coercion issues across dialects
+    # (e.g. INT columns with 'null_replaced' fallbacks).
+    left = Cast(expr=left, target_type="string")
+
     return Coalesce([left, right])
 
   raise ValueError(f"Unsupported DSL expression: {dsl!r}")
