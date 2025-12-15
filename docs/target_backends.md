@@ -103,7 +103,8 @@ SEC_DEV_CONN_POSTGRES_DWH=postgresql://postgres:postgres@localhost:5432/dwh
 
 ## 🔧 Microsoft SQL Server (MSSQL)
 
-Microsoft SQL Server is supported as a **fully executable target backend**.
+Microsoft SQL Server is supported as a **fully executable target backend**.  
+SQL Server alias types and money datatypes are handled explicitly.
 
 ### 🧩 System prerequisites
 - Install **Microsoft ODBC Driver for SQL Server** (recommended: ODBC Driver 18)  

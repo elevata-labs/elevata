@@ -149,8 +149,12 @@ def map_sql_type(dialect_name: str, raw_type: object) -> Tuple[str, Optional[int
     if "bigint" in t:
       return _ret(BIGINT)
     if any(x in t for x in ["tinyint", "smallint", "int"]):
-      return _ret(INTEGER)
-    if any(x in t for x in ["decimal", "numeric", "money", "smallmoney"]):
+      return _ret(INTEGER)    
+    if t == "money":
+      return _ret(DECIMAL, None, 19, 4)
+    if t == "smallmoney":
+      return _ret(DECIMAL, None, 10, 4)
+    if any(x in t for x in ["decimal", "numeric"]):
       return _ret(DECIMAL, None, prec, scale)
     if "float" in t or "real" in t:
       return _ret(FLOAT)

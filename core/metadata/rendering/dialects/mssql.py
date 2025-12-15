@@ -125,6 +125,7 @@ class MssqlDialect(DuckDBDialect):
     max_length=None,       # type: int | None
     precision=None,        # type: int | None
     scale=None,            # type: int | None
+    strict=True,
   ):
     """
     Map a logical elevata datatype string to a SQL Server type string.
@@ -164,7 +165,9 @@ class MssqlDialect(DuckDBDialect):
     if t in ("datetime", "timestamp", "timestamptz"):
       return "DATETIME2"
 
-    # already concrete database type
+    if strict:
+      raise ValueError(f"Unsupported logical type for MSSQL: {logical_type!r}")
+    # already concrete database type (explicit non-strict passthrough)
     return logical_type
 
   # ---------------------------------------------------------
@@ -375,7 +378,10 @@ class MssqlDialect(DuckDBDialect):
     if t == JSON:
       return "NVARCHAR(MAX)"
 
-    return "NVARCHAR(MAX)"
+    raise ValueError(
+      f"Unsupported canonical datatype for MSSQL: {datatype!r}. "
+      "Please fix ingestion type mapping or extend the dialect mapping."
+    )
 
 
   # ---------------------------------------------------------------------------

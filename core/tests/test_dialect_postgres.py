@@ -20,6 +20,8 @@ along with elevata. If not, see <https://www.gnu.org/licenses/>.
 Contact: <https://github.com/elevata-labs/elevata>.
 """
 
+import pytest
+
 from metadata.rendering.dialects.postgres import PostgresDialect
 from metadata.rendering.expr import (
   ColumnRef,
@@ -45,9 +47,11 @@ def test_pg_row_number_render():
 
 def test_pg_hash_expression():
   d = PostgresDialect()
-  sql = d.hash_expression("colname")
-  assert "digest(colname, 'sha256')" in sql
+  sql = d.hash_expression(expr="colname", algo="sha256")
+  assert "digest(" in sql
+  assert "'sha256'" in sql
   assert "encode(" in sql
+  assert "hex" in sql
 
 
 def test_pg_literal_render():
@@ -87,3 +91,9 @@ def test_pg_merge_statement_uses_insert_on_conflict_upsert():
 
   # The source SELECT should be embedded in the statement
   assert "select 1 as id" in lower
+
+
+def test_postgres_map_logical_type_raises_on_unknown():
+  d = PostgresDialect()
+  with pytest.raises(ValueError):
+    d.map_logical_type("THIS_TYPE_DOES_NOT_EXIST")

@@ -172,6 +172,7 @@ class DuckDBDialect(SqlDialect):
     max_length=None,       # type: int | None
     precision=None,        # type: int | None
     scale=None,            # type: int | None
+    strict=True,
   ):
     """
     Map a logical elevata datatype string to a DuckDB type string.
@@ -214,8 +215,11 @@ class DuckDBDialect(SqlDialect):
     if t in ("timestamp", "timestamptz", "datetime"):
       return "TIMESTAMP"
 
-    # Fallback: trust the user, he hopefully knows what he does
+    if strict:
+      raise ValueError(f"Unsupported logical type for DuckDB: {logical_type!r}")
+    # already concrete database type (explicit non-strict passthrough)
     return logical_type
+
 
   # ---------------------------------------------------------------------------
   # Expression rendering
@@ -667,8 +671,10 @@ class DuckDBDialect(SqlDialect):
     if t == JSON:
       return "JSON"
 
-    return "VARCHAR"
-
+    raise ValueError(
+      f"Unsupported canonical datatype for DuckDB: {datatype!r}. "
+      "Please fix ingestion type mapping or extend the dialect mapping."
+    )
 
   # ---------------------------------------------------------------------------
   # Logging

@@ -415,6 +415,12 @@ class SourceColumn(AuditFields):
   ordinal_position = models.PositiveIntegerField(
     help_text="Column order within the dataset."
   )
+  source_datatype_raw = models.CharField(max_length=100, blank=True, null=True,
+    help_text=(
+      "Raw source datatype as reported by the source introspection (lossless). "
+      "Example: 'bit', 'nvarchar(max)', 'decimal(18,2)'."
+    )
+  )
   datatype = models.CharField(max_length=20, choices=DATATYPE_CHOICES,
     help_text="Logical / normalized datatype."
   )

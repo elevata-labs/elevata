@@ -163,9 +163,19 @@ def import_metadata_for_datasets(
     removed = 0
 
     with transaction.atomic():
+      # Prevent UNIQUE(source_dataset_id, ordinal_position) collisions during reordering
+      if existing:
+        base = 10000
+        n = 0
+        for sc0 in existing.values():
+          n += 1
+          sc0.ordinal_position = base + n
+          sc0.save(update_fields=["ordinal_position"])
+
       for i, c in enumerate(columns, start=1):
         name = c["name"]
         sqla_type = c["type"]
+        raw_type = str(sqla_type)
         comment = c.get("comment") or c.get("description")
         desc = _clean_description(comment)
 
@@ -185,9 +195,10 @@ def import_metadata_for_datasets(
           created += 1
 
         # Refresh technical fields from source on every sync
-        sc.ordinal_position = i
+        sc.ordinal_position = int(c.get("ordinal_position") or i)
         sc.description = (desc or "")[:255]
         sc.datatype = dtype
+        sc.source_datatype_raw = raw_type
         sc.max_length = max_len
         sc.decimal_precision = dec_prec
         sc.decimal_scale = dec_scale

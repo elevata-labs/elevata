@@ -22,6 +22,24 @@ This project adheres to [Semantic Versioning](https://semver.org/) and [Keep a C
 
 ---
 
+## [0.6.1] – 2025-12-15
+
+### Fixed
+- Correct introspection of SQL Server alias types (e.g. `dbo.Name`, `dbo.Flag`)
+- Proper handling of `bit` columns during ingestion (no fallback to string types)
+- Correct precision and scale mapping for `money` and `smallmoney` columns
+- Stable and deterministic column ordering during metadata import
+
+### Improved
+- Lossless ingestion of source datatypes via `source_datatype_raw`
+- Strict, fail-fast dialect-specific type rendering to prevent silent fallbacks
+
+### Notes
+- This release significantly improves correctness for SQL Server as a source system.
+- Re-importing source metadata is recommended to benefit from the improved typing behavior.
+
+---
+
 ## [0.6.0] – 2025-12-14
 
 ### 🚀 Warehouse-Native Execution & SCD Historization

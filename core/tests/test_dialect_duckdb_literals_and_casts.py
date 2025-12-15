@@ -122,3 +122,8 @@ def test_cast_is_idempotent_if_expression_already_cast(dialect):
   result = dialect.cast(expr, "INTEGER")
   # At least the original expression should be contained
   assert "CAST(s.amount AS INTEGER)" in result
+
+def test_duckdb_map_logical_type_raises_on_unknown():
+  d = DuckDBDialect()
+  with pytest.raises(ValueError):
+    d.map_logical_type("THIS_TYPE_DOES_NOT_EXIST")

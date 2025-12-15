@@ -103,8 +103,11 @@ class PostgresDialect(DuckDBDialect):
     max_length=None,       # type: int | None
     precision=None,        # type: int | None
     scale=None,            # type: int | None
+    strict=True,
   ):
-    lt = logical_type.upper()
+    if not logical_type:
+      return None
+    lt = str(logical_type).upper()
 
     if lt in ("STRING", "TEXT", "VARCHAR"):
       return "TEXT"
@@ -121,8 +124,11 @@ class PostgresDialect(DuckDBDialect):
     if lt == "BOOLEAN":
       return "BOOLEAN"
 
-    # fallback, unmodified
+    if strict:
+      raise ValueError(f"Unsupported logical type for Postgres: {logical_type!r}")
+    # fallback, unmodified (explicit non-strict passthrough)
     return lt
+
 
   # ---------------------------------------------------------
   # Concatenation
@@ -333,7 +339,10 @@ class PostgresDialect(DuckDBDialect):
     if t == JSON:
       return "JSONB"
 
-    return "TEXT"
+    raise ValueError(
+      f"Unsupported canonical datatype for Postgres: {datatype!r}. "
+      "Please fix ingestion type mapping or extend the dialect mapping."
+    )
 
 
   # ---------------------------------------------------------------------------
