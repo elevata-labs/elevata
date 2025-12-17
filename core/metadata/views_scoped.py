@@ -600,8 +600,7 @@ class TargetDatasetReferenceComponentScopedView(_ScopedChildView):
         from_field.queryset
         .filter(
           target_dataset=parent.referencing_dataset,
-          surrogate_key_column=False,
-          foreign_key_column=False,
+          system_role="",
         )
         .order_by("target_dataset__target_dataset_name", "ordinal_position")
       )
@@ -613,7 +612,7 @@ class TargetDatasetReferenceComponentScopedView(_ScopedChildView):
         to_field.queryset
         .filter(
           target_dataset=parent.referenced_dataset,
-          business_key_column=True,
+          system_role="business_key",
         )
         .order_by("target_dataset__target_dataset_name", "ordinal_position")
       )

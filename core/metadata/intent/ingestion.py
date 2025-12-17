@@ -20,11 +20,23 @@ along with elevata. If not, see <https://www.gnu.org/licenses/>.
 Contact: <https://github.com/elevata-labs/elevata>.
 """
 
-def group_is_eligible_for_generation(group) -> bool:
+from metadata.intent.landing import landing_required
+
+def resolve_ingest_mode(dataset) -> str:
   """
-  A SourceDatasetGroup is eligible if it has at least one SourceDataset with integrate=True.
+  Decide how ingestion is handled for this dataset.
+
+  Returns: native | external | none
   """
-  return any(
-    getattr(ds, "integrate", False) is True
-    for ds in group.sourcedataset_set.all()
-  )
+
+  if not landing_required(dataset):
+    return "none"
+
+  mode = getattr(dataset.source_system, "include_ingest", "none")
+
+  if mode == "none":
+    raise ValueError(
+      "Raw landing required, but include_ingest='none'."
+    )
+
+  return mode

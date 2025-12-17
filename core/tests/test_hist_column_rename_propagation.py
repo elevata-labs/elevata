@@ -51,6 +51,7 @@ def test_hist_dataset_renamed_when_rawcore_renamed(rawcore_schema, service):
     target_dataset=rawcore_td,
     target_column_name="customer_key",
     ordinal_position=1,
+    system_role="surrogate_key",
   )
 
   # Initial hist generation
@@ -89,8 +90,15 @@ def test_hist_column_rename_propagation(rawcore_schema, service):
 
   col = TargetColumn.objects.create(
     target_dataset=rawcore_td,
-    target_column_name="customer_name",
+    target_column_name="rc_customer_key",
     ordinal_position=1,
+    system_role="surrogate_key"
+  )
+
+  col = TargetColumn.objects.create(
+    target_dataset=rawcore_td,
+    target_column_name="customer_name",
+    ordinal_position=2,
   )
 
   # Initial hist build

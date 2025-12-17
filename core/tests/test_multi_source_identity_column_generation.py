@@ -28,7 +28,7 @@ Integration-like tests for automatic source_identity_id column generation:
   a synthetic business key column 'source_identity_id' to the drafts
   for both STAGE and RAWCORE schemas.
 
-- The column must be a STRING, non-nullable, business_key_column=True
+- The column must be a STRING, non-nullable, system_role='business_key'
   and appear as the first natural key (ordinal_position=1) in the drafts.
 """
 
@@ -151,7 +151,7 @@ def test_auto_identity_column_in_stage_and_rawcore_bundles():
     )
 
     # Business key and non-nullable
-    assert id_col.business_key_column, (
+    assert id_col.system_role == "business_key", (
       f"source_identity_id in {schema_short} must be a business key column"
     )
     assert not id_col.nullable, (
@@ -159,7 +159,7 @@ def test_auto_identity_column_in_stage_and_rawcore_bundles():
     )
 
     # Ordinal: in STAGE first BK (1), in RAWCORE first BK after SK (2)
-    bk_cols = [c for c in cols if c.business_key_column]
+    bk_cols = [c for c in cols if c.system_role=="business_key"]
     ordinals = {c.target_column_name: c.ordinal_position for c in bk_cols}
     assert ordinals.get("source_identity_id") == expected_bk_ordinal, (
       f"source_identity_id in {schema_short} must have ordinal_position="
@@ -279,7 +279,7 @@ def test_rawcore_sk_expression_contains_identity_and_sorts_bks_alphabetically():
   # ---------------------------------------------------------------------------
   # 5) get SK column & BK columns from bundle
   # ---------------------------------------------------------------------------
-  sk_cols = [c for c in cols if getattr(c, "surrogate_key_column", False)]
+  sk_cols = [c for c in cols if getattr(c, "system_role", "") == "surrogate_key"]
   assert sk_cols, "RAWCORE bundle must contain a surrogate key column"
 
   sk = sk_cols[0]
@@ -296,7 +296,7 @@ def test_rawcore_sk_expression_contains_identity_and_sorts_bks_alphabetically():
   )
 
   # Collect all BK column names from the bundle (inc. source_identity_id)
-  bk_names = [c.target_column_name for c in cols if c.business_key_column]
+  bk_names = [c.target_column_name for c in cols if c.system_role=="business_key"]
   # Expected alphabetic sort order
   expected_sorted = sorted(bk_names)
 

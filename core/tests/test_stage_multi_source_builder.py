@@ -154,7 +154,7 @@ def test_stage_multi_source_via_raw_identity_mode_produces_union():
     datatype="STRING",
     max_length=50,
     nullable=False,
-    business_key_column=True,
+    system_role="business_key",
   )
   TargetColumn.objects.create(
     target_dataset=raw2,
@@ -163,7 +163,7 @@ def test_stage_multi_source_via_raw_identity_mode_produces_union():
     datatype="STRING",
     max_length=50,
     nullable=False,
-    business_key_column=True,
+    system_role="business_key",
   )
 
   TargetDatasetInput.objects.create(
@@ -204,7 +204,7 @@ def test_stage_multi_source_via_raw_identity_mode_produces_union():
     datatype="STRING",
     max_length=30,
     nullable=False,
-    business_key_column=True,
+    system_role="business_key",
     artificial_column=True,
   )
   TargetColumn.objects.create(
@@ -214,7 +214,7 @@ def test_stage_multi_source_via_raw_identity_mode_produces_union():
     datatype="STRING",
     max_length=50,
     nullable=False,
-    business_key_column=True,
+    system_role="business_key",
   )
 
   logical = build_logical_select_for_target(stage_ds)
@@ -352,7 +352,7 @@ def test_stage_multi_source_via_sources_identity_mode_produces_union():
     datatype="STRING",
     max_length=30,
     nullable=False,
-    business_key_column=True,
+    system_role="business_key",
     artificial_column=True,
   )
   TargetColumn.objects.create(
@@ -362,7 +362,7 @@ def test_stage_multi_source_via_sources_identity_mode_produces_union():
     datatype="STRING",
     max_length=50,
     nullable=False,
-    business_key_column=True,
+    system_role="business_key",
   )
 
   logical = build_logical_select_for_target(stage_ds)
@@ -455,7 +455,7 @@ def test_stage_single_source_returns_logical_select():
     datatype="STRING",
     max_length=50,
     nullable=False,
-    business_key_column=True,
+    system_role="business_key",
   )
 
   TargetDatasetInput.objects.create(
@@ -483,7 +483,7 @@ def test_stage_single_source_returns_logical_select():
     datatype="STRING",
     max_length=50,
     nullable=False,
-    business_key_column=True,
+    system_role="business_key",
   )
 
   logical = build_logical_select_for_target(stage_ds)

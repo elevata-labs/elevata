@@ -184,6 +184,28 @@ ENVIRONMENT_CHOICES=[
   ("prod", "Production"),
 ]
 
+SYSTEM_COLUMN_ROLE_CHOICES = [
+  ("", "—"),
+
+  # Identity & keys
+  ("business_key", "Business key"),
+  ("surrogate_key", "Surrogate key"),
+  ("foreign_key", "Foreign key"),
+  ("entity_key", "Entity key"),
+
+  # Change detection
+  ("row_hash", "Row hash"),
+
+  # Technical / forensics
+  ("load_run_id", "Load run id"),
+  ("loaded_at", "Loaded at timestamp"),
+
+  # Versioning (Hist)
+  ("version_started_at", "Version started at"),
+  ("version_ended_at", "Version ended at"),
+  ("version_state", "Version state"),
+]
+
 LINEAGE_ORIGIN_CHOICES=[
   ("direct", "Direct"),
   ("derived", "Derived"),

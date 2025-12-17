@@ -37,23 +37,35 @@ def _ensure_targetcolumn_rename_allowed(col: TargetColumn) -> list[str]:
 
   Rules:
     - Only columns in schema 'rawcore' are renameable.
-    - Surrogate key columns are never renameable.
+    - Derived/technical columns (system_role set) are system-managed and cannot be renamed.
+    - Columns in *_hist datasets are system-managed and cannot be renamed.
   """
   errors: list[str] = []
 
-  # Determine schema short name ('raw', 'rawcore', 'stage', 'bizcore', 'serving', ...)
   schema_short = None
+  dataset_name = None
   if getattr(col, "target_dataset", None) and getattr(col.target_dataset, "target_schema", None):
     schema_short = getattr(col.target_dataset.target_schema, "short_name", None)
+    is_hist = getattr(col.target_dataset, "is_hist", False)
 
-  # Surrogate keys: always locked
-  if getattr(col, "surrogate_key_column", False):
-    errors.append("Surrogate key columns are system-managed and cannot be renamed.")
+  col_name = getattr(col, "target_column_name", None)
+
+  # Derived / system-managed columns (identified via system_role)
+  if getattr(col, "is_protected_name", False):
+    errors.append(
+      f"Column '{col_name}' is derived (system-managed) and cannot be renamed."
+    )
+
+  # History datasets: always locked
+  if is_hist:
+    errors.append(
+      f"Column '{col_name}' belongs to a history dataset and cannot be renamed."
+    )
 
   # Non-rawcore schemas: names are system-managed
   if schema_short is not None and schema_short != "rawcore":
     errors.append(
-      f"Column '{col.target_column_name}' belongs to schema '{schema_short}', "
+      f"Column '{col_name}' belongs to schema '{schema_short}', "
       "where names are system-managed. Column names can only be changed in schema 'rawcore'."
     )
 

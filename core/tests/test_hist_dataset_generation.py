@@ -55,13 +55,20 @@ def test_hist_generation_creates_expected_metadata(rawcore_schema, service):
   customer_key = TargetColumn.objects.create(
     target_dataset=rawcore_td,
     target_column_name="customer_key",
+    system_role="surrogate_key",
+    is_system_managed=True,
+    surrogate_expression='concat(col("customer_key"))',
     ordinal_position=1,
+    active=True,
   )
   customer_name = TargetColumn.objects.create(
     target_dataset=rawcore_td,
     target_column_name="customer_name",
     ordinal_position=2,
   )
+
+  customer_key.refresh_from_db()
+  assert customer_key.system_role == "surrogate_key"
 
   # Act: ensure hist dataset exists and is schema-synced
   hist_td = service.ensure_hist_dataset_for_rawcore(rawcore_td)
@@ -83,7 +90,7 @@ def test_hist_generation_creates_expected_metadata(rawcore_schema, service):
   # 1) hist surrogate key column
   assert names[0] == "rc_customer_test_hist_key"
   hist_sk = hist_cols[0]
-  assert hist_sk.surrogate_key_column is True
+  assert hist_sk.system_role == "surrogate_key"
 
   # 2) copied rawcore columns must exist by name
   assert "customer_key" in names
@@ -121,8 +128,25 @@ def test_hist_generation_is_idempotent(rawcore_schema, service):
   TargetColumn.objects.create(
     target_dataset=rawcore_td,
     target_column_name="customer_key",
+    system_role="business_key",
     ordinal_position=1,
+    active=True,
   )
+
+  TargetColumn.objects.create(
+    target_dataset=rawcore_td,
+    target_column_name=f"{rawcore_td.target_dataset_name}_key",
+    system_role="surrogate_key",
+    surrogate_expression='concat(col("customer_key"))',
+    ordinal_position=0,
+    active=True,
+    is_system_managed=True,
+  )
+
+  rawcore_td.refresh_from_db()
+  print(list(rawcore_td.target_columns.values("target_column_name", "system_role", "is_system_managed", "surrogate_expression")))
+  assert rawcore_td.target_columns.filter(system_role="surrogate_key").exists()
+
 
   # Act: first run
   hist_td_1 = service.ensure_hist_dataset_for_rawcore(rawcore_td)

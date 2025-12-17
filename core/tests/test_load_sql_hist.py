@@ -54,9 +54,9 @@ def test_hist_insert_columns_do_not_duplicate_row_hash(monkeypatch):
 
   # Upstream columns returned by lineage include row_hash already
   upstream_cols = [
-    SimpleNamespace(upstream_target_column=SimpleNamespace(target_column_name="productid", surrogate_key_column=False)),
-    SimpleNamespace(upstream_target_column=SimpleNamespace(target_column_name="row_hash", surrogate_key_column=False)),
-    SimpleNamespace(upstream_target_column=SimpleNamespace(target_column_name="name", surrogate_key_column=False)),
+    SimpleNamespace(upstream_target_column=SimpleNamespace(target_column_name="productid", system_role="")),
+    SimpleNamespace(upstream_target_column=SimpleNamespace(target_column_name="row_hash", system_role="")),
+    SimpleNamespace(upstream_target_column=SimpleNamespace(target_column_name="name", system_role="")),
   ]
 
   # Monkeypatch TargetColumnInput.objects.filter(...) chain

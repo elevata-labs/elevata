@@ -50,13 +50,13 @@ class FakeTargetColumn:
     self,
     target_column_name: str,
     active: bool = True,
-    business_key_column: bool = False,
+    system_role: str = "",
     ordinal_position: int = 1,
     id_: int = 1,
   ) -> None:
     self.target_column_name = target_column_name
     self.active = active
-    self.business_key_column = business_key_column
+    self.system_role = system_role
     self.ordinal_position = ordinal_position
     self.id = id_
 
@@ -247,14 +247,14 @@ def _build_fake_stage_dataset_for_ranking() -> FakeTargetDataset:
     FakeTargetColumn(
       target_column_name="customer_id",
       active=True,
-      business_key_column=True,
+      system_role="business_key",
       ordinal_position=1,
       id_=1,
     ),
     FakeTargetColumn(
       target_column_name="name",
       active=True,
-      business_key_column=False,
+      system_role="business_key",
       ordinal_position=2,
       id_=2,
     ),

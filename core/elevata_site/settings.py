@@ -43,7 +43,7 @@ from utils.db import build_metadata_database_url
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(find_dotenv(filename=".env", raise_error_if_not_found=False))
 
-ELEVATA_VERSION = "0.6.0"
+ELEVATA_VERSION = "0.6.1"
 
 ELEVATA_PROFILES_PATH = os.getenv("ELEVATA_PROFILES_PATH", str((BASE_DIR.parent / "config" / "elevata_profiles.yaml")))
 
@@ -274,8 +274,7 @@ ELEVATA_CRUD = {
         "decimal_precision",
         "decimal_scale",
         "nullable",
-        "business_key_column",
-        "surrogate_key_column",
+        "system_role",
         "artificial_column",
         "manual_expression",
         "lineage_origin",
@@ -507,42 +506,32 @@ ELEVATA_CRUD = {
       ],
       "TargetColumn": [
         {
-          "field": "surrogate_key_column", 
+          "field": "system_role", 
           "class_map": {
-            "True": "badge badge-sk",
-            "False": "",
-            "default": "",
+            "surrogate_key": "badge badge-sk",
+            "foreign_key": "badge badge-fk",
+            "business_key": "badge badge-pk",
+            "entity_key": "badge badge-pk",
+            "row_hash": "",
+            "load_run_id": "",
+            "loaded_at": "",
+            "version_started_at": "",
+            "version_ended_at": "",
+            "version_state": "",
+            "": "",
           },
           "label_map": {
-            "True": "SK",
-            "False": "",
-            "default": "",
-          },
-        },
-        {
-          "field": "business_key_column", 
-          "class_map": {
-            "True": "badge badge-pk",
-            "False": "",
-            "default": "",
-          },
-          "label_map": {
-            "True": "BK",
-            "False": "",
-            "default": "",
-          },
-        },
-        {
-          "field": "foreign_key_column", 
-          "class_map": {
-            "True": "badge badge-fk",
-            "False": "",
-            "default": "",
-          },
-          "label_map": {
-            "True": "FK",
-            "False": "",
-            "default": "",
+            "surrogate_key": "SK",
+            "foreign_key": "FK",
+            "business_key": "BK",
+            "entity_key": "EK",
+            "row_hash": "",
+            "load_run_id": "",
+            "loaded_at": "",
+            "version_started_at": "",
+            "version_ended_at": "",
+            "version_state": "",
+            "": "",
           },
         },
         {

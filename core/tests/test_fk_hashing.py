@@ -95,13 +95,13 @@ def test_fk_hash_matches_parent_surrogate_key():
     target_dataset=parent_stage,
     target_column_name="bk1",
     ordinal_position=1,
-    business_key_column=True,
+    system_role="business_key",
   )
   parent_bk2_stage = TargetColumn.objects.create(
     target_dataset=parent_stage,
     target_column_name="bk2",
     ordinal_position=2,
-    business_key_column=True,
+    system_role="business_key",
   )
 
   # Parent RawCore BK columns (same names, so SK expression can reference "bk1", "bk2")
@@ -109,13 +109,13 @@ def test_fk_hash_matches_parent_surrogate_key():
     target_dataset=parent_rawcore,
     target_column_name="bk1",
     ordinal_position=1,
-    business_key_column=True,
+    system_role="business_key",
   )
   parent_bk2_raw = TargetColumn.objects.create(
     target_dataset=parent_rawcore,
     target_column_name="bk2",
     ordinal_position=2,
-    business_key_column=True,
+    system_role="business_key",
   )
 
   # Parent SK column: uses Stage BK names in the expression
@@ -123,7 +123,7 @@ def test_fk_hash_matches_parent_surrogate_key():
     target_dataset=parent_rawcore,
     target_column_name="parent_key",
     ordinal_position=3,
-    surrogate_key_column=True,
+    system_role = "surrogate_key",
     surrogate_expression=(
       'concat(col("bk1"), "~", col("bk1"), "|", col("bk2"), "~", col("bk2"))'
     ),

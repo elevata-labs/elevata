@@ -77,7 +77,56 @@ This ensures consistent semantics while using native SQL syntax per backend.
 
 ---
 
-## 🔧 5. Load Runner
+## 🔧 5. Intent layer (generation + ingestion)
+
+elevata uses a small "intent layer" to keep core decisions consistent across  
+target generation, ingestion, drift detection and quality checks.
+
+### 🧩 Landing intent
+The function `landing_required(SourceDataset)` determines whether a dataset  
+conceptually requires a RAW landing object.
+
+Decision rules:  
+- `SourceDataset.integrate` must be True (hard gate).  
+- `SourceDataset.generate_raw_table` overrides the system default.  
+- If unset, inherit `System.generate_raw_tables`.  
+
+This decision is shared across:  
+- RAW target generation  
+- ingestion execution planning  
+- future drift detection and quality checks
+
+### 🧩 Ingestion mode
+The function `resolve_ingest_mode(SourceDataset)` determines how RAW is populated:  
+- `native`: elevata extracts and loads  
+- `external`: an external tool populates RAW; elevata validates + continues  
+- `none`: no landing ingestion (federated/virtual access)  
+
+If RAW landing is required but `include_ingest='none'`, configuration is inconsistent  
+and must fail fast.
+
+### 🧩 Allowed states (RAW landing × include_ingest)
+
+The decision whether a RAW landing exists is driven by `landing_required(SourceDataset)`.  
+The execution mode is driven by `System.include_ingest`, but only becomes relevant  
+when RAW landing is required.
+
+| landing_required | include_ingest | Result / behavior |
+|-----------------|----------------|-------------------|
+| false           | none           | ✅ Valid. No RAW landing. Ingestion is skipped (federated/virtual or intentionally no landing). |
+| false           | external       | ✅ Valid (ignored). No RAW landing, so ingestion is skipped. |
+| false           | native         | ✅ Valid (ignored). No RAW landing, so ingestion is skipped. |
+| true            | native         | ✅ Valid. elevata performs native ingestion (extract + load into RAW). |
+| true            | external       | ✅ Valid. RAW is expected to be populated by an external tool; elevata validates RAW existence and continues with downstream steps (drift/quality/etc.). |
+| true            | none           | ❌ Invalid. Configuration inconsistency: RAW landing is required but no ingestion mode is enabled. Must fail fast. |
+
+Notes:  
+- `include_ingest` is only actionable when `landing_required=True`.  
+- For `include_ingest=external`, elevata does not extract data but still logs runs and can run drift/quality checks on RAW.
+
+---
+
+## 🔧 6. Load Runner
 
 The **Load Runner CLI** (`elevata_load`) orchestrates SQL generation and execution.  
 
@@ -92,7 +141,7 @@ The same pipeline is used for SQL preview and execution.
 
 ---
 
-## 🔧 6. Deterministic Generation
+## 🔧 7. Deterministic Generation
 
 The SQL generation pipeline is fully deterministic:  
 - stable business-key ordering  
@@ -104,11 +153,11 @@ This guarantees reproducible SQL and predictable diffs.
 
 ---
 
-## 🔧 7. Merge‑based Incremental SQL Generation (Rawcore)
+## 🔧 8. Merge‑based Incremental SQL Generation (Rawcore)
 
 This section documents how merge‑based incremental loads are implemented for Rawcore targets.
 
-### 🧩 7.1 Source Resolution
+### 🧩 8.1 Source Resolution
 
 For targets using `incremental_strategy = "merge"`, the SQL layer resolves the Stage upstream dataset as the merge source:  
 
@@ -117,7 +166,7 @@ For targets using `incremental_strategy = "merge"`, the SQL layer resolves the S
 
 Lineage metadata guarantees compatible natural keys and attribute sets.
 
-### 🧩 7.2 Natural Key Join
+### 🧩 8.2 Natural Key Join
 
 Natural key fields define:  
 - the merge join condition  
@@ -126,13 +175,13 @@ Natural key fields define:
 
 If no natural key is defined, SQL generation fails.
 
-### 🧩 7.3 Logical Plan Reuse
+### 🧩 8.3 Logical Plan Reuse
 
 All column expressions used in UPDATE and INSERT branches are reused from the logical plan.  
 
 Business logic is defined once and rendered consistently.
 
-### 🧩 7.4 Dialect‑dependent Strategy
+### 🧩 8.4 Dialect‑dependent Strategy
 
 Dialects choose between:  
 - native `MERGE` statements  
@@ -140,7 +189,7 @@ Dialects choose between:
 
 Both paths reuse the same logical plan expressions.
 
-### 🧩 7.5 Delete Detection
+### 🧩 8.5 Delete Detection
 
 Delete detection is implemented as a separate anti‑join statement that runs before the merge.  
 
@@ -148,7 +197,7 @@ The SQL layer translates incremental scope filters from source lineage into targ
 
 ---
 
-## 🔧 8. Execution Semantics
+## 🔧 9. Execution Semantics
 
 Execution semantics are defined by target layer:  
 
@@ -163,16 +212,34 @@ Execution always runs **inside the target system**.
 
 ---
 
-## 🔧 9. Execution, Auto‑Provisioning & Warehouse Logging
+## 🔧 10. Execution, Auto‑Provisioning & Warehouse Logging
 
-### 🧩 9.1 Execution Modes
+### 🧩 10.1 Execution Modes
 
 `elevata_load` supports:  
 
 - **Dry‑run**: render SQL without executing it  
 - **Execute** (`--execute`): render and execute SQL in the target warehouse
 
-### 🧩 9.2 Auto‑Provisioning
+### 🧩 10.2 Layer-aware execution (RAW = ingestion)
+
+`elevata_load --execute` is intentionally **layer-aware**:  
+
+- For `raw` targets, `--execute` runs **ingestion** (extract + load) instead of rendering a SELECT-based load SQL.  
+- For downstream layers (`stage`, `rawcore`, `*_hist`), `--execute` renders and executes **warehouse-native SQL** as usual.  
+
+Why this matters:  
+- elevata treats **ingestion as a first-class citizen** of the pipeline.  
+- The same lineage metadata that drives target generation also drives ingestion planning.  
+- This closes an important gap in dbt-style stacks: dbt excels at transformations but does not provide  
+ingestion as part of its core execution model.  
+
+Practical rule:  
+- If you can `--execute` a RAW table, elevata will bring the data in (native/external mode).  
+- If you `--execute` a Stage model, elevata assumes that its upstream exists inside the target execution context  
+  (RAW landing or federated/external availability), and will fail fast otherwise.
+
+### 🧩 10.3 Auto‑Provisioning
 
 When enabled, execution automatically provisions:  
 - target schemas  
@@ -181,7 +248,7 @@ When enabled, execution automatically provisions:
 
 All DDL is idempotent.
 
-### 🧩 9.3 Warehouse‑level Load Run Log
+### 🧩 10.4 Warehouse‑level Load Run Log
 
 Each executed load writes a row into `meta.load_run_log`, capturing:  
 - batch and load run IDs  
@@ -194,19 +261,19 @@ This enables warehouse‑native observability and auditing.
 
 ---
 
-## 🔧 10. Load Observability & Debugging
+## 🔧 11. Load Observability & Debugging
 
 Load runs expose structured summaries, batch grouping, and CLI‑level logging to support debugging and monitoring.
 
 ---
 
-## 🔧 11. CLI Usage
+## 🔧 12. CLI Usage
 
 The `elevata_load` command supports preview, debugging, batch execution, and warehouse execution.
 
 ---
 
-## 🔧 12. Execute Mode
+## 🔧 13. Execute Mode
 
 The `--execute` flag enables direct execution of load SQL in the target warehouse via dialect‑specific execution engines.
 

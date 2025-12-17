@@ -33,8 +33,14 @@ class TargetDatasetDraft:
   """
   target_schema_id: int
   target_dataset_name: str
-  description: Optional[str]
-  is_system_managed: bool
+  description: Optional[str] = None
+  is_system_managed: bool = False
+
+  # New fields must be optional for backwards compatibility
+  target_schema_short_name: str = ""
+  source_dataset_id: int = 0
+  lineage_origin: str = "direct"
+
   # surrogate_key_column_name is not stored on TargetDataset,
   # but we keep it here for convenience inside the bundle so build_dataset_bundle()
   # can pass it down to TargetColumnDraft ordering logic etc.
@@ -53,8 +59,7 @@ class TargetColumnDraft:
   decimal_scale: Optional[int]
   nullable: bool
 
-  business_key_column: bool
-  surrogate_key_column: bool  # True only for the generated SK column
+  system_role: str
   artificial_column: bool = False  # optional, may stay default False
 
   lineage_origin: str = "direct"  # e.g. "direct", "surrogate_key", "derived"
@@ -89,8 +94,7 @@ def map_source_to_target_dataset(source_dataset, target_schema) -> TargetDataset
 def map_source_column_to_target_column(source_column, ordinal: int) -> TargetColumnDraft:
   """
   Map a SourceColumn to a TargetColumnDraft.
-  business_key_column is derived from SourceColumn.primary_key_column.
-  surrogate_key_column is always False here (those are generated separately).
+  system_role is set to 'business_key' if SourceColumn.primary_key_column=True.
   """
   colname = naming.sanitize_name(source_column.source_column_name)
 
@@ -101,8 +105,7 @@ def map_source_column_to_target_column(source_column, ordinal: int) -> TargetCol
     decimal_precision=source_column.decimal_precision,
     decimal_scale=source_column.decimal_scale,
     nullable=source_column.nullable,
-    business_key_column=bool(source_column.primary_key_column),
-    surrogate_key_column=False,
+    system_role="business_key" if source_column.primary_key_column else "",
     lineage_origin="direct",
     source_column_id=source_column.id,
     ordinal_position=ordinal,
@@ -140,13 +143,12 @@ def build_surrogate_key_column_draft(
 
   return TargetColumnDraft(
     target_column_name=sk_name,
-    datatype="string",          # Dialect-specific refinement comes later
+    datatype="STRING",          # Dialect-specific refinement comes later
     max_length=64,
     decimal_precision=None,
     decimal_scale=None,
     nullable=False,
-    business_key_column=False,      # surrogate is not the business key
-    surrogate_key_column=True,      # <-- this is the surrogate key
+    system_role="surrogate_key", # <-- this is the surrogate key
     lineage_origin="surrogate_key",
     source_column_id=None,
     ordinal_position=ordinal,       # will usually be 1

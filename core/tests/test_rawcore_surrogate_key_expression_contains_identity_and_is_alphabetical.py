@@ -112,7 +112,7 @@ def test_rawcore_surrogate_key_expression_contains_identity_and_is_alphabetical(
   # ---------------------------------------------------------------------------
   # 4) Find SK column
   # ---------------------------------------------------------------------------
-  sk_cols = [c for c in cols if getattr(c, "surrogate_key_column", False)]
+  sk_cols = [c for c in cols if getattr(c, "system_role", "") == "surrogate_key"]
   assert sk_cols, "RAWCORE bundle must contain a surrogate key column"
   
   sk = sk_cols[0]
@@ -133,7 +133,7 @@ def test_rawcore_surrogate_key_expression_contains_identity_and_is_alphabetical(
   # For this test we assume that our test RAWCORE dataset
   # has exactly 1 real BK column (sourceIdentity) + 0..N others.
   # To make that generic, we read all BKs from bundle:
-  bk_cols = [c.target_column_name for c in cols if c.business_key_column]
+  bk_cols = [c.target_column_name for c in cols if c.system_role == "business_key"]
 
   # Alphabetisch sortierte Liste
   expected_sorted = sorted(bk_cols)

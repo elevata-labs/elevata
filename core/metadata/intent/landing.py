@@ -20,11 +20,21 @@ along with elevata. If not, see <https://www.gnu.org/licenses/>.
 Contact: <https://github.com/elevata-labs/elevata>.
 """
 
-def group_is_eligible_for_generation(group) -> bool:
+def landing_required(dataset) -> bool:
   """
-  A SourceDatasetGroup is eligible if it has at least one SourceDataset with integrate=True.
+  Decide whether this dataset conceptually requires a raw landing.
   """
-  return any(
-    getattr(ds, "integrate", False) is True
-    for ds in group.sourcedataset_set.all()
-  )
+  # integrate is a hard gate everywhere
+  if getattr(dataset, "integrate", None) is not True:
+    return False
+
+  ds_flag = getattr(dataset, "generate_raw_table", None)
+
+  if ds_flag is True:
+    return True
+  if ds_flag is False:
+    return False
+
+  # inherit from system
+  system = getattr(dataset, "source_system", None)
+  return bool(getattr(system, "generate_raw_tables", False))

@@ -45,8 +45,8 @@ def test_missing_bk_components_detected():
   parent_raw = TargetDataset.objects.create(target_schema=raw_schema, target_dataset_name="raw_p")
 
   # Parent BK columns
-  bk1 = TargetColumn.objects.create(target_dataset=parent_raw, target_column_name="bk1", business_key_column=True)
-  bk2 = TargetColumn.objects.create(target_dataset=parent_raw, target_column_name="bk2", business_key_column=True)
+  bk1 = TargetColumn.objects.create(target_dataset=parent_raw, target_column_name="bk1", system_role="business_key")
+  bk2 = TargetColumn.objects.create(target_dataset=parent_raw, target_column_name="bk2", system_role="business_key")
 
   # Child dataset
   child = TargetDataset.objects.create(target_schema=raw_schema, target_dataset_name="raw_c")
@@ -80,8 +80,8 @@ def test_no_missing_bk_components():
   )
 
   parent_raw = TargetDataset.objects.create(target_schema=raw_schema, target_dataset_name="raw_p")
-  bk1 = TargetColumn.objects.create(target_dataset=parent_raw, target_column_name="bk1", business_key_column=True)
-  bk2 = TargetColumn.objects.create(target_dataset=parent_raw, target_column_name="bk2", business_key_column=True)
+  bk1 = TargetColumn.objects.create(target_dataset=parent_raw, target_column_name="bk1", system_role="business_key")
+  bk2 = TargetColumn.objects.create(target_dataset=parent_raw, target_column_name="bk2", system_role="business_key")
 
   child = TargetDataset.objects.create(target_schema=raw_schema, target_dataset_name="raw_c")
 

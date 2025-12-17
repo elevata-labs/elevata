@@ -159,7 +159,7 @@ def build_surrogate_fk_expression(reference: "TargetDatasetReference") -> Expr:
   # 1) Parent SK column with surrogate_expression
   parent_sk = (
     parent_ds.target_columns
-    .filter(surrogate_key_column=True, active=True)
+    .filter(system_role="surrogate_key", active=True)
     .order_by("ordinal_position", "id")
     .first()
   )
@@ -394,7 +394,7 @@ def _build_single_select_for_upstream(
   )
 
   for col_meta in tcols:
-    if col_meta.surrogate_key_column and col_meta.surrogate_expression:
+    if col_meta.system_role=="surrogate_key" and col_meta.surrogate_expression:
       # Parse SK DSL into an Expr tree; "s" is the source alias in this SELECT
       expr: Expr = parse_surrogate_dsl(
         col_meta.surrogate_expression,
@@ -655,7 +655,7 @@ def build_logical_select_for_target(target_dataset: TargetDataset):
 
   for tcol in tcols:
     # 1) Surrogate key column
-    if tcol.surrogate_key_column and tcol.surrogate_expression:
+    if tcol.system_role == "surrogate_key" and tcol.surrogate_expression:
       # Dialect-aware SK: parse DSL into Expr, then render via dialect
       expr = parse_surrogate_dsl(
         tcol.surrogate_expression,
@@ -797,11 +797,11 @@ def _get_stage_ranking_partition_exprs(
 
   Typical pattern:
     - use one or more stage columns that represent the natural key
-    - e.g. all TargetColumns with some flag 'business_key_column=True'
+    - e.g. all TargetColumns with system_role='business_key'
   """
   bk_cols = (
     target_dataset.target_columns
-    .filter(active=True, business_key_column=True)
+    .filter(active=True, system_role="business_key")
     .order_by("ordinal_position", "id")
   )
 

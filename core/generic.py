@@ -124,7 +124,7 @@ class GenericCRUDView(LoginRequiredMixin, View):
     TargetSchema.short_name.
 
     Special case:
-    - For TargetColumn rows that are marked as surrogate_key_column=True,
+    - For TargetColumn rows that are marked as system_role='surrogate_key',
       we always use the global lock list without schema-level unlocks.
       This ensures that surrogate key column names (and related attributes)
       follow strict system conventions even in rawcore.
@@ -147,10 +147,7 @@ class GenericCRUDView(LoginRequiredMixin, View):
     # ------------------------------------------------------------------
     # Special case: surrogate key / foreign-key columns are always fully locked
     # ------------------------------------------------------------------
-    if model_name == "TargetColumn" and (
-      getattr(instance, "surrogate_key_column", False)
-      or getattr(instance, "foreign_key_column", False)
-    ):
+    if model_name == "TargetColumn" and getattr(instance, "system_role", "") != "":
       return base_locked
 
     # ------------------------------------------------------------------

@@ -32,6 +32,13 @@ from ..logical_plan import LogicalSelect
 class BaseExecutionEngine:
   def execute(self, sql: str) -> int | None:
     raise NotImplementedError
+  
+  def execute_many(self, sql: str, params_seq) -> int | None:
+    """
+    Optional bulk execution for parameterized statements.
+    Dialects/engines should override if they support executemany().
+    """
+    raise NotImplementedError
 
 
 class SqlDialect(ABC):
@@ -63,6 +70,15 @@ class SqlDialect(ABC):
     # Dialects must explicitly opt in by overriding this property.
     return False
   
+  # ---------------------------------------------------------------------------
+  # Parameter placeholders
+  # ---------------------------------------------------------------------------
+  def param_placeholder(self) -> str:
+    """
+    Placeholder for parameterized SQL statements used by the dialect's execution engine.
+    Default matches DB-API qmark style (DuckDB, pyodbc).
+    """
+    return "?"
 
   # ---------------------------------------------------------------------------
   # Identifier quoting

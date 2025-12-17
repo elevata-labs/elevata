@@ -151,7 +151,7 @@ def test_stage_union_injects_source_identity_id_per_upstream():
       target_dataset=raw_ds,
       target_column_name="customer_id",
       ordinal_position=1,
-      business_key_column=True,
+      system_role="business_key",
     )
     TargetColumn.objects.create(
       target_dataset=raw_ds,
@@ -190,13 +190,13 @@ def test_stage_union_injects_source_identity_id_per_upstream():
     target_dataset=stage_ds,
     target_column_name="source_identity_id",
     ordinal_position=1,
-    business_key_column=True,
+    system_role="business_key",
   )
   TargetColumn.objects.create(
     target_dataset=stage_ds,
     target_column_name="customer_id",
     ordinal_position=2,
-    business_key_column=True,
+    system_role="business_key",
   )
   TargetColumn.objects.create(
     target_dataset=stage_ds,

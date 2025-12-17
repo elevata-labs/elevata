@@ -21,6 +21,7 @@ Contact: <https://github.com/elevata-labs/elevata>.
 """
 
 from django.db import transaction
+from django.db.models import Max
 from typing import Dict, List
 from metadata.models import (
   SourceDataset,
@@ -31,14 +32,15 @@ from metadata.models import (
   TargetDatasetReference,
   TargetDatasetReferenceComponent,
 )
-from metadata.generation import rules, naming, security
+from metadata.intent.landing import landing_required
+from metadata.generation import naming, security
 from metadata.generation.mappers import (
   TargetDatasetDraft,
   TargetColumnDraft,
   map_source_column_to_target_column, 
   build_surrogate_key_column_draft,
 )
-from metadata.rendering.dialects import get_active_dialect
+
 
 class TargetGenerationService:
   """
@@ -53,7 +55,28 @@ class TargetGenerationService:
     "version_ended_at",
     "version_state",
     "load_run_id",
+    "loaded_at",
   }
+
+  TECH_COLS_BY_LAYER = {
+    "raw": [
+      ("load_run_id", "STRING", "load_run_id"),
+      ("loaded_at", "TIMESTAMP", "loaded_at"),
+    ],
+    "stage": [
+      ("load_run_id", "STRING", "load_run_id"),
+      ("loaded_at", "TIMESTAMP", "loaded_at"),
+    ],
+    "rawcore": [
+      ("load_run_id", "STRING", "load_run_id"),
+      ("loaded_at", "TIMESTAMP", "loaded_at"),
+    ],
+    "hist": [
+      ("load_run_id", "STRING", "load_run_id"),
+      ("loaded_at", "TIMESTAMP", "loaded_at"),
+    ],
+  }
+
 
   def __init__(self, pepper: str | None = None):
     self.pepper = pepper or security.get_runtime_pepper()
@@ -97,6 +120,64 @@ class TargetGenerationService:
       )
 
 
+  def _ensure_tech_columns(self, td):
+    """
+    Ensure system-managed technical columns exist for the given TargetDataset.
+    Tech columns are appended at the end to keep ordinals stable.
+    """
+    layer = "hist" if td.target_dataset_name.endswith("_hist") else td.target_schema.short_name
+    if layer not in self.TECH_COLS_BY_LAYER:
+      return
+
+    tech_defs = self.TECH_COLS_BY_LAYER[layer]
+
+    max_ord = (
+      td.target_columns.aggregate(Max("ordinal_position"))["ordinal_position__max"]
+      or 0
+    )
+
+    for offset, (col_name, datatype, role) in enumerate(tech_defs, start=1):
+      col, created = TargetColumn.objects.get_or_create(
+        target_dataset=td,
+        target_column_name=col_name,
+        defaults={
+          "datatype": datatype,
+          "nullable": False,
+          "active": True,
+          "is_system_managed": True,
+          "system_role": role,
+          "ordinal_position": max_ord + offset,
+          "remark": "elevata system column",
+        },
+      )
+
+      # Idempotent correction if column already existed
+      changed = False
+
+      if not col.active:
+        col.active = True
+        changed = True
+
+      if not col.is_system_managed:
+        col.is_system_managed = True
+        changed = True
+
+      if col.system_role != role:
+        col.system_role = role
+        changed = True
+
+      if col.datatype != datatype:
+        col.datatype = datatype
+        changed = True
+
+      if col.nullable:
+        col.nullable = False
+        changed = True
+
+      if changed:
+        col.save()
+
+
   def _build_row_hash_expression(self, all_columns, target_schema) -> str:
     """
     Build a dialect-agnostic DSL expression for row_hash, based on all
@@ -116,14 +197,14 @@ class TargetGenerationService:
     dialect_neutral_cols: list[str] = []
 
     for col in all_columns:
-      if getattr(col, "surrogate_key_column", False):
+      if getattr(col, "system_role", "") == "surrogate_key":
         continue
-      if getattr(col, "business_key_column", False):
+      if getattr(col, "system_role", "") == "business_key":
         continue
 
       name = col.target_column_name
 
-      if name in self.GLOBAL_TECHNICAL_COLUMN_NAMES:
+      if name in self.GLOBAL_TECHNICAL_COLUMN_NAMES and name != "row_hash":
         continue
       if name.startswith("version_"):
         continue
@@ -255,7 +336,7 @@ class TargetGenerationService:
       mapped_columns.append(col_draft)
 
     # 4. Identify natural key columns (business key columns)
-    natural_key_cols = [c for c in mapped_columns if c.business_key_column]
+    natural_key_cols = [c for c in mapped_columns if c.system_role=="business_key"]
     natural_key_colnames = [c.target_column_name for c in natural_key_cols]
 
     column_drafts: list[TargetColumnDraft] = []
@@ -288,8 +369,7 @@ class TargetGenerationService:
             decimal_precision=None,
             decimal_scale=None,
             nullable=False,
-            business_key_column=True,
-            surrogate_key_column=False,
+            system_role="business_key",
             artificial_column=True,
             lineage_origin="source_identity",
             source_column_id=None,
@@ -312,8 +392,8 @@ class TargetGenerationService:
       self._ensure_no_reserved_name_conflict(col, reserved_names)
 
     # 5. If this schema wants surrogate keys, create surrogate key column FIRST
-    if getattr(target_schema, "surrogate_keys_enabled", False):
-      pepper = security.get_runtime_pepper()
+    if self.schema_requires_surrogate_key(target_schema):
+      pepper = self.pepper
       surrogate_col = build_surrogate_key_column_draft(
         target_dataset_name=dataset_draft.target_dataset_name,
         natural_key_colnames=natural_key_colnames,
@@ -323,9 +403,11 @@ class TargetGenerationService:
         pair_sep=target_schema.surrogate_key_pair_separator,
         comp_sep=target_schema.surrogate_key_component_separator,
       )
+      surrogate_col.ordinal_position = ordinal_counter
+
       column_drafts.append(surrogate_col)
       dataset_draft.surrogate_key_column_name = surrogate_col.target_column_name
-      ordinal_counter += 1
+      ordinal_counter += 1    
 
     # 6. Add natural key columns (business key columns) next
     for col in natural_key_cols:
@@ -355,8 +437,7 @@ class TargetGenerationService:
         decimal_precision=None,
         decimal_scale=None,
         nullable=False,
-        business_key_column=False,
-        surrogate_key_column=False,
+        system_role="row_hash",
         artificial_column=True,
         lineage_origin="technical",
         source_column_id=None,
@@ -388,7 +469,7 @@ class TargetGenerationService:
     - Basis: only integrate=True, active=True (get_relevant_source_datasets)
     - RAW (consolidate_groups == False):
         only datasets, for which actually a RAW object should be generated
-        (rules.dataset_creates_raw_object)
+        (landing_required)
     - STAGE / RAWCORE:
         all relevant Datasets (integrate+active), if raw exists or not
     """
@@ -398,7 +479,7 @@ class TargetGenerationService:
         # RAW / raw-like layer
         return [
             ds for ds in all_ds
-            if rules.dataset_creates_raw_object(ds)
+            if landing_required(ds)
         ]
 
     # STAGE / RAWCORE
@@ -421,7 +502,7 @@ class TargetGenerationService:
 
         # Layer specific additional rules (only if necessary)
         # Example: there are special integration rules for raw layer
-        if schema.short_name == "raw" and not rules.dataset_creates_raw_object(src_ds):
+        if schema.short_name == "raw" and not landing_required(src_ds):
           continue
 
         # Create bundle
@@ -719,6 +800,7 @@ class TargetGenerationService:
       description: str | None = None,
       business_key: bool = False,
       surrogate_expression: str | None = None,
+      system_role: str = "",
     ) -> TargetColumn:
 
       nonlocal next_ord
@@ -745,9 +827,12 @@ class TargetGenerationService:
       if description is not None:
         kwargs["description"] = description
       if surrogate_key:
-        kwargs["surrogate_key_column"] = True
+        kwargs["system_role"] = "surrogate_key"
       if business_key:
-        kwargs["business_key_column"] = True
+        kwargs["system_role"] = "business_key"
+      if system_role:
+        kwargs["system_role"] = system_role
+
       if surrogate_expression is not None:
         kwargs["surrogate_expression"] = surrogate_expression
 
@@ -756,17 +841,28 @@ class TargetGenerationService:
       return col
 
     # Copy all rawcore columns (including entity SK) with lineage links
-    rawcore_cols = list(
-      rawcore_td.target_columns.order_by("ordinal_position", "target_column_name")
-    )
+    rawcore_td_id = rawcore_td.id  # keep it stable
 
-    rc_sk_col = next(
-      (c for c in rawcore_cols if c.surrogate_key_column),
-      None,
+    rc_sk_col = TargetColumn.objects.filter(
+      target_dataset_id=rawcore_td_id,
+      system_role="surrogate_key",
+    ).first()
+
+    rawcore_cols = list(
+      TargetColumn.objects.filter(target_dataset_id=rawcore_td_id)
+      .order_by("ordinal_position")
     )
 
     hist_sk_expression = None
-    if rc_sk_col is not None and getattr(schema, "surrogate_keys_enabled", False):
+    # Hist "business key" intentionally uses the Rawcore surrogate key as the entity identifier.
+    # This keeps history keys narrow and stable, even if the rawcore business key is composite.
+    if rawcore_td.historize and self.schema_requires_surrogate_key(schema) and rc_sk_col is None:
+      raise ValueError(
+        f"Rawcore dataset '{rawcore_td.target_dataset_name}' has surrogate_keys_enabled=True "
+        "but no TargetColumn with system_role='surrogate_key' was found."
+      )
+        
+    if rc_sk_col is not None and self.schema_requires_surrogate_key(schema):
       natural_key_colnames = [
         rc_sk_col.target_column_name,
         "version_started_at",
@@ -788,15 +884,20 @@ class TargetGenerationService:
     hist_sk_name = f"{hist_name}_key"
     _create_hist_column(
       name=hist_sk_name,
-      datatype="string",
+      datatype="STRING",
       nullable=False,
       surrogate_key=True,
       max_length=64,
       description=f"Surrogate key for history rows of {rawcore_td.target_dataset_name}.",
       surrogate_expression=hist_sk_expression,
+      system_role="surrogate_key",
     )
 
     for rc_col in rawcore_cols:
+      role = rc_col.system_role or ""
+      if role == "surrogate_key":
+        role = "entity_key"
+
       hist_col = _create_hist_column(
         name=rc_col.target_column_name,
         datatype=rc_col.datatype,
@@ -805,7 +906,7 @@ class TargetGenerationService:
         decimal_precision=rc_col.decimal_precision,
         decimal_scale=rc_col.decimal_scale,
         description=rc_col.description,
-        business_key=bool(rc_sk_col and rc_col.id == rc_sk_col.id),
+        system_role=role,
       )
       TargetColumnInput.objects.create(
         target_column=hist_col,
@@ -814,23 +915,25 @@ class TargetGenerationService:
 
     # Technical versioning columns
     tech_columns = [
-      ("version_started_at", "datetime",
-      "Timestamp at which this version became active.", True),
-      ("version_ended_at", "datetime",
-      "Timestamp at which this version was superseded or closed.", False),
-      ("version_state", "string",
-      "State of this version: 'new', 'changed', or 'deleted'.", False),
-      ("load_run_id", "string",
-      "Identifier of the load run which created or updated this history row.", False),
+      ("version_started_at", "TIMESTAMP",
+       "Timestamp at which this version became active.", "version_started_at", False),
+      ("version_ended_at", "TIMESTAMP",
+       "Timestamp at which this version was superseded or closed.", "version_ended_at", True),
+      ("version_state", "STRING",
+       "State of this version: 'new', 'changed', or 'deleted'.", "version_state", False),
+      ("load_run_id", "STRING",
+       "Identifier of the load run which created or updated this history row.", "load_run_id", False),
+      ("loaded_at", "TIMESTAMP",
+       "UTC timestamp when this history row was written.", "loaded_at", False),
     ]
 
-    for name, dt, desc, is_bk in tech_columns:
+    for name, dt, desc, role, nullable in tech_columns:
       _create_hist_column(
         name=name,
         datatype=dt,
-        nullable=True,
+        nullable=nullable,
         description=desc,
-        business_key=is_bk,
+        system_role=role,
       )
       
     return hist_td
@@ -838,17 +941,23 @@ class TargetGenerationService:
 
   def _ensure_surrogate_key_draft_names(self, target_dataset_obj, column_drafts):
     """
-    Make sure all surrogate key column drafts use the *current* dataset name,
-    not just the auto-generated physical name.
-
-    This keeps the draft in sync with:
-    - TargetDataset.save(), which renames the actual surrogate key column when
-      target_dataset_name changes.
-    - apply_all(), which reuses existing surrogate key columns.
+    Ensure the surrogate key draft uses the current dataset name.
+    Only touch the *actual* dataset surrogate key, not arbitrary *_key columns.
     """
+    expected_sk_name = f"{target_dataset_obj.target_dataset_name}_key"
+
     for col_draft in column_drafts:
-      if getattr(col_draft, "surrogate_key_column", False):
-        col_draft.target_column_name = f"{target_dataset_obj.target_dataset_name}_key"
+      role = (getattr(col_draft, "system_role", "") or "").strip()
+      is_sk = (role == "surrogate_key")
+
+      # Narrow fallback: only treat as SK if it already matches the expected SK name
+      # (covers older drafts or cases where role wasn't set, without misclassifying customer_key etc.)
+      if not is_sk:
+        is_sk = (getattr(col_draft, "target_column_name", "") == expected_sk_name)
+
+      if is_sk:
+        col_draft.target_column_name = expected_sk_name
+
 
   def _resolve_role_for_source_dataset(self, src_ds):
     """
@@ -1093,11 +1202,15 @@ class TargetGenerationService:
           .first()
         )
 
-      # Surrogate-key fallback: reuse existing surrogate key column by flag
-      if existing_col is None and col_draft.surrogate_key_column:
+      # Surrogate-key fallback: reuse existing surrogate key column
+      is_sk_draft = (getattr(col_draft, "system_role", "") == "surrogate_key")
+      if not is_sk_draft:
+        is_sk_draft = (col_draft.target_column_name == f"{target_dataset_obj.target_dataset_name}_key")
+
+      if existing_col is None and is_sk_draft:
         existing_col = TargetColumn.objects.filter(
           target_dataset=target_dataset_obj,
-          surrogate_key_column=True,
+          system_role="surrogate_key",
         ).first()
 
       # Name-based fallback for older rows / migration
@@ -1127,14 +1240,13 @@ class TargetGenerationService:
         if target_col_obj.nullable != col_draft.nullable:
           target_col_obj.nullable = col_draft.nullable
           changed = True
-        if target_col_obj.business_key_column != col_draft.business_key_column:
-          target_col_obj.business_key_column = col_draft.business_key_column
+        draft_role = (getattr(col_draft, "system_role", "") or "").strip()
+        if draft_role and target_col_obj.system_role != draft_role:
+          target_col_obj.system_role = draft_role
           changed = True
-        if target_col_obj.surrogate_key_column != col_draft.surrogate_key_column:
-          target_col_obj.surrogate_key_column = col_draft.surrogate_key_column
-          changed = True
-        if target_col_obj.lineage_origin != col_draft.lineage_origin:
-          target_col_obj.lineage_origin = col_draft.lineage_origin
+        draft_origin = (getattr(col_draft, "lineage_origin", "") or "").strip()
+        if draft_origin and target_col_obj.lineage_origin != draft_origin:
+          target_col_obj.lineage_origin = draft_origin
           changed = True
         if target_col_obj.surrogate_expression != col_draft.surrogate_expression:
           target_col_obj.surrogate_expression = col_draft.surrogate_expression
@@ -1145,8 +1257,8 @@ class TargetGenerationService:
 
         # For surrogate key columns we also keep the name in sync with the draft
         if (
-          col_draft.surrogate_key_column
-          and target_col_obj.surrogate_key_column
+          col_draft.system_role == "surrogate_key"
+          and target_col_obj.system_role == "surrogate_key"
           and target_col_obj.target_column_name != col_draft.target_column_name
         ):
           target_col_obj.target_column_name = col_draft.target_column_name
@@ -1169,11 +1281,12 @@ class TargetGenerationService:
             decimal_precision=col_draft.decimal_precision,
             decimal_scale=col_draft.decimal_scale,
             nullable=col_draft.nullable,
-            business_key_column=col_draft.business_key_column,
-            surrogate_key_column=col_draft.surrogate_key_column,
+            system_role=col_draft.system_role,
             lineage_origin=col_draft.lineage_origin,
             surrogate_expression=col_draft.surrogate_expression,
             is_system_managed=True,
+            active=True,
+            retired_at=None,
           )
         else:
           ord_val = col_draft.ordinal_position or 1
@@ -1187,8 +1300,7 @@ class TargetGenerationService:
               "decimal_precision": col_draft.decimal_precision,
               "decimal_scale": col_draft.decimal_scale,
               "nullable": col_draft.nullable,
-              "business_key_column": col_draft.business_key_column,
-              "surrogate_key_column": col_draft.surrogate_key_column,
+              "system_role": col_draft.system_role,
               "lineage_origin": col_draft.lineage_origin,
               "surrogate_expression": col_draft.surrogate_expression,
               "is_system_managed": True,
@@ -1399,6 +1511,9 @@ class TargetGenerationService:
         target_schema=target_schema,
         column_drafts=column_drafts,
       )
+
+      # 5b) Ensure platform tech columns (load_run_id, loaded_at) exist on this dataset
+      self._ensure_tech_columns(target_dataset_obj)
 
       # 6) Optional: history dataset for rawcore
       if target_schema.short_name == "rawcore":

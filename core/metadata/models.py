@@ -23,6 +23,7 @@ Contact: <https://github.com/elevata-labs/elevata>.
 import os
 import hashlib
 from django.db.models import Max
+from django.core.exceptions import ValidationError
 from django.conf import settings
 from django.db import models
 from django.utils import timezone
@@ -32,7 +33,7 @@ from metadata.generation import naming
 from metadata.rendering.builder import build_surrogate_fk_expression
 
 from metadata.constants import (
-  TYPE_CHOICES, INGEST_CHOICES, INCREMENT_INTERVAL_CHOICES, DATATYPE_CHOICES, 
+  TYPE_CHOICES, INGEST_CHOICES, INCREMENT_INTERVAL_CHOICES, DATATYPE_CHOICES, SYSTEM_COLUMN_ROLE_CHOICES,
   MATERIALIZATION_CHOICES, RELATIONSHIP_TYPE_CHOICES, PII_LEVEL_CHOICES, TARGET_DATASET_INPUT_ROLE_CHOICES,
   ACCESS_INTENT_CHOICES, ROLE_CHOICES, SENSITIVITY_CHOICES, ENVIRONMENT_CHOICES, LINEAGE_ORIGIN_CHOICES,
   TARGET_COMBINATION_MODE_CHOICES, BIZ_ENTITY_ROLE_CHOICES, INCREMENTAL_STRATEGY_CHOICES)
@@ -727,13 +728,17 @@ class TargetDataset(AuditFields):
     return self.incremental_strategy in {"append", "merge", "snapshot"}
 
   @property
+  def is_hist(self) -> bool:
+    return self.target_schema.short_name == "rawcore" and self.target_dataset_name.endswith("_hist")
+
+  @property
   def natural_key_fields(self):
     """
-    Returns sorted list of target_column names that are marked as business_key_column.
+    Returns sorted list of target_column names that are marked as business key column.
     """
     qs = (
       self.target_columns
-      .filter(business_key_column=True)
+      .filter(system_role="business_key")
       .values_list("target_column_name", flat=True)
     )
     return sorted(list(qs))
@@ -842,7 +847,7 @@ class TargetDataset(AuditFields):
       # Update all surrogate key columns of this dataset
       TargetColumn.objects.filter(
         target_dataset=self,
-        surrogate_key_column=True,
+        system_role="surrogate_key",
       ).update(target_column_name=new_sk_name)
 
 
@@ -976,14 +981,17 @@ class TargetColumn(AuditFields):
   nullable = models.BooleanField(default=True,
     help_text="Whether this column can be NULL in the final target dataset."
   )
-  business_key_column = models.BooleanField(default=False,
-    help_text="If checked, this column is part of the logical/business key."
-  )
-  surrogate_key_column = models.BooleanField(default=False,
-    help_text="If checked, this column is the system-generated surrogate key."
-  )
-  foreign_key_column = models.BooleanField(default=False,
-    help_text="If checked, this column is a system-generated surrogate foreign key."
+
+  # NOTE:
+  # system_role is the single source of truth for all system-managed columns
+  # (surrogate keys, entity keys, row_hash, technical and versioning columns).
+  # Do not infer semantics from naming conventions.
+  system_role = models.CharField(max_length=30, choices=SYSTEM_COLUMN_ROLE_CHOICES, blank=True, default="",
+    help_text=(
+      "Semantic role for system-managed columns. "
+      "Used to reliably render/execute technical columns (e.g. load_run_id, loaded_at) "
+      "and to support forensics without relying on naming conventions."
+    ),
   )
   artificial_column = models.BooleanField(default=False,
     help_text=(
@@ -1063,6 +1071,20 @@ class TargetColumn(AuditFields):
     ordering = ["target_dataset", "ordinal_position"]
     verbose_name_plural = "Target Columns"
 
+  @property
+  def is_protected_name(self) -> bool:
+    return (self.system_role or "") in {
+      "surrogate_key",
+      "foreign_key",
+      "entity_key",
+      "row_hash",
+      "load_run_id",
+      "loaded_at",
+      "version_started_at",
+      "version_ended_at",
+      "version_state",
+    }
+
   def __str__(self):
     return display_key(self.target_dataset, self.target_column_name)
 
@@ -1084,6 +1106,13 @@ class TargetColumn(AuditFields):
       self.retired_at = None
 
     super().save(*args, **kwargs)
+
+  def clean(self):
+    if self.system_role and not self.is_system_managed:
+      raise ValidationError(
+        "system_role can only be set on system-managed columns."
+      )
+
 
 # -------------------------------------------------------------------
 # TargetColumnInput
@@ -1204,7 +1233,7 @@ class TargetDatasetReference(AuditFields):
     # All active BK columns on the parent dataset, in key order
     parent_bk_cols = list(
       self.referenced_dataset.target_columns
-      .filter(business_key_column=True, active=True)
+      .filter(system_role="business_key", active=True)
       .order_by("ordinal_position", "id")
       .values_list("target_column_name", flat=True)
     )
@@ -1237,7 +1266,7 @@ class TargetDatasetReference(AuditFields):
     # All BK columns on the parent, in defined order
     parent_bk_names = list(
       self.referenced_dataset.target_columns
-      .filter(business_key_column=True)
+      .filter(system_role="business_key")
       .order_by("ordinal_position", "id")
       .values_list("target_column_name", flat=True)
     )
@@ -1282,7 +1311,7 @@ class TargetDatasetReference(AuditFields):
       1) Check if all required BK components exist
       2) If complete → build expression via builder (single source of truth)
       3) Create or update the FK column
-      4) Mark as system-managed + foreign_key_column
+      4) Mark as system-managed + foreign key column
     """
 
     reference = self
@@ -1313,7 +1342,7 @@ class TargetDatasetReference(AuditFields):
             "max_length": 64,
             "nullable": True,
             "is_system_managed": True,
-            "foreign_key_column": True,
+            "system_role": "foreign_key",
             "lineage_origin": "foreign_key",
             "surrogate_expression": fk_expression_sql.sql
                 if hasattr(fk_expression_sql, "sql")
@@ -1328,7 +1357,7 @@ class TargetDatasetReference(AuditFields):
     fk_col.max_length = 64
     fk_col.nullable = True
     fk_col.is_system_managed = True
-    fk_col.foreign_key_column = True
+    fk_col.system_role = "foreign_key"
     fk_col.lineage_origin = "foreign_key"
     fk_col.surrogate_expression = (
         fk_expression_sql.sql

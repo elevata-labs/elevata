@@ -121,6 +121,18 @@ class DuckDbExecutionEngine(BaseExecutionEngine):
 
     return rowcount
 
+  def execute_many(self, sql: str, params_seq) -> int | None:
+    """
+    Bulk execute parameterized statements in DuckDB.
+    """
+    con = duckdb.connect(self._database)
+    try:
+      con.executemany(sql, params_seq)
+      # DuckDB doesn't always provide rowcount reliably; return None is OK
+      return None
+    finally:
+      con.close()
+
 
 class DuckDBDialect(SqlDialect):
   """

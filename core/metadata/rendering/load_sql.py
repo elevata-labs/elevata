@@ -754,7 +754,7 @@ def _get_hist_insert_columns(td: TargetDataset, dialect) -> tuple[list[str], lis
 
   for tci in rawcore_inputs:
     rc_col = tci.upstream_target_column
-    if rc_col is not None and not rc_col.surrogate_key_column:
+    if rc_col is not None and rc_col.system_role != "surrogate_key":
       col_name = rc_col.target_column_name
       if col_name not in added:
         hist_cols.append(q(col_name))

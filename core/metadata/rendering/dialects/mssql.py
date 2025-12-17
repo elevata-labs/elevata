@@ -65,6 +65,22 @@ class MssqlExecutionEngine(BaseExecutionEngine):
     finally:
       conn.close()
 
+  def execute_many(self, sql: str, params_seq) -> int | None:
+    conn = pyodbc.connect(self.conn_str, autocommit=False)
+    try:
+      cursor = conn.cursor()
+      cursor.executemany(sql, params_seq)
+      conn.commit()
+      try:
+        return cursor.rowcount
+      except Exception:
+        return None
+    except Exception:
+      conn.rollback()
+      raise
+    finally:
+      conn.close()
+      
 
 class MssqlDialect(DuckDBDialect):
   """

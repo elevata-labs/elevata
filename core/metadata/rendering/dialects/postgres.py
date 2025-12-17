@@ -59,6 +59,15 @@ class PostgresExecutionEngine(BaseExecutionEngine):
         except Exception:
           return None
 
+  def execute_many(self, sql: str, params_seq) -> int | None:
+    with psycopg2.connect(self.conn_str) as conn:
+      with conn.cursor() as cur:
+        cur.executemany(sql, params_seq)
+        try:
+          return cur.rowcount
+        except Exception:
+          return None
+
 
 class PostgresDialect(DuckDBDialect):
   """
@@ -87,6 +96,16 @@ class PostgresDialect(DuckDBDialect):
   def supports_delete_detection(self) -> bool:
     """Delete detection is implemented via generic DELETE ... NOT EXISTS patterns."""
     return True
+
+  # ---------------------------------------------------------------------------
+  # Parameter placeholders
+  # ---------------------------------------------------------------------------
+  def param_placeholder(self) -> str:
+    """
+    Placeholder for parameterized SQL statements used by the dialect's execution engine.
+    Postgres differs from duckdb.
+    """
+    return "%s"
 
   # ---------------------------------------------------------
   # Identifier quoting

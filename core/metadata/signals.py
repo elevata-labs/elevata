@@ -22,6 +22,7 @@ Contact: <https://github.com/elevata-labs/elevata>.
 
 from django.db.models.signals import post_save
 from django.dispatch import receiver
+from django.db import transaction
 
 from metadata.models import TargetDataset, TargetColumn
 from metadata.generation.target_generation_service import TargetGenerationService
@@ -42,8 +43,19 @@ def sync_hist_on_rawcore_dataset_change(sender, instance: TargetDataset, **kwarg
   if instance.target_dataset_name.endswith("_hist"):
     return
 
-  svc = TargetGenerationService()
-  svc.ensure_hist_dataset_for_rawcore(instance)
+  # prevent early fire during generation: only run if rawcore has an SK
+  if getattr(schema, "surrogate_keys_enabled", False):
+    if not TargetColumn.objects.filter(
+      target_dataset=instance,
+      system_role="surrogate_key",
+    ).exists():
+      return
+  else:
+    # if no SK concept, at least require columns
+    if not TargetColumn.objects.filter(target_dataset=instance).exists():
+      return
+
+  TargetGenerationService().ensure_hist_dataset_for_rawcore(instance)
 
 
 @receiver(post_save, sender=TargetColumn)
@@ -67,5 +79,15 @@ def sync_hist_on_rawcore_column_change(sender, instance: TargetColumn, **kwargs)
   if not td.historize:
     return
 
-  svc = TargetGenerationService()
-  svc.ensure_hist_dataset_for_rawcore(td)
+  # only run when the SK exists (or this column *is* the SK)
+  if getattr(schema, "surrogate_keys_enabled", False):
+    if not (
+      instance.system_role == "surrogate_key"
+      or TargetColumn.objects.filter(target_dataset=td, system_role="surrogate_key").exists()
+    ):
+      return
+
+  def _run():
+    TargetGenerationService().ensure_hist_dataset_for_rawcore(td)
+
+  transaction.on_commit(_run)

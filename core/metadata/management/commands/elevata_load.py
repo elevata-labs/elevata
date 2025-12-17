@@ -43,6 +43,10 @@ from metadata.rendering.load_sql import (
 )
 from metadata.rendering.load_planner import build_load_plan
 
+from metadata.intent.ingestion import resolve_ingest_mode
+from metadata.ingestion.native_raw import ingest_raw_full
+
+
 logger = logging.getLogger(__name__)
 
 
@@ -217,6 +221,90 @@ def should_truncate_before_load(td, load_plan) -> bool:
   return False
 
 
+def resolve_single_source_dataset_for_raw(target_dataset):
+  """
+  RAW datasets must have exactly one SourceDataset input.
+  """
+  inputs = list(target_dataset.input_links.select_related("source_dataset", "upstream_target_dataset"))
+  src = [i.source_dataset for i in inputs if i.source_dataset is not None]
+
+  if len(src) != 1:
+    raise ValueError(
+      f"RAW dataset '{target_dataset.target_dataset_name}' must have exactly one SourceDataset input, "
+      f"but found {len(src)}."
+    )
+  return src[0]
+
+def execute_raw_via_ingestion(
+  *,
+  target_dataset,
+  target_system,
+  profile,
+  chunk_size=5000,
+  batch_run_id=None,
+):
+  """
+  Execute semantics for RAW: run ingestion instead of load-SQL.
+  """
+  src_ds = resolve_single_source_dataset_for_raw(target_dataset)
+
+  mode = resolve_ingest_mode(src_ds)
+
+  if mode == "none":
+    # Allowed state only if landing_required=False, but then RAW shouldn't exist.
+    # Still: be defensive.
+    print(
+      f"[INFO] RAW ingestion skipped for '{target_dataset.target_dataset_name}': "
+      "include_ingest='none' (no ingestion mode)."
+    )
+    return {"status": "skipped", "reason": "include_ingest_none"}
+
+  if mode == "external":
+    # MVP: just validate existence (optional) + log
+    print(
+      f"[INFO] RAW ingestion is external for '{target_dataset.target_dataset_name}'. "
+      "Assuming RAW is populated by an external tool."
+    )
+    return {"status": "skipped", "reason": "external_ingest"}
+
+  if mode != "native":
+    raise ValueError(f"Unknown ingest mode: {mode!r}")
+
+  return ingest_raw_full(
+    source_dataset=src_ds,
+    target_system=target_system,
+    profile=profile,
+    chunk_size=chunk_size,
+    batch_run_id=batch_run_id,
+  )
+
+
+def warn_if_stage_exec_without_raw(target_dataset):
+  """
+  If a stage dataset is fed directly from SourceDatasets (no upstream RAW),
+  executing it inside the target system will usually fail (no cross-system SQL).
+  """
+  if target_dataset.target_schema.short_name != "stage":
+    return
+
+  inputs = list(target_dataset.input_links.select_related("source_dataset", "upstream_target_dataset"))
+  has_upstream_raw = any(
+    i.upstream_target_dataset is not None
+    and i.upstream_target_dataset.target_schema.short_name == "raw"
+    for i in inputs
+  )
+  has_direct_source = any(i.source_dataset is not None for i in inputs)
+
+  if (not has_upstream_raw) and has_direct_source:
+    print(
+      "[INFO] This STAGE dataset is fed directly from SourceDatasets (no RAW landing upstream). "
+      "Executing STAGE inside the target system typically requires either:\n"
+      "  - enabling RAW landing (generate_raw_tables / generate_raw_table), or\n"
+      "  - providing the source data inside the target context (federated/external).\n"
+      "Otherwise target-only execution guards will prevent cross-system SQL."
+    )
+
+
 class Command(BaseCommand):
   help = (
     "Render (and in future: execute) load SQL for a target dataset.\n\n"
@@ -268,8 +356,9 @@ class Command(BaseCommand):
       dest="execute",
       action="store_true",
       help=(
-        "Execute the generated SQL against the resolved target system. "
-        "Not implemented yet; currently only renders SQL."
+        "Execute the resolved operation.\n"
+        "- For RAW targets: run ingestion (extract + load).\n"
+        "- For downstream targets: execute generated SQL in the target system."
       ),
     )
 
@@ -401,6 +490,30 @@ class Command(BaseCommand):
       },
     )
 
+    # --- RAW is special: --execute triggers ingestion, not SQL execution ---
+    if td.target_schema.short_name == "raw":
+      if not execute:
+        if not no_print:
+          self.stdout.write("")
+          self.stdout.write(self.style.NOTICE(
+            "-- RAW datasets are ingested. Use --execute to run ingestion (extract + load)."
+          ))
+        return
+
+      # Execute RAW via ingestion (native/external/none handled internally)
+      result = execute_raw_via_ingestion(
+        target_dataset=td,
+        target_system=system,
+        profile=profile,
+        chunk_size=5000,
+        batch_run_id=batch_run_id,
+      )
+
+      if not no_print:
+        self.stdout.write("")
+        self.stdout.write(self.style.SUCCESS(f"-- RAW ingestion result: {result}"))
+      return
+
     # 7) Render load SQL
     started_at = now()
     start_ts = time.perf_counter()
@@ -478,6 +591,8 @@ class Command(BaseCommand):
     error_message: str | None = None
 
     # Guardrail: execute mode is target-only (no cross-system/source connectivity yet)
+    warn_if_stage_exec_without_raw(td)
+
     if _looks_like_cross_system_sql(sql, td.target_schema.schema_name):
       raise CommandError(
         "Execute mode currently supports target-only SQL. "

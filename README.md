@@ -167,7 +167,7 @@ elevata becomes a **self-contained data platform core**, orchestrable without ex
 ## **Future Directions (Post-0.8)**
 > *Long-term ambitions and ecosystem expansion.*
 
-- Additional dialects: **Snowflake**, **BigQuery**, **Databricks SQL**
+- Additional dialects: **Snowflake**, **BigQuery**, **Databricks SQL**, **Microsoft Fabric**
 - Extended catalog capabilities (contracts, schema registry, dataset capabilities)  
 - Warehouse-native metadata and observability enhancements  
 - Optional source/target sync mechanisms (metadata-driven)  
