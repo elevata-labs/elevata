@@ -632,7 +632,14 @@ class DuckDBDialect(SqlDialect):
         {cols_sql}
       );
     """.strip()
+
   
+  def render_create_or_replace_view(self, *, schema, view, select_sql):
+    return f"""
+      CREATE OR REPLACE VIEW {schema}.{view} AS
+      {select_sql}
+      """.strip()
+
 
   def _render_canonical_type_duckdb(
     self,

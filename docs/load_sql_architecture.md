@@ -193,7 +193,12 @@ Both paths reuse the same logical plan expressions.
 
 Delete detection is implemented as a separate anti‑join statement that runs before the merge.  
 
-The SQL layer translates incremental scope filters from source lineage into target column expressions.
+The SQL layer translates incremental scope filters from source lineage into target column expressions.  
+
+The incremental scope used for delete detection is derived from the SourceDataset.increment_filter and  
+translated via lineage into target
+column references.
+
 
 ---
 
@@ -225,8 +230,10 @@ Execution always runs **inside the target system**.
 
 `elevata_load --execute` is intentionally **layer-aware**:  
 
-- For `raw` targets, `--execute` runs **ingestion** (extract + load) instead of rendering a SELECT-based load SQL.  
-- For downstream layers (`stage`, `rawcore`, `*_hist`), `--execute` renders and executes **warehouse-native SQL** as usual.  
+- For `raw` targets, `--execute` does not produce SQL but triggers **ingestion** logic instead.  
+The same execution command therefore has different semantics depending on the target layer.  
+- For downstream layers (`stage`, `rawcore`, `*_hist`), `--execute` renders and executes  
+**warehouse-native SQL** as usual.  
 
 Why this matters:  
 - elevata treats **ingestion as a first-class citizen** of the pipeline.  

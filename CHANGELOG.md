@@ -22,6 +22,30 @@ This project adheres to [Semantic Versioning](https://semver.org/) and [Keep a C
 
 ---
 
+## [0.7.0] – 2025-12-21
+
+### Added
+- Dataset-driven, lineage-aware execution with automatic dependency resolution  
+- Unified RAW execution semantics via physical ingestion (Source → RAW)  
+- Stable technical column model across all layers  
+- BigQuery execution backend with native ingestion support  
+- Dialect-aware hashing and surrogate key generation (BigQuery, DuckDB, Postgres, MSSQL)  
+- SourceDataset-level static and incremental filters with runtime {{DELTA_CUTOFF}} resolution  
+
+### Changed
+- Execution operates on datasets rather than layers  
+- RAW datasets are treated as an optional ingestion layer  
+- RAW ingestion always rebuilds tables, while source extraction may be incrementally scoped  
+
+### Fixed
+- Load plan debug output and execution logging consistency  
+- Signal handling for historization execution order  
+- Correct application of incremental filters during ingestion and delete detection  
+- Lineage-based translation of incremental scope filters across renamed columns  
+- Cross-dialect consistency for incremental execution (DuckDB, MSSQL, Postgres, BigQuery)  
+
+---
+
 ## [0.6.1] – 2025-12-15
 
 ### Fixed

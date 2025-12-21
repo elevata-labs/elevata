@@ -9,7 +9,8 @@ It automatically inspects the entire metadata repository and detects:
 - technical misconfigurations (e.g., merge on a view)  
 - dependencies that do not logically fit together  
 - incomplete incremental setups  
-- incorrect handling of deletes
+- incorrect handling of deletes  
+- Missing increment policies for SourceDatasets using increment_filter  
 
 The Health Check runs **purely on metadata** and **does not require an active database**.
 

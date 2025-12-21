@@ -1,6 +1,11 @@
 # ⚙️ Supported Source Backends
 
-This document provides an overview of supported database platforms, tested SQLAlchemy dialects, and connection URI examples for **elevata**.
+This document provides an overview of supported database platforms, tested SQLAlchemy dialects,  
+and connection URI examples for **elevata**.  
+
+It describes how elevata connects to external systems for schema discovery,  
+metadata introspection, and optional federated access at the Stage layer.  
+Execution semantics are defined separately.
 
 ---
 
@@ -48,7 +53,10 @@ SEC_DEV_CONN_MSSQL_SAP=mssql+pyodbc://user:pwd@sql01,1433/SAPDB?driver=ODBC%20Dr
 - Use **URL-encoded driver names** (e.g. `ODBC%20Driver%2018%20for%20SQL%20Server`).
 - Backslashes in paths should be replaced by slashes (`C:/path/file.db`).
 - SSL parameters and special driver arguments can be appended via query params.
-- For cloud systems (e.g. Snowflake, BigQuery, Databricks), credentials and tokens can be stored in the `.env` or a Key Vault.
+- For cloud systems (e.g. Snowflake, BigQuery, Databricks), credentials and tokens   
+can be stored in the `.env` or a Key Vault.  
+- For BigQuery, SQLAlchemy-based reflection is used for schema and column discovery.  
+Execution as a target backend is described separately.
 
 ---
 
@@ -60,7 +68,8 @@ SEC_DEV_CONN_MSSQL_SAP=mssql+pyodbc://user:pwd@sql01,1433/SAPDB?driver=ODBC%20Dr
 - `db2`
 - `hana`
 
-You can register these manually under `System.type` if you want to experiment — elevata will attempt a generic reflection, but may not retrieve primary/foreign key details.
+You can register these manually under `System.type` if you want to experiment — elevata will attempt a  
+generic reflection where possible, but may not retrieve primary or foreign key details.
 
 ---
 

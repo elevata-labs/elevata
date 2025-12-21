@@ -23,7 +23,7 @@ Contact: <https://github.com/elevata-labs/elevata>.
 TYPE_CHOICES = sorted([
   # SQLAlchemy-supported (auto import)
   ("mssql", "SQL Server"),
-  ("postgresql", "PostgreSQL"),
+  ("postgres", "PostgreSQL"),
   ("mysql", "MySQL / MariaDB"),
   ("sqlite", "SQLite"),
   ("oracle", "Oracle"),

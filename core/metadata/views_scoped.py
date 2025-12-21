@@ -542,9 +542,12 @@ class TargetDatasetReferenceScopedView(_ScopedChildView):
     """
     form = super().enhance_dynamic_fields(form)
 
-    rawcore_qs = TargetDataset.objects.filter(
-      target_schema__short_name="rawcore"
-    ).order_by("target_dataset_name")
+    rawcore_qs = (
+      TargetDataset.objects
+      .filter(target_schema__short_name="rawcore")
+      .exclude(target_dataset_name__endswith="_hist")
+      .order_by("target_dataset_name")
+    )
 
     ref_child = form.fields.get("referencing_dataset")
     if ref_child is not None:

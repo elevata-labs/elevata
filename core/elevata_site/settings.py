@@ -43,7 +43,7 @@ from utils.db import build_metadata_database_url
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(find_dotenv(filename=".env", raise_error_if_not_found=False))
 
-ELEVATA_VERSION = "0.6.1"
+ELEVATA_VERSION = "0.7.0"
 
 ELEVATA_PROFILES_PATH = os.getenv("ELEVATA_PROFILES_PATH", str((BASE_DIR.parent / "config" / "elevata_profiles.yaml")))
 
@@ -356,6 +356,14 @@ ELEVATA_CRUD = {
       }
     },
     "list_toggle_fields": {
+      "System": [
+        {
+          "field": "generate_raw_tables",
+          "label_on": "Raw Tables",
+          "label_off": "Raw Tables",
+          "title": "Generate Raw Tables"
+        },
+      ],
       "SourceDataset": [
         {
           "field": "integrate",
@@ -372,19 +380,35 @@ ELEVATA_CRUD = {
           "title": "Mark column for integration"
         },
       ],
-      "sourcedatasetownership": [
+      "SourceDatasetGroupMembership": [
+        {
+          "field": "is_primary_system",
+          "label_on": "Primary",
+          "label_off": "Primary",
+          "title": "Primary system",
+        },
+      ],
+      "SourceDatasetOwnership": [
         {
           "field": "is_primary_owner",
-          "label_on": "PRIMARY",
-          "label_off": "SECONDARY",
+          "label_on": "Primary",
+          "label_off": "Primary",
           "title": "Primary accountable owner",
         },
       ],
-      "targetdatasetownership": [
+      "TargetColumn": [
+        {
+          "field": "nullable",
+          "label_on": "Nullable",
+          "label_off": "Nullable",
+          "title": "Mark column as nullable"
+        },
+      ],
+      "TargetDatasetOwnership": [
         {
           "field": "is_primary_owner",
-          "label_on": "PRIMARY",
-          "label_off": "SECONDARY",
+          "label_on": "Primary",
+          "label_off": "Primary",
           "title": "Primary accountable owner",
         },
       ],
@@ -444,6 +468,17 @@ ELEVATA_CRUD = {
             "False": "Retired",
             "default": "",
           },
+          "field": "has_no_missing_increment_policies",
+          "class_map": {
+            "True": "",
+            "False": "badge bg-danger",
+            "default": "",
+          },
+          "label_map": {
+            "True": "",
+            "False": "missing increment policies",
+            "default": "",
+          },
         },
       ],
       "SourceColumn": [
@@ -491,6 +526,21 @@ ELEVATA_CRUD = {
           },
         },
         {
+          "field": "incremental_strategy", 
+          "class_map": {
+            "append": "badge badge-pk",
+            "merge": "badge badge-pk",
+            "snapshot": "badge badge-pk",
+            "full": "",
+          },
+          "label_map": {
+            "append": "Append",
+            "merge": "Merge",
+            "snapshot": "Snapshot",
+            "full": "",
+          },
+        },
+        {
           "field": "active", 
           "class_map": {
             "True": "",
@@ -511,7 +561,7 @@ ELEVATA_CRUD = {
             "surrogate_key": "badge badge-sk",
             "foreign_key": "badge badge-fk",
             "business_key": "badge badge-pk",
-            "entity_key": "badge badge-pk",
+            "entity_key": "badge badge-fk",
             "row_hash": "",
             "load_run_id": "",
             "loaded_at": "",

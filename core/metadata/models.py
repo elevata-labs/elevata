@@ -211,6 +211,13 @@ class SourceDataset(AuditFields):
       "from automated target generation."
     )
   )
+  static_filter = models.CharField(max_length=255, blank=True, null=True,
+    help_text=(
+      "Static WHERE clause applied to all loads of this dataset. "
+      "Used for permanent business or technical scoping. "
+      "Example: is_deleted_flag = 0 AND country_code = 'DE'."
+    ),
+  )  
   incremental = models.BooleanField(default=False,
     help_text=(
       "If checked, an incremental load strategy will be applied. "
@@ -274,6 +281,50 @@ class SourceDataset(AuditFields):
       # If reactivated, clear retired_at
       self.retired_at = None
     super().save(*args, **kwargs)
+
+  @property
+  def missing_increment_policies(self) -> list[str]:
+    """
+    Return a list of environments that are considered missing.
+    Currently this is only meaningful if *no* active policy exists at all.
+    """
+    if not getattr(self, "incremental", False):
+      return []
+
+    if not (getattr(self, "increment_filter", None) or "").strip():
+      return []
+
+    active_envs = list(
+      self.increment_policies
+        .filter(active=True)
+        .values_list("environment", flat=True)
+    )
+
+    # If nothing is defined at all, this is a problem → surface all envs as missing
+    if not active_envs:
+      return [e[0] for e in ENVIRONMENT_CHOICES]
+
+    # Otherwise: no "missing" by default (non-strict semantics)
+    return []
+
+  @property
+  def has_no_missing_increment_policies(self) -> bool:
+    """
+    True if incremental is either not relevant
+    or at least one active increment policy exists.
+    """
+    if not getattr(self, "incremental", False):
+      return True
+
+    if not (getattr(self, "increment_filter", None) or "").strip():
+      return True
+
+    return self.increment_policies.filter(active=True).exists()
+
+  @property
+  def has_missing_increment_policies(self) -> bool:
+    return not self.has_no_missing_increment_policies
+
 
 # -------------------------------------------------------------------
 # SourceDatasetIncrementPolicy

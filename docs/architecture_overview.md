@@ -45,7 +45,12 @@ This flow represents the central principle of elevata:
 ### 🧩 2.2 Generation Layer
 - Creates TargetDatasets in Raw, Stage, Rawcore  
 - Injects surrogate keys where required  
-- Produces column mappings based entirely on lineage
+- Produces column mappings based entirely on lineage  
+
+Incremental scoping and ingestion behavior are derived from SourceDataset metadata and consistently  
+applied across ingestion, merge, and delete detection.  
+
+> *Raw datasets may be ingested via native ingestion or skipped entirely in federated setups.*  
 
 ### 🧩 2.3 Lineage Layer
 - Establishes dataset-level and column-level lineage  
@@ -69,7 +74,33 @@ This flow represents the central principle of elevata:
 ### 🧩 2.7 Load SQL Layer
 - Full load: INSERT INTO ... SELECT  
 - Incremental merge: upsert logic based on natural key lineage  
-- Delete detection: anti-join removal of missing rows
+- Delete detection: anti-join removal of missing rows  
+
+With these technical layers in place, elevata enables a clear transition from data engineering  
+to business-facing data products.
+
+### 🧩 2.8 Bizcore — Business Logic Layer (Conceptual)
+
+Bizcore represents the layer where technically governed datasets  
+are transformed into intentional business-facing data products.  
+
+While upstream layers focus on structure, lineage, and correctness,  
+Bizcore encodes business logic, domain meaning, and analytical intent.  
+It is explicitly separated from presentation and consumption concerns.  
+
+Bizcore may include:  
+- business derivations and rules  
+- domain-level aggregations  
+- stable business identifiers  
+- optional surrogate keys  
+- optional historization when business semantics require it  
+
+Bizcore is not a presentation layer.  
+It defines what the data means — not how it is displayed or consumed.  
+
+Downstream presentation layers (Serving) may adapt Bizcore datasets  
+for BI tools, applications, or semantic layers without polluting  
+core business logic.
 
 ---
 

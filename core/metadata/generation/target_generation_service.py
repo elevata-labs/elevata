@@ -27,11 +27,13 @@ from metadata.models import (
   SourceDataset,
   TargetSchema,
   TargetDataset,
+  TargetDatasetInput,
   TargetColumn,
   TargetColumnInput,
   TargetDatasetReference,
   TargetDatasetReferenceComponent,
 )
+
 from metadata.intent.landing import landing_required
 from metadata.generation import naming, security
 from metadata.generation.mappers import (
@@ -48,34 +50,93 @@ class TargetGenerationService:
   from SourceDatasets + TargetSchemas (raw, stage, rawcore, serving, ...).
   """
 
-  # Columns that must never be overwritten by a source-mapped column
-  GLOBAL_TECHNICAL_COLUMN_NAMES = {
-    "row_hash",
-    "version_started_at",
-    "version_ended_at",
-    "version_state",
-    "load_run_id",
-    "loaded_at",
-  }
+  # Central registry for system-managed technical columns and their UI docs.
+  # Note: For computed columns (e.g. row_hash), we may want to PATCH but NOT CREATE
+  # to avoid missing expressions.
+  TECH_COLUMN_REGISTRY = [
+    # Common load tracking
+    {
+      "name": "load_run_id",
+      "datatype": "STRING",
+      "max_length": 64,
+      "nullable": False,
+      "system_role": "load_run_id",
+      "layers": {"raw", "stage", "rawcore", "hist"},
+      "description": "Identifier of the load run which produced this row.",
+      "create_if_missing": True,
+      "order": 900,
+    },
+    {
+      "name": "loaded_at",
+      "datatype": "TIMESTAMP",
+      "max_length": None,
+      "nullable": False,
+      "system_role": "loaded_at",
+      "layers": {"raw", "stage", "rawcore", "hist"},
+      "description": "UTC timestamp when this row was written.",
+      "create_if_missing": True,
+      "order": 910,
+    },
 
-  TECH_COLS_BY_LAYER = {
-    "raw": [
-      ("load_run_id", "STRING", "load_run_id"),
-      ("loaded_at", "TIMESTAMP", "loaded_at"),
-    ],
-    "stage": [
-      ("load_run_id", "STRING", "load_run_id"),
-      ("loaded_at", "TIMESTAMP", "loaded_at"),
-    ],
-    "rawcore": [
-      ("load_run_id", "STRING", "load_run_id"),
-      ("loaded_at", "TIMESTAMP", "loaded_at"),
-    ],
-    "hist": [
-      ("load_run_id", "STRING", "load_run_id"),
-      ("loaded_at", "TIMESTAMP", "loaded_at"),
-    ],
-  }
+    # Computed column (created in build_dataset_bundle for rawcore, copied into hist)
+    {
+      "name": "row_hash",
+      "datatype": "STRING",
+      "max_length": 64,
+      "nullable": False,
+      "system_role": "row_hash",
+      "layers": {"rawcore", "hist"},
+      "description": "Deterministic hash over all non-key, non-technical attributes of the row.",
+      "create_if_missing": False,
+      "order": 500,
+    },
+
+    # History / SCD2 columns (created in ensure_hist_dataset_for_rawcore)
+    {
+      "name": "version_started_at",
+      "datatype": "TIMESTAMP",
+      "max_length": None,
+      "nullable": False,
+      "system_role": "version_started_at",
+      "layers": {"hist"},
+      "description": "Timestamp at which this version became active.",
+      "create_if_missing": True,
+      "order": 1000,
+    },
+    {
+      "name": "version_ended_at",
+      "datatype": "TIMESTAMP",
+      "max_length": None,
+      "nullable": True,
+      "system_role": "version_ended_at",
+      "layers": {"hist"},
+      "description": "Timestamp at which this version was superseded or closed.",
+      "create_if_missing": True,
+      "order": 1010,
+    },
+    {
+      "name": "version_state",
+      "datatype": "STRING",
+      "max_length": 20,
+      "nullable": False,
+      "system_role": "version_state",
+      "layers": {"hist"},
+      "description": "State of this version: 'new', 'changed', or 'deleted'.",
+      "create_if_missing": True,
+      "order": 1020,
+    },
+  ]
+
+  @classmethod
+  def _technical_column_names(cls) -> set[str]:
+    # Single source for reserved technical identifiers.
+    return {c["name"] for c in cls.TECH_COLUMN_REGISTRY}
+
+  @classmethod
+  def _tech_specs_for_layer(cls, layer: str) -> list[dict]:
+    specs = [c for c in cls.TECH_COLUMN_REGISTRY if layer in c.get("layers", set())]
+    specs.sort(key=lambda s: int(s.get("order", 0)))
+    return specs
 
 
   def __init__(self, pepper: str | None = None):
@@ -124,36 +185,54 @@ class TargetGenerationService:
     """
     Ensure system-managed technical columns exist for the given TargetDataset.
     Tech columns are appended at the end to keep ordinals stable.
+
+    This method also PATCHES existing columns to keep their documentation consistent
+    (description, max_length, nullable, role) and removes legacy 'system column' remarks.
     """
     layer = "hist" if td.target_dataset_name.endswith("_hist") else td.target_schema.short_name
-    if layer not in self.TECH_COLS_BY_LAYER:
+    tech_specs = self._tech_specs_for_layer(layer)
+    if not tech_specs:
       return
-
-    tech_defs = self.TECH_COLS_BY_LAYER[layer]
 
     max_ord = (
       td.target_columns.aggregate(Max("ordinal_position"))["ordinal_position__max"]
       or 0
     )
 
-    for offset, (col_name, datatype, role) in enumerate(tech_defs, start=1):
-      col, created = TargetColumn.objects.get_or_create(
+    for offset, spec in enumerate(tech_specs, start=1):
+      col_name = spec["name"]
+
+      # If the column exists, we always patch it.
+      existing = TargetColumn.objects.filter(
         target_dataset=td,
         target_column_name=col_name,
-        defaults={
-          "datatype": datatype,
-          "nullable": False,
-          "active": True,
-          "is_system_managed": True,
-          "system_role": role,
-          "ordinal_position": max_ord + offset,
-          "remark": "elevata system column",
-        },
-      )
+      ).first()
 
-      # Idempotent correction if column already existed
+      # Avoid creating computed columns (e.g. row_hash) here,
+      # because creation must carry an expression and/or special lineage.
+      if existing is None and not spec.get("create_if_missing", True):
+        continue
+
+      if existing is None:
+        col = TargetColumn.objects.create(
+          target_dataset=td,
+          target_column_name=col_name,
+          datatype=spec["datatype"],
+          max_length=spec.get("max_length"),
+          nullable=spec["nullable"],
+          active=True,
+          is_system_managed=True,
+          system_role=spec["system_role"],
+          ordinal_position=max_ord + offset,
+          description=spec.get("description"),
+          remark=None,
+        )
+        continue
+
+      col = existing
       changed = False
 
+      # Always keep system-managed tech columns active and tagged.
       if not col.active:
         col.active = True
         changed = True
@@ -162,16 +241,31 @@ class TargetGenerationService:
         col.is_system_managed = True
         changed = True
 
-      if col.system_role != role:
-        col.system_role = role
+      if col.system_role != spec["system_role"]:
+        col.system_role = spec["system_role"]
         changed = True
 
-      if col.datatype != datatype:
-        col.datatype = datatype
+      # Keep type / constraints consistent
+      if col.datatype != spec["datatype"]:
+        col.datatype = spec["datatype"]
         changed = True
 
-      if col.nullable:
-        col.nullable = False
+      if col.max_length != spec.get("max_length"):
+        col.max_length = spec.get("max_length")
+        changed = True
+
+      if col.nullable != spec["nullable"]:
+        col.nullable = spec["nullable"]
+        changed = True
+
+      # Unify UI documentation
+      if col.description != spec.get("description"):
+        col.description = spec.get("description")
+        changed = True
+
+      # Remove legacy remark like "elevata system column" / "system column"
+      if col.remark:
+        col.remark = None
         changed = True
 
       if changed:
@@ -194,19 +288,31 @@ class TargetGenerationService:
         )
       )
     """
+    EXCLUDED_ROLES_FOR_ROW_HASH = {
+      "surrogate_key",
+      "business_key",
+    }
+
     dialect_neutral_cols: list[str] = []
 
     for col in all_columns:
-      if getattr(col, "system_role", "") == "surrogate_key":
-        continue
-      if getattr(col, "system_role", "") == "business_key":
-        continue
-
       name = col.target_column_name
 
-      if name in self.GLOBAL_TECHNICAL_COLUMN_NAMES and name != "row_hash":
+    tech_names = self._technical_column_names()
+
+    for col in all_columns:
+      role = getattr(col, "system_role", None)
+      name = col.target_column_name
+
+      # Exclude keys (semantic rule)
+      if role in EXCLUDED_ROLES_FOR_ROW_HASH:
         continue
-      if name.startswith("version_"):
+
+      # Exclude technical columns (except row_hash itself)
+      if (
+        (getattr(col, "is_system_managed", False) or name in tech_names)
+        and role != "row_hash"
+      ):
         continue
 
       dialect_neutral_cols.append(name)
@@ -385,7 +491,7 @@ class TargetGenerationService:
           ]
 
     # 4c. Prevent naming conflicts with technical / SK column names
-    reserved_names = set(self.GLOBAL_TECHNICAL_COLUMN_NAMES)
+    reserved_names = set(self._technical_column_names())
     reserved_names.add(f"{dataset_draft.target_dataset_name}_key")
 
     for col in mapped_columns:
@@ -913,29 +1019,30 @@ class TargetGenerationService:
         upstream_target_column=rc_col,
       )
 
-    # Technical versioning columns
-    tech_columns = [
-      ("version_started_at", "TIMESTAMP",
-       "Timestamp at which this version became active.", "version_started_at", False),
-      ("version_ended_at", "TIMESTAMP",
-       "Timestamp at which this version was superseded or closed.", "version_ended_at", True),
-      ("version_state", "STRING",
-       "State of this version: 'new', 'changed', or 'deleted'.", "version_state", False),
-      ("load_run_id", "STRING",
-       "Identifier of the load run which created or updated this history row.", "load_run_id", False),
-      ("loaded_at", "TIMESTAMP",
-       "UTC timestamp when this history row was written.", "loaded_at", False),
-    ]
+    # Technical versioning columns (append after copying rawcore columns)
+    # NOTE: row_hash is already copied from rawcore, so we must NOT create it here.
+    hist_tail_roles = {
+      "version_started_at",
+      "version_ended_at",
+      "version_state",
+      "load_run_id",
+      "loaded_at",
+    }
 
-    for name, dt, desc, role, nullable in tech_columns:
+    for spec in self._tech_specs_for_layer("hist"):
+      role = (spec.get("system_role") or "").strip()
+      if role not in hist_tail_roles:
+        continue
+
       _create_hist_column(
-        name=name,
-        datatype=dt,
-        nullable=nullable,
-        description=desc,
+        name=spec["name"],
+        datatype=spec["datatype"],
+        nullable=spec["nullable"],
+        max_length=spec.get("max_length"),
+        description=spec.get("description"),
         system_role=role,
       )
-      
+
     return hist_td
 
 
@@ -1389,9 +1496,17 @@ class TargetGenerationService:
 
       ordered_cols = generator_columns + extra_cols
 
-      # Pass 1: move everything into a safe high range
+      # Compute a truly safe ordinal base that cannot collide with any existing ordinal
+      max_ord = 0
+      for c in all_cols:
+        if c.ordinal_position is not None and c.ordinal_position > max_ord:
+          max_ord = c.ordinal_position
+
+      safe_base = max_ord + 1000
+
+      # Pass 1: move everything into a safe high range (no collisions possible)
       for idx, col in enumerate(ordered_cols, start=1):
-        col.ordinal_position = total_final + idx
+        col.ordinal_position = safe_base + idx
         col.save(update_fields=["ordinal_position"])
 
       # Pass 2: assign final dense ordinals 1..N
@@ -1518,7 +1633,15 @@ class TargetGenerationService:
       # 6) Optional: history dataset for rawcore
       if target_schema.short_name == "rawcore":
         # Only create hist dataset when historization is enabled on this dataset
-        self.ensure_hist_dataset_for_rawcore(target_dataset_obj)
+        hist_td = self.ensure_hist_dataset_for_rawcore(target_dataset_obj)
+
+        TargetDatasetInput.objects.get_or_create(
+          target_dataset=hist_td,
+          upstream_target_dataset=target_dataset_obj,
+          defaults={
+            "role": "primary",
+          },
+        )
 
     return (
       f"{len(buckets)} target datasets and {total_columns} target columns generated/updated."

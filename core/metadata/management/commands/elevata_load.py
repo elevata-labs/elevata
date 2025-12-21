@@ -28,9 +28,10 @@ import logging
 import os
 import re
 import uuid
+from datetime import timedelta
 from django.utils.timezone import now
-
 from django.core.management.base import BaseCommand, CommandError
+from dateutil.relativedelta import relativedelta  # add dependency if not present
 
 from metadata.config.profiles import load_profile
 from metadata.config.targets import get_target_system
@@ -42,9 +43,10 @@ from metadata.rendering.load_sql import (
   format_load_run_summary,
 )
 from metadata.rendering.load_planner import build_load_plan
-
+from metadata.rendering.placeholders import resolve_delta_cutoff_for_source_dataset
 from metadata.intent.ingestion import resolve_ingest_mode
 from metadata.ingestion.native_raw import ingest_raw_full
+from metadata.execution.load_graph import resolve_execution_order
 
 
 logger = logging.getLogger(__name__)
@@ -191,34 +193,72 @@ def _render_literal_for_dialect(dialect, value):
   return dialect.literal(value)
 
 
-def apply_runtime_placeholders(sql: str, *, dialect, load_run_id: str, load_timestamp) -> str:
+def apply_runtime_placeholders(
+  sql: str,
+  *,
+  dialect,
+  load_run_id: str,
+  load_timestamp,
+  delta_cutoff=None,
+) -> str:
   if not sql:
     return sql
 
   ts_sql = _render_literal_for_dialect(dialect, load_timestamp)
   id_sql = _render_literal_for_dialect(dialect, load_run_id)
 
-  # support both "{{ load_timestamp }}" and "{ load_timestamp }" variants
   sql = re.sub(r"\{\{\s*load_timestamp\s*\}\}", ts_sql, sql)
   sql = re.sub(r"\{\s*load_timestamp\s*\}", ts_sql, sql)
 
   sql = re.sub(r"\{\{\s*load_run_id\s*\}\}", id_sql, sql)
   sql = re.sub(r"\{\s*load_run_id\s*\}", id_sql, sql)
 
+  if delta_cutoff is not None:
+    cutoff_sql = _render_literal_for_dialect(dialect, delta_cutoff)
+    # Support both "{{ DELTA_CUTOFF }}" and "{ DELTA_CUTOFF }"
+    sql = re.sub(r"\{\{\s*DELTA_CUTOFF\s*\}\}", cutoff_sql, sql)
+    sql = re.sub(r"\{\s*DELTA_CUTOFF\s*\}", cutoff_sql, sql)
+
   return sql
 
 
 def should_truncate_before_load(td, load_plan) -> bool:
-  schema_short = getattr(td.target_schema, "short_name", None)
+  """
+  Decide whether we should truncate the target object before running the load SQL.
+
+  Rules:
+  - Never truncate views (materialization_type=view).
+  - Never truncate RAW (ingestion semantics).
+  - Never truncate *_hist datasets (SCD2 incremental semantics).
+  - Truncate only for "full" mode table-like materializations.
+  """
+  schema = getattr(td, "target_schema", None)
+  schema_short = getattr(schema, "short_name", None)
+  ds_name = getattr(td, "target_dataset_name", "") or ""
+
+  # Materialization: dataset overrides schema default; fallback is "table"
+  mat = (
+    getattr(td, "materialization_type", None)
+    or getattr(schema, "default_materialization_type", None)
+    or "table"
+  )
+
+  # Views are never truncated
+  if mat == "view":
+    return False
+
+  # RAW is ingested, not truncated via SQL
+  if schema_short == "raw":
+    return False
+
+  # Hist datasets are incremental/SCD2 by definition
+  if schema_short == "rawcore" and isinstance(ds_name, str) and ds_name.endswith("_hist"):
+    return False
+
   mode = getattr(load_plan, "mode", None)
 
-  if schema_short in ("stage", "raw"):
-    return True
-
-  if schema_short == "rawcore" and mode == "full":
-    return True
-
-  return False
+  # Only full refresh truncates
+  return mode == "full" and mat in ("table", "incremental")
 
 
 def resolve_single_source_dataset_for_raw(target_dataset):
@@ -234,6 +274,327 @@ def resolve_single_source_dataset_for_raw(target_dataset):
       f"but found {len(src)}."
     )
   return src[0]
+
+# NOTE:
+# This function intentionally encapsulates the full lifecycle of a single dataset execution
+# (rendering, execution, logging, result normalization).
+# It may be split into smaller helpers in a future release once execution semantics stabilize.
+def run_single_target_dataset(
+  *,
+  stdout,
+  style,
+  target_dataset: TargetDataset,
+  target_system,
+  target_system_engine,
+  profile,
+  dialect,
+  execute: bool,
+  no_print: bool,
+  debug_plan: bool,
+  batch_run_id: str,
+  load_run_id: str | None = None,
+  load_plan_override=None,
+  chunk_size: int = 5000,
+) -> dict[str, object]:
+  """
+  Execute or render exactly one dataset.
+
+  Returns a normalized result dict for the execution summary:
+    {
+      "status": "success" | "error" | "dry_run" | "skipped",
+      "kind": "ingestion" | "sql",
+      "dataset": "schema.dataset",
+      "message": optional[str],
+      "rows_affected": optional[int],
+      "load_run_id": str,
+    }
+  """
+  td = target_dataset
+  dataset_key = f"{td.target_schema.short_name}.{td.target_dataset_name}"
+
+  # Per-dataset load_run_id (nested under batch_run_id)
+  if load_run_id is None:
+    load_run_id = str(uuid.uuid4())
+
+  # --- RAW datasets -------------------------------------------------
+  if td.target_schema.short_name == "raw":
+    if not execute:
+      if not no_print:
+        stdout.write("")
+        stdout.write(style.NOTICE(
+          "-- RAW datasets are ingested. Use --execute to run ingestion (extract + load)."
+        ))
+      return {
+        "status": "dry_run",
+        "kind": "ingestion",
+        "dataset": dataset_key,
+        "message": "raw_ingestion_dry_run",
+        "load_run_id": load_run_id,
+      }
+
+    result = execute_raw_via_ingestion(
+      target_dataset=td,
+      target_system=target_system,
+      profile=profile,
+      chunk_size=chunk_size,
+      batch_run_id=batch_run_id,
+    )
+
+    if not no_print:
+      stdout.write(style.NOTICE(f"[OK] {dataset_key}: RAW ingestion result: {result}"))
+
+    # Normalize ingestion outcome (best-effort: ingest_raw_full already returns status)
+    status = (result or {}).get("status", "success")
+    msg = (result or {}).get("reason") or None
+
+    return {
+      "status": "success" if status == "success" else status,
+      "kind": "ingestion",
+      "dataset": dataset_key,
+      "message": msg,
+      "rows_affected": (result or {}).get("rows_affected"),
+      "load_run_id": (result or {}).get("load_run_id", load_run_id),
+    }
+
+  # --- Non-RAW: build load plan & render SQL -----------------------
+  load_plan = load_plan_override or build_load_plan(td)
+
+  if debug_plan and not no_print:
+    stdout.write(style.WARNING(f"-- LoadPlan debug for {dataset_key}: {load_plan}"))
+
+  summary = build_load_run_summary(td, dialect, load_plan)
+
+  logger.info(
+    "elevata_load dataset starting",
+    extra={
+      "batch_run_id": batch_run_id,
+      "load_run_id": load_run_id,
+      "target_dataset_id": getattr(td, "id", None),
+      "target_dataset_name": td.target_dataset_name,
+      "target_schema": td.target_schema.short_name,
+      "profile": profile.name,
+      "target_system": target_system.short_name,
+      "target_system_type": target_system.type,
+      "dialect": dialect.__class__.__name__,
+      "execute": execute,
+      "load_mode": summary.get("mode"),
+      "load_handle_deletes": summary.get("handle_deletes"),
+      "load_historize": summary.get("historize"),
+    },
+  )
+
+  # 1) Render SQL
+  render_started_at = now()
+  render_start_ts = time.perf_counter()
+  sql = render_load_sql_for_target(td, dialect)
+  render_ms = (time.perf_counter() - render_start_ts) * 1000.0
+  render_finished_at = now()
+  sql_length = len(sql or "")
+
+  # "Run" starts with rendering (execution timestamps will extend this later)
+  run_started_at = render_started_at
+  run_finished_at = render_finished_at
+
+  if not no_print:
+    stdout.write("")
+    stdout.write(style.NOTICE(f"-- Dataset: {dataset_key}"))
+    stdout.write(style.NOTICE(f"-- Profile: {profile.name}"))
+    stdout.write(style.NOTICE(f"-- Target system: {target_system.short_name} (type={target_system.type})"))
+    stdout.write(style.NOTICE(f"-- Dialect: {dialect.__class__.__name__}"))
+    stdout.write(style.NOTICE(f"-- Load summary: {format_load_run_summary(summary)}"))
+    stdout.write(style.NOTICE(f"-- SQL length: {sql_length} chars"))
+    stdout.write(style.NOTICE(f"-- Render time: {render_ms:.1f} ms"))
+    stdout.write("")
+    stdout.write(sql)
+
+  logger.info(
+    "elevata_load dataset rendered",
+    extra={
+      "batch_run_id": batch_run_id,
+      "load_run_id": load_run_id,
+      "target_dataset_id": getattr(td, "id", None),
+      "target_dataset_name": td.target_dataset_name,
+      "target_schema": td.target_schema.short_name,
+      "sql_length": sql_length,
+      "execute": execute,
+      "render_started_at": render_started_at.isoformat(),
+      "render_finished_at": render_finished_at.isoformat(),
+      "render_ms": render_ms,
+    },
+  )
+
+  if not execute:
+    return {
+      "status": "dry_run",
+      "kind": "sql",
+      "dataset": dataset_key,
+      "message": "sql_rendered",
+      "load_run_id": load_run_id,
+      "summary": summary,
+      "sql_length": sql_length,
+      "render_ms": render_ms,
+      "render_started_at": render_started_at,
+      "render_finished_at": render_finished_at,
+      "run_started_at": run_started_at,
+      "run_finished_at": run_finished_at,
+      "execution_ms": None,
+      "exec_started_at": None,
+      "exec_finished_at": None,
+    }
+
+  # From here on we must have an engine
+  if target_system_engine is None:
+    raise CommandError("Missing execution engine in execute mode.")
+
+  # 2) Execute SQL in target system
+  ensure_target_schema(
+    engine=target_system_engine,
+    dialect=dialect,
+    schema_name=td.target_schema.schema_name,
+    auto_provision=AUTO_PROVISION_SCHEMAS,
+  )
+
+  mat = getattr(td, "materialization_type", None) or getattr(td.target_schema, "default_materialization_type", None) or "table"
+
+  if mat in ("table", "incremental"):
+    ensure_target_table(
+      engine=target_system_engine,
+      dialect=dialect,
+      td=td,
+      auto_provision=AUTO_PROVISION_TABLES,
+    )
+  elif mat == "view":
+    # no table provisioning for views
+    pass
+
+  ensure_load_run_log_table(
+    engine=target_system_engine,
+    dialect=dialect,
+    meta_schema=META_SCHEMA_NAME,
+    auto_provision=AUTO_PROVISION_META_LOG,
+  )
+
+  # Guardrail: warn for stage that is fed directly from sources (no RAW)
+  warn_if_stage_exec_without_raw(td)
+
+  if _looks_like_cross_system_sql(sql, td.target_schema.schema_name):
+    raise CommandError(
+      "Execute mode currently supports target-only SQL. "
+      "This dataset SQL appears to reference objects outside the allowed target schemas. "
+      "Either enable RAW landing or use a federated/external execution approach."
+    )
+
+  if should_truncate_before_load(td, load_plan) and mat in ("table", "incremental"):
+    trunc_sql = dialect.render_truncate_table(
+      schema=td.target_schema.schema_name,
+      table=td.target_dataset_name,
+    )
+    target_system_engine.execute(trunc_sql)
+
+  exec_started_at = now()
+  exec_start_ts = time.perf_counter()
+
+  rows_affected: int | None = None
+  load_status = "success"
+  error_message: str | None = None
+
+  try:
+    exec_ts = now()
+
+    # Compute delta cutoff only if SQL contains the placeholder.
+    needs_delta = bool(re.search(r"\{\{?\s*DELTA_CUTOFF\s*\}?\}", sql or ""))
+    delta_cutoff = None
+    if needs_delta:
+      delta_cutoff = resolve_delta_cutoff_for_source_dataset(
+        source_dataset=getattr(td, "incremental_source", None),
+        profile=profile,
+        now_ts=exec_ts,
+      )
+      if delta_cutoff is None:
+        raise CommandError(
+          f"SQL contains {{DELTA_CUTOFF}} but no active increment policy exists "
+          f"for incremental_source in environment '{profile.name}'."
+        )
+
+    sql_exec = apply_runtime_placeholders(
+      sql,
+      dialect=dialect,
+      load_run_id=load_run_id,
+      load_timestamp=exec_ts,
+      delta_cutoff=delta_cutoff,
+    )
+
+    rows_affected = target_system_engine.execute(sql_exec)
+
+  except Exception as exc:
+    load_status = "error"
+    error_message = str(exc)
+
+  exec_finished_at = now()
+  execution_ms = (time.perf_counter() - exec_start_ts) * 1000.0
+
+  # For execute mode, the overall run ends after execution.
+  run_finished_at = exec_finished_at
+
+  # Insert warehouse log row (only if the dialect supports it)
+  if hasattr(dialect, "render_insert_load_run_log"):
+    log_insert_sql = dialect.render_insert_load_run_log(
+      meta_schema=META_SCHEMA_NAME,
+      batch_run_id=batch_run_id,
+      load_run_id=load_run_id,
+      summary=summary,
+      profile=profile,
+      system=target_system,
+      started_at=run_started_at,
+      finished_at=run_finished_at,
+      render_ms=render_ms,
+      execution_ms=execution_ms,
+      sql_length=sql_length,
+      rows_affected=rows_affected,
+      load_status=load_status,
+      error_message=error_message,
+    )
+    if log_insert_sql:
+      target_system_engine.execute(log_insert_sql)
+
+  if load_status == "error":
+    return {
+      "status": "error",
+      "kind": "sql",
+      "dataset": dataset_key,
+      "message": error_message,
+      "rows_affected": rows_affected,
+      "load_run_id": load_run_id,
+      "summary": summary,
+      "sql_length": sql_length,
+      "render_ms": render_ms,
+      "render_started_at": render_started_at,
+      "render_finished_at": render_finished_at,
+      "exec_started_at": exec_started_at,
+      "exec_finished_at": exec_finished_at,
+      "run_started_at": run_started_at,
+      "run_finished_at": run_finished_at,
+      "execution_ms": execution_ms,
+    }
+
+  return {
+    "status": "success",
+    "kind": "sql",
+    "dataset": dataset_key,
+    "message": None,
+    "rows_affected": rows_affected,
+    "load_run_id": load_run_id,
+    "summary": summary,
+    "sql_length": sql_length,
+    "render_ms": render_ms,
+    "render_started_at": render_started_at,
+    "render_finished_at": render_finished_at,
+    "exec_started_at": exec_started_at,
+    "exec_finished_at": exec_finished_at,
+    "run_started_at": run_started_at,
+    "run_finished_at": run_finished_at,
+    "execution_ms": execution_ms,
+  }
 
 def execute_raw_via_ingestion(
   *,
@@ -379,6 +740,26 @@ class Command(BaseCommand):
       ),
     )
 
+    parser.add_argument(
+      "--no-deps",
+      dest="no_deps",
+      action="store_true",
+      help=(
+        "Execute only the specified target dataset, without resolving or executing "
+        "any upstream dependencies."
+      ),
+    )
+
+    parser.add_argument(
+    "--continue-on-error",
+    dest="continue_on_error",
+    action="store_true",
+    help=(
+      "Continue executing downstream datasets even if one dataset fails. "
+      "The command will still exit with a non-zero status if any error occurred."
+      ),
+    )
+
 
   def _resolve_target_dataset(self, target_name: str, schema_short: str | None) -> TargetDataset:
     """
@@ -405,6 +786,9 @@ class Command(BaseCommand):
 
 
   def handle(self, *args: Any, **options: Any) -> None:
+    """
+    Process load
+    """
     target_name: str = options["target_name"]
     schema_short: str | None = options["schema_short"]
     dialect_name: str | None = options["dialect_name"]
@@ -412,242 +796,198 @@ class Command(BaseCommand):
     execute: bool = options["execute"]
     no_print: bool = options["no_print"]
     debug_plan: bool = bool(options.get("debug_plan", False))
+    no_deps: bool = bool(options.get("no_deps", False))
+    continue_on_error: bool = bool(options.get("continue_on_error", False))
 
-    # A single command run may load one or more datasets in the future.
-    # We still generate a batch_run_id now so that we have a consistent
-    # grouping key for all per-dataset load_run_ids.
+    # One batch_run_id for the entire run (all datasets).
     batch_run_id = str(uuid.uuid4())
 
-    # 1) Resolve TargetDataset
-    td = self._resolve_target_dataset(target_name, schema_short)
+    # 1) Resolve root dataset
+    root_td = self._resolve_target_dataset(target_name, schema_short)
 
-    # 2) Resolve profile (for logging / later connection handling)
+    # 2) Resolve profile
     profile = load_profile(None)
 
-    # 3) Resolve target system (for future execute mode)
+    # 3) Resolve target system
     try:
       system = get_target_system(target_system_name)
     except RuntimeError as exc:
       raise CommandError(str(exc))
 
-    # 4) Resolve dialect (env → profile → fallback)
+    # 4) Resolve dialect (+ engine only in execute mode)
     dialect = get_active_dialect(dialect_name)
-    # NOTE:
-    # We deliberately do NOT resolve an execution engine yet.
-    # Execute mode is still unimplemented; tests expect a CommandError
-    # and not any interaction with a concrete engine.
 
-    # 5) Build LoadPlan and optionally print debug info
-    load_plan = build_load_plan(td)
+    engine = None
+    if execute:
+      engine = dialect.get_execution_engine(system)
 
+    # 5) Resolve execution order
+    if no_deps:
+      execution_order = [root_td]
+    else:
+      execution_order = resolve_execution_order(root_td)
+
+    # 6) Print plan
+    if not no_print:
+      self.stdout.write("")
+      self.stdout.write(self.style.NOTICE(f"Execution plan (batch_run_id={batch_run_id}):"))
+      for i, td in enumerate(execution_order, start=1):
+        self.stdout.write(f"  {i}. {td.target_schema.short_name}.{td.target_dataset_name}")
+      self.stdout.write("")
+
+    # 7) Debug plan for root only (exact formatting expected by tests)
+    root_load_plan = None
     if debug_plan:
+      root_load_plan = build_load_plan(root_td)
+
       self.stdout.write("")
       self.stdout.write(self.style.WARNING("-- LoadPlan debug:"))
 
-      mode = getattr(load_plan, "mode", None)
-      handle_deletes = bool(getattr(load_plan, "handle_deletes", False))
-      schema_short = getattr(td.target_schema, "short_name", None)
+      mode = getattr(root_load_plan, "mode", None)
+      handle_deletes = bool(getattr(root_load_plan, "handle_deletes", False))
+      schema_short_local = getattr(root_td.target_schema, "short_name", None)
 
-      # sehr einfache Heuristik: wann *kann* Delete Detection greifen?
       delete_detection_enabled = (
         mode == "merge"
         and handle_deletes
-        and schema_short == "rawcore"
+        and schema_short_local == "rawcore"
       )
 
       self.stdout.write(f"  mode           = {mode}")
       self.stdout.write(f"  handle_deletes = {handle_deletes}")
 
-      incr_src = getattr(td, "incremental_source", None)
+      incr_src = getattr(root_td, "incremental_source", None)
       incr_src_name = getattr(incr_src, "source_dataset_name", None) if incr_src else None
       self.stdout.write(f"  incremental_source = {incr_src_name}")
       self.stdout.write(f"  delete_detection_enabled = {delete_detection_enabled}")
       self.stdout.write("")
 
-    # 5a) Build a compact summary used for logging and optional debug output
-    summary = build_load_run_summary(td, dialect, load_plan)
+    # Root-level logging: tests expect exactly one "starting" and one "finished"
+    root_load_run_id = str(uuid.uuid4())
 
-    # Per-dataset load_run_id (nested inside the batch)
-    load_run_id = str(uuid.uuid4())
-
-    # 6) Logging: Start of run
     logger.info(
       "elevata_load starting",
       extra={
         "batch_run_id": batch_run_id,
-        "load_run_id": load_run_id,
-        "target_dataset_id": getattr(td, "id", None),
-        "target_dataset_name": td.target_dataset_name,
-        "target_schema": td.target_schema.short_name,
+        "load_run_id": root_load_run_id,
+        "target_dataset_id": getattr(root_td, "id", None),
+        "target_dataset_name": root_td.target_dataset_name,
+        "target_schema": root_td.target_schema.short_name,
         "profile": profile.name,
         "target_system": system.short_name,
         "target_system_type": system.type,
         "dialect": dialect.__class__.__name__,
         "execute": execute,
-        "load_mode": summary["mode"],
-        "load_handle_deletes": summary["handle_deletes"],
-        "load_historize": summary["historize"],
       },
     )
 
-    # --- RAW is special: --execute triggers ingestion, not SQL execution ---
-    if td.target_schema.short_name == "raw":
-      if not execute:
-        if not no_print:
-          self.stdout.write("")
-          self.stdout.write(self.style.NOTICE(
-            "-- RAW datasets are ingested. Use --execute to run ingestion (extract + load)."
-          ))
-        return
+    # 8) Execute datasets in order and collect summary
+    results: list[dict[str, object]] = []
+    had_error = False
 
-      # Execute RAW via ingestion (native/external/none handled internally)
-      result = execute_raw_via_ingestion(
-        target_dataset=td,
-        target_system=system,
-        profile=profile,
-        chunk_size=5000,
-        batch_run_id=batch_run_id,
-      )
+    for td in execution_order:
+      this_load_run_id = root_load_run_id if td is root_td else None
+      this_load_plan = root_load_plan if (td is root_td) else None
 
-      if not no_print:
-        self.stdout.write("")
-        self.stdout.write(self.style.SUCCESS(f"-- RAW ingestion result: {result}"))
-      return
+      try:
+        result = run_single_target_dataset(
+          stdout=self.stdout,
+          style=self.style,
+          target_dataset=td,
+          target_system=system,
+          target_system_engine=engine,
+          profile=profile,
+          dialect=dialect,
+          execute=execute,
+          no_print=no_print,
+          debug_plan=False,
+          batch_run_id=batch_run_id,
+          load_run_id=this_load_run_id,
+          load_plan_override=this_load_plan,
+          chunk_size=5000,
+        )
+        results.append(result)
 
-    # 7) Render load SQL
-    started_at = now()
-    start_ts = time.perf_counter()
-    sql = render_load_sql_for_target(td, dialect)
-    render_ms = (time.perf_counter() - start_ts) * 1000.0
-    finished_at = now()
-    sql_length = len(sql)
+      except Exception as exc:
+        had_error = True
 
-    # 8) Dry-run vs execute
+        results.append({
+          "status": "error",
+          "kind": "exception",
+          "dataset": f"{td.target_schema.short_name}.{td.target_dataset_name}",
+          "message": str(exc),
+        })
+
+        logger.exception(
+          "elevata_load dataset failed",
+          extra={
+            "batch_run_id": batch_run_id,
+            "target_dataset_name": td.target_dataset_name,
+            "target_schema": td.target_schema.short_name,
+          },
+        )
+
+        if not continue_on_error:
+          # Ensure we still emit the "finished" log for root with best-effort fields
+          break
+
+    # 9) Execution summary
     if not no_print:
       self.stdout.write("")
-      self.stdout.write(self.style.NOTICE(f"-- Profile: {profile.name}"))
-      self.stdout.write(self.style.NOTICE(f"-- Target system: {system.short_name} (type={system.type})"))
-      self.stdout.write(self.style.NOTICE(f"-- Dialect: {dialect.__class__.__name__}"))
-      self.stdout.write(self.style.NOTICE(f"-- Load summary: {format_load_run_summary(summary)}"))
-      self.stdout.write(self.style.NOTICE(f"-- SQL length: {sql_length} chars"))
-      self.stdout.write(self.style.NOTICE(f"-- Render time: {render_ms:.1f} ms"))
-      self.stdout.write("")
-      self.stdout.write(sql)
+      self.stdout.write(self.style.NOTICE(f"Execution summary (batch_run_id={batch_run_id}):"))
 
-    # 9) Logging: end of run (render phase)
+      for r in results:
+        status = str(r.get("status", "unknown"))
+        kind = str(r.get("kind", "unknown"))
+        ds = str(r.get("dataset", "unknown"))
+
+        symbol = "✔" if status in ("success", "dry_run", "skipped") else "✖"
+        line = f" {symbol} {ds:<35} {kind}"
+
+        msg = r.get("message")
+        if msg:
+          line += f" – {msg}"
+
+        self.stdout.write(line)
+
+      self.stdout.write("")
+
+    # Root "finished" log should use root result timing/length if available
+    root_result = None
+    root_dataset_key = f"{root_td.target_schema.short_name}.{root_td.target_dataset_name}"
+    for r in results:
+      if r.get("dataset") == root_dataset_key:
+        root_result = r
+        break
+
+    sql_length = int(root_result.get("sql_length", 0)) if root_result else 0
+    render_ms = float(root_result.get("render_ms", 0.0)) if root_result else 0.0
+    started_at = root_result.get("started_at") if root_result else None
+    finished_at = root_result.get("finished_at") if root_result else None
+
     logger.info(
       "elevata_load finished",
       extra={
         "batch_run_id": batch_run_id,
-        "load_run_id": load_run_id,
-        "target_dataset_id": getattr(td, "id", None),
-        "target_dataset_name": td.target_dataset_name,
-        "sql_length": len(sql or ""),
+        "load_run_id": root_load_run_id,
+        "target_dataset_id": getattr(root_td, "id", None),
+        "target_dataset_name": root_td.target_dataset_name,
+        "sql_length": sql_length,
         "execute": execute,
-        "load_mode": summary["mode"],
-        "load_handle_deletes": summary["handle_deletes"],
-        "load_historize": summary["historize"],
-        "started_at": started_at.isoformat(),
-        "finished_at": finished_at.isoformat(),
+        "started_at": started_at.isoformat() if started_at else None,
+        "finished_at": finished_at.isoformat() if finished_at else None,
         "render_ms": render_ms,
       },
     )
 
-    if not execute:
-      return
-
-    # 10) Execute mode: run SQL and log to warehouse
-    engine = dialect.get_execution_engine(system)
-
-    # Ensure target schema exists (optional auto-provision)
-    ensure_target_schema(
-      engine=engine,
-      dialect=dialect,
-      schema_name=td.target_schema.schema_name,
-      auto_provision=AUTO_PROVISION_SCHEMAS,
-    )
-
-    # Ensure target table exists (optional auto-provision)
-    ensure_target_table(
-      engine=engine,
-      dialect=dialect,
-      td=td,
-      auto_provision=AUTO_PROVISION_TABLES,
-    )
-
-    # Ensure meta.load_run_log exists (optional auto-provision)
-    ensure_load_run_log_table(
-      engine=engine,
-      dialect=dialect,
-      meta_schema=META_SCHEMA_NAME,
-      auto_provision=AUTO_PROVISION_META_LOG,
-    )
-
-    exec_start_ts = time.perf_counter()
-    exec_started_at = now()
-
-    rows_affected: int | None = None
-    load_status = "success"
-    error_message: str | None = None
-
-    # Guardrail: execute mode is target-only (no cross-system/source connectivity yet)
-    warn_if_stage_exec_without_raw(td)
-
-    if _looks_like_cross_system_sql(sql, td.target_schema.schema_name):
+    # If we stopped early due to error and continue_on_error is False, re-raise now
+    if had_error and not continue_on_error:
       raise CommandError(
-        "Execute mode currently supports target-only SQL. "
-        "This dataset SQL appears to reference source objects outside the target schema "
-        "(e.g. 'Production.Product'). "
-        "Please ingest/load the raw table into the target first (or seed it), "
-        "then run downstream layers (rawcore/hist) using --execute."
+        "Load execution failed. See execution summary above for details."
       )
 
-    if should_truncate_before_load(td, load_plan):
-      trunc_sql = dialect.render_truncate_table(
-        schema=td.target_schema.schema_name,
-        table=td.target_dataset_name,
+    if had_error:
+      raise CommandError(
+        "One or more datasets failed during execution. "
+        "See execution summary above for details."
       )
-      engine.execute(trunc_sql)
-
-    try:
-      exec_ts = now()  # or started_at of execution
-      sql_exec = apply_runtime_placeholders(
-        sql,
-        dialect=dialect,
-        load_run_id=load_run_id,
-        load_timestamp=exec_ts,
-      )
-      rows_affected = engine.execute(sql_exec)
-
-    except Exception as exc:
-      load_status = "error"
-      error_message = str(exc)
-
-    exec_finished_at = now()
-    execution_ms = (time.perf_counter() - exec_start_ts) * 1000.0
-
-    # Insert warehouse log row (only if the dialect supports it)
-    if hasattr(dialect, "render_insert_load_run_log"):
-      log_insert_sql = dialect.render_insert_load_run_log(
-        meta_schema=META_SCHEMA_NAME,
-        batch_run_id=batch_run_id,
-        load_run_id=load_run_id,
-        summary=summary,
-        profile=profile,
-        system=system,
-        started_at=started_at,
-        finished_at=finished_at,
-        render_ms=render_ms,
-        execution_ms=execution_ms,
-        sql_length=sql_length,
-        rows_affected=rows_affected,
-        load_status=load_status,
-        error_message=error_message,
-      )
-      if log_insert_sql:
-        engine.execute(log_insert_sql)
-
-    # Optionally re-raise error after logging
-    if load_status == "error":
-      raise CommandError(f"Load execution failed: {error_message}")
-

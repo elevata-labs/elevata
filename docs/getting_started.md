@@ -85,6 +85,8 @@ pip install -r requirements/mssql.txt
 
 > If you only want SQL preview / SQL generation (no --execute), requirements/base.txt is sufficient.
 
+> *RAW ingestion is optional; elevata also supports federated or pre-existing staging layers.*
+
 ---
 
 ## 🔧 3. Initialize the Metadata Database

@@ -68,7 +68,6 @@ class FakeTargetDataset:
     # keep minimal attributes that render_delete_missing_rows_sql expects
     self.incremental_source = None
 
-    # 🔹 NEW: minimal RelatedManager-Stubs für input_links
     class FakeRelatedManager:
       def select_related(self, *args, **kwargs):
         return self
@@ -151,7 +150,7 @@ def test_render_delete_missing_rows_sql_returns_comment_if_no_incremental_source
   monkeypatch.setattr(
     load_sql,
     "_build_incremental_scope_filter_for_target",
-    lambda _td: "1 = 1",
+    lambda _td, **_kwargs:  "1 = 1",
   )
 
   # incremental_source stays None (default in FakeTargetDataset)
@@ -251,7 +250,7 @@ def test_render_delete_missing_rows_sql_happy_path_calls_dialect(monkeypatch):
   monkeypatch.setattr(
     load_sql,
     "_build_incremental_scope_filter_for_target",
-    lambda _td: "(t.load_ts > {{DELTA_CUTOFF}})",
+    lambda _td, **_kwargs:  "(t.load_ts > {{DELTA_CUTOFF}})",
   )
 
   # Stage upstream lookup

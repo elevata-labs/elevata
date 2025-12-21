@@ -17,12 +17,32 @@ Currently implemented strategies:
 - **full** → full rebuild  
 - **merge** → incremental upsert based on natural key lineage  
 
+---
 
-Incremental pipelines always operate **between Stage and Rawcore**, never directly from source systems.
+## 🔧 2. Source-side incremental scoping (Ingestion)
+
+While incremental strategies operate between Stage → Rawcore, elevata also supports  
+**incremental scoping during source ingestion**.
+
+This is controlled at the SourceDataset level via:  
+
+- `static_filter` – permanent scoping, applied only during ingestion  
+- `increment_filter` – time-based delta scoping using `{{DELTA_CUTOFF}}`  
+
+Key rules:  
+- `static_filter` is applied only during ingestion (RAW or stage-direct-source)  
+- `increment_filter` is applied during ingestion and delete detection  
+- Incremental scoping during ingestion does **not** imply incremental RAW storage;  
+  RAW tables are always rebuilt (TRUNCATE + INSERT)  
+
+This ensures consistency between:  
+- extracted source data  
+- incremental merge logic  
+- delete detection scope  
 
 ---
 
-## 🔧 2. Core Concepts
+## 🔧 3. Core Concepts
 
 ### 🧩 Metadata-driven behavior
 Incremental behavior is determined solely by metadata. No external configuration or custom SQL is needed.
@@ -42,7 +62,7 @@ They are **never** used for merging.
 
 ---
 
-## 🔧 3. Incremental Strategies
+## 🔧 4. Incremental Strategies
 
 ### 🧩 Full Load
 A full load recreates or truncates the Rawcore table and inserts *all* upstream rows.
@@ -64,7 +84,7 @@ The Metadata Health Check prevents invalid configurations.
 
 ---
 
-## 🔧 4. Delete Detection
+## 🔧 5. Delete Detection
 If `handle_deletes=True`, elevata generates a dialect-aware anti-join delete.
 
 Example pattern:
@@ -85,7 +105,7 @@ Key characteristics:
 
 ---
 
-## 🔧 5. Lineage-Driven Mapping
+## 🔧 6. Lineage-Driven Mapping
 Lineage determines all mappings:  
 - natural key → merge condition  
 - business keys → stable grain  
@@ -102,7 +122,7 @@ Example effects:
 
 ---
 
-## 🔧 6. SQL Rendering & Dialect Abstraction
+## 🔧 7. SQL Rendering & Dialect Abstraction
 All incremental SQL uses the active SQL dialect:
 ```python
 dialect = get_active_dialect()

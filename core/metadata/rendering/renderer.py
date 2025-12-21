@@ -27,6 +27,23 @@ from .dialects.base import SqlDialect
 from metadata.rendering.builder import build_logical_select_for_target
 
 
+def get_effective_materialization(td) -> str:
+  # Dataset-level override
+  mat = getattr(td, "materialization_type", None)
+  if mat:
+    return mat
+
+  # Schema-level default
+  schema = getattr(td, "target_schema", None)
+  if schema:
+    schema_mat = getattr(schema, "default_materialization_type", None)
+    if schema_mat:
+      return schema_mat
+
+  # Final fallback (safe default)
+  return "table"
+
+
 def render_sql(plan, dialect: SqlDialect) -> str:
   """
   Render a logical plan (LogicalSelect or LogicalUnion) into a SQL string.
@@ -47,6 +64,7 @@ def render_sql(plan, dialect: SqlDialect) -> str:
       f"Unsupported logical plan type: {type(plan).__name__}. "
       "Expected LogicalSelect or LogicalUnion."
     )
+  
 
 def render_select_for_target(target_ds, dialect: SqlDialect) -> str:
   """

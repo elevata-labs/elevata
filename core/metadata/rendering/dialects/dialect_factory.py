@@ -29,6 +29,7 @@ from django.conf import settings
 
 from metadata.config.profiles import load_profile
 from .base import SqlDialect
+from .bigquery import BigQueryDialect
 from .duckdb import DuckDBDialect
 from .mssql import MssqlDialect
 from .postgres import PostgresDialect
@@ -42,6 +43,7 @@ LogicalSelect instances into concrete SQL strings.
 
 # Registry of known dialects
 _DIALECT_REGISTRY: dict[str, Type[SqlDialect]] = {
+  BigQueryDialect.DIALECT_NAME: BigQueryDialect,
   DuckDBDialect.DIALECT_NAME: DuckDBDialect,
   PostgresDialect.DIALECT_NAME: PostgresDialect,
   MssqlDialect.DIALECT_NAME: MssqlDialect,

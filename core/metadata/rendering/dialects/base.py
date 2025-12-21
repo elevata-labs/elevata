@@ -250,7 +250,7 @@ class SqlDialect(ABC):
   @abstractmethod
   def render_select(self, select: LogicalSelect) -> str:
     raise NotImplementedError
-
+  
   # ---------------------------------------------------------------------------
   # Truncate table
   # ---------------------------------------------------------------------------
@@ -314,6 +314,7 @@ class SqlDialect(ABC):
   # ---------------------------------------------------------------------------
   # DDL statements
   # ---------------------------------------------------------------------------
+  @abstractmethod
   def render_create_schema_if_not_exists(self, schema: str) -> str:
     """
     Return DDL that creates the given schema if it does not exist.
@@ -323,6 +324,7 @@ class SqlDialect(ABC):
       f"{self.__class__.__name__} does not implement render_create_schema_if_not_exists()"
     )
   
+  @abstractmethod
   def render_create_table_if_not_exists(self, td) -> str:
     """
     Return DDL that creates the target dataset table based on TargetColumn metadata
@@ -332,6 +334,19 @@ class SqlDialect(ABC):
       f"{self.__class__.__name__} does not implement render_create_table_if_not_exists()"
     )
 
+  @abstractmethod
+  def render_create_or_replace_view(
+    self,
+    *,
+    schema: str,
+    view: str,
+    select_sql: str,
+  ) -> str:
+    """
+    Render a dialect-specific CREATE OR REPLACE / ALTER VIEW statement.
+    """
+    raise NotImplementedError
+  
   # ---------------------------------------------------------------------------
   # Logging
   # ---------------------------------------------------------------------------

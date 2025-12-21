@@ -201,3 +201,8 @@ def test_hist_not_created_for_non_rawcore_or_non_historized(db, service):
   )
   hist_for_non_hist = service.ensure_hist_dataset_for_rawcore(non_hist_td)
   assert hist_for_non_hist is None
+
+def _assert_tech_registry_consistency(service):
+  names = service._technical_column_names()
+  if len(names) != len(service.TECH_COLUMN_REGISTRY):
+    raise AssertionError("Duplicate technical column names in TECH_COLUMN_REGISTRY")

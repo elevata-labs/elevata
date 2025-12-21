@@ -47,9 +47,10 @@ and merging multiple inputs (UNION or single-path).
 """
 
 # ------------------------------------------------------------------------------
-# Regex that matches col("column_name") in DSL expressions
+# Regex patterns
 # ------------------------------------------------------------------------------
 COL_PATTERN = re.compile(r'col\(["\']([^"\']+)["\']\)')
+_IDENT_PATTERN = re.compile(r"\b[a-zA-Z_][a-zA-Z0-9_]*\b")
 
 
 # ------------------------------------------------------------------------------
@@ -138,6 +139,57 @@ def _rewrite_parent_sk_expr(parent_expr_sql: str, mapping: dict[str, str]) -> st
     idx = m.end()
 
   return "".join(result)
+
+
+def qualify_source_filter(
+  source_dataset,
+  filter_sql: str,
+  *,
+  source_alias: str = "s",
+) -> str:
+  """
+  Qualify identifiers in a SourceDataset filter with the given alias.
+
+  - Input filter is authored in terms of source column names.
+  - We prefix matching identifiers with "<alias>.".
+  - We keep {{DELTA_CUTOFF}} intact.
+  - Conservative rewrite: replaces only tokens that match known source columns.
+  """
+  if not filter_sql:
+    return ""
+
+  # Include ALL source columns (not only integrate=True),
+  # because filters often reference technical flags not integrated.
+  src_cols = getattr(source_dataset, "source_columns", None)
+  if not src_cols:
+    return filter_sql
+
+  cols = src_cols.all() if hasattr(src_cols, "all") else src_cols
+  known = {getattr(c, "source_column_name", "").lower() for c in cols if getattr(c, "source_column_name", None)}
+  if not known:
+    return filter_sql
+
+  # allow col("X") / col('X')
+  expr = re.sub(r"col\(\s*['\"]([^'\"]+)['\"]\s*\)", r"\1", filter_sql)
+
+  def repl(m: re.Match) -> str:
+    tok = m.group(0)
+
+    if tok.upper() == "DELTA_CUTOFF":
+      return tok
+
+    # Skip already-qualified tokens like "s.ModifiedDate"
+    # (We detect by checking the preceding char in original string via span.)
+    start = m.start()
+    if start > 0 and expr[start - 1] == ".":
+      return tok
+
+    if tok.lower() in known:
+      return f"{source_alias}.{tok}"
+    return tok
+
+  expr = _IDENT_PATTERN.sub(repl, expr)
+  return " ".join(expr.split())
 
 
 def build_surrogate_fk_expression(reference: "TargetDatasetReference") -> Expr:
@@ -457,6 +509,13 @@ def _build_single_select_for_source_stage(
 
   logical = LogicalSelect(from_=source_table, select_list=[])
 
+  # Apply incremental extraction filter (if configured on the SourceDataset)
+  if getattr(source_dataset, "incremental", False):
+    inc_filter = (getattr(source_dataset, "increment_filter", None) or "").strip()
+    if inc_filter:
+      qualified = qualify_source_filter(source_dataset, inc_filter, source_alias="s")
+      logical.where = raw(qualified)
+
   # Fast lookup of source columns by lowercased name
   src_cols_by_name = {
     sc.source_column_name.lower(): sc
@@ -646,6 +705,18 @@ def build_logical_select_for_target(target_dataset: TargetDataset):
   # ==========================================================================
   source_table = SourceTable(schema=from_schema, name=from_table, alias="s")
   logical = LogicalSelect(from_=source_table)
+
+  # If STAGE reads directly from SourceDataset (no RAW),
+  # apply the incremental extraction filter on the source table.
+  if schema_short == "stage":
+    src_input = next((inp for inp in inputs_qs if inp.source_dataset is not None), None)
+    if src_input and src_input.source_dataset:
+      sd = src_input.source_dataset
+      if getattr(sd, "incremental", False):
+        inc_filter = (getattr(sd, "increment_filter", None) or "").strip()
+        if inc_filter:
+          qualified = qualify_source_filter(sd, inc_filter, source_alias="s")
+          logical.where = raw(qualified)
 
   tcols = (
     target_dataset.target_columns

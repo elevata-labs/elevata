@@ -142,7 +142,7 @@ def test_delete_detection_missing_scope_filter(monkeypatch):
   monkeypatch.setattr(
     load_sql_mod,
     "_build_incremental_scope_filter_for_target",
-    lambda _td: None,
+    lambda td, **kwargs: None
   )
 
   sql = render_delete_missing_rows_sql(td, dialect)
@@ -162,7 +162,7 @@ def test_delete_detection_missing_incremental_source(monkeypatch):
   monkeypatch.setattr(
     load_sql_mod,
     "_build_incremental_scope_filter_for_target",
-    lambda _td: "(t.load_ts > {{DELTA_CUTOFF}})",
+    lambda _td, **_kwargs: "(t.load_ts > {{DELTA_CUTOFF}})",
   )
 
   sql = render_delete_missing_rows_sql(td, dialect)
@@ -182,7 +182,7 @@ def test_delete_detection_missing_natural_keys(monkeypatch):
   monkeypatch.setattr(
     load_sql_mod,
     "_build_incremental_scope_filter_for_target",
-    lambda _td: "(t.load_ts > {{DELTA_CUTOFF}})",
+    lambda _td, **_kwargs: "(t.load_ts > {{DELTA_CUTOFF}})",
   )
 
   sql = render_delete_missing_rows_sql(td, dialect)
@@ -202,8 +202,9 @@ def test_delete_detection_missing_stage_upstream(monkeypatch):
   monkeypatch.setattr(
     load_sql_mod,
     "_build_incremental_scope_filter_for_target",
-    lambda _td: "(t.load_ts > {{DELTA_CUTOFF}})",
+    lambda _td, **_kwargs: "(t.load_ts > {{DELTA_CUTOFF}})",
   )
+
   # no Stage-Upstream found
   monkeypatch.setattr(
     load_sql_mod,
@@ -235,7 +236,7 @@ def test_delete_detection_happy_path_calls_dialect_with_expected_args(monkeypatc
   monkeypatch.setattr(
     load_sql_mod,
     "_build_incremental_scope_filter_for_target",
-    lambda _td: '(t."load_ts" > {{DELTA_CUTOFF}})',
+    lambda _td, **_kwargs:  '(t."load_ts" > {{DELTA_CUTOFF}})',
   )
 
   # Fake Stage-TargetDataset
@@ -299,7 +300,7 @@ def test_delete_detection_falls_back_to_simple_source_ref_if_expr_missing(monkey
   monkeypatch.setattr(
     load_sql_mod,
     "_build_incremental_scope_filter_for_target",
-    lambda _td: "(t.load_ts > {{DELTA_CUTOFF}})",
+    lambda _td, **_kwargs: "(t.load_ts > {{DELTA_CUTOFF}})",
   )
 
   stage_td = SimpleNamespace(

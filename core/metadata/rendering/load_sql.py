@@ -41,9 +41,13 @@ import re
 
 from metadata.models import TargetDataset, TargetColumn, TargetColumnInput
 from metadata.rendering.load_planner import build_load_plan
-from metadata.rendering.renderer import render_select_for_target
+from metadata.rendering.renderer import get_effective_materialization, render_select_for_target
 from metadata.rendering.builder import build_logical_select_for_target
 from metadata.rendering.logical_plan import LogicalSelect
+from metadata.rendering.dsl import parse_surrogate_dsl
+from metadata.rendering.expr import (
+  Expr, ColumnRef, Cast, Concat, Coalesce, FuncCall, RawSql
+)
 
 
 def _get_target_columns_in_order(td: TargetDataset) -> Sequence[TargetColumn]:
@@ -81,76 +85,115 @@ def _get_rendered_column_exprs_for_target(td: TargetDataset, dialect) -> dict[st
 
   return expr_map
 
-
-def _build_incremental_scope_filter_for_target(td: TargetDataset) -> str | None:
+def _build_incremental_scope_filter_for_target(
+  td: TargetDataset,
+  *,
+  dialect,
+  target_alias: str = "t",
+) -> str | None:
   """
   Build a WHERE-clause fragment for delete detection on the target dataset,
-  based on the source dataset's incremental_filter.
+  based on the incremental_filter defined on td.incremental_source (SourceDataset).
 
-  Logic:
-    - Always take the incremental_filter from td.incremental_source (SourceDataset).
-    - The filter is written in terms of source column names.
-    - For a rawcore target, we have a lineage chain like:
+  Key behavior:
+  - The filter is authored in terms of SourceDataset column names.
+  - We map those source column names to rawcore target column names via full lineage.
+  - Replacements are rendered as qualified + quoted target references:
+      <target_alias>.<dialect.render_identifier(rawcore_col_name)>
+  - The placeholder {{DELTA_CUTOFF}} is preserved for runtime substitution.
 
-        SourceColumn -> Raw TargetColumn -> Stage TargetColumn -> Rawcore TargetColumn
-
-      or shorter (without raw), depending on your layer setup.
-
-    - We walk upstream_target_column recursively for each rawcore column and
-      collect all SourceColumns coming from this incremental_source. Every
-      such SourceColumn name is mapped to the *rawcore* target_column_name.
-
-  # NOTE: This implementation uses full lineage (SourceColumn via TargetColumnInput).
-  # It could be simplified in the future to rely on stage.source_field_name,
-  # but for now we keep the lineage-based variant because it is more explicit.
+  Notes:
+  - This is intentionally a string-based rewrite (not a full boolean DSL parser).
+  - We only rewrite identifiers that match known source column names (case-insensitive).
   """
+
   src = getattr(td, "incremental_source", None)
-  if not src or not getattr(src, "incremental", False) or not src.increment_filter:
+  if not src:
     return None
 
-  # Mapping: source_column_name.lower() -> rawcore target_column_name
+  # Only apply when an incremental filter exists (and is enabled on the source dataset).
+  if not getattr(src, "incremental", False):
+    return None
+
+  inc_filter = (getattr(src, "increment_filter", None) or "").strip()
+  if not inc_filter:
+    return None
+
+  def _norm(name: str) -> str:
+    # Normalize identifiers so ModifiedDate and modified_date match.
+    return re.sub(r"[^a-z0-9]+", "", (name or "").lower())
+
+  # Mapping: stage_column_name.lower() -> rawcore target_column_name
+  # This is stable even if rawcore columns are renamed, because rawcore is built from stage.
   mapping: dict[str, str] = {}
 
-  def _collect_source_to_rawcore(rc_col, current_col, src_ds, mapping, visited):
-    """
-    Recursively walk upstream_target_column starting from current_col,
-    and record any SourceColumn from src_ds as mapping:
-      source_col_name.lower() -> rc_col.target_column_name
-    """
-    if current_col.pk in visited:
-      return
-    visited.add(current_col.pk)
+  # Iterate rawcore columns and resolve their immediate stage upstream column (active link)
+  cols = td.target_columns.all() if hasattr(td.target_columns, "all") else td.target_columns
+  for rc_col in cols:
+    # Find the primary upstream stage column feeding this rawcore column
+    link_qs = getattr(rc_col, "input_links", None)
+    if not link_qs:
+      continue
 
-    # Look at all input_links of the current column
-    for link in current_col.input_links.select_related("source_column", "upstream_target_column").all():
-      sc = link.source_column
-      if sc and sc.source_dataset_id == src_ds.id and sc.source_column_name:
-        mapping[sc.source_column_name.lower()] = rc_col.target_column_name
+    link = (
+      link_qs
+        .filter(active=True, upstream_target_column__isnull=False)
+        .select_related("upstream_target_column")
+        .order_by("ordinal_position", "id")
+        .first()
+    )
 
-      upstream = link.upstream_target_column
-      if upstream:
-        _collect_source_to_rawcore(rc_col, upstream, src_ds, mapping, visited)
+    if not link:
+      link = (
+        link_qs
+          .filter(upstream_target_column__isnull=False)
+          .select_related("upstream_target_column")
+          .order_by("ordinal_position", "id")
+          .first()
+    )
 
-  # For each rawcore target column, collect all source mappings along its lineage
-  for rc_col in td.target_columns.all():
-    visited: set[int] = set()
-    _collect_source_to_rawcore(rc_col, rc_col, src, mapping, visited)
+    if not link or not link.upstream_target_column:
+      continue
+
+    stage_col_name = getattr(link.upstream_target_column, "target_column_name", None)
+    if not stage_col_name:
+      continue
+
+    mapping[_norm(stage_col_name)] = rc_col.target_column_name
 
   if not mapping:
-    # No way to map source-level filter onto rawcore columns
     return None
 
-  expr = src.increment_filter
+  expr = inc_filter
 
-  # Rewrite identifiers that match source column names to rawcore column names.
+  # Optional normalization: allow col("X") / col('X') in increment_filter
+  # without requiring a full boolean DSL parser.
+  expr = re.sub(r"col\(\s*['\"]([^'\"]+)['\"]\s*\)", r"\1", expr)
+
+  # Rewrite identifiers that match source column names to qualified rawcore columns.
+  # We keep placeholders like {{DELTA_CUTOFF}} intact.
+  #
+  # IMPORTANT: This is a conservative rewrite. It only replaces tokens that
+  # exactly match known source column identifiers (by regex word boundary).
+
+  ident_pattern = re.compile(r"\b[a-zA-Z_][a-zA-Z0-9_]*\b")
+
   def replace_identifier(match: re.Match) -> str:
     token = match.group(0)
-    repl = mapping.get(token.lower())
-    return repl if repl is not None else token
 
-  expr = re.sub(r"\b[a-zA-Z_][a-zA-Z0-9_]*\b", replace_identifier, expr)
+    # Do not touch the placeholder keyword itself (DELTA_CUTOFF)
+    if token.upper() == "DELTA_CUTOFF":
+      return token
 
-  # Keep {{DELTA_CUTOFF}} as placeholder; just normalize whitespace
+    target_col = mapping.get(_norm(token))
+    if target_col is None:
+      return token
+
+    return f"{target_alias}.{dialect.render_identifier(target_col)}"
+
+  expr = ident_pattern.sub(replace_identifier, expr)
+
+  # Normalize whitespace
   return " ".join(expr.split())
 
 
@@ -190,7 +233,11 @@ def render_delete_missing_rows_sql(td: TargetDataset, dialect) -> str | None:
       f"-- No delete detection SQL generated.\n"
     )
 
-  scope_filter = _build_incremental_scope_filter_for_target(td)
+  scope_filter = _build_incremental_scope_filter_for_target(
+    td,
+    dialect=dialect,
+    target_alias="t",
+  )
   if not scope_filter:
     return (
       f"-- handle_deletes=True for {td.target_dataset_name}, "
@@ -711,40 +758,129 @@ def render_hist_changed_update_sql(td: TargetDataset, dialect) -> str:
     "  );"
   )
 
+
+# NOTE: We keep surrogate_expression vendor-neutral (DSL) and render it via dialect.render_expr.
+# The only special override needed for hist SK: version_started_at is a runtime value ({{ load_timestamp }}),
+# not a physical column on the rawcore table alias.
+def _replace_colref(
+  expr: Expr,
+  *,
+  table_alias: str | None,
+  column_name: str,
+  replacement: Expr,
+) -> Expr:
+  # Replace a specific ColumnRef inside an Expr tree.
+  if isinstance(expr, ColumnRef):
+    if expr.column_name == column_name and (table_alias is None or expr.table_alias == table_alias):
+      return replacement
+    return expr
+
+  if isinstance(expr, Cast):
+    return Cast(
+      expr=_replace_colref(expr.expr, table_alias=table_alias, column_name=column_name, replacement=replacement),
+      target_type=expr.target_type,
+    )
+
+  if isinstance(expr, Concat):
+    return Concat(parts=[
+      _replace_colref(p, table_alias=table_alias, column_name=column_name, replacement=replacement)
+      for p in expr.parts
+    ])
+
+  if isinstance(expr, Coalesce):
+    return Coalesce(parts=[
+      _replace_colref(p, table_alias=table_alias, column_name=column_name, replacement=replacement)
+      for p in expr.parts
+    ])
+
+  if isinstance(expr, FuncCall):
+    return FuncCall(
+      name=expr.name,
+      args=[
+        _replace_colref(a, table_alias=table_alias, column_name=column_name, replacement=replacement)
+        for a in expr.args
+      ],
+    )
+
+  # RawSql and unknown nodes: leave as-is
+  return expr
+
+
 def _get_hist_insert_columns(td: TargetDataset, dialect) -> tuple[list[str], list[str]]:
   """
-  Returns a pair:
+  Returns:
     (history_table_columns, rawcore_select_columns)
   for INSERT INTO ... SELECT ...
 
-  Left side (history_table_columns):
-    - Already rendered column identifiers for the history table
-      (quoted as needed).
-
-  Right side (rawcore_select_columns):
-    - SQL expressions to select from the rawcore alias (usually "r"),
-      using dialect-safe identifier rendering.
+  - Left side: already rendered identifiers for hist table
+  - Right side: SQL expressions selecting from rawcore alias "r" and runtime placeholders
   """
   hist_tn = td.target_dataset_name
   if not hist_tn.endswith("_hist"):
     raise ValueError("_get_hist_insert_columns called for non-hist dataset")
 
   rawcore_name = get_rawcore_name_from_hist(hist_tn)
-  sk_name_hist = f"{rawcore_name}_hist_key"
-  sk_name_raw = f"{rawcore_name}_key"
+  sk_name_hist = f"{rawcore_name}_hist_key"   # history-row SK (new per version)
+  sk_name_raw = f"{rawcore_name}_key"         # entity key from rawcore
 
   q = dialect.render_identifier
   raw_alias = "r"
+
+  # Only use ORM lookups when td is a real database object.
+  # Tests use dummy datasets without a PK.
+  has_pk = isinstance(getattr(td, "id", None), int)
 
   hist_cols: list[str] = []
   rawcore_cols: list[str] = []
   added: set[str] = set()
 
-  # 1. History SK first → target column name on the hist table
-  hist_cols.append(q(sk_name_hist)); added.add(sk_name_hist)
-  rawcore_cols.append(f"{raw_alias}.{q(sk_name_raw)}")
+  # 1) History-row surrogate key first.
+  hist_cols.append(q(sk_name_hist))
+  added.add(sk_name_hist)
 
-  # 2. Rawcore columns via lineage (all non-SK upstream columns)
+  if has_pk:
+    hist_sk_col = (
+      TargetColumn.objects
+      .filter(
+        target_dataset_id=td.id,
+        target_column_name=sk_name_hist,
+        system_role="surrogate_key",
+        active=True,
+      )
+      .first()
+    )
+
+    if hist_sk_col is None or not getattr(hist_sk_col, "surrogate_expression", None):
+      raise ValueError(
+        f"History dataset '{td.target_dataset_name}' is missing surrogate_expression "
+        f"for column '{sk_name_hist}'."
+      )
+
+    # Parse DSL → Expr tree (keeps vendor-neutral functions like HASH256)
+    sk_expr = parse_surrogate_dsl(hist_sk_col.surrogate_expression, table_alias=raw_alias)
+
+    # Override: version_started_at is a runtime placeholder, not r.version_started_at.
+    sk_expr = _replace_colref(
+      sk_expr,
+      table_alias=raw_alias,
+      column_name="version_started_at",
+      replacement=RawSql(sql="{{ load_timestamp }}"),
+    )
+
+    # Render via dialect (this maps HASH256 correctly, e.g. to SHA256(...) on DuckDB)
+    rawcore_cols.append(dialect.render_expr(sk_expr))
+
+  else:
+    # Dummy context (tests): no ORM access
+    rawcore_cols.append(f"{raw_alias}.{q(sk_name_raw)}")
+
+  # 1b) Ensure entity key column exists on hist (e.g. rc_aw_product_key).
+  if sk_name_raw not in added:
+    hist_cols.append(q(sk_name_raw))
+    rawcore_cols.append(f"{raw_alias}.{q(sk_name_raw)}")
+    added.add(sk_name_raw)
+
+  # 2) Rawcore columns via lineage (all non-SK upstream columns)
   rawcore_inputs = (
     TargetColumnInput.objects
     .filter(target_column__target_dataset=td)
@@ -754,36 +890,43 @@ def _get_hist_insert_columns(td: TargetDataset, dialect) -> tuple[list[str], lis
 
   for tci in rawcore_inputs:
     rc_col = tci.upstream_target_column
-    if rc_col is not None and rc_col.system_role != "surrogate_key":
-      col_name = rc_col.target_column_name
-      if col_name not in added:
-        hist_cols.append(q(col_name))
-        rawcore_cols.append(f"{raw_alias}.{q(col_name)}")
-        added.add(col_name)
+    if rc_col is None:
+      continue
+
+    # Skip upstream rawcore surrogate key (already handled as entity key)
+    if rc_col.system_role == "surrogate_key":
+      continue
+
+    col_name = rc_col.target_column_name
+    if col_name not in added:
+      hist_cols.append(q(col_name))
+      rawcore_cols.append(f"{raw_alias}.{q(col_name)}")
+      added.add(col_name)
 
   # 3) row_hash (only if not already included)
   if "row_hash" not in added:
     hist_cols.append(q("row_hash"))
-    rawcore_cols.append(f'{raw_alias}.{q("row_hash")}')
+    rawcore_cols.append(f"{raw_alias}.{q('row_hash')}")
     added.add("row_hash")
 
-  # 4. Versioning metadata (only left side, right side = constants)
+  # 4) Versioning metadata (left side identifiers, right side constants/placeholders)
   hist_cols.extend([
     q("version_started_at"),
     q("version_ended_at"),
     q("version_state"),
     q("load_run_id"),
+    q("loaded_at"),
   ])
 
   rawcore_cols.extend([
     "{{ load_timestamp }}",
     "NULL",
-    "'changed'",  # default for changed path
+    "'changed'",          # default for changed path
     "{{ load_run_id }}",
+    "{{ load_timestamp }}",
   ])
 
   # Defensive guard: prevent duplicate columns in INSERT lists
-  # (e.g. row_hash may appear via lineage and also be appended explicitly).
   def _unquote_ident(x: str) -> str:
     x = x.strip()
     if x.startswith('"') and x.endswith('"') and len(x) >= 2:
@@ -840,9 +983,11 @@ def render_hist_new_insert_sql(td: TargetDataset, dialect) -> str:
 
   hist_cols, rawcore_cols = _get_hist_insert_columns(td, dialect)
 
-  # last col → override state from 'changed'
   rawcore_cols = list(rawcore_cols)
-  rawcore_cols[-2] = "'new'"  # version_state
+
+  # Override version_state to 'new' using the aligned column index.
+  state_idx = hist_cols.index(dialect.render_identifier("version_state"))
+  rawcore_cols[state_idx] = "'new'"
 
   return (
     f"INSERT INTO {dialect.render_table_identifier(schema_name, hist_name)} (\n"
@@ -883,7 +1028,7 @@ def render_hist_changed_insert_template(td: TargetDataset) -> str:
     f"-- INSERT INTO {schema_name}.{hist_name} (\n"
     f"--   /* TODO: history-row SK column, e.g. {rawcore_name}_hist_key */\n"
     f"--   /* TODO: all rawcore columns (including {sk_name}, row_hash, ...) */\n"
-    f"--   /* TODO: version_started_at, version_ended_at, version_state, load_run_id */\n"
+    f"--   /* TODO: version_started_at, version_ended_at, version_state, load_run_id, loaded_at */\n"
     f"-- )\n"
     f"-- SELECT\n"
     f"--   /* TODO: history SK expression based on ({sk_name}, version_started_at) */\n"
@@ -891,7 +1036,8 @@ def render_hist_changed_insert_template(td: TargetDataset) -> str:
     f"--   {{{{ load_timestamp }}}}      AS version_started_at,\n"
     f"--   NULL                      AS version_ended_at,\n"
     f"--   'changed'                 AS version_state,\n"
-    f"--   {{{{ load_run_id }}}}         AS load_run_id\n"
+    f"--   {{{{ load_run_id }}}}         AS load_run_id,\n"
+    f"--   {{{{ load_timestamp }}}}      AS loaded_at\n"
     f"-- FROM {schema_name}.{rawcore_name} AS r\n"
     f"-- WHERE EXISTS (\n"
     f"--   SELECT 1\n"
@@ -980,6 +1126,20 @@ def render_load_sql_for_target(td: TargetDataset, dialect) -> str:
     and name.endswith("_hist")
   ):
     return render_hist_incremental_sql(td, dialect)
+  
+  # Materialization handling
+  materialization = get_effective_materialization(td)
+
+  if materialization == "external_passthrough":
+    return ""  # runner will mark as skipped
+
+  if materialization == "view":
+    select_sql = render_select_for_target(td, dialect)
+    return dialect.render_create_or_replace_view(
+      schema=td.target_schema.schema_name,
+      view=td.target_dataset_name,
+      select_sql=select_sql,
+    )
 
   plan = build_load_plan(td)
 

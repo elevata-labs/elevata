@@ -147,10 +147,10 @@ urlpatterns += [
 # ------------------------------------------------------------
 # Debug: log models on startup
 # ------------------------------------------------------------
-print(
-  f"[elevata] Registered CRUD routes for: "
-  + ", ".join([m.__name__ for m in models_sorted])
-)
+# print(
+#   f"[elevata] Registered CRUD routes for: "
+#   + ", ".join([m.__name__ for m in models_sorted])
+# )
 
 # --------------------------------------------------------------------
 # Scoped Views for Source and Target Metadata (auto-generated patterns)

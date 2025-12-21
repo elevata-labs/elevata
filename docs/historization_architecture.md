@@ -65,9 +65,9 @@ Inherited from Rawcore via lineage:
 | `version_started_at` | timestamp   | Start of validity interval                       |
 | `version_ended_at`   | timestamp   | End of validity; NULL for open versions          |
 | `version_state`      | text        | `new`, `changed`, `deleted`                      |
-| `load_run_id`        | integer     | ID of the load that produced this version        |
+| `load_run_id`        | string      | ID of the load that produced this version        |
 
-`version_ended_at IS NULL` uniquely identifies the **current active version**.
+`version_ended_at IS NULL` uniquely identifies the **current active version**. 
 
 ---
 
@@ -99,6 +99,11 @@ History table:
 ---
 
 ## 🔧 4. Step 1: Version Detection (UPDATE)
+
+Change detection is based on a deterministic `row_hash` computed in Rawcore.  
+The hash covers all non-key, non-technical attributes and is reused unchanged  
+by the historization pipeline to ensure consistent and dialect-independent  
+change detection.  
 
 A version is considered *changed* if:  
 
@@ -209,6 +214,10 @@ WHERE NOT EXISTS (
 ---
 
 ## 🔧 8. Ordering Guarantees
+
+Historization is always executed as a downstream step of the Rawcore load  
+and relies on the Rawcore snapshot being fully materialized for the same  
+load timestamp and load run ID.  
 
 The SCD2 pipeline must always run in the following order:  
 

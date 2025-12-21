@@ -22,15 +22,22 @@ Contact: <https://github.com/elevata-labs/elevata>.
 
 from __future__ import annotations
 
+import re
 import time
 import uuid
 import datetime
-from typing import Iterable
+from datetime import timedelta
+from dateutil.relativedelta import relativedelta
 
 from sqlalchemy import text
 
 from metadata.rendering.dialects.dialect_factory import get_active_dialect
 from metadata.ingestion.connectors import engine_for_source_system
+from metadata.rendering.builder import qualify_source_filter
+from metadata.rendering.placeholders import (
+  resolve_delta_cutoff_for_source_dataset,
+  apply_delta_cutoff_placeholder,
+)
 from metadata.models import TargetSchema, TargetDataset
 
 META_SCHEMA = "meta"
@@ -38,6 +45,7 @@ META_SCHEMA = "meta"
 
 def _now_utc():
   return datetime.datetime.utcnow()
+
 
 def ingest_raw_full(
   *,
@@ -48,12 +56,17 @@ def ingest_raw_full(
   batch_run_id: str | None = None,
 ) -> dict[str, object]:
   """
-  Full-load ingestion: SourceDataset -> RAW TargetDataset on the given target_system.
+  Extract data from SourceDataset into the RAW layer (table rebuild).
 
-  - Ensures RAW table exists
-  - Truncates RAW table
-  - Inserts all rows from source in chunks
-  - Writes a load_run_log entry (success/error)
+  Behavior:
+  - Always (re)creates RAW schema/table if needed.
+  - Always truncates the RAW table before inserting.
+  - Extraction may be scoped:
+    - Full extraction if no incremental filter applies.
+    - Incremental-scoped extraction if SourceDataset.incremental is enabled and an increment_filter is set
+      ({{DELTA_CUTOFF}} is resolved via the active increment policy for the current profile).
+  - Inserts rows in chunks.
+  - Writes a load_run_log entry (success/error).
   """
   batch_run_id = batch_run_id or str(uuid.uuid4())
   load_run_id = str(uuid.uuid4())
@@ -97,23 +110,78 @@ def ingest_raw_full(
   src_schema = source_dataset.schema_name
   src_table = source_dataset.source_dataset_name
 
-  src_select_cols = ", ".join(source_dialect.render_identifier(c) for c in src_col_names)
+  src_select_cols = ", ".join(f"s.{source_dialect.render_identifier(c)}" for c in src_col_names)
   src_from = source_dialect.render_table_identifier(src_schema, src_table)
-  src_sql = f"SELECT {src_select_cols} FROM {src_from};"
+
+  # Use a stable alias for filtering
+  src_sql = f"SELECT {src_select_cols} FROM {src_from} AS s"
+
+  static_filter = (getattr(source_dataset, "static_filter", None) or "").strip()
+  increment_filter = (getattr(source_dataset, "increment_filter", None) or "").strip()
+
+  where_parts = []
+
+  # Static filter applies to ingestion only (RAW extraction)
+  if static_filter:
+    where_parts.append(f"({qualify_source_filter(source_dataset, static_filter, source_alias='s')})")
+
+  # Increment filter applies to ingestion only when dataset is incremental
+  apply_increment = bool(getattr(source_dataset, "incremental", False) and increment_filter)
+  if apply_increment:
+    where_parts.append(f"({qualify_source_filter(source_dataset, increment_filter, source_alias='s')})")
+
+  if where_parts:
+    src_sql += " WHERE " + " AND ".join(where_parts)
+
+  src_sql += ";"
+
+  # Replace {{DELTA_CUTOFF}} for incremental extraction on the SOURCE side
+  if apply_increment and "{{DELTA_CUTOFF" in src_sql:
+    cutoff = resolve_delta_cutoff_for_source_dataset(
+      source_dataset=source_dataset,
+      profile=profile,
+      now_ts=_now_utc(),
+    )
+    if cutoff is None:
+      raise ValueError(
+        f"increment_filter uses {{DELTA_CUTOFF}} but no active increment policy exists "
+        f"for SourceDataset={source_dataset} in environment '{getattr(profile, 'name', None)}'."
+      )
+
+    # Important: use SOURCE dialect for rendering the literal
+    src_sql = apply_delta_cutoff_placeholder(
+      src_sql,
+      dialect=source_dialect,
+      delta_cutoff=cutoff,
+    )
 
   # Build INSERT into RAW (DuckDB uses ? placeholders)
   # Target columns are derived from generated TargetColumns in RAW dataset.
   tgt_cols_qs = td.target_columns.filter(active=True).order_by("ordinal_position")
+  tgt_cols = list(tgt_cols_qs)
 
-  tgt_col_names = [c.target_column_name for c in tgt_cols_qs]
+  TECH_ROLES = {"load_run_id", "loaded_at"}
+  TECH_NAMES = {"load_run_id", "loaded_at"}
 
-  if len(src_col_names) != len(tgt_col_names):
+  def _is_tech(col) -> bool:
+    role = (col.system_role or "").strip()
+    return (role in TECH_ROLES) or (col.target_column_name in TECH_NAMES)
+
+  business_cols = [c for c in tgt_cols if not _is_tech(c)]
+  tech_cols = [c for c in tgt_cols if _is_tech(c)]
+
+  business_col_names = [c.target_column_name for c in business_cols]
+  tech_col_names_found = [c.target_column_name for c in tech_cols]
+
+  if len(src_col_names) != len(business_col_names):
     raise ValueError(
       f"Column mismatch for RAW ingestion: source has {len(src_col_names)} integrated columns "
-      f"but target has {len(tgt_col_names)} active columns."
+      f"but target has {len(business_col_names)} business columns "
+      f"(plus {len(tech_col_names_found)} technical columns)."
     )
 
-  insert_cols = tgt_col_names
+  tech_col_names = [n for n in ("load_run_id", "loaded_at") if n in tech_col_names_found]
+  insert_cols = business_col_names + tech_col_names
 
   ph = target_dialect.param_placeholder()
   placeholders = ", ".join([ph] * len(insert_cols))
@@ -123,6 +191,7 @@ def ingest_raw_full(
   insert_sql = f"INSERT INTO {tgt_table_sql} ({tgt_cols_sql}) VALUES ({placeholders});"
 
   started_at = _now_utc()
+  loaded_at = started_at
   t0 = time.time()
 
   rows_affected = 0
@@ -136,20 +205,46 @@ def ingest_raw_full(
     target_engine.execute(target_dialect.render_create_schema_if_not_exists(td.target_schema.schema_name))
     target_engine.execute(target_dialect.render_create_table_if_not_exists(td))
 
-    # Full-load semantics
-    target_engine.execute(
-      target_dialect.render_truncate_table(schema=td.target_schema.schema_name, table=td.target_dataset_name)
-    )
+    # Truncate RAW table (RAW is always materialized as table)
+    target_engine.execute(target_dialect.render_truncate_table(td.target_schema.schema_name, td.target_dataset_name))
 
-    # Extract + load
+    # Stream source rows and insert into RAW in chunks
     with source_sa_engine.connect() as conn:
       result = conn.execute(text(src_sql))
-      while True:
-        chunk = result.fetchmany(chunk_size)
-        if not chunk:
-          break
+      chunk = []
 
-        params = [tuple(row) for row in chunk]
+      for row in result:
+        chunk.append(row)
+        if len(chunk) >= chunk_size:
+          params = []
+          for r in chunk:
+            values = list(tuple(r))
+            for tech_name in tech_col_names:
+              if tech_name == "load_run_id":
+                values.append(load_run_id)
+              elif tech_name == "loaded_at":
+                values.append(loaded_at)
+              else:
+                values.append(None)
+            params.append(tuple(values))
+
+          target_engine.execute_many(insert_sql, params)
+          rows_affected += len(chunk)
+          chunk = []
+
+      if chunk:
+        params = []
+        for r in chunk:
+          values = list(tuple(r))
+          for tech_name in tech_col_names:
+            if tech_name == "load_run_id":
+              values.append(load_run_id)
+            elif tech_name == "loaded_at":
+              values.append(loaded_at)
+            else:
+              values.append(None)
+          params.append(tuple(values))
+
         target_engine.execute_many(insert_sql, params)
         rows_affected += len(chunk)
 

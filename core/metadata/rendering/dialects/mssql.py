@@ -282,6 +282,53 @@ class MssqlDialect(DuckDBDialect):
     full = self.render_table_identifier(schema, table)
     return f"INSERT INTO {full}\n{select_sql}"
   
+  def render_delete_detection_statement(
+    self,
+    target_schema,
+    target_table,
+    stage_schema,
+    stage_table,
+    join_predicates,
+    scope_filter=None,
+  ):
+    """
+    SQL Server delete detection.
+
+    SQL Server does not allow:
+      DELETE FROM tbl AS t ...
+    Correct form:
+      DELETE t
+      FROM tbl AS t
+      WHERE ...
+    """
+    q = self.render_identifier
+
+    target_qualified = f'{q(target_schema)}.{q(target_table)}'
+    stage_qualified = f'{q(stage_schema)}.{q(stage_table)}'
+
+    join_sql = " AND ".join(join_predicates)
+
+    conditions = []
+    if scope_filter:
+      conditions.append(scope_filter)
+
+    conditions.append(
+      f"NOT EXISTS (\n"
+      f"    SELECT 1\n"
+      f"    FROM {stage_qualified} AS s\n"
+      f"    WHERE {join_sql}\n"
+      f")"
+    )
+
+    where_sql = "\n  AND ".join(conditions)
+
+    return (
+      f"DELETE t\n"
+      f"FROM {target_qualified} AS t\n"
+      f"WHERE {where_sql};"
+    )
+
+
   # ---------------------------------------------------------------------------
   # DDL statements
   # ---------------------------------------------------------------------------
@@ -340,6 +387,13 @@ class MssqlDialect(DuckDBDialect):
         );
       END;
     """.strip()
+
+
+  def render_create_or_replace_view(self, *, schema, view, select_sql):
+    return f"""
+      CREATE OR ALTER VIEW {schema}.{view} AS
+      {select_sql}
+      """.strip()
 
 
   def _render_canonical_type_mssql(
