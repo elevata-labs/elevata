@@ -192,6 +192,44 @@ def qualify_source_filter(
   return " ".join(expr.split())
 
 
+def build_source_dataset_where_sql(
+  source_dataset,
+  *,
+  source_alias: str = "s",
+) -> str:
+  """Build a fully qualified WHERE clause for SourceDataset extraction.
+
+  Combines:
+    - static_filter (always, if present)
+    - increment_filter (only if source_dataset.incremental is True)
+
+  Notes:
+    - Uses qualify_source_filter() to conservatively qualify identifiers.
+    - Preserves runtime placeholders like {{DELTA_CUTOFF}}.
+  """
+  parts: list[str] = []
+
+  static_filter = (getattr(source_dataset, "static_filter", None) or "").strip()
+  if static_filter:
+    parts.append(
+      qualify_source_filter(source_dataset, static_filter, source_alias=source_alias)
+    )
+
+  if getattr(source_dataset, "incremental", False):
+    inc_filter = (getattr(source_dataset, "increment_filter", None) or "").strip()
+    if inc_filter:
+      parts.append(
+        qualify_source_filter(source_dataset, inc_filter, source_alias=source_alias)
+      )
+
+  if not parts:
+    return ""
+  if len(parts) == 1:
+    return parts[0]
+
+  return " AND ".join(f"({p})" for p in parts)
+
+
 def build_surrogate_fk_expression(reference: "TargetDatasetReference") -> Expr:
   """
   Build the surrogate FK expression for a single TargetDatasetReference.
@@ -509,12 +547,10 @@ def _build_single_select_for_source_stage(
 
   logical = LogicalSelect(from_=source_table, select_list=[])
 
-  # Apply incremental extraction filter (if configured on the SourceDataset)
-  if getattr(source_dataset, "incremental", False):
-    inc_filter = (getattr(source_dataset, "increment_filter", None) or "").strip()
-    if inc_filter:
-      qualified = qualify_source_filter(source_dataset, inc_filter, source_alias="s")
-      logical.where = raw(qualified)
+  # Apply SourceDataset extraction filters (static + optional incremental)
+  where_sql = build_source_dataset_where_sql(source_dataset, source_alias="s")
+  if where_sql:
+    logical.where = raw(where_sql)
 
   # Fast lookup of source columns by lowercased name
   src_cols_by_name = {
@@ -706,17 +742,24 @@ def build_logical_select_for_target(target_dataset: TargetDataset):
   source_table = SourceTable(schema=from_schema, name=from_table, alias="s")
   logical = LogicalSelect(from_=source_table)
 
+  # If RAW reads directly from SourceDataset, apply extraction filters on the source table.
+  if schema_short == "raw":
+    src_input = next((inp for inp in inputs_qs if inp.source_dataset is not None), None)
+    if src_input and src_input.source_dataset:
+      sd = src_input.source_dataset
+      where_sql = build_source_dataset_where_sql(sd, source_alias="s")
+      if where_sql:
+        logical.where = raw(where_sql)
+
   # If STAGE reads directly from SourceDataset (no RAW),
-  # apply the incremental extraction filter on the source table.
+  # apply SourceDataset extraction filters on the source table.
   if schema_short == "stage":
     src_input = next((inp for inp in inputs_qs if inp.source_dataset is not None), None)
     if src_input and src_input.source_dataset:
       sd = src_input.source_dataset
-      if getattr(sd, "incremental", False):
-        inc_filter = (getattr(sd, "increment_filter", None) or "").strip()
-        if inc_filter:
-          qualified = qualify_source_filter(sd, inc_filter, source_alias="s")
-          logical.where = raw(qualified)
+      where_sql = build_source_dataset_where_sql(sd, source_alias="s")
+      if where_sql:
+        logical.where = raw(where_sql)
 
   tcols = (
     target_dataset.target_columns
@@ -732,6 +775,14 @@ def build_logical_select_for_target(target_dataset: TargetDataset):
         tcol.surrogate_expression,
         table_alias="s",  # Source/FROM alias in this SELECT
       )
+
+    # 1b) RAW technical columns (render runtime placeholders, not source columns)
+    elif schema_short == "raw" and tcol.system_role in ("load_run_id", "loaded_at"):
+      if tcol.system_role == "load_run_id":
+        expr = raw("{{ load_run_id }}")
+      else:
+        # loaded_at uses the same runtime timestamp placeholder used elsewhere
+        expr = raw("{{ load_timestamp }}")
 
     # 2) Foreign key hash column
     elif tcol.target_column_name in fk_expr_map:

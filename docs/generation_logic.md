@@ -201,7 +201,26 @@ The Logical Plan and AST guarantee correctness; the dialect guarantees syntactic
 
 ---
 
-## 🔧 9. Deterministic Generation
+## 🔧 8.5 Schema Drift & Renames (Materialization Planner)
+
+elevata supports safe schema evolution driven by metadata:  
+
+- `TargetDataset.former_names` tracks previous physical table names  
+  → planner emits `RENAME TABLE` when the new table name is missing but a former name exists.
+
+- `TargetColumn.former_names` tracks previous physical column names  
+  → planner emits `RENAME COLUMN` when the desired column is missing but a former name exists.
+
+- For historization tables (`*_hist`), schema sync is derived from the corresponding base dataset.  
+  Column renames are therefore expected to be reflected in the hist metadata as well,  
+  so the planner can rename instead of adding duplicate columns.
+
+The planner never provisions missing tables. Provisioning is handled by the load runner  
+via `ensure_target_table(...)` before executing DML.
+
+---
+
+## 🔧 10. Deterministic Generation
 
 elevata enforces determinism:  
 - Sorted BK pairs  
@@ -216,7 +235,7 @@ This ensures:
 
 ---
 
-## 🔧 10. Summary
+## 🔧 11. Summary
 
 The generation logic is the heart of elevata:  
 - metadata describes the transformation  

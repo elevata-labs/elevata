@@ -314,6 +314,18 @@ class SqlDialect(ABC):
   # ---------------------------------------------------------------------------
   # DDL statements
   # ---------------------------------------------------------------------------
+  def render_rename_table(self, schema: str, old_table: str, new_table: str) -> str:
+    """
+    Default table rename (works for DuckDB/Postgres/BigQuery-style dialects):
+      ALTER TABLE <schema>.<old> RENAME TO <new>
+
+    Note: new_table is intentionally unqualified (no schema prefix).
+    """
+    old_full = self.render_table_identifier(schema, old_table)
+    new_name = self.render_identifier(new_table)
+    return f"ALTER TABLE {old_full} RENAME TO {new_name}"
+
+
   @abstractmethod
   def render_create_schema_if_not_exists(self, schema: str) -> str:
     """
@@ -333,6 +345,23 @@ class SqlDialect(ABC):
     raise NotImplementedError(
       f"{self.__class__.__name__} does not implement render_create_table_if_not_exists()"
     )
+  
+  def render_add_column(self, schema: str, table: str, column: str, column_type: str | None) -> str:
+    """
+    Default ADD COLUMN DDL. Dialects can override if needed.
+    """
+    if not column_type:
+      # Fail closed: planner should block if type is missing.
+      return ""
+
+    # Use dialect-safe identifier rendering.
+    tbl = self.render_table_identifier(schema, table)
+    col = self.render_identifier(column)
+    return f"ALTER TABLE {tbl} ADD COLUMN {col} {column_type}"
+  
+  def render_rename_column(self, schema: str, table: str, old: str, new: str) -> str:
+    # Default ANSI-ish
+    return f"ALTER TABLE {self.render_table_identifier(schema, table)} RENAME COLUMN {self.quote_ident(old)} TO {self.quote_ident(new)}"
 
   @abstractmethod
   def render_create_or_replace_view(

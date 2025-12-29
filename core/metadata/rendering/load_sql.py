@@ -569,7 +569,13 @@ def render_full_refresh_sql(td: TargetDataset, dialect) -> str:
   schema_name = td.target_schema.schema_name
   table_name = td.target_dataset_name
 
-  return dialect.render_insert_into_table(schema_name, table_name, select_sql)
+  target_cols = [c.target_column_name for c in _get_target_columns_in_order(td)]
+  return dialect.render_insert_into_table(
+    schema_name,
+    table_name,
+    select_sql,
+    target_columns=target_cols,
+  )
 
 
 def render_append_sql(td: TargetDataset, dialect) -> str:

@@ -65,8 +65,8 @@ class GenericCRUDView(LoginRequiredMixin, View):
   success_url = None
   action = "list"
 
-  list_exclude = {"id", "created_at", "created_by", "updated_at", "updated_by", "is_system_managed", "lineage_key", "retired_at"}
-  form_exclude = {"id", "created_at", "created_by", "updated_at", "updated_by", "is_system_managed", "lineage_key"}
+  list_exclude = {"id", "created_at", "created_by", "updated_at", "updated_by", "is_system_managed", "lineage_key", "former_names", "retired_at"}
+  form_exclude = {"id", "created_at", "created_by", "updated_at", "updated_by", "is_system_managed", "lineage_key", "former_names"}
 
   # --------------------------------------------------
   # Dispatch routing
@@ -1047,7 +1047,7 @@ class GenericCRUDView(LoginRequiredMixin, View):
   def detail(self, request, pk):
     """Display a read-only detail view for one record."""
     obj = get_object_or_404(self.model, pk=pk)
-    excluded = {"id", "created_at", "created_by", "updated_at", "updated_by", "lineage_key"}
+    excluded = {"id", "created_at", "created_by", "updated_at", "updated_by", "lineage_key", "former_names"}
 
     # build cleaned field/value pairs for display
     clean_rows = []

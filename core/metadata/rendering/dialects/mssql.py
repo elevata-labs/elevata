@@ -149,42 +149,51 @@ class MssqlDialect(DuckDBDialect):
     if not logical_type:
       return None
 
-    t = str(logical_type).lower()
+    raw = str(logical_type).strip()
+    t = raw.lower()
 
+    # Normalize synonyms to canonical elevata types used by _render_canonical_type_mssql.
+    canonical = None
     if t in ("string", "text", "varchar", "char"):
-      if max_length:
-        return f"VARCHAR({max_length})"
-      return "VARCHAR(255)"
+      canonical = STRING
+    elif t in ("int", "integer", "int32"):
+      canonical = INTEGER
+    elif t in ("bigint", "int64", "long"):
+      canonical = BIGINT
+    elif t in ("decimal", "numeric"):
+      canonical = DECIMAL
+    elif t in ("float", "double"):
+      canonical = FLOAT
+    elif t in ("bool", "boolean"):
+      canonical = BOOLEAN
+    elif t in ("date",):
+      canonical = DATE
+    elif t in ("time",):
+      canonical = TIME
+    elif t in ("datetime", "timestamp", "timestamptz"):
+      canonical = TIMESTAMP
+    elif t in ("uuid", "uniqueidentifier"):
+      canonical = UUID
+    elif t in ("json",):
+      canonical = JSON
+    else:
+      # If it's already one of our canonical constants (STRING/INTEGER/...), keep it.
+      upper = raw.upper()
+      if upper in (STRING, INTEGER, BIGINT, DECIMAL, FLOAT, BOOLEAN, DATE, TIME, TIMESTAMP, BINARY, UUID, JSON):
+        canonical = upper
 
-    if t in ("int", "integer", "int32"):
-      return "INT"
+    if canonical is None:
+      if strict:
+        raise ValueError(f"Unsupported logical type for MSSQL: {logical_type!r}")
+      # passthrough for explicit DB types
+      return logical_type
 
-    if t in ("bigint", "int64", "long"):
-      return "BIGINT"
-
-    if t in ("decimal", "numeric"):
-      if precision and scale is not None:
-        return f"DECIMAL({precision}, {scale})"
-      if precision:
-        return f"DECIMAL({precision})"
-      return "DECIMAL(18, 2)"
-
-    if t in ("float", "double"):
-      return "FLOAT"
-
-    if t in ("bool", "boolean"):
-      return "BIT"
-
-    if t in ("date",):
-      return "DATE"
-
-    if t in ("datetime", "timestamp", "timestamptz"):
-      return "DATETIME2"
-
-    if strict:
-      raise ValueError(f"Unsupported logical type for MSSQL: {logical_type!r}")
-    # already concrete database type (explicit non-strict passthrough)
-    return logical_type
+    return self._render_canonical_type_mssql(
+      datatype=canonical,
+      max_length=max_length,
+      decimal_precision=precision,
+      decimal_scale=scale,
+    )
 
   # ---------------------------------------------------------
   # Concatenation
@@ -275,13 +284,6 @@ class MssqlDialect(DuckDBDialect):
       f"FROM (\n{select_sql}\n) AS src;"
     )
 
-  def render_insert_into_table(self, schema: str, table: str, select_sql: str) -> str:
-    """
-    Standard INSERT INTO ... <select> for SQL Server.
-    """
-    full = self.render_table_identifier(schema, table)
-    return f"INSERT INTO {full}\n{select_sql}"
-  
   def render_delete_detection_statement(
     self,
     target_schema,
@@ -332,6 +334,23 @@ class MssqlDialect(DuckDBDialect):
   # ---------------------------------------------------------------------------
   # DDL statements
   # ---------------------------------------------------------------------------
+  def render_rename_table(self, schema: str, old_table: str, new_table: str) -> str:
+    old_qualified = f"{self.render_identifier(schema)}.{self.render_identifier(old_table)}"
+    new_name = self.render_identifier(new_table)
+    # sp_rename wants quoted identifiers inside the string; QUOTED_IDENTIFIER should be ON (typisch).
+    return f"EXEC sp_rename N'{old_qualified}', N'{new_name}'"
+
+
+  def render_rename_column(self, schema: str, table: str, old: str, new: str) -> str:
+    obj = (
+      f"{self.render_identifier(schema)}."
+      f"{self.render_identifier(table)}."
+      f"{self.render_identifier(old)}"
+    )
+    new_name = self.render_identifier(new)
+    return f"EXEC sp_rename N'{obj}', N'{new_name}', 'COLUMN'"
+
+
   def render_create_schema_if_not_exists(self, schema: str) -> str:
     """
     SQL Server uses IF NOT EXISTS on sys.schemas.
@@ -359,20 +378,13 @@ class MssqlDialect(DuckDBDialect):
     for c in td.target_columns.all().order_by("ordinal_position"):
       col_name = c.target_column_name
 
-      # Technical historization fields: enforce stable, efficient types.
-      if col_name in ("version_started_at", "version_ended_at"):
-        col_type = "DATETIME2"
-      elif col_name == "version_state":
-        col_type = "NVARCHAR(16)"
-      elif col_name == "load_run_id":
-        col_type = "NVARCHAR(36)"
-      else:
-        col_type = self._render_canonical_type_mssql(
-          datatype=c.datatype,
-          max_length=c.max_length,
-          decimal_precision=c.decimal_precision,
-          decimal_scale=c.decimal_scale,
-        )
+      col_type = self._render_canonical_type_mssql(
+        datatype=c.datatype,
+        max_length=c.max_length,
+        decimal_precision=c.decimal_precision,
+        decimal_scale=c.decimal_scale,
+      )
+
       nullable = " NULL" if c.nullable else " NOT NULL"
       cols.append(f"{q(col_name)} {col_type}{nullable}")
 

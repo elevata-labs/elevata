@@ -23,7 +23,7 @@ Contact: <https://github.com/elevata-labs/elevata>.
 from django import forms
 from django.core.exceptions import ValidationError
 from metadata.models import TargetDataset, TargetColumn
-from core.metadata.generation import validators  # reuse central naming rules
+from metadata.generation import validators  # reuse central naming rules
 
 class TargetDatasetForm(forms.ModelForm):
   """Validation form for TargetDataset with consistent naming rules."""

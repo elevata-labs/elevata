@@ -124,29 +124,62 @@ class PostgresDialect(DuckDBDialect):
     scale=None,            # type: int | None
     strict=True,
   ):
+    """
+    Planner "desired" types must match DDL mapping in _render_canonical_type_postgres,
+    otherwise rename/materialization produces noisy mismatch warnings.
+    """
     if not logical_type:
       return None
-    lt = str(logical_type).upper()
 
-    if lt in ("STRING", "TEXT", "VARCHAR"):
-      return "TEXT"
-    if lt in ("INT", "INTEGER"):
-      return "INTEGER"
-    if lt in ("BIGINT", "LONG"):
-      return "BIGINT"
-    if lt in ("DECIMAL", "NUMERIC"):
-      return "NUMERIC"
-    if lt == "DATE":
-      return "DATE"
-    if lt == "DATETIME":
-      return "TIMESTAMPTZ"
-    if lt == "BOOLEAN":
-      return "BOOLEAN"
+    lt = str(logical_type).strip().upper()
 
-    if strict:
-      raise ValueError(f"Unsupported logical type for Postgres: {logical_type!r}")
-    # fallback, unmodified (explicit non-strict passthrough)
-    return lt
+    alias_to_canonical = {
+      "TEXT": STRING,
+      "VARCHAR": STRING,
+      "CHAR": STRING,
+      "STRING": STRING,
+
+      "INT": INTEGER,
+      "INTEGER": INTEGER,
+      "INT32": INTEGER,
+
+      "BIGINT": BIGINT,
+      "INT64": BIGINT,
+      "LONG": BIGINT,
+
+      "DECIMAL": DECIMAL,
+      "NUMERIC": DECIMAL,
+
+      "FLOAT": FLOAT,
+      "DOUBLE": FLOAT,
+
+      "BOOL": BOOLEAN,
+      "BOOLEAN": BOOLEAN,
+
+      "DATE": DATE,
+      "TIME": TIME,
+      "TIMESTAMP": TIMESTAMP,
+      "TIMESTAMPTZ": TIMESTAMP,
+      "DATETIME": TIMESTAMP,
+
+      "BINARY": BINARY,
+      "UUID": UUID,
+      "JSON": JSON,
+      "JSONB": JSON,
+    }
+
+    canonical = alias_to_canonical.get(lt)
+    if canonical is None:
+      if strict:
+        raise ValueError(f"Unsupported logical type for Postgres: {logical_type!r}")
+      return lt
+
+    return self._render_canonical_type_postgres(
+      datatype=canonical,
+      max_length=max_length,
+      decimal_precision=precision,
+      decimal_scale=scale,
+    )
 
 
   # ---------------------------------------------------------
@@ -281,19 +314,14 @@ class PostgresDialect(DuckDBDialect):
     cols = []
     for c in td.target_columns.all().order_by("ordinal_position"):
       col_name = c.target_column_name  
-      if col_name in ("version_started_at", "version_ended_at"):
-        col_type = "TIMESTAMPTZ"
-      elif col_name == "version_state":
-        col_type = "VARCHAR(16)"
-      elif col_name == "load_run_id":
-        col_type = "VARCHAR(36)"
-      else:
-        col_type = self._render_canonical_type_postgres(
-          datatype=c.datatype,
-          max_length=c.max_length,
-          decimal_precision=c.decimal_precision,
-          decimal_scale=c.decimal_scale,
-        )
+
+      col_type = self._render_canonical_type_postgres(
+        datatype=c.datatype,
+        max_length=c.max_length,
+        decimal_precision=c.decimal_precision,
+        decimal_scale=c.decimal_scale,
+      )
+
       nullable = "" if c.nullable else " NOT NULL"
       cols.append(f"{q(col_name)} {col_type}{nullable}")
 

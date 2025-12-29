@@ -205,20 +205,30 @@ def engine_for_source_system(*, system_type: str, short_name: str) -> Engine:
   return engine_from_secret_ref(ref)
 
 
-def engine_for_target(*, target_short_name: str, template: Optional[str] = None) -> Engine:
+def engine_for_target(*, target_short_name: str, system_type: Optional[str] = None, template: Optional[str] = None) -> Engine:
+
   """
   Build engine for the *target* platform.
   By default uses a conventional template: sec/{profile}/conn/{type}/{short_name}
   You can override the template if your profile defines something custom.
   """
   tpl = template or "sec/{profile}/conn/{type}/{short_name}"
+  kwargs = {"short_name": target_short_name}
+  # Only require/emit {type} if the template actually uses it.
+  if "{type}" in tpl:
+    if not system_type:
+      raise ValueError(
+        f"engine_for_target requires system_type because template contains '{{type}}': {tpl}"
+      )
+    kwargs["type"] = system_type.lower()
+
   ref = build_secret_ref(
     profiles_path=settings.ELEVATA_PROFILES_PATH,
     template=tpl,
-    short_name=target_short_name,
+    **kwargs,
   )
-  return engine_from_secret_ref(ref)
 
+  return engine_from_secret_ref(ref)
 
 # -----------------------------------------------------------------------------
 # Small helpers (optional)

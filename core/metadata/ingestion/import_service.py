@@ -28,7 +28,7 @@ from typing import Iterable, List, Dict, Any
 from django.db import transaction
 from django.core.exceptions import ImproperlyConfigured
 
-from .introspect import read_table_metadata
+from metadata.system.introspection import read_table_metadata
 from .types_map import map_sql_type
 from .connectors import engine_for_source_system
 

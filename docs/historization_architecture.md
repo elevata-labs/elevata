@@ -71,7 +71,22 @@ Inherited from Rawcore via lineage:
 
 ---
 
-## 🔧 3. Historization Workflow (Incremental, SCD2)
+## 🔧 3. Schema Sync, Drift & Renames
+
+History tables are an exact schema mirror of their Rawcore base table (plus SCD technical fields).  
+To avoid accidental duplication when columns are renamed, elevata relies on metadata-driven rename tracking:
+
+- Base dataset column rename updates `TargetColumn.former_names`  
+- Hist dataset metadata must retain corresponding former names as well  
+  so that materialization planning can emit `RENAME COLUMN` instead of `ADD COLUMN`.
+
+Guardrails:  
+- Hist datasets must only rename from hist-like former names (`*_hist`)  
+  to prevent accidental base → hist table renames.
+
+---
+
+## 🔧 4. Historization Workflow (Incremental, SCD2)
 
 Historization runs **after** the Rawcore Merge Load.  
 
@@ -98,7 +113,7 @@ History table:
 
 ---
 
-## 🔧 4. Step 1: Version Detection (UPDATE)
+## 🔧 5. Step 1: Version Detection (UPDATE)
 
 Change detection is based on a deterministic `row_hash` computed in Rawcore.  
 The hash covers all non-key, non-technical attributes and is reused unchanged  
@@ -129,7 +144,7 @@ WHERE h.version_ended_at IS NULL
 
 ---
 
-## 🔧 5. Step 2: Delete Detection (UPDATE)
+## 🔧 6. Step 2: Delete Detection (UPDATE)
 
 A version is considered *deleted* if:  
 
@@ -155,7 +170,7 @@ No hard-deletes occur – only closing open versions.
 
 ---
 
-## 🔧 6. Step 3: Changed Version Insert (INSERT)
+## 🔧 7. Step 3: Changed Version Insert (INSERT)
 
 After Step 1 closed old changed versions, we must create **new** versions for  
 each changed BK.  
@@ -184,7 +199,7 @@ WHERE EXISTS (
 
 ---
 
-## 🔧 7. Step 4: New Version Insert (INSERT)
+## 🔧 8. Step 4: New Version Insert (INSERT)
 
 A version is considered *new* if:  
 
@@ -213,7 +228,7 @@ WHERE NOT EXISTS (
 
 ---
 
-## 🔧 8. Ordering Guarantees
+## 🔧 9. Ordering Guarantees
 
 Historization is always executed as a downstream step of the Rawcore load  
 and relies on the Rawcore snapshot being fully materialized for the same  
@@ -235,7 +250,7 @@ This ensures:
 
 ---
 
-## 🔧 9. Expression Reuse
+## 🔧 10. Expression Reuse
 
 All attribute expressions come from the **Rawcore logical select plan**.  
 This guarantees:  
@@ -249,7 +264,7 @@ History never reimplements logic — it inherits all transformations from Rawcor
 
 ---
 
-## 🔧 10. Dialect Abstraction
+## 🔧 11. Dialect Abstraction
 
 All historization SQL is generated via the same dialect interface used  
 throughout the load engine:  
@@ -269,7 +284,7 @@ No dialect requires MERGE for historization.
 
 ---
 
-## 🔧 11. Interaction with Rawcore Merge Load
+## 🔧 12. Interaction with Rawcore Merge Load
 
 Historization relies on Rawcore being loaded with a consistent **incremental  
 merge** before it runs.  
@@ -286,7 +301,7 @@ and produces a clean SCD timeline for all BKs.
 
 ---
 
-## 🔧 12. Guarantees & Invariants
+## 🔧 13. Guarantees & Invariants
 
 The historization layer guarantees:  
 
@@ -299,7 +314,7 @@ The historization layer guarantees:
 
 ---
 
-## 🔧 13. Testability
+## 🔧 14. Testability
 
 The SQL generation is fully covered via:  
 
@@ -312,7 +327,7 @@ Historization never relies on ORM runtime behavior.
 
 ---
 
-## 🔧 14. Optional Extensions (Out of Scope)
+## 🔧 15. Optional Extensions (Out of Scope)
 
 Optional extensions that can be built later:  
 
@@ -324,7 +339,7 @@ Optional extensions that can be built later:
 
 ---
 
-## 🔧 15. Summary
+## 🔧 16. Summary
 
 Historization is a complete, metadata-driven SCD Type 2 engine:  
 

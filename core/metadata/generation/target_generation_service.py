@@ -23,6 +23,8 @@ Contact: <https://github.com/elevata-labs/elevata>.
 from django.db import transaction
 from django.db.models import Max
 from typing import Dict, List
+from copy import deepcopy
+
 from metadata.models import (
   SourceDataset,
   TargetSchema,
@@ -42,6 +44,7 @@ from metadata.generation.mappers import (
   map_source_column_to_target_column, 
   build_surrogate_key_column_draft,
 )
+from metadata.services.rename_common import sync_key_former_names_for_rawcore_dataset
 
 
 class TargetGenerationService:
@@ -865,6 +868,16 @@ class TargetGenerationService:
       if changed:
         hist_td.save()
 
+    # ------------------------------------------------------------
+    # Guardrail: hist former_names must never contain non-hist names.
+    # Otherwise planner may rename base table -> hist when hist is missing.
+    # ------------------------------------------------------------
+    fn = list(getattr(hist_td, "former_names", None) or [])
+    fn_clean = [n for n in fn if isinstance(n, str) and n.strip().lower().endswith("_hist")]
+    if fn_clean != fn:
+      hist_td.former_names = fn_clean
+      hist_td.save(update_fields=["former_names"])
+
     # Remove any reference components that point to hist columns,
     # otherwise PROTECT will block deleting those columns.
     TargetDatasetReferenceComponent.objects.filter(
@@ -907,6 +920,7 @@ class TargetGenerationService:
       business_key: bool = False,
       surrogate_expression: str | None = None,
       system_role: str = "",
+      former_names: list[str] | None = None,
     ) -> TargetColumn:
 
       nonlocal next_ord
@@ -941,6 +955,13 @@ class TargetGenerationService:
 
       if surrogate_expression is not None:
         kwargs["surrogate_expression"] = surrogate_expression
+
+      # Preserve rename lineage for planner-driven RENAME_COLUMN.
+      # Important: copy to avoid sharing a mutable list between ORM instances.
+      if former_names is not None:
+        cleaned = [n for n in former_names if isinstance(n, str) and n.strip()]
+        # Keep as-is (including possible "current name" duplicates), planner can dedupe.
+        kwargs["former_names"] = deepcopy(cleaned)
 
       col = TargetColumn.objects.create(**kwargs)
       next_ord += 1
@@ -997,12 +1018,17 @@ class TargetGenerationService:
       description=f"Surrogate key for history rows of {rawcore_td.target_dataset_name}.",
       surrogate_expression=hist_sk_expression,
       system_role="surrogate_key",
+      former_names=None,
     )
 
     for rc_col in rawcore_cols:
       role = rc_col.system_role or ""
       if role == "surrogate_key":
         role = "entity_key"
+
+      # Carry over former_names so hist can also RENAME_COLUMN instead of ADD_COLUMN
+      # after multiple renames in base.
+      rc_former_names = list(getattr(rc_col, "former_names", None) or [])
 
       hist_col = _create_hist_column(
         name=rc_col.target_column_name,
@@ -1013,6 +1039,7 @@ class TargetGenerationService:
         decimal_scale=rc_col.decimal_scale,
         description=rc_col.description,
         system_role=role,
+        former_names=rc_former_names,
       )
       TargetColumnInput.objects.create(
         target_column=hist_col,
@@ -1041,7 +1068,11 @@ class TargetGenerationService:
         max_length=spec.get("max_length"),
         description=spec.get("description"),
         system_role=role,
+        former_names=None,
       )
+
+    # Ensure key-column former_names survive the defensive hist rebuild
+    sync_key_former_names_for_rawcore_dataset(base_td=rawcore_td, hist_td=hist_td)
 
     return hist_td
 

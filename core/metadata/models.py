@@ -747,6 +747,13 @@ class TargetDataset(AuditFields):
       "Ensures that renaming target_dataset_name does not create duplicates."
     ),
   )
+  former_names = models.JSONField(
+    blank=True, default=list, help_text=(
+      "List of previous physical dataset names for this TargetDataset. "
+      "Used by materialization sync to detect renames and emit RENAME TABLE/VIEW "
+      "instead of creating a new object. Technical governance field; do not edit manually."
+    ),
+  )
   is_system_managed = models.BooleanField(default=False,
     help_text="If checked, this dataset is managed by the system and core attributes are locked."
   )
@@ -1101,6 +1108,13 @@ class TargetColumn(AuditFields):
       "Stable technical key used by the generator to identify this column "
       "by its source lineage instead of its physical name. "
       "Ensures that renaming target_column_name does not create duplicates."
+    ),
+  )
+  former_names = models.JSONField(blank=True, default=list,
+    help_text=(
+      "List of previous physical column names for this TargetColumn. "
+      "Used by materialization sync to detect renames and emit RENAME COLUMN "
+      "instead of ADD COLUMN. Technical governance field; do not edit manually."
     ),
   )
   is_system_managed = models.BooleanField(default=False,

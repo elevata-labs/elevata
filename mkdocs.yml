@@ -63,6 +63,7 @@ nav:
       - ⚙️ Incremental Load Architecture: incremental_load.md
       - ⚙️ Load SQL Architecture: load_sql_architecture.md
       - ⚙️ Historization Architecture: historization_architecture.md
+      - ⚙️ Schema Evolution: schema_evolution.md
 
   - SQL Rendering & Dialects:
       - ⚙️ SQL Rendering Conventions: sql_rendering_conventions.md

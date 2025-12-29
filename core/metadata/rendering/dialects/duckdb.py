@@ -96,6 +96,23 @@ class DuckDbExecutionEngine(BaseExecutionEngine):
       )
 
     self._database = db_path
+    self._conn = None
+
+
+  def _get_conn(self):
+    # Reuse one connection per engine instance to avoid DuckDB "different configuration"
+    # errors when multiple connects happen against the same database file in one run.
+    if self._conn is None:
+      self._conn = duckdb.connect(self._database)
+    return self._conn
+
+  def close(self) -> None:
+    # Allow callers to close the underlying connection deterministically.
+    if self._conn is not None:
+      try:
+        self._conn.close()
+      finally:
+        self._conn = None
 
   def execute(self, sql: str) -> int | None:
     """
@@ -105,19 +122,20 @@ class DuckDbExecutionEngine(BaseExecutionEngine):
     if not sql:
       return 0
 
-    conn = duckdb.connect(self._database)
+    conn = self._get_conn()
+    cursor = conn.execute(sql)
+    rowcount = None
     try:
-      cursor = conn.execute(sql)
+      rowcount = cursor.rowcount
+    except Exception:
+      # Some statements don't have a meaningful rowcount
       rowcount = None
-      try:
-        rowcount = cursor.rowcount
-      except Exception:
-        # Some statements don't have a meaningful rowcount
-        rowcount = None
 
+    try:
       conn.commit()
-    finally:
-      conn.close()
+    except Exception:
+      # Some DuckDB statements don't require/allow commit; ignore safely.
+      pass
 
     return rowcount
 
@@ -125,13 +143,29 @@ class DuckDbExecutionEngine(BaseExecutionEngine):
     """
     Bulk execute parameterized statements in DuckDB.
     """
-    con = duckdb.connect(self._database)
+    con = self._get_conn()
+    con.executemany(sql, params_seq)
     try:
-      con.executemany(sql, params_seq)
-      # DuckDB doesn't always provide rowcount reliably; return None is OK
-      return None
+      con.commit()
+    except Exception:
+      pass
+    # DuckDB doesn't always provide rowcount reliably; return None is OK
+    return None
+
+  def fetch_all(self, sql: str, params=None):
+    conn = duckdb.connect(self._database)
+    try:
+      if params:
+        return conn.execute(sql, params).fetchall()
+      return conn.execute(sql).fetchall()
     finally:
-      con.close()
+      conn.close()
+
+  def execute_scalar(self, sql: str, params=None):
+    rows = self.fetch_all(sql, params)
+    if not rows:
+      return None
+    return rows[0][0]
 
 
 class DuckDBDialect(SqlDialect):
@@ -191,46 +225,62 @@ class DuckDBDialect(SqlDialect):
 
     logical_type can be generic ("string", "int", "decimal")
     or already a concrete DB type ("VARCHAR(100)", "DECIMAL(18,2)").
+    IMPORTANT: This must match the DDL mapping used in render_create_table_if_not_exists.
+    Planner "desired" types come from here; DDL uses _render_canonical_type_duckdb.
     """
     if not logical_type:
       return None
 
-    t = str(logical_type).lower()
+    lt = str(logical_type).strip().upper()
 
-    if t in ("string", "text", "varchar", "char"):
-      if max_length:
-        return f"VARCHAR({max_length})"
-      return "VARCHAR"
+    # Normalize common aliases -> canonical elevata types
+    alias_to_canonical = {
+      "TEXT": STRING,
+      "VARCHAR": STRING,
+      "CHAR": STRING,
+      "STRING": STRING,
 
-    if t in ("int", "integer", "int32"):
-      return "INTEGER"
+      "INT": INTEGER,
+      "INTEGER": INTEGER,
+      "INT32": INTEGER,
 
-    if t in ("bigint", "int64", "long"):
-      return "BIGINT"
+      "BIGINT": BIGINT,
+      "INT64": BIGINT,
+      "LONG": BIGINT,
 
-    if t in ("decimal", "numeric"):
-      if precision and scale is not None:
-        return f"DECIMAL({precision}, {scale})"
-      if precision:
-        return f"DECIMAL({precision})"
-      return "DECIMAL"
+      "DECIMAL": DECIMAL,
+      "NUMERIC": DECIMAL,
 
-    if t in ("float", "double"):
-      return "DOUBLE"
+      "FLOAT": FLOAT,
+      "DOUBLE": FLOAT,
 
-    if t in ("bool", "boolean"):
-      return "BOOLEAN"
+      "BOOL": BOOLEAN,
+      "BOOLEAN": BOOLEAN,
 
-    if t in ("date",):
-      return "DATE"
+      "DATE": DATE,
+      "TIME": TIME,
+      "TIMESTAMP": TIMESTAMP,
+      "DATETIME": TIMESTAMP,
 
-    if t in ("timestamp", "timestamptz", "datetime"):
-      return "TIMESTAMP"
+      "BINARY": BINARY,
+      "BYTES": BINARY,
 
-    if strict:
-      raise ValueError(f"Unsupported logical type for DuckDB: {logical_type!r}")
-    # already concrete database type (explicit non-strict passthrough)
-    return logical_type
+      "UUID": UUID,
+      "JSON": JSON,
+    }
+
+    canonical = alias_to_canonical.get(lt)
+    if canonical is None:
+      if strict:
+        raise ValueError(f"Unsupported logical type for DuckDB: {logical_type!r}")
+      return lt
+
+    return self._render_canonical_type_duckdb(
+      datatype=canonical,
+      max_length=max_length,
+      decimal_precision=precision,
+      decimal_scale=scale,
+    )
 
 
   # ---------------------------------------------------------------------------
@@ -480,12 +530,23 @@ class DuckDBDialect(SqlDialect):
     full = self.render_table_identifier(schema, table)
     return f"CREATE OR REPLACE TABLE {full} AS\n{select_sql}"
 
-  def render_insert_into_table(self, schema: str, table: str, select_sql: str) -> str:
-    """
-    INSERT INTO schema.table <select>
-    """
-    full = self.render_table_identifier(schema, table)
-    return f"INSERT INTO {full}\n{select_sql}"
+
+  def render_insert_into_table(
+    self,
+    schema_name: str,
+    table_name: str,
+    select_sql: str,
+    *,
+    target_columns: list[str] | None = None,
+  ) -> str:
+    table = self.render_table_identifier(schema_name, table_name)
+
+    if target_columns:
+      cols = ", ".join(self.render_identifier(c) for c in target_columns)
+      return f"INSERT INTO {table} ({cols})\n{select_sql}"
+
+    return f"INSERT INTO {table}\n{select_sql}"
+
 
   def render_merge_statement(
       self,
@@ -609,19 +670,14 @@ class DuckDBDialect(SqlDialect):
     cols = []
     for c in td.target_columns.all().order_by("ordinal_position"):
       col_name = c.target_column_name
-      if col_name in ("version_started_at", "version_ended_at"):
-        col_type = "TIMESTAMP"
-      elif col_name == "version_state":
-        col_type = "VARCHAR(16)"
-      elif col_name == "load_run_id":
-        col_type = "VARCHAR(36)"
-      else:
-        col_type = self._render_canonical_type_duckdb(
-          datatype=c.datatype,
-          max_length=c.max_length,
-          decimal_precision=c.decimal_precision,
-          decimal_scale=c.decimal_scale,
-        )
+      
+      col_type = self._render_canonical_type_duckdb(
+        datatype=c.datatype,
+        max_length=c.max_length,
+        decimal_precision=c.decimal_precision,
+        decimal_scale=c.decimal_scale,
+      )
+
       nullable = "" if c.nullable else " NOT NULL"
       cols.append(f"{q(col_name)} {col_type}{nullable}")
 
@@ -639,6 +695,18 @@ class DuckDBDialect(SqlDialect):
       CREATE OR REPLACE VIEW {schema}.{view} AS
       {select_sql}
       """.strip()
+
+
+  def render_add_column(self, schema: str, table: str, column_name: str, column_type: str) -> str:
+    # ANSI-ish default: DuckDB supports this form.
+    target = self.render_table_identifier(schema, table)
+    col = self.render_identifier(column_name)
+    return f"ALTER TABLE {target} ADD COLUMN {col} {column_type}"
+
+
+  def render_drop_table_if_exists(self, schema: str, table: str) -> str:
+    target = self.render_table_identifier(schema, table)
+    return f"DROP TABLE IF EXISTS {target}"
 
 
   def _render_canonical_type_duckdb(

@@ -39,11 +39,12 @@ from metadata.constants import DIALECT_HINTS
 from metadata.forms import TargetColumnForm, TargetDatasetForm
 from metadata.models import SourceDataset, System, TargetDataset, TargetDatasetInput
 from metadata.ingestion.import_service import import_metadata_for_datasets
-
 from metadata.rendering.dialects import get_active_dialect
-from metadata.rendering.preview import build_sql_preview_for_target
-from metadata.rendering.load_sql import render_merge_sql, render_delete_missing_rows_sql
-
+from metadata.rendering.sql_service import (
+  render_preview_sql,
+  render_merge_sql,
+  render_delete_detection_sql,
+)
 from metadata.generation.validators import summarize_targetdataset_health
 
 
@@ -270,7 +271,7 @@ def targetdataset_sql_preview(request, pk: int):
   dialect = get_active_dialect(dialect_name)
 
   try:
-    sql = build_sql_preview_for_target(dataset, dialect=dialect)
+    sql = render_preview_sql(dataset, dialect)
     return _render_sql_ok(sql)
   except Exception as e:
     return _render_sql_error("SQL preview failed", e)
@@ -285,7 +286,7 @@ def targetdataset_merge_sql_preview(request, pk):
   dialect = get_active_dialect(dialect_name)
 
   try:
-    sql = render_merge_sql(dataset, dialect)
+    sql = render_merge_sql(dataset, dialect, presentation=True)
     return _render_sql_ok(sql)
   except Exception as e:
     return _render_sql_error("SQL preview failed", e)
@@ -300,7 +301,7 @@ def targetdataset_delete_sql_preview(request, pk):
   dialect = get_active_dialect(dialect_name)
 
   try:
-    sql = render_delete_missing_rows_sql(dataset, dialect)
+    sql = render_delete_detection_sql(dataset, dialect, presentation=True)
     return _render_sql_ok(sql)
   except Exception as e:
     return _render_sql_error("SQL preview failed", e)

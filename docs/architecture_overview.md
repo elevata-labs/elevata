@@ -27,6 +27,10 @@ get_active_dialect() (Dialect Adapter)
 Load SQL (Full · Merge · Delete Detection)
   ↓
 Target Warehouse (Raw · Stage · Rawcore)
+  ↓
+Materialization Planner (Schema Drift Sync)
+  ↓
+DDL Applier (safe DDL only)
 ```
 
 This flow represents the central principle of elevata:
@@ -75,6 +79,19 @@ applied across ingestion, merge, and delete detection.
 - Full load: INSERT INTO ... SELECT  
 - Incremental merge: upsert logic based on natural key lineage  
 - Delete detection: anti-join removal of missing rows  
+
+### 🧩 2.7.1 Materialization & Schema Drift (Planner + Applier)
+Before executing load SQL, elevata runs a **materialization planner** to safely reconcile  
+physical target tables with metadata-defined schemas:  
+
+- **Dataset renames** are detected via `TargetDataset.former_names → RENAME TABLE`  
+- **Column renames** are detected via `TargetColumn.former_names → RENAME COLUMN`  
+- Missing columns can be added (`ADD COLUMN`) when the dialect can render it  
+- Drops are disabled by default (policy-gated)  
+
+Important design principle:  
+The planner does not create tables. Table provisioning is handled centrally by the load runner  
+(`ensure_target_table`) and executed via the target execution engine.  
 
 With these technical layers in place, elevata enables a clear transition from data engineering  
 to business-facing data products.
@@ -171,5 +188,5 @@ Metadata Model
 
 ---
 
-© 2025 elevata Labs — High-Level Architecture Overview
+© 2025 elevata Labs — Internal Technical Documentation
 

@@ -22,6 +22,42 @@ This project adheres to [Semantic Versioning](https://semver.org/) and [Keep a C
 
 ---
 
+## [0.7.1] – 2025-12-29
+
+### 🧱 Metadata-Driven Schema Evolution
+
+This release completes and stabilizes the first materialization layer for  
+**safe, deterministic schema evolution** in target warehouses.
+
+Schema changes are now derived explicitly from metadata and applied in a  
+controlled, lineage-aware manner — without implicit inference from SQL.
+
+### ✨ Added
+- Metadata-driven materialization planning for target datasets  
+- Automatic provisioning of missing target tables  
+- Deterministic column synchronization (additive, non-destructive)  
+- Explicit handling of dataset and column renames via `former_names`  
+- Lineage-aware propagation of renames into history (`_hist`) datasets  
+- Deterministic `INSERT … (column list)` generation across all dialects  
+- DuckDB-native introspection via PRAGMA with execution-engine consistency
+
+### 🔄 Changed
+- Materialization is now planned separately from SQL rendering  
+- Table existence is determined by effective provisioning steps, not schema creation alone  
+- Incremental loads reliably auto-provision target tables when required  
+- History datasets are provisioned deterministically and stay structurally aligned with base tables
+
+### 🧪 Quality & Stability
+- Extensive unit tests for materialization planning and rename scenarios  
+- Guardrails for ambiguous rename situations (multiple former matches)  
+- Improved separation of introspection vs execution concerns  
+- Removed duplicate provisioning paths and race conditions  
+
+> This release lays the foundation for controlled schema evolution,  
+> future governance rules, and automated validation layers.
+
+---
+
 ## [0.7.0] – 2025-12-21
 
 ### Added

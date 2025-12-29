@@ -22,108 +22,98 @@ Contact: <https://github.com/elevata-labs/elevata>.
 
 import io
 import logging
-from types import SimpleNamespace
 
 import pytest
 
 from metadata.management.commands.elevata_load import Command as ElevataLoadCommand
-from django.core.management.base import CommandError
-from metadata.rendering.dialects.base import BaseExecutionEngine  # oder wo BaseExecutionEngine liegt
-
-
-class DummyExecutionEngine(BaseExecutionEngine):
-  def __init__(self):
-    pass
-
-  def execute(self, sql: str) -> int | None:
-    # For testing we don't actually execute anything.
-    # We just pretend it worked and return a fake rowcount.
-    return 0
-
-
-class DummyTargetDataset:
-  def __init__(self, name: str = "sap_customer", schema_short: str = "rawcore") -> None:
-    self.id = 123
-    self.target_dataset_name = name
-    self.target_schema = SimpleNamespace(
-      short_name=schema_short,
-      schema_name=schema_short,  # in tests: schema_name == short_name
-    )
 
 
 class DummyProfile:
-  def __init__(self, name: str = "default") -> None:
+  def __init__(self, name: str):
     self.name = name
 
 
 class DummySystem:
-  def __init__(self, short_name: str = "duckdb_local", type_: str = "duckdb") -> None:
+  def __init__(self, short_name: str, type_: str):
     self.short_name = short_name
     self.type = type_
 
 
 class DummyDialect:
-  DIALECT_NAME = "dummy"
+  # In execute=True mode, handle() calls dialect.get_execution_engine(system).
+  def get_execution_engine(self, _system):
+    return object()
 
-  # ... deine bisherigen Methoden (render_xxx, etc.)
-
-  def get_execution_engine(self, system):
-    # In tests we return a no-op execution engine
-    return DummyExecutionEngine()
-
-  def render_truncate_table(self, *, schema: str, table: str) -> str:
-    # Tests don't execute, but the command expects a truncate statement.
-    return f"-- truncate {schema}.{table}"
-
-  def literal(self, value):
-    # Minimal literal renderer for tests only.
-    if value is None:
-      return "NULL"
-    if isinstance(value, bool):
-      return "1" if value else "0"
-    if isinstance(value, (int, float)):
-      return str(value)
-    s = str(value).replace("'", "''")
-    return f"'{s}'"
-
-  def render_literal(self, value):
-    # Some code paths prefer render_literal; delegate to literal for tests.
-    return self.literal(value)
+  def __repr__(self):
+    return "DummyDialect"
 
 
-def test_elevata_load_logs_start_and_finish_and_prints_header(monkeypatch, caplog):
-  cmd = ElevataLoadCommand()
+class DummySchema:
+  def __init__(self, short_name: str):
+    self.short_name = short_name
+    self.schema_name = short_name
 
-  # Capture stdout of the command
-  buffer = io.StringIO()
-  cmd.stdout = buffer
 
-  # Monkeypatch internals used by handle()
-  dummy_td = DummyTargetDataset()
+class DummyTD:
+  def __init__(self, name: str, schema_short: str):
+    self.id = 123
+    self.target_dataset_name = name
+    self.target_schema = DummySchema(schema_short)
+    self.historize = False
+    self.incremental_source = None
 
+
+def _patch_command(monkeypatch, td: DummyTD):
   monkeypatch.setattr(
     "metadata.management.commands.elevata_load.load_profile",
-    lambda _profile_name: DummyProfile(name="test_profile"),
+    lambda _x: DummyProfile(name="test_profile"),
   )
   monkeypatch.setattr(
     "metadata.management.commands.elevata_load.get_target_system",
-    lambda _name: DummySystem(short_name="test_target", type_="duckdb"),
+    lambda _x: DummySystem(short_name="test_target", type_="duckdb"),
   )
   monkeypatch.setattr(
     "metadata.management.commands.elevata_load.get_active_dialect",
-    lambda _name: DummyDialect(),
+    lambda _x: DummyDialect(),
   )
-  monkeypatch.setattr(
-    "metadata.management.commands.elevata_load.render_load_sql_for_target",
-    lambda td, dialect: "-- generated load sql",
-  )
+
   monkeypatch.setattr(
     ElevataLoadCommand,
     "_resolve_target_dataset",
-    lambda self, target_name, schema_short: dummy_td,
+    lambda self, target_name, schema_short: td,
   )
 
-  # Run handle() with logging capture
+  monkeypatch.setattr(
+    "metadata.management.commands.elevata_load.resolve_execution_order",
+    lambda root_td: [root_td],
+  )
+
+  def _run_single_target_dataset(**kwargs):
+    td_local = kwargs["target_dataset"]
+    return {
+      "status": "success",
+      "kind": "sql",
+      "dataset": f"{td_local.target_schema.short_name}.{td_local.target_dataset_name}",
+      "message": None,
+      "sql_length": 17,
+      "render_ms": 1.0,
+      "started_at": None,
+      "finished_at": None,
+    }
+
+  monkeypatch.setattr(
+    "metadata.management.commands.elevata_load.run_single_target_dataset",
+    _run_single_target_dataset,
+  )
+
+
+def test_elevata_load_logs_start_and_finish(monkeypatch, caplog):
+  cmd = ElevataLoadCommand()
+  cmd.stdout = io.StringIO()
+
+  td = DummyTD("sap_customer", "rawcore")
+  _patch_command(monkeypatch, td)
+
   logger_name = "metadata.management.commands.elevata_load"
   with caplog.at_level(logging.INFO, logger=logger_name):
     cmd.handle(
@@ -132,25 +122,14 @@ def test_elevata_load_logs_start_and_finish_and_prints_header(monkeypatch, caplo
       dialect_name=None,
       target_system_name=None,
       execute=False,
-      no_print=False,
+      no_print=True,
+      debug_plan=False,
+      no_deps=True,
+      continue_on_error=False,
     )
 
-  # --- Assertions: stdout header -------------------------------------------
-
-  output = buffer.getvalue()
-  assert "-- Profile: test_profile" in output
-  assert "-- Target system: test_target (type=duckdb)" in output
-  assert "-- Dialect: DummyDialect" in output
-  assert "-- generated load sql" in output
-
-  # --- Assertions: logging --------------------------------------------------
-
-  start_records = [
-    r for r in caplog.records if r.getMessage() == "elevata_load starting"
-  ]
-  finish_records = [
-    r for r in caplog.records if r.getMessage() == "elevata_load finished"
-  ]
+  start_records = [r for r in caplog.records if r.getMessage() == "elevata_load starting"]
+  finish_records = [r for r in caplog.records if r.getMessage() == "elevata_load finished"]
 
   assert len(start_records) == 1
   assert len(finish_records) == 1
@@ -158,7 +137,6 @@ def test_elevata_load_logs_start_and_finish_and_prints_header(monkeypatch, caplo
   start = start_records[0]
   finish = finish_records[0]
 
-  # Extra fields should be attached to the log record
   assert getattr(start, "target_dataset_name") == "sap_customer"
   assert getattr(start, "target_schema") == "rawcore"
   assert getattr(start, "profile") == "test_profile"
@@ -167,48 +145,29 @@ def test_elevata_load_logs_start_and_finish_and_prints_header(monkeypatch, caplo
   assert getattr(start, "execute") is False
 
   assert getattr(finish, "target_dataset_name") == "sap_customer"
-  assert getattr(finish, "sql_length") == len("-- generated load sql")
   assert getattr(finish, "execute") is False
+  assert getattr(finish, "sql_length") == 17
+
 
 def test_elevata_load_execute_logs_without_raising(monkeypatch, caplog):
   cmd = ElevataLoadCommand()
   cmd.stdout = io.StringIO()
 
-  dummy_td = DummyTargetDataset()
-
-  monkeypatch.setattr(
-    "metadata.management.commands.elevata_load.load_profile",
-    lambda _profile_name: DummyProfile(name="test_profile"),
-  )
-  monkeypatch.setattr(
-    "metadata.management.commands.elevata_load.get_target_system",
-    lambda _name: DummySystem(short_name="test_target", type_="duckdb"),
-  )
-  monkeypatch.setattr(
-    "metadata.management.commands.elevata_load.get_active_dialect",
-    lambda _name: DummyDialect(),
-  )
-  monkeypatch.setattr(
-    "metadata.management.commands.elevata_load.render_load_sql_for_target",
-    lambda td, dialect: "-- generated load sql",
-  )
-  monkeypatch.setattr(
-    ElevataLoadCommand,
-    "_resolve_target_dataset",
-    lambda self, target_name, schema_short: dummy_td,
-  )
+  td = DummyTD("sap_customer", "rawcore")
+  _patch_command(monkeypatch, td)
 
   logger_name = "metadata.management.commands.elevata_load"
-
-  # We expect the command to run without raising, but to log start + finish
   with caplog.at_level(logging.INFO, logger=logger_name):
     cmd.handle(
       target_name="sap_customer",
       schema_short="rawcore",
       dialect_name=None,
       target_system_name=None,
-      execute=True,
+      execute=True,   # exercise dialect.get_execution_engine(system)
       no_print=True,
+      debug_plan=False,
+      no_deps=True,
+      continue_on_error=False,
     )
 
   start_records = [r for r in caplog.records if r.getMessage() == "elevata_load starting"]

@@ -52,7 +52,7 @@ def read_table_metadata(engine, schema: str, table: str) -> Dict[str, Any]:
 
 
 def _format_mssql_type(system_type: str, max_length: int | None, precision: int | None, scale: int | None) -> str:
-  st = (system_type or "").lower()
+  st = (system_type or "").strip().lower()
 
   # char/nchar: max_length is bytes (n*2 for nvarchar/nchar)
   if st in ("nvarchar", "nchar"):
@@ -118,7 +118,7 @@ def _read_table_metadata_mssql(engine, schema: str, table: str):
     cols.append({
       "name": r["column_name"],
       "type": sys_type,
-      "nullable": bool(r["is_nullable"]),
+      "nullable": bool(r["is_nullable"]) if r["is_nullable"] is not None else None,
       "comment": None,
       "raw_type_user": r["user_type_name"],
       "raw_type_system": r["system_type_name"],

@@ -66,9 +66,9 @@ class FakeDialect(DuckDBDialect):
     super().__init__()
     self.last_insert_call = None
 
-  def render_insert_into_table(self, schema: str, table: str, select_sql: str) -> str:
+  def render_insert_into_table(self, schema: str, table: str, select_sql: str, *, target_columns=None) -> str:
     # Capture arguments for assertions
-    self.last_insert_call = (schema, table, select_sql)
+    self.last_insert_call = (schema, table, select_sql, target_columns)
     # Provide a very simple SQL stub
     return f"-- INSERT INTO {schema}.{table}\n{select_sql}"
 
@@ -94,13 +94,18 @@ def test_render_full_refresh_sql_uses_insert_hook(monkeypatch):
     assert target_ds is td
     assert d is dialect
     return "SELECT 1 AS dummy_col"
+  
+  class DummyCol:
+    def __init__(self, name): self.target_column_name = name
+
+  monkeypatch.setattr(load_sql, "_get_target_columns_in_order", lambda _: [DummyCol("dummy_col")])
 
   monkeypatch.setattr(load_sql, "render_select_for_target", fake_render_select_for_target)
 
   sql = render_full_refresh_sql(td, dialect)
 
   # Assert that our FakeDialect was invoked correctly
-  assert dialect.last_insert_call == ("rawcore", "rc_customer", "SELECT 1 AS dummy_col")
+  assert dialect.last_insert_call == ("rawcore", "rc_customer", "SELECT 1 AS dummy_col", ["dummy_col"])
 
   # And the returned SQL is based on that
   assert "INSERT INTO rawcore.rc_customer" in sql
@@ -119,9 +124,14 @@ def test_render_load_sql_for_target_full_mode(monkeypatch):
 
   monkeypatch.setattr(load_sql, "render_select_for_target", fake_render_select_for_target)
 
+  class DummyCol:
+    def __init__(self, name): self.target_column_name = name
+
+  monkeypatch.setattr(load_sql, "_get_target_columns_in_order", lambda _: [DummyCol("dummy_col")])
+
   sql = render_load_sql_for_target(td, dialect)
 
   # Should internally call render_full_refresh_sql and thus our fake insert hook
-  assert dialect.last_insert_call == ("rawcore", "rc_customer", "SELECT 42 AS answer")
+  assert dialect.last_insert_call == ("rawcore", "rc_customer", "SELECT 42 AS answer", ["dummy_col"])
   assert "INSERT INTO rawcore.rc_customer" in sql
   assert "SELECT 42 AS answer" in sql

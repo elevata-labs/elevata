@@ -36,6 +36,11 @@ This index gives you an overview of all major topics and how they fit together.
   Complete SCD Type 2 historization model: versioning, change detection, deletion,  
   surrogate keys, lineage-based attribute mapping, and SQL generation.  
 
+- [Schema Evolution](schema_evolution.md)  
+  Schema evolution is metadata-driven, deterministic, and lineage-safe.  
+  Structural changes are never inferred implicitly from SQL but are always derived  
+  from explicit metadata changes.
+
 ---
 
 ### 🎨 SQL Rendering & Dialects
@@ -126,7 +131,7 @@ A personal open-source initiative exploring the future of declarative data archi
 
 ---
 
-_Last updated: 2025-12-04_
+_Last updated: 2025-12-29_
 
-© 2025 elevata Labs  
+© 2025 elevata Labs — Internal Technical Documentation
 Built with purpose. Rendered with precision. 🪶

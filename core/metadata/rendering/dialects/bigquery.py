@@ -152,7 +152,7 @@ class BigQueryExecutionEngine:
 
 class BigQueryDialect(DuckDBDialect):
   """
-  BigQuery SQL dialect (MVP for elevata v0.7.0).
+  BigQuery SQL dialect.
 
   Scope:
     - schema (dataset) creation
@@ -206,12 +206,13 @@ class BigQueryDialect(DuckDBDialect):
   # ---------------------------------------------------------------------------
   # Identifiers
   # ---------------------------------------------------------------------------
-
-  def render_identifier(self, name: str) -> str:
-    return f"`{name}`"
-
-  def render_table_identifier(self, schema: str, table: str) -> str:
-    return f"`{schema}`.`{table}`"
+  def quote_ident(self, name: str) -> str:
+    """
+    Quote an identifier using BigQuery backtick style.
+    Internal backticks are escaped by doubling them.
+    """
+    escaped = name.replace("`", "``")
+    return f"`{escaped}`"
 
 
   # ---------------------------------------------------------------------------
@@ -226,47 +227,63 @@ class BigQueryDialect(DuckDBDialect):
     scale=None,
     strict=True,
   ):
+    """
+    Keep planner desired types aligned with DDL mapping (_render_canonical_type_bigquery).
+    """
     if not logical_type:
       return None
 
-    t = str(logical_type).lower()
+    lt = str(logical_type).strip().upper()
 
-    # Strings
-    if t in ("string", "text", "varchar", "char"):
-      return "STRING"
+    alias_to_canonical = {
+      "TEXT": STRING,
+      "VARCHAR": STRING,
+      "CHAR": STRING,
+      "STRING": STRING,
 
-    # Integers
-    if t in ("int", "integer", "int32"):
-      return "INT64"   # BigQuery has INT64
-    if t in ("bigint", "int64", "long"):
-      return "INT64"
+      "INT": INTEGER,
+      "INTEGER": INTEGER,
+      "INT32": INTEGER,
 
-    # Decimal / Numeric
-    if t in ("decimal", "numeric"):
-      # BigQuery supports NUMERIC (and BIGNUMERIC). Keep it simple:
-      return "NUMERIC"
+      "BIGINT": BIGINT,
+      "INT64": BIGINT,
+      "LONG": BIGINT,
 
-    # Floats
-    if t in ("float", "double"):
-      return "FLOAT64"
+      "DECIMAL": DECIMAL,
+      "NUMERIC": DECIMAL,
 
-    # Bool
-    if t in ("bool", "boolean"):
-      return "BOOL"
+      "FLOAT": FLOAT,
+      "DOUBLE": FLOAT,
+      "FLOAT64": FLOAT,
 
-    # Date/time
-    if t in ("date",):
-      return "DATE"
-    if t in ("timestamp", "timestamptz", "datetime"):
-      # Depending on your semantics; usually TIMESTAMP is what you want
-      return "TIMESTAMP"
+      "BOOL": BOOLEAN,
+      "BOOLEAN": BOOLEAN,
 
-    if strict:
-      raise ValueError(f"Unsupported logical type for BigQuery: {logical_type!r}")
+      "DATE": DATE,
+      "TIME": TIME,
+      "TIMESTAMP": TIMESTAMP,
+      "TIMESTAMPTZ": TIMESTAMP,
+      "DATETIME": TIMESTAMP,
 
-    # passthrough
-    return logical_type
+      "BINARY": BINARY,
+      "BYTES": BINARY,
 
+      "UUID": UUID,
+      "JSON": JSON,
+    }
+
+    canonical = alias_to_canonical.get(lt)
+    if canonical is None:
+      if strict:
+        raise ValueError(f"Unsupported logical type for BigQuery: {logical_type!r}")
+      return lt
+
+    return self._render_canonical_type_bigquery(
+      datatype=canonical,
+      max_length=max_length,
+      decimal_precision=precision,
+      decimal_scale=scale,
+    )
 
   # ---------------------------------------------------------------------------
   # Type Casting
@@ -365,7 +382,7 @@ class BigQueryDialect(DuckDBDialect):
       return "BYTES"
 
     if t in (UUID, JSON):
-      # BigQuery has native JSON, but STRING is the safest MVP choice
+      # BigQuery has native JSON, but STRING is the safest choice
       return "STRING"
 
     raise ValueError(
@@ -413,6 +430,21 @@ class BigQueryDialect(DuckDBDialect):
 
   def render_truncate_table(self, schema: str, table: str) -> str:
     return f"TRUNCATE TABLE {self.render_table_identifier(schema, table)}"
+  
+
+  def render_rename_table(self, schema_name: str, old_table: str, new_table: str) -> str:
+    # BigQuery: ALTER TABLE `dataset.old` RENAME TO `new`
+    return (
+      f"ALTER TABLE {self.render_table_identifier(schema_name, old_table)} "
+      f"RENAME TO {self.render_identifier(new_table)}"
+    )
+
+  def render_rename_column(self, schema_name: str, table_name: str, old_col: str, new_col: str) -> str:
+    # BigQuery: ALTER TABLE `dataset.table` RENAME COLUMN old TO new
+    return (
+      f"ALTER TABLE {self.render_table_identifier(schema_name, table_name)} "
+      f"RENAME COLUMN {self.render_identifier(old_col)}  TO {self.render_identifier(new_col)}"
+    )
 
   # ---------------------------------------------------------------------------
   # Logging (optional, but recommended)
@@ -462,7 +494,7 @@ class BigQueryDialect(DuckDBDialect):
     """
     Insert a row into meta.load_run_log.
 
-    MVP strategy:
+    Strategy:
       - structured values stored as STRING
       - timestamps stored as TIMESTAMP
     """
@@ -471,31 +503,37 @@ class BigQueryDialect(DuckDBDialect):
     def s(val: Any) -> str:
       if val is None:
         return "NULL"
-      return f"'{str(val)}'"
+      txt = str(val)
+      # BigQuery SQL string literal escaping:
+      # - single quotes must be doubled
+      # - normalize Windows newlines to avoid weird formatting issues in logs
+      txt = txt.replace("'", "''")
+      txt = txt.replace("\r\n", "\n")
+      return f"'{txt}'"
 
     return f"""
-INSERT INTO {table} (
-  batch_run_id,
-  load_run_id,
-  load_status,
-  started_at,
-  finished_at,
-  sql_length,
-  rows_affected,
-  render_ms,
-  execution_ms,
-  error_message
-)
-VALUES (
-  {s(batch_run_id)},
-  {s(load_run_id)},
-  {s(load_status)},
-  TIMESTAMP({s(started_at.isoformat())}),
-  TIMESTAMP({s(finished_at.isoformat())}),
-  {sql_length if sql_length is not None else "NULL"},
-  {rows_affected if rows_affected is not None else "NULL"},
-  {render_ms if render_ms is not None else "NULL"},
-  {execution_ms if execution_ms is not None else "NULL"},
-  {s(error_message)}
-)
-""".strip()
+      INSERT INTO {table} (
+        batch_run_id,
+        load_run_id,
+        load_status,
+        started_at,
+        finished_at,
+        sql_length,
+        rows_affected,
+        render_ms,
+        execution_ms,
+        error_message
+      )
+      VALUES (
+        {s(batch_run_id)},
+        {s(load_run_id)},
+        {s(load_status)},
+        TIMESTAMP({s(started_at.isoformat())}),
+        TIMESTAMP({s(finished_at.isoformat())}),
+        {sql_length if sql_length is not None else "NULL"},
+        {rows_affected if rows_affected is not None else "NULL"},
+        {render_ms if render_ms is not None else "NULL"},
+        {execution_ms if execution_ms is not None else "NULL"},
+        {s(error_message)}
+      )
+      """.strip()

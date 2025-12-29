@@ -83,6 +83,7 @@ def _targetcolumn_spec(col: TargetColumn) -> RenameSpec:
     validator_context="target_column_name",
     collision_label="Target column name",
     collision_scope_label="in this dataset",
+    extra_update_fields=["former_names"],
   )
 
 
@@ -108,4 +109,14 @@ def commit_targetcolumn_rename(col: TargetColumn, new_name: str, user=None) -> d
   if rule_errors:
     return {"ok": False, "errors": rule_errors}
 
+  old_name = (col.target_column_name or "").strip()
+  new_name = (new_name or "").strip()
+
+  if old_name and new_name and old_name != new_name:
+    former = list(col.former_names or [])
+    # case-insensitive de-duplication
+    if old_name.lower() not in {n.lower() for n in former}:
+      former.append(old_name)
+    col.former_names = former
+    
   return commit_rename(col, new_name, _targetcolumn_spec(col), user=user)

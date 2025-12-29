@@ -8,7 +8,8 @@
 It’s designed as a **Declarative Data Architecture & Metadata Framework** — automated, governed, and platform-agnostic.
 
 Instead of manually crafting endless SQL and pipeline code, elevata lets metadata do the work.  
-By defining datasets, lineage, and transformation logic declaratively, you can generate consistent, auditable, and future-proof data models — ready to run on your preferred platform.
+By defining datasets, lineage, and transformation logic declaratively, you can generate consistent, auditable, and future-proof data models —  
+including schema evolution and physical execution — ready to run on your preferred platform.
 
 ## License & Dependencies
 
@@ -63,7 +64,15 @@ From this metadata, elevata generates:
 - multi-source stage pipelines
 - SQL previews with lineage
 
-elevata includes a complete **LogicalPlan + Expression AST** engine that supports multiple SQL dialects with deterministic rendering.  
+elevata includes a complete **LogicalPlan + Expression AST** engine that supports  
+multiple SQL dialects with deterministic rendering.  
+
+While SQL previews are an important inspection and debugging tool,  
+elevata is fundamentally designed for **warehouse-native execution**.
+
+All generated SQL can be executed deterministically against the target system,  
+including incremental loads, merges, historization, and schema synchronization.
+
 
 > *Modern data platforms often fail not because of missing tools, but because*  
 > *architecture, lineage, and governance are encoded implicitly in SQL and pipeline code.*  
@@ -73,22 +82,71 @@ elevata includes a complete **LogicalPlan + Expression AST** engine that support
 
 ## 🧩 Architecture Overview
 
-elevata consists of the following layers:
+elevata is a metadata-driven, warehouse-native data pipeline engine.  
+It manages the full lifecycle from metadata to SQL generation to execution — including  
+incremental loads, historization, schema evolution, and observability.
 
-1. **Metadata Layer (Django models)**  
-   Defines datasets, columns, lineage, and configuration.
+The architecture consists of the following layers:
 
-2. **LogicalPlan Layer**  
-   Vendor-neutral representation of `SELECT`, `UNION`, subqueries, window functions, column expressions, joins, filters, and more.
+### 1. Metadata Layer (Django models)
+Defines datasets, columns, lineage, ownership, incremental policies, and execution semantics.  
+All structural and behavioral decisions originate from metadata — not from SQL.
 
-3. **Expression AST**  
-   The Abstract Syntax Tree provides unified representation of literals, column refs, function calls, binary operations, concatenations, and window functions.
+### 2. Logical Plan Layer
+A vendor-neutral representation of queries and write operations, including:  
+- SELECTs, UNIONs, joins, filters  
+- incremental merge semantics  
+- delete detection  
+- historization logic
 
-4. **SQL Dialects**  
-   DuckDB, Postgres, and MSSQL render SQL from the LogicalPlan. Hashing, quoting, and function differences are handled per dialect.
+Logical plans are deterministic and reproducible.
 
-5. **SQL Preview Pipeline**  
-   Lineage-aware, dialect-aware, HTMX-enabled preview.
+### 3. Expression AST
+A unified Abstract Syntax Tree for expressions:  
+- literals and column references  
+- function calls and hashing  
+- binary operations and concatenations  
+- window functions and technical expressions
+
+This ensures consistent semantics across all target systems.
+
+### 4. SQL Dialects
+Dialect-specific renderers for DuckDB, Postgres, MSSQL, and BigQuery (more to come).
+
+They handle:  
+- SQL syntax differences  
+- hashing and surrogate key generation  
+- quoting and identifier rules  
+- MERGE vs UPDATE/INSERT fallbacks
+
+### 5. Materialization & Schema Evolution
+Physical target schemas are synchronized deterministically against metadata definitions.
+
+elevata manages schema evolution explicitly and safely:
+
+- automatic table provisioning  
+- additive column evolution  
+- safe column and dataset renames  
+- deterministic reconciliation on full refresh  
+- non-destructive behavior for incremental loads  
+
+Schema changes are:  
+- metadata-driven (never inferred from SQL)  
+- lineage-aware  
+- deterministic and reproducible across dialects
+
+This makes schema evolution a **first-class architectural concern**, not a side effect of execution.
+
+### 6. Execution & Observability
+Rendered SQL is executed directly in the warehouse:
+
+- incremental and full loads  
+- historization (SCD Type 2)  
+- delete detection  
+- execution timing and row counts  
+- structured load logging via `meta.load_run_log`
+
+elevata is designed for execution — not just preview.
 
 ---
 
@@ -148,6 +206,21 @@ The roadmap reflects this direction: structured, ambitious, and aligned with ele
 
 - **Optional: simplified steward interface**  
   Lightweight UI for business/data owners to view datasets and rules.
+
+- **Extended schema evolution & drift detection**  
+  Detection and governance of breaking schema changes, including type changes  
+  and destructive modifications.   
+  Deterministic synchronization of physical warehouse schemas based on metadata:  
+  - safe table provisioning  
+  - additive column evolution  
+  - rename-aware planning  
+  - non-destructive incremental execution
+
+- **Safe dataset & column renames**  
+  First-class rename semantics via metadata:  
+  - former_names tracking  
+  - lineage-aware physical renames  
+  - ambiguity detection and guardrails
 
 **Intent:**  
 elevata becomes **governable, productive, and capable of sourcing its own data**.  

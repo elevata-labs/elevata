@@ -28,10 +28,9 @@ import logging
 import os
 import re
 import uuid
-from datetime import timedelta
 from django.utils.timezone import now
 from django.core.management.base import BaseCommand, CommandError
-from dateutil.relativedelta import relativedelta  # add dependency if not present
+from dataclasses import replace
 
 from metadata.config.profiles import load_profile
 from metadata.config.targets import get_target_system
@@ -48,6 +47,10 @@ from metadata.intent.ingestion import resolve_ingest_mode
 from metadata.ingestion.native_raw import ingest_raw_full
 from metadata.execution.load_graph import resolve_execution_order
 
+from metadata.materialization.policy import load_materialization_policy
+from metadata.materialization.planner import build_materialization_plan
+from metadata.materialization.applier import apply_materialization_plan
+from metadata.ingestion.connectors import engine_for_target
 
 logger = logging.getLogger(__name__)
 
@@ -275,6 +278,20 @@ def resolve_single_source_dataset_for_raw(target_dataset):
     )
   return src[0]
 
+
+def _plan_did_provision(plan) -> bool:
+  """
+  Return True only if the materialization plan contains steps that actually
+  change/provision a table (rename/add/alter/etc.). ENSURE_SCHEMA alone must
+  not suppress ensure_target_table().
+  """
+  steps = list(getattr(plan, "steps", None) or [])
+  if not steps:
+    return False
+  # ENSURE_SCHEMA is intentionally ignored (schema DDL only)
+  return any(getattr(s, "op", None) not in (None, "ENSURE_SCHEMA") for s in steps)
+
+
 # NOTE:
 # This function intentionally encapsulates the full lifecycle of a single dataset execution
 # (rendering, execution, logging, result normalization).
@@ -291,6 +308,7 @@ def run_single_target_dataset(
   execute: bool,
   no_print: bool,
   debug_plan: bool,
+  debug_materialization: bool = False,
   batch_run_id: str,
   load_run_id: str | None = None,
   load_plan_override=None,
@@ -310,7 +328,18 @@ def run_single_target_dataset(
     }
   """
   td = target_dataset
+  td = TargetDataset.objects.select_related("target_schema").prefetch_related("target_columns").get(pk=td.pk)
+
   dataset_key = f"{td.target_schema.short_name}.{td.target_dataset_name}"
+  mat = getattr(td, "materialization_type", None) or getattr(td.target_schema, "default_materialization_type", None) or "table"
+
+  # Treat rawcore *_hist datasets as table-like for provisioning, regardless of mat.
+  # They must exist physically because SCD2 SQL starts with UPDATE/INSERT against the hist table.
+  schema_short = getattr(getattr(td, "target_schema", None), "short_name", None)
+  ds_name = getattr(td, "target_dataset_name", "") or ""
+  is_hist = bool(
+    schema_short == "rawcore" and isinstance(ds_name, str) and ds_name.endswith("_hist")
+  )  
 
   # Per-dataset load_run_id (nested under batch_run_id)
   if load_run_id is None:
@@ -358,9 +387,12 @@ def run_single_target_dataset(
 
   # --- Non-RAW: build load plan & render SQL -----------------------
   load_plan = load_plan_override or build_load_plan(td)
+  is_full_refresh = should_truncate_before_load(td, load_plan)
+  did_materialization_provision = False
+  mat_policy = None
 
   if debug_plan and not no_print:
-    stdout.write(style.WARNING(f"-- LoadPlan debug for {dataset_key}: {load_plan}"))
+    stdout.write(style.NOTICE(f"-- LoadPlan debug for {dataset_key}: {load_plan}"))
 
   summary = build_load_run_summary(td, dialect, load_plan)
 
@@ -383,7 +415,124 @@ def run_single_target_dataset(
     },
   )
 
-  # 1) Render SQL
+  # ------------------------------------------------------------------
+  # Materialization (DDL) must happen BEFORE SQL rendering
+  # ------------------------------------------------------------------
+  if execute and mat in ("table", "incremental"):
+    mat_policy = load_materialization_policy()
+    mat_policy = replace(mat_policy, debug_plan=bool(debug_plan))
+
+    if AUTO_PROVISION_TABLES and schema_short in mat_policy.sync_schema_shorts:
+      # Introspection via SQLAlchemy
+      target_sa_engine = engine_for_target(
+        target_short_name=target_system.short_name,
+        system_type=target_system.type,
+      )
+
+      if debug_materialization and not no_print:
+        stdout.write(style.NOTICE(
+          f"-- Introspection DB absolute: {os.path.abspath(target_sa_engine.url.database or '')}"
+        ))
+        stdout.write(style.NOTICE(
+          f"-- Execution engine: {target_system.short_name} type={target_system.type}"
+        ))
+
+      plan = build_materialization_plan(
+        td=td,
+        introspection_engine=target_sa_engine,
+        exec_engine=target_system_engine,
+        dialect=dialect,
+        policy=mat_policy,
+      )
+
+      # do NOT dispose yet - hist_plan uses the same engine below
+
+      if debug_materialization and not no_print:
+        stdout.write(style.NOTICE(
+          f"-- Materialization debug: dataset={dataset_key} "
+          f"steps={len(plan.steps)} warnings={len(plan.warnings)} blocking={len(plan.blocking_errors)} "
+          f"planner_file={build_materialization_plan.__code__.co_filename} "
+          f"has_render_add_column={hasattr(dialect, 'render_add_column')}"
+        ))
+        for w in plan.warnings:
+          stdout.write(style.WARNING(f"-- Materialization warning: {w}"))
+        for e in plan.blocking_errors:
+          stdout.write(style.ERROR(f"-- Materialization blocked: {e}"))
+        for s in plan.steps:
+          stdout.write(style.WARNING(f"-- Materialization step: {s.op}: {s.sql}"))
+
+      apply_materialization_plan(plan=plan, exec_engine=target_system_engine)
+      # Treat "materialization provisioned table" as: any step that touches the table itself.
+      # ENSURE_SCHEMA alone does NOT provision the table.
+      did_materialization_provision = _plan_did_provision(plan)
+
+      # --------------------------------------------------------------
+      # rawcore _hist structural sync (DDL only), even if user runs base only
+      # --------------------------------------------------------------
+      try:
+        schema_short_local = td.target_schema.short_name
+        historize_enabled = bool(
+          getattr(td, "historize", False) or getattr(td.target_schema, "default_historize", False)
+        )
+
+        if (
+          schema_short_local == "rawcore"
+          and historize_enabled
+          and isinstance(ds_name, str)
+          and not ds_name.endswith("_hist")
+        ):
+          hist_td = None
+          lineage_key = getattr(td, "lineage_key", None)
+          if lineage_key:
+            hist_td = (
+              TargetDataset.objects
+              .filter(target_schema__short_name="rawcore", lineage_key=lineage_key, target_dataset_name__endswith="_hist")
+              .exclude(pk=td.pk)
+              .first()
+            )
+          if hist_td is None:
+            # Fallback: by convention
+            hist_td = (
+              TargetDataset.objects
+              .filter(target_schema__short_name="rawcore", target_dataset_name=f"{ds_name}_hist")
+              .first()
+            )
+
+          if hist_td is not None:
+            hist_plan = build_materialization_plan(
+              td=hist_td,
+              introspection_engine=target_sa_engine,
+              exec_engine=target_system_engine,
+              dialect=dialect,
+              policy=mat_policy,
+            )
+
+            if debug_materialization and not no_print:
+              stdout.write(style.NOTICE(
+                f"-- Hist materialization debug: dataset=rawcore.{hist_td.target_dataset_name} "
+                f"steps={len(hist_plan.steps)} warnings={len(hist_plan.warnings)} blocking={len(hist_plan.blocking_errors)}"
+              ))
+              for w in hist_plan.warnings:
+                stdout.write(style.WARNING(f"-- Hist materialization warning: {w}"))
+              for e in hist_plan.blocking_errors:
+                stdout.write(style.ERROR(f"-- Hist materialization blocked: {e}"))
+              for s in hist_plan.steps:
+                stdout.write(style.WARNING(f"-- Hist materialization step: {s.op}: {s.sql}"))
+
+            apply_materialization_plan(plan=hist_plan, exec_engine=target_system_engine)
+            # (no need to touch did_materialization_provision here; this is best-effort hist sync)
+      except Exception as exc:
+        # Never break the load because of best-effort hist sync
+        logger.warning("Hist materialization sync failed: %s", exc)
+
+      # dispose AFTER both plans
+      dispose = getattr(target_sa_engine, "dispose", None)
+      if callable(dispose):
+        dispose()
+
+  # ------------------------------------------------------------------
+  # 1) Render SQL (now schema is correct)
+  # ------------------------------------------------------------------
   render_started_at = now()
   render_start_ts = time.perf_counter()
   sql = render_load_sql_for_target(td, dialect)
@@ -454,15 +603,17 @@ def run_single_target_dataset(
     auto_provision=AUTO_PROVISION_SCHEMAS,
   )
 
-  mat = getattr(td, "materialization_type", None) or getattr(td.target_schema, "default_materialization_type", None) or "table"
-
   if mat in ("table", "incremental"):
-    ensure_target_table(
-      engine=target_system_engine,
-      dialect=dialect,
-      td=td,
-      auto_provision=AUTO_PROVISION_TABLES,
-    )
+    # Avoid double provisioning:
+    # - If materialization already created/adjusted the table, skip.
+    # - If full refresh will DROP+CREATE below, skip baseline ensure here.
+    if is_hist or ((not did_materialization_provision) and (not is_full_refresh)):
+      ensure_target_table(
+        engine=target_system_engine,
+        dialect=dialect,
+        td=td,
+        auto_provision=AUTO_PROVISION_TABLES,
+      )
   elif mat == "view":
     # no table provisioning for views
     pass
@@ -485,11 +636,29 @@ def run_single_target_dataset(
     )
 
   if should_truncate_before_load(td, load_plan) and mat in ("table", "incremental"):
-    trunc_sql = dialect.render_truncate_table(
-      schema=td.target_schema.schema_name,
-      table=td.target_dataset_name,
-    )
-    target_system_engine.execute(trunc_sql)
+    # Full refresh: prefer DROP+CREATE (recreate) so schema drift can be healed.
+    if hasattr(dialect, "render_drop_table_if_exists"):
+      drop_sql = dialect.render_drop_table_if_exists(
+        schema=td.target_schema.schema_name,
+        table=td.target_dataset_name,
+      )
+      if drop_sql:
+        target_system_engine.execute(drop_sql)
+
+      # Re-create table according to current metadata
+      ensure_target_table(
+        engine=target_system_engine,
+        dialect=dialect,
+        td=td,
+        auto_provision=AUTO_PROVISION_TABLES,
+      )
+    else:
+      # Fallback: truncate (older dialects)
+      trunc_sql = dialect.render_truncate_table(
+        schema=td.target_schema.schema_name,
+        table=td.target_dataset_name,
+      )
+      target_system_engine.execute(trunc_sql)
 
   exec_started_at = now()
   exec_start_ts = time.perf_counter()
@@ -621,7 +790,7 @@ def execute_raw_via_ingestion(
     return {"status": "skipped", "reason": "include_ingest_none"}
 
   if mode == "external":
-    # MVP: just validate existence (optional) + log
+    # just validate existence (optional) + log
     print(
       f"[INFO] RAW ingestion is external for '{target_dataset.target_dataset_name}'. "
       "Assuming RAW is populated by an external tool."
@@ -821,173 +990,182 @@ class Command(BaseCommand):
     if execute:
       engine = dialect.get_execution_engine(system)
 
-    # 5) Resolve execution order
-    if no_deps:
-      execution_order = [root_td]
-    else:
-      execution_order = resolve_execution_order(root_td)
+    try:
+      # 5) Resolve execution order
+      if no_deps:
+        execution_order = [root_td]
+      else:
+        execution_order = resolve_execution_order(root_td)
 
-    # 6) Print plan
-    if not no_print:
-      self.stdout.write("")
-      self.stdout.write(self.style.NOTICE(f"Execution plan (batch_run_id={batch_run_id}):"))
-      for i, td in enumerate(execution_order, start=1):
-        self.stdout.write(f"  {i}. {td.target_schema.short_name}.{td.target_dataset_name}")
-      self.stdout.write("")
+      # 6) Print plan
+      if not no_print:
+        self.stdout.write("")
+        self.stdout.write(self.style.NOTICE(f"Execution plan (batch_run_id={batch_run_id}):"))
+        for i, td in enumerate(execution_order, start=1):
+          self.stdout.write(f"  {i}. {td.target_schema.short_name}.{td.target_dataset_name}")
+        self.stdout.write("")
 
-    # 7) Debug plan for root only (exact formatting expected by tests)
-    root_load_plan = None
-    if debug_plan:
-      root_load_plan = build_load_plan(root_td)
+      # 7) Debug plan for root only (exact formatting expected by tests)
+      root_load_plan = None
+      if debug_plan:
+        root_load_plan = build_load_plan(root_td)
 
-      self.stdout.write("")
-      self.stdout.write(self.style.WARNING("-- LoadPlan debug:"))
+        self.stdout.write("")
+        self.stdout.write(self.style.WARNING("-- LoadPlan debug:"))
 
-      mode = getattr(root_load_plan, "mode", None)
-      handle_deletes = bool(getattr(root_load_plan, "handle_deletes", False))
-      schema_short_local = getattr(root_td.target_schema, "short_name", None)
+        mode = getattr(root_load_plan, "mode", None)
+        handle_deletes = bool(getattr(root_load_plan, "handle_deletes", False))
+        schema_short_local = getattr(root_td.target_schema, "short_name", None)
 
-      delete_detection_enabled = (
-        mode == "merge"
-        and handle_deletes
-        and schema_short_local == "rawcore"
+        delete_detection_enabled = (
+          mode == "merge"
+          and handle_deletes
+          and schema_short_local == "rawcore"
+        )
+
+        self.stdout.write(f"  mode           = {mode}")
+        self.stdout.write(f"  handle_deletes = {handle_deletes}")
+
+        incr_src = getattr(root_td, "incremental_source", None)
+        incr_src_name = getattr(incr_src, "source_dataset_name", None) if incr_src else None
+        self.stdout.write(f"  incremental_source = {incr_src_name}")
+        self.stdout.write(f"  delete_detection_enabled = {delete_detection_enabled}")
+        self.stdout.write("")
+
+      # Root-level logging: tests expect exactly one "starting" and one "finished"
+      root_load_run_id = str(uuid.uuid4())
+
+      logger.info(
+        "elevata_load starting",
+        extra={
+          "batch_run_id": batch_run_id,
+          "load_run_id": root_load_run_id,
+          "target_dataset_id": getattr(root_td, "id", None),
+          "target_dataset_name": root_td.target_dataset_name,
+          "target_schema": root_td.target_schema.short_name,
+          "profile": profile.name,
+          "target_system": system.short_name,
+          "target_system_type": system.type,
+          "dialect": dialect.__class__.__name__,
+          "execute": execute,
+        },
       )
 
-      self.stdout.write(f"  mode           = {mode}")
-      self.stdout.write(f"  handle_deletes = {handle_deletes}")
+      # 8) Execute datasets in order and collect summary
+      results: list[dict[str, object]] = []
+      had_error = False
 
-      incr_src = getattr(root_td, "incremental_source", None)
-      incr_src_name = getattr(incr_src, "source_dataset_name", None) if incr_src else None
-      self.stdout.write(f"  incremental_source = {incr_src_name}")
-      self.stdout.write(f"  delete_detection_enabled = {delete_detection_enabled}")
-      self.stdout.write("")
+      for td in execution_order:
+        this_load_run_id = root_load_run_id if td is root_td else None
+        this_load_plan = root_load_plan if (td is root_td) else None
 
-    # Root-level logging: tests expect exactly one "starting" and one "finished"
-    root_load_run_id = str(uuid.uuid4())
+        try:
+          result = run_single_target_dataset(
+            stdout=self.stdout,
+            style=self.style,
+            target_dataset=td,
+            target_system=system,
+            target_system_engine=engine,
+            profile=profile,
+            dialect=dialect,
+            execute=execute,
+            no_print=no_print,
+            debug_plan=False,
+            debug_materialization=debug_plan,
+            batch_run_id=batch_run_id,
+            load_run_id=this_load_run_id,
+            load_plan_override=this_load_plan,
+            chunk_size=5000,
+          )
+          results.append(result)
 
-    logger.info(
-      "elevata_load starting",
-      extra={
-        "batch_run_id": batch_run_id,
-        "load_run_id": root_load_run_id,
-        "target_dataset_id": getattr(root_td, "id", None),
-        "target_dataset_name": root_td.target_dataset_name,
-        "target_schema": root_td.target_schema.short_name,
-        "profile": profile.name,
-        "target_system": system.short_name,
-        "target_system_type": system.type,
-        "dialect": dialect.__class__.__name__,
-        "execute": execute,
-      },
-    )
+        except Exception as exc:
+          had_error = True
 
-    # 8) Execute datasets in order and collect summary
-    results: list[dict[str, object]] = []
-    had_error = False
+          results.append({
+            "status": "error",
+            "kind": "exception",
+            "dataset": f"{td.target_schema.short_name}.{td.target_dataset_name}",
+            "message": str(exc),
+          })
 
-    for td in execution_order:
-      this_load_run_id = root_load_run_id if td is root_td else None
-      this_load_plan = root_load_plan if (td is root_td) else None
+          logger.exception(
+            "elevata_load dataset failed",
+            extra={
+              "batch_run_id": batch_run_id,
+              "target_dataset_name": td.target_dataset_name,
+              "target_schema": td.target_schema.short_name,
+            },
+          )
 
-      try:
-        result = run_single_target_dataset(
-          stdout=self.stdout,
-          style=self.style,
-          target_dataset=td,
-          target_system=system,
-          target_system_engine=engine,
-          profile=profile,
-          dialect=dialect,
-          execute=execute,
-          no_print=no_print,
-          debug_plan=False,
-          batch_run_id=batch_run_id,
-          load_run_id=this_load_run_id,
-          load_plan_override=this_load_plan,
-          chunk_size=5000,
-        )
-        results.append(result)
+          if not continue_on_error:
+            # Ensure we still emit the "finished" log for root with best-effort fields
+            break
 
-      except Exception as exc:
-        had_error = True
+      # 9) Execution summary
+      if not no_print:
+        self.stdout.write("")
+        self.stdout.write(self.style.NOTICE(f"Execution summary (batch_run_id={batch_run_id}):"))
 
-        results.append({
-          "status": "error",
-          "kind": "exception",
-          "dataset": f"{td.target_schema.short_name}.{td.target_dataset_name}",
-          "message": str(exc),
-        })
+        for r in results:
+          status = str(r.get("status", "unknown"))
+          kind = str(r.get("kind", "unknown"))
+          ds = str(r.get("dataset", "unknown"))
 
-        logger.exception(
-          "elevata_load dataset failed",
-          extra={
-            "batch_run_id": batch_run_id,
-            "target_dataset_name": td.target_dataset_name,
-            "target_schema": td.target_schema.short_name,
-          },
-        )
+          symbol = "✔" if status in ("success", "dry_run", "skipped") else "✖"
+          line = f" {symbol} {ds:<35} {kind}"
 
-        if not continue_on_error:
-          # Ensure we still emit the "finished" log for root with best-effort fields
+          msg = r.get("message")
+          if msg:
+            line += f" – {msg}"
+
+          self.stdout.write(line)
+
+        self.stdout.write("")
+
+      # Root "finished" log should use root result timing/length if available
+      root_result = None
+      root_dataset_key = f"{root_td.target_schema.short_name}.{root_td.target_dataset_name}"
+      for r in results:
+        if r.get("dataset") == root_dataset_key:
+          root_result = r
           break
 
-    # 9) Execution summary
-    if not no_print:
-      self.stdout.write("")
-      self.stdout.write(self.style.NOTICE(f"Execution summary (batch_run_id={batch_run_id}):"))
+      sql_length = int(root_result.get("sql_length", 0)) if root_result else 0
+      render_ms = float(root_result.get("render_ms", 0.0)) if root_result else 0.0
+      started_at = root_result.get("started_at") if root_result else None
+      finished_at = root_result.get("finished_at") if root_result else None
 
-      for r in results:
-        status = str(r.get("status", "unknown"))
-        kind = str(r.get("kind", "unknown"))
-        ds = str(r.get("dataset", "unknown"))
-
-        symbol = "✔" if status in ("success", "dry_run", "skipped") else "✖"
-        line = f" {symbol} {ds:<35} {kind}"
-
-        msg = r.get("message")
-        if msg:
-          line += f" – {msg}"
-
-        self.stdout.write(line)
-
-      self.stdout.write("")
-
-    # Root "finished" log should use root result timing/length if available
-    root_result = None
-    root_dataset_key = f"{root_td.target_schema.short_name}.{root_td.target_dataset_name}"
-    for r in results:
-      if r.get("dataset") == root_dataset_key:
-        root_result = r
-        break
-
-    sql_length = int(root_result.get("sql_length", 0)) if root_result else 0
-    render_ms = float(root_result.get("render_ms", 0.0)) if root_result else 0.0
-    started_at = root_result.get("started_at") if root_result else None
-    finished_at = root_result.get("finished_at") if root_result else None
-
-    logger.info(
-      "elevata_load finished",
-      extra={
-        "batch_run_id": batch_run_id,
-        "load_run_id": root_load_run_id,
-        "target_dataset_id": getattr(root_td, "id", None),
-        "target_dataset_name": root_td.target_dataset_name,
-        "sql_length": sql_length,
-        "execute": execute,
-        "started_at": started_at.isoformat() if started_at else None,
-        "finished_at": finished_at.isoformat() if finished_at else None,
-        "render_ms": render_ms,
-      },
-    )
-
-    # If we stopped early due to error and continue_on_error is False, re-raise now
-    if had_error and not continue_on_error:
-      raise CommandError(
-        "Load execution failed. See execution summary above for details."
+      logger.info(
+        "elevata_load finished",
+        extra={
+          "batch_run_id": batch_run_id,
+          "load_run_id": root_load_run_id,
+          "target_dataset_id": getattr(root_td, "id", None),
+          "target_dataset_name": root_td.target_dataset_name,
+          "sql_length": sql_length,
+          "execute": execute,
+          "started_at": started_at.isoformat() if started_at else None,
+          "finished_at": finished_at.isoformat() if finished_at else None,
+          "render_ms": render_ms,
+        },
       )
 
-    if had_error:
-      raise CommandError(
-        "One or more datasets failed during execution. "
-        "See execution summary above for details."
-      )
+      # If we stopped early due to error and continue_on_error is False, re-raise now
+      if had_error and not continue_on_error:
+        raise CommandError(
+          "Load execution failed. See execution summary above for details."
+        )
+
+      if had_error:
+        raise CommandError(
+          "One or more datasets failed during execution. "
+          "See execution summary above for details."
+        )
+
+    finally:
+      # Always close the execution engine if it supports close()
+      if engine is not None:
+        close = getattr(engine, "close", None)
+        if callable(close):
+          close()

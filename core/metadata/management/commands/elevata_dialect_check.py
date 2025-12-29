@@ -195,6 +195,7 @@ class Command(BaseCommand):
               schema="dw",
               table="dummy",
               select_sql="SELECT 1 AS x",
+              target_columns=["x"],
             ),
           ),
         ))
