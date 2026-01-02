@@ -96,4 +96,4 @@ def test_pg_merge_statement_uses_insert_on_conflict_upsert():
 def test_postgres_map_logical_type_raises_on_unknown():
   d = PostgresDialect()
   with pytest.raises(ValueError):
-    d.map_logical_type("THIS_TYPE_DOES_NOT_EXIST")
+    d.map_logical_type(datatype="THIS_TYPE_DOES_NOT_EXIST")

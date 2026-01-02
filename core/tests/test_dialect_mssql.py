@@ -63,10 +63,10 @@ def test_mssql_concat_expression_uses_plus_operator():
 
 def test_mssql_map_logical_type_boolean_to_bit():
   d = MssqlDialect()
-  assert d.map_logical_type("BOOLEAN") == "BIT"
+  assert d.map_logical_type(datatype="BOOLEAN") == "BIT"
 
 
 def test_mssql_map_logical_type_raises_on_unknown():
   d = MssqlDialect()
   with pytest.raises(ValueError):
-    d.map_logical_type("THIS_TYPE_DOES_NOT_EXIST")
+    d.map_logical_type(datatype="THIS_TYPE_DOES_NOT_EXIST")

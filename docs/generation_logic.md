@@ -121,6 +121,20 @@ Process:
 
 This guarantees SK/FK parity across dialects.
 
+### 🧩 Foreign Key Rename Safety
+
+Foreign key columns are system-managed and bound to their originating  
+TargetDatasetReference via a stable internal lineage key.
+
+This ensures that:
+
+- renaming a parent or child dataset automatically renames the FK column  
+- existing FK columns are reused instead of duplicated  
+- multiple references per child dataset are handled safely
+
+Physical FK column renames are emitted via the materialization planner  
+using `RENAME COLUMN`, preserving data and lineage.
+
 ---
 
 ## 🔧 6. Expression AST

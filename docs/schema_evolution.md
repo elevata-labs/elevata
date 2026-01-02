@@ -106,6 +106,33 @@ This is enforced by:
 - Guardrails on `former_names`  
 - Defensive planner logic
 
+### 🧩 Type Drift & Semantic Equivalence
+
+elevata detects type drift by comparing metadata-defined column types  
+with physically introspected types in the target warehouse.
+
+However, certain type differences are treated as **semantically equivalent**  
+and do **not** trigger warnings or schema changes.
+
+Examples include:
+
+- `bool` ↔ `boolean`  
+- `int64` ↔ `integer`  
+- `timestamp` ↔ `timestamptz` (PostgreSQL)  
+- `varchar(n)` ↔ `varchar` (DuckDB)
+
+These equivalence rules are applied during **schema drift detection**  
+and are intentionally **dialect-aware but planner-enforced**.
+
+#### Design rationale
+
+- elevata does not perform automatic type alterations  
+- minor vendor-specific type spelling differences should not cause noise  
+- semantic equivalence is used to reduce false-positive drift warnings
+
+Type equivalence affects **drift detection only**.  
+It does not influence SQL rendering or physical DDL generation.
+
 ---
 
 ## 🔧 Incremental Pipelines & Schema Evolution

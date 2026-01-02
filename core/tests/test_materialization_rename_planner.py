@@ -22,13 +22,12 @@ Contact: <https://github.com/elevata-labs/elevata>.
 
 from __future__ import annotations
 
-import importlib
+import re
 
 import pytest
 
 from metadata.materialization.planner import build_materialization_plan
 from metadata.materialization.policy import MaterializationPolicy
-
 
 # ---------------------------------------------------------------------
 # Minimal doubles
@@ -40,6 +39,22 @@ class DummyDialect:
     if dt in ("INT", "INTEGER"):
       return "INTEGER"
     return "VARCHAR"
+
+  def introspect_table(
+    self,
+    *,
+    schema_name: str,
+    table_name: str,
+    introspection_engine,
+    exec_engine=None,
+    debug_plan: bool = False,
+  ):
+    # This method is monkeypatched in tests to return specific schemas.
+    return {
+      "table_exists": False,
+      "physical_table": table_name,
+      "actual_cols_by_norm_name": {},
+    }
 
   def render_create_schema_if_not_exists(self, schema_name: str) -> str:
     return f"CREATE SCHEMA IF NOT EXISTS {schema_name};"
@@ -93,14 +108,6 @@ class DummyTD:
     self.historize = True
 
 
-class DummyInspector:
-  def __init__(self, table_exists: bool):
-    self._table_exists = table_exists
-
-  def has_table(self, _table_name, schema=None):
-    return bool(self._table_exists)
-
-
 def _policy() -> MaterializationPolicy:
   return MaterializationPolicy(
     sync_schema_shorts={"rawcore"},
@@ -111,28 +118,29 @@ def _policy() -> MaterializationPolicy:
 
 def _patch_introspection(monkeypatch, *, table_exists: bool, physical_cols: list[tuple[str, str]]):
   """
-  Patch introspection/reflect *in the exact module* where build_materialization_plan is defined.
-  This avoids all "wrong import path" issues.
+  Patch dialect.introspect_table() to return a predictable physical schema. 
   """
-  planner_module_name = build_materialization_plan.__module__
-  planner_mod = importlib.import_module(planner_module_name)
+  cols = {}
+  for (n, t) in physical_cols:
+    cols[str(n).lower()] = {"name": n, "type": t}
 
-  inspector = DummyInspector(table_exists=table_exists)
+  def _introspect_table(self, *, schema_name, table_name, introspection_engine, exec_engine=None, debug_plan=False):
+    return {
+      "table_exists": bool(table_exists),
+      "physical_table": table_name,
+      "actual_cols_by_norm_name": dict(cols),
+    }
 
-  # Patch inspect symbol used by the planner module (it was imported into that module)
-  monkeypatch.setattr(planner_mod, "inspect", lambda _engine: inspector, raising=True)
+  monkeypatch.setattr(DummyDialect, "introspect_table", _introspect_table, raising=True)
 
-  # Patch reflection result used by that same module
-  monkeypatch.setattr(
-    planner_mod,
-    "read_table_metadata",
-    lambda *_args, **_kwargs: {
-      "columns": [{"name": n, "type": t} for (n, t) in physical_cols],
-      "primary_key_cols": set(),
-      "fk_map": {},
-    },
-    raising=True,
-  )
+WARNING_CODE_RE = re.compile(r"^[A-Z0-9_]+: ")
+
+def _assert_categorized(plan):
+  # Warn/block messages must be categorized via CODE: prefix.
+  for w in plan.warnings:
+    assert WARNING_CODE_RE.match(w), f"Warning not categorized: {w}"
+  for e in plan.blocking_errors:
+    assert WARNING_CODE_RE.match(e), f"Blocking error not categorized: {e}"
 
 
 # ---------------------------------------------------------------------
@@ -159,6 +167,8 @@ def test_planner_renames_column_when_former_name_matches_physical(monkeypatch):
   assert "ENSURE_SCHEMA" in ops
   assert "RENAME_COLUMN" in ops
   assert "ADD_COLUMN" not in ops
+
+  _assert_categorized(plan)
 
 
 def test_planner_warns_and_does_not_rename_when_both_desired_and_former_exist(monkeypatch):
@@ -190,7 +200,7 @@ def test_planner_warns_and_does_not_rename_when_both_desired_and_former_exist(mo
   assert "ADD_COLUMN" not in ops
 
   assert any("Duplicate physical columns detected" in w for w in plan.warnings)
-
+  _assert_categorized(plan)
 
 def test_planner_renames_and_does_not_add_when_former_exists(monkeypatch):
   col = DummyCol("col_new", former_names=["col_old"], ordinal_position=1, id_=1)
@@ -210,6 +220,7 @@ def test_planner_renames_and_does_not_add_when_former_exists(monkeypatch):
   ops = [s.op for s in plan.steps]
   assert "RENAME_COLUMN" in ops
   assert "ADD_COLUMN" not in ops
+  _assert_categorized(plan)
 
 
 def test_planner_warns_and_does_not_rename_when_multiple_former_exist(monkeypatch):
@@ -239,3 +250,31 @@ def test_planner_warns_and_does_not_rename_when_multiple_former_exist(monkeypatc
   assert "ADD_COLUMN" not in ops
 
   assert any("Multiple former_names match physical columns" in w for w in plan.warnings)
+  _assert_categorized(plan)
+
+
+def test_planner_warnings_and_blocking_errors_are_categorized(monkeypatch):
+  # Create a scenario that yields a warning (ambiguous rename).
+  col = DummyCol("new_col", former_names=["old_col"], ordinal_position=1, id_=1)
+  td = DummyTD("rc_test", cols=[col])
+  dialect = DummyDialect()
+
+  _patch_introspection(
+    monkeypatch,
+    table_exists=True,
+    physical_cols=[
+      ("new_col", "INTEGER"),
+      ("old_col", "INTEGER"),
+    ],
+  )
+
+  plan = build_materialization_plan(
+    td=td,
+    introspection_engine=object(),
+    exec_engine=None,
+    dialect=dialect,
+    policy=_policy(),
+  )
+
+  _assert_categorized(plan)
+  assert len(plan.warnings) >= 1

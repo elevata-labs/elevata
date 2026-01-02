@@ -22,15 +22,19 @@ Contact: <https://github.com/elevata-labs/elevata>.
 
 from __future__ import annotations
 
-import os
-
 from metadata.materialization.plan import MaterializationPlan, MaterializationStep
 from metadata.materialization.policy import MaterializationPolicy
-from metadata.system.introspection import read_table_metadata
-from sqlalchemy import inspect
 from typing import Any
 
-from google.cloud import bigquery
+
+def _warn(plan: MaterializationPlan, code: str, msg: str) -> None:
+  # Warnings are categorized via string prefixes for UX and testability.
+  plan.warnings.append(f"{code}: {msg}")
+
+
+def _block(plan: MaterializationPlan, code: str, msg: str) -> None:
+  # Blocking errors are categorized via string prefixes for UX and testability.
+  plan.blocking_errors.append(f"{code}: {msg}")
 
 
 def _norm_name(name: str) -> str:
@@ -78,21 +82,31 @@ def build_materialization_plan(*, td, introspection_engine, exec_engine=None, di
 
   schema_short = getattr(getattr(td, "target_schema", None), "short_name", None)
   schema_name = getattr(getattr(td, "target_schema", None), "schema_name", None)
-
-  table_name = getattr(td, "target_dataset_name", None) or getattr(td, "target_dataset_name", None)
-  dataset_key = f"{schema_short}.{table_name}"
+  table_name = getattr(td, "target_dataset_name", None)
+  dataset_key = f"{schema_short or '?'}." + (table_name or "?")
 
   plan = MaterializationPlan(
     dataset_key=dataset_key,
-    steps=[],
-    warnings=[],
-    blocking_errors=[],
-  )
+     steps=[],
+     warnings=[],
+     blocking_errors=[],
+     requires_backfill=False,
+   )
+
+  if not schema_short or not schema_name or not table_name:
+    _block(
+      plan,
+      "MISSING_SCHEMA_OR_TABLE",
+      "Missing target schema/table metadata (schema_short/schema_name/table_name).",
+    )
+    return plan
 
   # raw/stage are rebuild-only by policy; we don't sync them here.
   if schema_short not in policy.sync_schema_shorts:
-    plan.warnings.append(
-      f"Materialization sync skipped for {dataset_key} (schema_short={schema_short}); rebuild-only by default."
+    _warn(
+      plan,
+      "MATERIALIZATION_SKIPPED",
+      f"Sync skipped for {dataset_key} (schema_short={schema_short}); rebuild-only by default.",
     )
     return plan
 
@@ -114,7 +128,7 @@ def build_materialization_plan(*, td, introspection_engine, exec_engine=None, di
     col_type = None
     if hasattr(dialect, "map_logical_type"):
       col_type = dialect.map_logical_type(
-        c.datatype,
+        datatype=c.datatype,
         max_length=getattr(c, "max_length", None),
         precision=getattr(c, "decimal_precision", None),
         scale=getattr(c, "decimal_scale", None),
@@ -126,195 +140,34 @@ def build_materialization_plan(*, td, introspection_engine, exec_engine=None, di
   table_exists = False
   physical_table_for_introspection = table_name
 
-  is_duckdb = getattr(getattr(introspection_engine, "dialect", None), "name", None) == "duckdb"
-  is_bigquery = getattr(getattr(introspection_engine, "dialect", None), "name", None) in ("bigquery", "pybigquery")
+  # Use dialect identity (not SQLAlchemy engine dialect name) for behavior that should
+  # not depend on how introspection_engine is wired.
+  dialect_name = getattr(dialect, "DIALECT_NAME", None) or getattr(dialect, "dialect_name", None)
+  dialect_name_lc = (dialect_name or "").lower()
+  is_duckdb = dialect_name_lc == "duckdb"
+  is_bigquery = dialect_name_lc == "bigquery"
 
   debug_plan = bool(getattr(policy, "debug_plan", False))
 
-  def _bq_project_id() -> str | None:
-    # Prefer exec_engine properties, then env. Keep best-effort only.
-    # Best-effort: support multiple exec_engine implementations
-    if exec_engine is None:
-      return None
-    pid = getattr(exec_engine, "project_id", None)
-    if pid:
-      return str(pid)
-    client = getattr(exec_engine, "client", None)
-    pid = getattr(client, "project", None) if client is not None else None
-    if pid:
-      return str(pid)
-    pid = os.getenv("GOOGLE_CLOUD_PROJECT")
-    return str(pid) if pid else None
+  # Introspection (delegated to dialect)
+  try:
+    res = dialect.introspect_table(
+      schema_name=schema_name,
+      table_name=physical_table_for_introspection,
+      introspection_engine=introspection_engine,
+      exec_engine=exec_engine,
+      debug_plan=debug_plan,
+    )
+  except Exception as exc:
+    _warn(
+      plan,
+      "INTROSPECTION_FAILED",
+      f"dialect={dialect_name_lc}: {schema_name}.{physical_table_for_introspection}: {exc}",
+    )
+    res = {"table_exists": False, "actual_cols_by_norm_name": {}}
 
-  def _bq_client() -> Any | None:
-    # BigQuery API client (google.cloud.bigquery.Client)
-    if exec_engine is None:
-      return None
-    return getattr(exec_engine, "client", None)
-
-  def _bq_table_exists_api(ds: str, tbl: str) -> bool:
-    """
-    Robust BigQuery existence check via API (avoids INFORMATION_SCHEMA scope issues).
-    """
-    client = _bq_client()
-    if client is None:
-      return False
-
-    pid = _bq_project_id() or getattr(client, "project", None)
-    if not pid or not ds or not tbl:
-      return False
-
-    table_ref = f"{pid}.{ds}.{tbl}"
-    try:
-      client.get_table(table_ref)
-      return True
-    except Exception:
-      return False
-
-  def _bq_columns_api(ds: str, tbl: str) -> list[tuple[str, str]]:
-    """
-    Return (column_name, data_type) from BigQuery API.
-    data_type is normalized to lower-case canonical-ish strings (e.g. "string", "timestamp").
-    """
-    client = _bq_client()
-    if client is None:
-      return []
-    pid = _bq_project_id() or getattr(client, "project", None)
-    if not pid or not ds or not tbl:
-      return []
-    table_ref = f"{pid}.{ds}.{tbl}"
-    try:
-      t = client.get_table(table_ref)
-    except Exception:
-      return []
-    cols: list[tuple[str, str]] = []
-    for f in getattr(t, "schema", []) or []:
-      # google.cloud.bigquery.SchemaField: name, field_type
-      nm = getattr(f, "name", None)
-      tp = getattr(f, "field_type", None)
-      if nm and tp:
-        cols.append((str(nm), str(tp).lower()))
-    return cols
-
-  def _introspect_cols(phys_table: str) -> bool:
-    nonlocal actual_cols_by_name
-    actual_cols_by_name = {}
-
-    if is_duckdb:
-      if exec_engine is None:
-        plan.blocking_errors.append(
-          f"DuckDB materialization requires exec_engine for introspection of {schema_name}.{phys_table}."
-        )
-        return False
-      try:
-        rows = exec_engine.fetch_all(f"PRAGMA table_info('{schema_name}.{phys_table}');", [])
-        if not rows:
-          # Debug hint (best-effort; never fail planning)
-          if debug_plan:
-            plan.warnings.append(
-              f"DuckDB introspection: PRAGMA table_info('{schema_name}.{phys_table}') returned 0 rows "
-              f"(table not found or empty result)."
-            )
-          return False
-        for r in rows:
-          nm = _norm_name(r[1])
-          actual_cols_by_name[nm] = {"name": r[1], "type": _norm_type(r[2])}
-        # Debug hint (best-effort; never fail planning)
-        if debug_plan:
-          plan.warnings.append(
-            f"DuckDB introspection: PRAGMA table_info('{schema_name}.{phys_table}') -> "
-            f"columns={len(actual_cols_by_name)}"
-          )
-        return True
-      except Exception as exc:
-        if debug_plan:
-          plan.warnings.append(f"DuckDB introspection failed for {schema_name}.{phys_table}: {exc}")
-        return False
-
-
-    if is_bigquery:
-      # BigQuery: SQLAlchemy inspector/reflection can be unreliable depending on driver.
-      # Introspect via BigQuery API to avoid INFORMATION_SCHEMA quirks and fetch_all inconsistencies.
-      if exec_engine is None:
-        plan.blocking_errors.append(
-          f"BigQuery materialization requires exec_engine for introspection of {schema_name}.{phys_table}."
-        )
-        return False
-      try:
-        ds = (schema_name or "").strip()
-        tbl = (phys_table or "").strip()
-        if not ds or not tbl:
-          return False
-
-        if not _bq_table_exists_api(ds, tbl):
-          if debug_plan:
-            plan.warnings.append(
-              f"BigQuery introspection: table not found via API: {ds}.{tbl}"
-            )
-          return False
-
-        cols = _bq_columns_api(ds, tbl)
-        if not cols:
-          if debug_plan:
-            plan.warnings.append(
-              f"BigQuery introspection: API returned 0 columns for {ds}.{tbl}"
-            )
-          return True
-
-        for (col_name, col_type) in cols:
-          nm = _norm_name(col_name)
-          if nm:
-            actual_cols_by_name[nm] = {"name": col_name, "type": _norm_type(col_type)}
-
-        if debug_plan:
-          plan.warnings.append(
-            f"BigQuery introspection: API {ds}.{tbl} -> columns={len(actual_cols_by_name)}"
-          )
-        return True
-      except Exception as exc:
-        if debug_plan:
-          plan.warnings.append(f"BigQuery introspection failed for {schema_name}.{phys_table}: {exc}")
-        return False
-
-    # neither duckdb nor bigquery: SQLAlchemy inspector + reflection
-    try:
-      insp = inspect(introspection_engine)
-      exists = bool(insp.has_table(phys_table, schema=schema_name))
-    except Exception:
-      exists = False
-    if not exists:
-      if debug_plan:
-        plan.warnings.append(
-          f"Introspection: table not found via SQLAlchemy inspector: {schema_name}.{phys_table}"
-        )
-      return False
-    try:
-      meta = read_table_metadata(introspection_engine, schema_name, phys_table)
-      for ac in meta.get("columns") or []:
-        nm = _norm_name(ac.get("name") or ac.get("column_name"))
-        if nm:
-          actual_cols_by_name[nm] = ac
-      if debug_plan:
-        plan.warnings.append(
-          f"Introspection: reflected {schema_name}.{phys_table} -> columns={len(actual_cols_by_name)}"
-        )
-    except Exception as exc:
-      plan.blocking_errors.append(
-        f"Reflection failed for existing table {schema_name}.{phys_table}: {exc}"
-      )
-      return False
-    
-    return True
-
-  # First introspection attempt: desired table name
-  table_exists = _introspect_cols(physical_table_for_introspection)
-
-  if table_exists and not actual_cols_by_name:
-    if debug_plan:
-      plan.warnings.append(
-        f"No columns returned for existing table {schema_name}.{table_name}; "
-        f"planning ADD COLUMN for all desired columns."
-      )
+  table_exists = bool(res.get("table_exists"))
+  actual_cols_by_name = dict(res.get("actual_cols_by_norm_name") or {})
 
   # Ensure table exists (ONLY if missing)
   if not table_exists:
@@ -335,32 +188,15 @@ def build_materialization_plan(*, td, introspection_engine, exec_engine=None, di
 
     if former_ds_norm:
       def _old_table_exists(old_table: str) -> bool:
-        if is_duckdb:
-          # DuckDB: must use same exec_engine connection
-          if exec_engine is None:
-            return False
-          try:
-            rows = exec_engine.fetch_all(f"PRAGMA table_info('{schema_name}.{old_table}');", [])
-            return bool(rows)
-          except Exception:
-            return False
-
-        if is_bigquery:
-          if exec_engine is None:
-            return False
-          try:
-            ds = (schema_name or "").strip()
-            tbl = (old_table or "").strip()
-            if not ds or not tbl:
-              return False
-            return _bq_table_exists_api(ds, tbl)
-          except Exception:
-            return False
-
-        # neither duckdb nor bigquery: SQLAlchemy inspector
         try:
-          insp = inspect(introspection_engine)
-          return bool(insp.has_table(old_table, schema=schema_name))
+          r = dialect.introspect_table(
+            schema_name=schema_name,
+            table_name=old_table,
+            introspection_engine=introspection_engine,
+            exec_engine=exec_engine,
+            debug_plan=debug_plan,
+          )
+          return bool(r.get("table_exists"))
         except Exception:
           return False
 
@@ -390,30 +226,55 @@ def build_materialization_plan(*, td, introspection_engine, exec_engine=None, di
           physical_table_for_introspection = fn
           # We will rename fn -> table_name during execution; but for planning column drift,
           # we must introspect the existing physical table (fn) now.
-          table_exists = _introspect_cols(physical_table_for_introspection)
+          try:
+            res = dialect.introspect_table(
+              schema_name=schema_name,
+              table_name=physical_table_for_introspection,
+              introspection_engine=introspection_engine,
+              exec_engine=exec_engine,
+              debug_plan=debug_plan,
+            )
+          except Exception as exc:
+            _warn(
+              plan,
+              "INTROSPECTION_FAILED",
+              f"dialect={dialect_name_lc}: {schema_name}.{physical_table_for_introspection}: {exc}",
+            )
+            res = {"table_exists": False, "actual_cols_by_norm_name": {}}
+          table_exists = bool(res.get("table_exists"))
+          actual_cols_by_name = dict(res.get("actual_cols_by_norm_name") or {})
           break
 
-        plan.blocking_errors.append(
-          f"Dataset rename needed ({schema_name}.{fn} -> {schema_name}.{table_name}) "
-          f"but dialect cannot render RENAME TABLE."
+        _block(
+          plan,
+          "UNSUPPORTED_RENAME_DATASET",
+          f"Dataset rename needed ({schema_name}.{fn} -> {schema_name}.{table_name}) but dialect cannot render RENAME TABLE.",
         )
+
         return plan
 
     # IMPORTANT:
     # Planner must NOT create missing tables. Table provisioning is handled centrally
     # by elevata_load via ensure_target_table() using the ExecutionEngine.
     if not table_exists:
-      plan.warnings.append(
+      _warn(
+        plan,
+        "MISSING_TABLE",
         f"Table {schema_name}.{table_name} does not exist. "
-        f"Skipping CREATE TABLE in planner; expected ensure_target_table() to provision it."
+        f"Skipping CREATE TABLE in planner; expected ensure_target_table() to provision it.",
       )
       return plan
 
   if table_exists and not actual_cols_by_name:
-    plan.warnings.append(
+    _warn(
+      plan,
+      "NO_COLUMNS_RETURNED",
       f"No columns returned for existing table {schema_name}.{physical_table_for_introspection}; "
-      f"planning ADD COLUMN for all desired columns."
+      f"planning ADD COLUMN for all desired columns.",
     )
+
+    # Do not return: treat as "no columns known", so the loop below will plan ADD_COLUMN
+    # for all desired columns (best-effort).
 
   # Compare columns: add missing, warn on type mismatch
   for (col_obj, dc_name, dc_type) in desired_cols:
@@ -452,9 +313,11 @@ def build_materialization_plan(*, td, introspection_engine, exec_engine=None, di
           (c.get("name") or c.get("column_name") or "?")
           for c in rename_candidates
         ]
-        plan.warnings.append(
+        _warn(
+          plan,
+          "AMBIGUOUS_RENAME",
           f"Multiple former_names match physical columns for {schema_name}.{table_name}.{dc_name}: "
-          f"{', '.join(names)}. Manual cleanup required."
+          f"{', '.join(names)}. Manual cleanup required.",
         )
         continue
 
@@ -478,16 +341,21 @@ def build_materialization_plan(*, td, introspection_engine, exec_engine=None, di
           plan.requires_backfill = True
           continue
 
-        plan.blocking_errors.append(
-          f"Column rename needed ({old_physical_name} -> {dc_name}) but dialect cannot render RENAME COLUMN."
+        _block(
+          plan,
+          "UNSUPPORTED_RENAME_COLUMN",
+          f"Column rename needed ({old_physical_name} -> {dc_name}) but dialect cannot render RENAME COLUMN.",
         )
+
         continue
 
       if dc_type is None:
-        plan.blocking_errors.append(
-          f"Cannot determine column type for {schema_name}.{table_name}.{dc_name}; "
-          f"ADD COLUMN not possible."
+        _block(
+          plan,
+          "UNKNOWN_COLUMN_TYPE",
+          f"Cannot determine column type for {schema_name}.{table_name}.{dc_name}; ADD COLUMN not possible.",
         )
+
         plan.steps.append(MaterializationStep(
           op="BLOCK",
           sql=None,
@@ -508,9 +376,8 @@ def build_materialization_plan(*, td, introspection_engine, exec_engine=None, di
         ))
         plan.requires_backfill = True
       else:
-        plan.blocking_errors.append(
-          f"Column {dc_name} missing but dialect cannot render ADD COLUMN."
-        )
+        _block(plan, "UNSUPPORTED_ADD_COLUMN", f"Column {dc_name} missing but dialect cannot render ADD COLUMN.")
+
         plan.steps.append(MaterializationStep(
           op="BLOCK",
           sql=None,
@@ -531,21 +398,27 @@ def build_materialization_plan(*, td, introspection_engine, exec_engine=None, di
         break
     if dup:
       old_physical_name = dup.get("name") or dup.get("column_name") or ""
-      plan.warnings.append(
+      _warn(
+        plan,
+        "DUPLICATE_COLUMN",
         f"Duplicate physical columns detected for {schema_name}.{table_name}: "
-        f"desired={dc_name} and former={old_physical_name}. Manual cleanup required."
+        f"desired={dc_name} and former={old_physical_name}. Manual cleanup required.",
       )
       continue
 
     at = _norm_type(actual.get("type"))
     dt = _norm_type(dc_type)
 
+    # Boolean aliases across dialects (e.g. BigQuery returns BOOLEAN)
+    bool_aliases = {"bool", "boolean"}
+    if dt in bool_aliases and at in bool_aliases:
+      continue
+
     # Postgres: reflection/introspection often returns "timestamp" for
     # columns that are semantically close to timestamptz (or legacy tables).
     # We don't auto-ALTER types in MVP, so treat timestamp <-> timestamptz
     # as equivalent to avoid noisy drift warnings.
-    dialect_name = getattr(dialect, "DIALECT_NAME", None) or getattr(dialect, "dialect_name", None)
-    if (dialect_name or "").lower() == "postgres":
+    if dialect_name_lc == "postgres":
       if {dt, at} == {"timestamp", "timestamptz"}:
         continue
 
@@ -566,9 +439,11 @@ def build_materialization_plan(*, td, introspection_engine, exec_engine=None, di
         continue
 
     if dt and at and dt != at:
-      msg = f"Type mismatch for {schema_name}.{table_name}.{dc_name}: desired={dt}, actual={at}"
-      # warn only (or block if you want strict)
-      plan.warnings.append(msg)
+      _warn(
+        plan,
+        "TYPE_DRIFT",
+        f"Type mismatch for {schema_name}.{table_name}.{dc_name}: desired={dt}, actual={at}",
+      )
 
   # Drops are intentionally not planned now (policy-gated later).
   return plan

@@ -22,12 +22,9 @@ Contact: <https://github.com/elevata-labs/elevata>.
 
 from __future__ import annotations
 
-import re
 import time
 import uuid
 import datetime
-from datetime import timedelta
-from dateutil.relativedelta import relativedelta
 
 from sqlalchemy import text
 
@@ -39,6 +36,7 @@ from metadata.rendering.placeholders import (
   apply_delta_cutoff_placeholder,
 )
 from metadata.models import TargetSchema, TargetDataset
+from metadata.materialization.logging import build_load_run_log_row, ensure_load_run_log_table
 
 META_SCHEMA = "meta"
 
@@ -199,14 +197,35 @@ def ingest_raw_full(
 
   try:
     # Ensure meta logging table exists
-    target_engine.execute(target_dialect.render_create_load_run_log_if_not_exists(META_SCHEMA))
+    ensure_load_run_log_table(
+      engine=target_engine,
+      dialect=target_dialect,
+      meta_schema=META_SCHEMA,
+      auto_provision=True,
+    )
 
     # Ensure RAW schema/table exist
     target_engine.execute(target_dialect.render_create_schema_if_not_exists(td.target_schema.schema_name))
+    # RAW is a landing area and expected to evolve with the source schema.
+    # For full ingests we prefer DROP+CREATE to avoid stale schemas (missing new columns).
+    if hasattr(target_dialect, "render_drop_table_if_exists"):
+      is_raw = (getattr(getattr(td, "target_schema", None), "short_name", None) or "").lower() == "raw"
+      drop_sql = target_dialect.render_drop_table_if_exists(
+        schema=td.target_schema.schema_name,
+        table=td.target_dataset_name,
+        cascade=is_raw,
+      )
+      if drop_sql:
+        target_engine.execute(drop_sql)
     target_engine.execute(target_dialect.render_create_table_if_not_exists(td))
 
     # Truncate RAW table (RAW is always materialized as table)
-    target_engine.execute(target_dialect.render_truncate_table(td.target_schema.schema_name, td.target_dataset_name))
+    target_engine.execute(
+      target_dialect.render_truncate_table(
+        schema=td.target_schema.schema_name,
+        table=td.target_dataset_name,
+      )
+    )
 
     # Stream source rows and insert into RAW in chunks
     with source_sa_engine.connect() as conn:
@@ -260,23 +279,28 @@ def ingest_raw_full(
       "historize": False,
     }
 
-    log_sql = target_dialect.render_insert_load_run_log(
-      meta_schema=META_SCHEMA,
+    values = build_load_run_log_row(
       batch_run_id=batch_run_id,
       load_run_id=load_run_id,
-      summary=summary,
-      profile=profile,
-      system=target_system,
+      target_schema=td.target_schema.short_name,
+      target_dataset=td.target_dataset_name,
+      target_system=target_system.short_name,
+      profile=profile.name,
+      mode=str(summary.get("mode") or "full"),
+      handle_deletes=bool(summary.get("handle_deletes") or False),
+      historize=bool(summary.get("historize") or False),
       started_at=started_at,
       finished_at=finished_at,
-      render_ms=0.0,
+      render_ms=0,
       execution_ms=exec_ms,
       sql_length=0,
       rows_affected=rows_affected,
-      load_status="success",
+      status="success",
       error_message=None,
     )
-    target_engine.execute(log_sql)
+    log_sql = target_dialect.render_insert_load_run_log(meta_schema=META_SCHEMA, values=values)
+    if log_sql:
+      target_engine.execute(log_sql)
 
     return {
       "status": "success",
@@ -301,23 +325,29 @@ def ingest_raw_full(
     }
 
     try:
-      log_sql = target_dialect.render_insert_load_run_log(
-        meta_schema=META_SCHEMA,
+      values = build_load_run_log_row(
         batch_run_id=batch_run_id,
         load_run_id=load_run_id,
-        summary=summary,
-        profile=profile,
-        system=target_system,
+        target_schema=td.target_schema.short_name,
+        target_dataset=td.target_dataset_name,
+        target_system=target_system.short_name,
+        profile=profile.name,
+        mode=str(summary.get("mode") or "full"),
+        handle_deletes=bool(summary.get("handle_deletes") or False),
+        historize=bool(summary.get("historize") or False),
         started_at=started_at,
         finished_at=finished_at,
-        render_ms=0.0,
+        render_ms=0,
         execution_ms=exec_ms,
         sql_length=0,
         rows_affected=rows_affected,
-        load_status="error",
-        error_message=err[:1000],
+        status="error",
+        error_message=(err or "")[:1000],
       )
-      target_engine.execute(log_sql)
+      log_sql = target_dialect.render_insert_load_run_log(meta_schema=META_SCHEMA, values=values)
+      if log_sql:
+        target_engine.execute(log_sql)
+
     except Exception:
       # Logging must never mask the original failure
       pass

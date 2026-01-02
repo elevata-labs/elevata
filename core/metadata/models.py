@@ -22,6 +22,8 @@ Contact: <https://github.com/elevata-labs/elevata>.
 
 import os
 import hashlib
+import logging
+from django.db import transaction
 from django.db.models import Max
 from django.core.exceptions import ValidationError
 from django.conf import settings
@@ -58,6 +60,8 @@ class AuditFields(models.Model):
         self.created_by = user
       self.updated_by = user
     super().save(*args, **kwargs)
+
+logger = logging.getLogger(__name__)
 
 # -------------------------------------------------------------------
 # PartialLoad
@@ -908,6 +912,15 @@ class TargetDataset(AuditFields):
         system_role="surrogate_key",
       ).update(target_column_name=new_sk_name)
 
+      # If this dataset is referenced by other datasets, their FK column names depend on
+      # the parent dataset name. Re-sync all inbound references so planner can rename FK columns.
+      for ref in self.incoming_references.select_related("referencing_dataset").all():
+        try:
+          with transaction.atomic():
+            ref.sync_child_fk_column()
+        except Exception:
+          pass
+
 
 # -------------------------------------------------------------------
 # TargetDatasetInput
@@ -1399,21 +1412,75 @@ class TargetDatasetReference(AuditFields):
     # ----------------------------------------------------------------------
     fk_name = reference.get_child_fk_name()
 
-    fk_col, created = TargetColumn.objects.get_or_create(
+    # Stable identity for the FK column, independent of renames.
+    fk_lineage_key = f"fk:{reference.id}"
+
+    # Prefer lookup by lineage_key to avoid ambiguity when a child has multiple references.
+    fk_col = TargetColumn.objects.filter(
+      target_dataset=child,
+      lineage_key=fk_lineage_key,
+    ).first()
+
+    if fk_col is None:
+      # Prefer adopting an existing column with the target FK name.
+      # This avoids duplicates when legacy data/tests pre-create the FK column.
+      by_name = list(TargetColumn.objects.filter(
         target_dataset=child,
         target_column_name=fk_name,
-        defaults={
-            "datatype": "string",
-            "max_length": 64,
-            "nullable": True,
-            "is_system_managed": True,
-            "system_role": "foreign_key",
-            "lineage_origin": "foreign_key",
-            "surrogate_expression": fk_expression_sql.sql
-                if hasattr(fk_expression_sql, "sql")
-                else str(fk_expression_sql),
-        },
-    )
+      )[:2])
+
+      if len(by_name) == 1:
+        fk_col = by_name[0]
+        fk_col.lineage_key = fk_lineage_key
+
+      elif len(by_name) > 1:
+        logger.warning(
+          "FK sync ambiguous: multiple columns with fk_name; ref_id=%s child=%s fk_name=%s",
+          getattr(reference, "id", None),
+          getattr(child, "target_dataset_name", None),
+          fk_name,
+        )
+        return None
+
+      else:
+        # Best-effort adoption for existing FK columns created before lineage_key was introduced.
+        expr = fk_expression_sql.sql if hasattr(fk_expression_sql, "sql") else str(fk_expression_sql)
+        candidates = list(TargetColumn.objects.filter(
+          target_dataset=child,
+          is_system_managed=True,
+          system_role="foreign_key",
+          lineage_origin="foreign_key",
+          surrogate_expression=expr,
+        )[:2])
+
+        if len(candidates) == 1:
+          fk_col = candidates[0]
+          fk_col.lineage_key = fk_lineage_key
+
+        elif len(candidates) > 1:
+          logger.warning(
+            "FK sync ambiguous: multiple FK columns match surrogate_expression; ref_id=%s child=%s expected_fk_name=%s",
+            getattr(reference, "id", None),
+            getattr(child, "target_dataset_name", None),
+            fk_name,
+          )
+          return None
+
+        else:
+          fk_col = TargetColumn(
+            target_dataset=child,
+            target_column_name=fk_name,
+            lineage_key=fk_lineage_key,
+          )
+
+    # If the computed FK name changed due to parent/child rename, rename the column in metadata
+    # and keep former_names so the planner can produce RENAME_COLUMN.
+    if fk_col.target_column_name != fk_name:
+      former = list(fk_col.former_names or [])
+      if fk_col.target_column_name and fk_col.target_column_name not in former:
+        former.append(fk_col.target_column_name)
+      fk_col.former_names = former
+      fk_col.target_column_name = fk_name
 
     # ----------------------------------------------------------------------
     # 4) Update existing FK column
@@ -1425,10 +1492,11 @@ class TargetDatasetReference(AuditFields):
     fk_col.system_role = "foreign_key"
     fk_col.lineage_origin = "foreign_key"
     fk_col.surrogate_expression = (
-        fk_expression_sql.sql
-        if hasattr(fk_expression_sql, "sql")
-        else str(fk_expression_sql)
+      fk_expression_sql.sql
+      if hasattr(fk_expression_sql, "sql")
+      else str(fk_expression_sql)
     )
+
     fk_col.save()
 
     return fk_col
@@ -1438,10 +1506,14 @@ class TargetDatasetReference(AuditFields):
     # Try to sync FK column whenever the reference itself changes.
     # This will only create/update the FK if the BK components are complete.
     try:
-      self.sync_child_fk_column()
+      # Keep outer transactions healthy if FK sync hits an IntegrityError.
+      with transaction.atomic():
+        self.sync_child_fk_column()
+
     except Exception:
       # defensive: FK-Sync should not force errors in normal save
       pass
+
 
 # -------------------------------------------------------------------
 # TargetDatasetReferenceComponent
@@ -1478,7 +1550,8 @@ class TargetDatasetReferenceComponent(AuditFields):
     super().save(*args, **kwargs)
     # After each change to key components, re-evaluate FK completeness
     try:
-      self.reference.sync_child_fk_column()
+      with transaction.atomic():
+        self.reference.sync_child_fk_column()
     except Exception:
       pass
 
@@ -1488,6 +1561,7 @@ class TargetDatasetReferenceComponent(AuditFields):
     # After deleting a component, FK might become incomplete – we currently
     # do not drop it, but we could extend sync_child_fk_column() if nötig.
     try:
-      ref.sync_child_fk_column()
+      with transaction.atomic():
+        ref.sync_child_fk_column()
     except Exception:
       pass

@@ -50,6 +50,8 @@ from metadata.execution.load_graph import resolve_execution_order
 from metadata.materialization.policy import load_materialization_policy
 from metadata.materialization.planner import build_materialization_plan
 from metadata.materialization.applier import apply_materialization_plan
+from metadata.materialization.logging import LOAD_RUN_LOG_REGISTRY, build_load_run_log_row, ensure_load_run_log_table
+from metadata.materialization.schema import ensure_target_schema
 from metadata.ingestion.connectors import engine_for_target
 
 logger = logging.getLogger(__name__)
@@ -74,27 +76,6 @@ AUTO_PROVISION_META_LOG = _get_bool_env("ELEVATA_AUTO_PROVISION_META_LOG", True)
 META_SCHEMA_NAME = os.getenv("ELEVATA_META_SCHEMA_NAME", "meta")
 
 
-def ensure_target_schema(engine, dialect, schema_name: str, auto_provision: bool) -> None:
-  """
-  Ensure that the physical target schema exists in the warehouse.
-
-  Safe to call multiple times. Does nothing when auto_provision is False
-  or when the dialect does not implement the required helper.
-  """
-  if not auto_provision:
-    return
-
-  # Some test dialects (DummyDialect) do not implement this hook.
-  if not hasattr(dialect, "render_create_schema_if_not_exists"):
-    return
-
-  ddl = dialect.render_create_schema_if_not_exists(schema_name)
-  if not ddl:
-    return
-
-  engine.execute(ddl)
-
-
 def ensure_target_table(engine, dialect, td, auto_provision: bool) -> None:
   """
   Ensure the physical target table exists in the warehouse.
@@ -109,26 +90,6 @@ def ensure_target_table(engine, dialect, td, auto_provision: bool) -> None:
     return
 
   ddl = dialect.render_create_table_if_not_exists(td)
-  if not ddl:
-    return
-
-  engine.execute(ddl)
-
-
-def ensure_load_run_log_table(engine, dialect, meta_schema: str, auto_provision: bool) -> None:
-  """
-  Ensure that the warehouse-level load_run_log table exists.
-
-  Safe to call multiple times. Does nothing when auto_provision is False
-  or when the dialect does not implement the required helper.
-  """
-  if not auto_provision:
-    return
-
-  if not hasattr(dialect, "render_create_load_run_log_if_not_exists"):
-    return
-
-  ddl = dialect.render_create_load_run_log_if_not_exists(meta_schema)
   if not ddl:
     return
 
@@ -445,6 +406,13 @@ def run_single_target_dataset(
         policy=mat_policy,
       )
 
+      # Full refresh will DROP+CREATE later (recreate), so column-level DDL is redundant and can be risky
+      # across dialects (e.g., SQL Server does not support "ADD COLUMN").
+      # Keep only schema ensure + dataset rename (rename helps us target the right object name).
+      if is_full_refresh:
+        keep_ops = {"ENSURE_SCHEMA", "RENAME_DATASET"}
+        plan.steps = [s for s in plan.steps if getattr(s, "op", None) in keep_ops]
+
       # do NOT dispose yet - hist_plan uses the same engine below
 
       if debug_materialization and not no_print:
@@ -641,6 +609,7 @@ def run_single_target_dataset(
       drop_sql = dialect.render_drop_table_if_exists(
         schema=td.target_schema.schema_name,
         table=td.target_dataset_name,
+        cascade=False,
       )
       if drop_sql:
         target_system_engine.execute(drop_sql)
@@ -707,22 +676,31 @@ def run_single_target_dataset(
 
   # Insert warehouse log row (only if the dialect supports it)
   if hasattr(dialect, "render_insert_load_run_log"):
-    log_insert_sql = dialect.render_insert_load_run_log(
-      meta_schema=META_SCHEMA_NAME,
+    values = build_load_run_log_row(
       batch_run_id=batch_run_id,
       load_run_id=load_run_id,
-      summary=summary,
-      profile=profile,
-      system=target_system,
+      target_schema=td.target_schema.short_name,
+      target_dataset=td.target_dataset_name,
+      target_system=target_system.short_name,
+      profile=profile.name,
+      mode=str(summary.get("mode") or getattr(load_plan, "mode", None) or "full"),
+      handle_deletes=bool(summary.get("handle_deletes") or False),
+      historize=bool(summary.get("historize") or False),
       started_at=run_started_at,
       finished_at=run_finished_at,
       render_ms=render_ms,
       execution_ms=execution_ms,
       sql_length=sql_length,
       rows_affected=rows_affected,
-      load_status=load_status,
+      status=load_status,
       error_message=error_message,
     )
+
+    log_insert_sql = dialect.render_insert_load_run_log(
+      meta_schema=META_SCHEMA_NAME,
+      values=values,
+    )
+
     if log_insert_sql:
       target_system_engine.execute(log_insert_sql)
 

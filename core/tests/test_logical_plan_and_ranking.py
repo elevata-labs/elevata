@@ -22,6 +22,7 @@ Contact: <https://github.com/elevata-labs/elevata>.
 
 import pytest
 
+import re
 from metadata.rendering.dialects.duckdb import DuckDBDialect
 from metadata.rendering.logical_plan import (
   LogicalSelect,
@@ -134,7 +135,7 @@ def test_duckdb_render_subquery_from():
   assert "FROM" in sql
   assert "customer_raw" in sql
   # Subquery alias has to appear
-  assert "AS u" in sql
+  assert re.search(r"\)\s+AS\s+u\b", sql, re.IGNORECASE)
   # SELECT part should only project 'id'
   select_part = sql.split("FROM", 1)[0]
   assert "id" in select_part

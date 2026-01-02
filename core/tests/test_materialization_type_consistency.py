@@ -31,8 +31,6 @@ from metadata.rendering.dialects.bigquery import BigQueryDialect
 
 from metadata.materialization.planner import build_materialization_plan
 from metadata.materialization.policy import MaterializationPolicy
-
-
 from metadata.rendering.dialects.bigquery import BigQueryDialect
 
 @pytest.mark.parametrize(
@@ -151,7 +149,7 @@ def test_render_create_table_types_match_map_logical_type(dialect_cls):
   # Assert: the CREATE TABLE renderer uses the same type mapping as map_logical_type().
   for c in td.target_columns.filter(active=True).order_by("ordinal_position", "id"):
     expected = (dialect.map_logical_type(
-      c.datatype,
+      datatype=c.datatype,
       max_length=getattr(c, "max_length", None),
       precision=getattr(c, "decimal_precision", None),
       scale=getattr(c, "decimal_scale", None),
@@ -195,23 +193,24 @@ def test_postgres_timestamp_vs_timestamptz_is_not_reported_as_mismatch(monkeypat
 
   dialect = PostgresDialect()
 
-  # Fake introspection: actual column type is "timestamp"
-  def fake_read_table_metadata(engine, schema_name, table_name):
-    return {"columns": [{"name": "loaded_at", "type": "timestamp"}]}
+  # Fake introspection via the new dialect hook: actual column type is "timestamp"
+  def fake_introspect_table(
+    self,
+    *,
+    schema_name: str,
+    table_name: str,
+    introspection_engine,
+    exec_engine=None,
+    debug_plan: bool = False,
+  ):
+    return {
+      "table_exists": True,
+      "physical_table": table_name,
+      "actual_cols_by_norm_name": {"loaded_at": {"name": "loaded_at", "type": "timestamp"}},
+    }
 
-  # Also fake "table exists" for non-duckdb path
-  class DummyInspector:
-    def has_table(self, table_name, schema=None):
-      return True
-
-  class DummyEngine:
-    pass
-
-  # Patch both reflection helper + SQLAlchemy inspect() used by planner
-  import metadata.materialization.planner as planner_mod
-  monkeypatch.setattr(planner_mod, "read_table_metadata", fake_read_table_metadata)
-  monkeypatch.setattr(planner_mod, "inspect", lambda _engine: DummyInspector())
-
+  monkeypatch.setattr(PostgresDialect, "introspect_table", fake_introspect_table, raising=True)
+ 
   policy = MaterializationPolicy(
     sync_schema_shorts={"rawcore"},
     allow_auto_drop_columns=False,
@@ -220,7 +219,7 @@ def test_postgres_timestamp_vs_timestamptz_is_not_reported_as_mismatch(monkeypat
 
   plan = build_materialization_plan(
     td=td,
-    introspection_engine=DummyEngine(),
+    introspection_engine=object(),
     dialect=dialect,
     policy=policy,
   )

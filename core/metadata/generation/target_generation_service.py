@@ -283,9 +283,9 @@ class TargetGenerationService:
     Pattern (simplified):
 
       HASH256(
-        CONCAT_WS(pair_sep,
-          CONCAT(col1, comp_sep, COALESCE({expr:col1}, null_token)),
-          CONCAT(col2, comp_sep, COALESCE({expr:col2}, null_token)),
+        CONCAT_WS(comp_sep,
+          CONCAT(COALESCE({expr:col1}, null_token)),
+          CONCAT(COALESCE({expr:col2}, null_token)),
           ...,
           'pepper'
         )
@@ -324,14 +324,14 @@ class TargetGenerationService:
       return "HASH256('no_columns')"
 
     null_token = getattr(target_schema, "surrogate_key_null_token", "null")
-    pair_sep = getattr(target_schema, "surrogate_key_pair_separator", "|")
+    comp_sep = getattr(target_schema, "surrogate_key_component_separator", "|")
 
     value_exprs = [
       f"COALESCE({{expr:{name}}}, '{null_token}')"
       for name in dialect_neutral_cols
     ]
 
-    args = [f"'{pair_sep}'"] + value_exprs
+    args = [f"'{comp_sep}'"] + value_exprs
 
     inner = ", ".join(args)
     return f"HASH256(CONCAT_WS({inner}))"

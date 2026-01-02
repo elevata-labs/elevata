@@ -28,8 +28,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Sequence
 
-from .base import BaseExecutionEngine
-from .duckdb import DuckDBDialect
+from .base import BaseExecutionEngine, SqlDialect
 from metadata.ingestion.types_map import (
   STRING, INTEGER, BIGINT, DECIMAL, FLOAT, BOOLEAN, DATE, TIME, TIMESTAMP, BINARY, UUID, JSON
 )
@@ -69,7 +68,7 @@ class PostgresExecutionEngine(BaseExecutionEngine):
           return None
 
 
-class PostgresDialect(DuckDBDialect):
+class PostgresDialect(SqlDialect):
   """
   SQL dialect for PostgreSQL.
 
@@ -81,8 +80,34 @@ class PostgresDialect(DuckDBDialect):
 
   DIALECT_NAME = "postgres"
 
+  # ---------------------------------------------------------------------------
+  # Execution
+  # ---------------------------------------------------------------------------
   def get_execution_engine(self, system):
     return PostgresExecutionEngine(system)
+
+
+  # ---------------------------------------------------------------------------
+  # Introspection
+  # ---------------------------------------------------------------------------
+  def introspect_table(
+    self,
+    *,
+    schema_name: str,
+    table_name: str,
+    introspection_engine,
+    exec_engine=None,
+    debug_plan: bool = False,
+  ):
+    # Use SQLAlchemy-based default introspection for Postgres.
+    return SqlDialect.introspect_table(
+      self,
+      schema_name=schema_name,
+      table_name=table_name,
+      introspection_engine=introspection_engine,
+      exec_engine=exec_engine,
+      debug_plan=debug_plan,
+    )
 
   # ---------------------------------------------------------------------------
   # Capabilities
@@ -114,73 +139,23 @@ class PostgresDialect(DuckDBDialect):
     return f"\"{ident}\""
 
   # ---------------------------------------------------------
-  # Logical type mapping
+  # Type mapping
   # ---------------------------------------------------------
-  def map_logical_type(
+  def render_physical_type(
     self,
-    logical_type,          # type: str
-    max_length=None,       # type: int | None
-    precision=None,        # type: int | None
-    scale=None,            # type: int | None
-    strict=True,
-  ):
-    """
-    Planner "desired" types must match DDL mapping in _render_canonical_type_postgres,
-    otherwise rename/materialization produces noisy mismatch warnings.
-    """
-    if not logical_type:
-      return None
-
-    lt = str(logical_type).strip().upper()
-
-    alias_to_canonical = {
-      "TEXT": STRING,
-      "VARCHAR": STRING,
-      "CHAR": STRING,
-      "STRING": STRING,
-
-      "INT": INTEGER,
-      "INTEGER": INTEGER,
-      "INT32": INTEGER,
-
-      "BIGINT": BIGINT,
-      "INT64": BIGINT,
-      "LONG": BIGINT,
-
-      "DECIMAL": DECIMAL,
-      "NUMERIC": DECIMAL,
-
-      "FLOAT": FLOAT,
-      "DOUBLE": FLOAT,
-
-      "BOOL": BOOLEAN,
-      "BOOLEAN": BOOLEAN,
-
-      "DATE": DATE,
-      "TIME": TIME,
-      "TIMESTAMP": TIMESTAMP,
-      "TIMESTAMPTZ": TIMESTAMP,
-      "DATETIME": TIMESTAMP,
-
-      "BINARY": BINARY,
-      "UUID": UUID,
-      "JSON": JSON,
-      "JSONB": JSON,
-    }
-
-    canonical = alias_to_canonical.get(lt)
-    if canonical is None:
-      if strict:
-        raise ValueError(f"Unsupported logical type for Postgres: {logical_type!r}")
-      return lt
-
+    *,
+    canonical: str,
+    max_length=None,
+    precision=None,
+    scale=None,
+    strict: bool = True,
+  ) -> str:
     return self._render_canonical_type_postgres(
       datatype=canonical,
       max_length=max_length,
       decimal_precision=precision,
       decimal_scale=scale,
     )
-
 
   # ---------------------------------------------------------
   # Concatenation
@@ -245,6 +220,17 @@ class PostgresDialect(DuckDBDialect):
     qtbl = self.render_table_identifier
     return f"TRUNCATE TABLE {qtbl(schema, table)};"
 
+  def render_create_replace_table(self, schema: str, table: str, select_sql: str) -> str:
+    """
+    Postgres has no CREATE OR REPLACE TABLE.
+    Emulate via DROP TABLE IF EXISTS + CREATE TABLE AS.
+    """
+    full = self.render_table_identifier(schema, table)
+    return (
+      f"DROP TABLE IF EXISTS {full};\n"
+      f"CREATE TABLE {full} AS\n{select_sql}"
+    )
+
   # ---------------------------------------------------------------------------
   # Incremental / MERGE Rendering
   # MERGE / UPSERT
@@ -299,40 +285,10 @@ class PostgresDialect(DuckDBDialect):
     q = self.render_identifier
     return f"CREATE SCHEMA IF NOT EXISTS {q(schema)};"
   
-
-  def render_create_table_if_not_exists(self, td) -> str:
-    """
-    Create the target dataset table based on TargetColumn metadata.
-    PostgreSQL supports CREATE TABLE IF NOT EXISTS.
-    """
-    schema_name = td.target_schema.schema_name
-    table_name = td.target_dataset_name
-
-    q = self.render_identifier
-    qtbl = self.render_table_identifier
-
-    cols = []
-    for c in td.target_columns.all().order_by("ordinal_position"):
-      col_name = c.target_column_name  
-
-      col_type = self._render_canonical_type_postgres(
-        datatype=c.datatype,
-        max_length=c.max_length,
-        decimal_precision=c.decimal_precision,
-        decimal_scale=c.decimal_scale,
-      )
-
-      nullable = "" if c.nullable else " NOT NULL"
-      cols.append(f"{q(col_name)} {col_type}{nullable}")
-
-    cols_sql = ",\n  ".join(cols) if cols else ""
-
-    return f"""
-      CREATE TABLE IF NOT EXISTS {qtbl(schema_name, table_name)} (
-        {cols_sql}
-      );
-    """.strip()
-  
+  def render_drop_table_if_exists(self, *, schema: str, table: str, cascade: bool = False) -> str:
+    target = self.render_table_identifier(schema, table)
+    cas = " CASCADE" if cascade else ""
+    return f"DROP TABLE IF EXISTS {target}{cas}"
 
   def _render_canonical_type_postgres(
     self,
@@ -395,104 +351,28 @@ class PostgresDialect(DuckDBDialect):
   # ---------------------------------------------------------------------------
   # Logging
   # ---------------------------------------------------------------------------
-  def render_create_load_run_log_if_not_exists(self, meta_schema: str) -> str:
-    q = self.render_identifier
-    full = f"{q(meta_schema)}.{q('load_run_log')}"
+  LOAD_RUN_LOG_TYPE_MAP = {
+    "string": "TEXT",
+    "bool": "BOOLEAN",
+    "int": "INTEGER",
+    "timestamp": "TIMESTAMPTZ",
+  }
 
-    return f"""
-      CREATE SCHEMA IF NOT EXISTS {q(meta_schema)};
-
-      CREATE TABLE IF NOT EXISTS {full} (
-        id                 BIGSERIAL PRIMARY KEY,
-        batch_run_id       VARCHAR(36) NOT NULL,
-        load_run_id        VARCHAR(36) NOT NULL,
-        target_schema      VARCHAR(128) NOT NULL,
-        target_dataset     VARCHAR(256) NOT NULL,
-        target_dataset_id  BIGINT NULL,
-        target_system      VARCHAR(128) NOT NULL,
-        target_system_type VARCHAR(64) NOT NULL,
-        profile            VARCHAR(128) NOT NULL,
-        load_mode          VARCHAR(32) NOT NULL,
-        handle_deletes     BOOLEAN NOT NULL,
-        historize          BOOLEAN NOT NULL,
-        dialect            VARCHAR(64) NOT NULL,
-        started_at         TIMESTAMPTZ NOT NULL,
-        finished_at        TIMESTAMPTZ NOT NULL,
-        render_ms          DOUBLE PRECISION NOT NULL,
-        execution_ms       DOUBLE PRECISION NULL,
-        sql_length         BIGINT NOT NULL,
-        rows_affected      BIGINT NULL,
-        load_status        VARCHAR(16) NOT NULL,
-        error_message      TEXT NULL
-      );
-    """.strip()
-
-
-  def render_insert_load_run_log(
-    self,
-    meta_schema: str,
-    batch_run_id: str,
-    load_run_id: str,
-    summary: dict[str, object],
-    profile,
-    system,
-    started_at,
-    finished_at,
-    render_ms: float,
-    execution_ms: float | None,
-    sql_length: int,
-    rows_affected: int | None,
-    load_status: str,
-    error_message: str | None,
-  ) -> str:
+  def render_insert_load_run_log(self, *, meta_schema: str, values: dict[str, object]) -> str:
     qtbl = self.render_table_identifier
     lit = self.render_literal
 
     table = qtbl(meta_schema, "load_run_log")
+    cols = list(values.keys())
+
+    col_sql = ",\n        ".join(cols)
+    val_sql = ",\n        ".join([lit(values.get(c)) for c in cols])
 
     return f"""
       INSERT INTO {table} (
-        batch_run_id,
-        load_run_id,
-        target_schema,
-        target_dataset,
-        target_dataset_id,
-        target_system,
-        target_system_type,
-        profile,
-        load_mode,
-        handle_deletes,
-        historize,
-        dialect,
-        started_at,
-        finished_at,
-        render_ms,
-        execution_ms,
-        sql_length,
-        rows_affected,
-        load_status,
-        error_message
+        {col_sql}
       )
       VALUES (
-        {lit(batch_run_id)},
-        {lit(load_run_id)},
-        {lit(summary.get("schema"))},
-        {lit(summary.get("dataset"))},
-        {lit(summary.get("target_dataset_id"))},
-        {lit(system.short_name)},
-        {lit(system.type)},
-        {lit(profile.name)},
-        {lit(summary.get("mode"))},
-        {lit(summary.get("handle_deletes"))},
-        {lit(summary.get("historize"))},
-        {lit(self.DIALECT_NAME)},
-        {lit(started_at)},
-        {lit(finished_at)},
-        {lit(render_ms)},
-        {lit(execution_ms)},
-        {lit(sql_length)},
-        {lit(rows_affected)},
-        {lit(load_status)},
-        {lit(error_message)}
+        {val_sql}
       );
     """.strip()

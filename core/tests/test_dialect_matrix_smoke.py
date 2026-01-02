@@ -96,110 +96,113 @@ def test_hash256_dsl_smoke(dialect_name: str):
 
 @pytest.mark.parametrize("dialect_name", get_available_dialect_names())
 def test_merge_statement_smoke(dialect_name: str):
-    """
-    Cross-dialect smoke test for MERGE / UPSERT behavior.
+  """
+  Cross-dialect smoke test for MERGE / UPSERT behavior.
 
-    - Dialects that declare supports_merge=False must raise NotImplementedError.
-    - Dialects that support MERGE must return syntactically plausible SQL.
-    """
+  - Dialects that declare supports_merge=False must raise NotImplementedError.
+  - Dialects that support MERGE must return syntactically plausible SQL.
+  """
 
-    dialect = get_active_dialect(dialect_name)
+  dialect = get_active_dialect(dialect_name)
 
-    # Minimal synthetic SELECT used as merge source
-    select_sql = "SELECT 1 AS id, 'x' AS payload"
+  # Minimal synthetic SELECT used as merge source
+  select_sql = "SELECT 1 AS id, 'x' AS payload"
 
-    if not getattr(dialect, "supports_merge", False):
-        with pytest.raises(NotImplementedError):
-            dialect.render_merge_statement(
-                schema="dw",
-                table="dim_dummy",
-                select_sql=select_sql,
-                unique_key_columns=["id"],
-                update_columns=["payload"],
-            )
-        return  # done for this dialect
-
-    # Dialects that support MERGE must return SQL
-    sql = dialect.render_merge_statement(
+  if not getattr(dialect, "supports_merge", False):
+    # Dialects may still provide a default implementation in base.
+    try:
+      sql = dialect.render_merge_statement(
         schema="dw",
         table="dim_dummy",
         select_sql=select_sql,
         unique_key_columns=["id"],
         update_columns=["payload"],
+      )
+    except NotImplementedError:
+      return
+  else:
+    sql = dialect.render_merge_statement(
+      schema="dw",
+      table="dim_dummy",
+      select_sql=select_sql,
+      unique_key_columns=["id"],
+      update_columns=["payload"],
     )
 
-    assert isinstance(sql, str)
-    lower = sql.lower()
+  assert isinstance(sql, str)
+  lower = sql.lower()
 
-    # Should reference table + select
-    assert "dim_dummy" in sql
-    assert "dw" in sql
-    assert "select" in lower
-    assert "id" in lower  # key column should appear
+  # Should reference table + select
+  assert "dim_dummy" in sql
+  assert "dw" in sql
+  assert "select" in lower
+  assert "id" in lower  # key column should appear
 
-    # Dialects may implement MERGE or INSERT ... ON CONFLICT
-    assert (
-        "merge" in lower
-        or ("insert into" in lower and "on conflict" in lower)
-    )
+  # Dialects may implement MERGE or INSERT ... ON CONFLICT
+  assert (
+    "merge" in lower
+    or ("insert into" in lower and "on conflict" in lower)
+  )
 
 @pytest.mark.parametrize("dialect_name", get_available_dialect_names())
 def test_delete_detection_smoke(dialect_name: str):
-    """
-    Cross-dialect smoke test for delete detection support.
+  """
+  Cross-dialect smoke test for delete detection support.
 
-    Dialects that declare supports_delete_detection=False must raise
-    NotImplementedError.
+  Dialects that declare supports_delete_detection=False must raise
+  NotImplementedError.
 
-    Dialects that support delete detection must return syntactically
-    plausible SQL including:
-      - DELETE FROM or equivalent
-      - the target + stage table names
-      - join predicates
-    """
+  Dialects that support delete detection must return syntactically
+  plausible SQL including:
+    - DELETE FROM or equivalent
+    - the target + stage table names
+    - join predicates
+  """
 
-    dialect = get_active_dialect(dialect_name)
+  dialect = get_active_dialect(dialect_name)
 
-    # Synthetic table names (existence irrelevant)
-    tgt_schema = "dw"
-    tgt_table = "dim_dummy"
-    stg_schema = "stg"
-    stg_table = "dim_dummy_stage"
-    join_preds = ["t.id = s.id"]
+  # Synthetic table names (existence irrelevant)
+  tgt_schema = "dw"
+  tgt_table = "dim_dummy"
+  stg_schema = "stg"
+  stg_table = "dim_dummy_stage"
+  join_preds = ["t.id = s.id"]
 
-    if not getattr(dialect, "supports_delete_detection", False):
-        with pytest.raises(NotImplementedError):
-            dialect.render_delete_detection_statement(
-                target_schema=tgt_schema,
-                target_table=tgt_table,
-                stage_schema=stg_schema,
-                stage_table=stg_table,
-                join_predicates=join_preds,
-            )
-        return
-
-    sql = dialect.render_delete_detection_statement(
+  if not getattr(dialect, "supports_delete_detection", False):
+    # Dialects may still provide a default implementation in base.
+    try:
+      sql = dialect.render_delete_detection_statement(
         target_schema=tgt_schema,
         target_table=tgt_table,
         stage_schema=stg_schema,
         stage_table=stg_table,
         join_predicates=join_preds,
+      )
+    except NotImplementedError:
+      return
+  else:
+    sql = dialect.render_delete_detection_statement(
+      target_schema=tgt_schema,
+      target_table=tgt_table,
+      stage_schema=stg_schema,
+      stage_table=stg_table,
+      join_predicates=join_preds,
     )
 
-    assert isinstance(sql, str)
-    lower = sql.lower()
+  assert isinstance(sql, str)
+  lower = sql.lower()
 
-    # table names must appear
-    assert tgt_table in lower
-    assert stg_table in lower
+  # table names must appear
+  assert tgt_table in lower
+  assert stg_table in lower
 
-    # join predicate must appear
-    assert "id" in lower
+  # join predicate must appear
+  assert "id" in lower
 
-    # dialect may implement DELETE FROM ... USING ...
-    # or DELETE ... WHERE NOT EXISTS ...
-    assert (
-        "delete" in lower
-        or "not exists" in lower
-        or "using" in lower
-    )
+  # dialect may implement DELETE FROM ... USING ...
+  # or DELETE ... WHERE NOT EXISTS ...
+  assert (
+      "delete" in lower
+      or "not exists" in lower
+      or "using" in lower
+  )

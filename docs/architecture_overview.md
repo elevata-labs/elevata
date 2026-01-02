@@ -96,6 +96,8 @@ The planner does not create tables. Table provisioning is handled centrally by t
 With these technical layers in place, elevata enables a clear transition from data engineering  
 to business-facing data products.
 
+Schema drift detection includes dialect-aware semantic equivalence rules to suppress non-actionable type differences.
+
 ### 🧩 2.8 Bizcore — Business Logic Layer (Conceptual)
 
 Bizcore represents the layer where technically governed datasets  

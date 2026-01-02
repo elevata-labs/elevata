@@ -26,10 +26,9 @@ import pyodbc
 
 import datetime
 from decimal import Decimal
-from typing import Sequence
+from typing import Sequence, Dict, Any, Optional
 
-from .base import BaseExecutionEngine
-from .duckdb import DuckDBDialect
+from .base import BaseExecutionEngine, SqlDialect
 from metadata.ingestion.types_map import (
   STRING, INTEGER, BIGINT, DECIMAL, FLOAT, BOOLEAN, DATE, TIME, TIMESTAMP, BINARY, UUID, JSON
 )
@@ -82,7 +81,7 @@ class MssqlExecutionEngine(BaseExecutionEngine):
       conn.close()
       
 
-class MssqlDialect(DuckDBDialect):
+class MssqlDialect(SqlDialect):
   """
   SQL Server / T-SQL dialect.
 
@@ -102,8 +101,35 @@ class MssqlDialect(DuckDBDialect):
 
   DIALECT_NAME = "mssql"
 
+  # ---------------------------------------------------------------------------
+  # Execution
+  # ---------------------------------------------------------------------------
   def get_execution_engine(self, system):
     return MssqlExecutionEngine(system)
+  
+
+  # ---------------------------------------------------------------------------
+  # Introspection
+  # ---------------------------------------------------------------------------
+  def introspect_table(
+    self,
+    *,
+    schema_name: str,
+    table_name: str,
+    introspection_engine: Any,
+    exec_engine: Optional["BaseExecutionEngine"] = None,
+    debug_plan: bool = False,
+  ) -> Dict[str, Any]:
+    # Use SQLAlchemy-based default introspection for MSSQL.
+    return SqlDialect.introspect_table(
+      self,
+      schema_name=schema_name,
+      table_name=table_name,
+      introspection_engine=introspection_engine,
+      exec_engine=exec_engine,
+      debug_plan=debug_plan,
+    )
+
 
   # ---------------------------------------------------------------------------
   # Capabilities
@@ -133,61 +159,17 @@ class MssqlDialect(DuckDBDialect):
     return f'"{escaped}"'
 
   # ---------------------------------------------------------------------------
-  # Logical type mapping
+  # Type mapping
   # ---------------------------------------------------------------------------
-  def map_logical_type(
+  def render_physical_type(
     self,
-    logical_type,          # type: str
-    max_length=None,       # type: int | None
-    precision=None,        # type: int | None
-    scale=None,            # type: int | None
-    strict=True,
-  ):
-    """
-    Map a logical elevata datatype string to a SQL Server type string.
-    """
-    if not logical_type:
-      return None
-
-    raw = str(logical_type).strip()
-    t = raw.lower()
-
-    # Normalize synonyms to canonical elevata types used by _render_canonical_type_mssql.
-    canonical = None
-    if t in ("string", "text", "varchar", "char"):
-      canonical = STRING
-    elif t in ("int", "integer", "int32"):
-      canonical = INTEGER
-    elif t in ("bigint", "int64", "long"):
-      canonical = BIGINT
-    elif t in ("decimal", "numeric"):
-      canonical = DECIMAL
-    elif t in ("float", "double"):
-      canonical = FLOAT
-    elif t in ("bool", "boolean"):
-      canonical = BOOLEAN
-    elif t in ("date",):
-      canonical = DATE
-    elif t in ("time",):
-      canonical = TIME
-    elif t in ("datetime", "timestamp", "timestamptz"):
-      canonical = TIMESTAMP
-    elif t in ("uuid", "uniqueidentifier"):
-      canonical = UUID
-    elif t in ("json",):
-      canonical = JSON
-    else:
-      # If it's already one of our canonical constants (STRING/INTEGER/...), keep it.
-      upper = raw.upper()
-      if upper in (STRING, INTEGER, BIGINT, DECIMAL, FLOAT, BOOLEAN, DATE, TIME, TIMESTAMP, BINARY, UUID, JSON):
-        canonical = upper
-
-    if canonical is None:
-      if strict:
-        raise ValueError(f"Unsupported logical type for MSSQL: {logical_type!r}")
-      # passthrough for explicit DB types
-      return logical_type
-
+    *,
+    canonical: str,
+    max_length=None,
+    precision=None,
+    scale=None,
+    strict: bool = True,
+  ) -> str:
     return self._render_canonical_type_mssql(
       datatype=canonical,
       max_length=max_length,
@@ -339,6 +321,18 @@ class MssqlDialect(DuckDBDialect):
     new_name = self.render_identifier(new_table)
     # sp_rename wants quoted identifiers inside the string; QUOTED_IDENTIFIER should be ON (typisch).
     return f"EXEC sp_rename N'{old_qualified}', N'{new_name}'"
+  
+
+  def render_add_column(self, schema: str, table: str, column: str, column_type: str | None) -> str:
+    """
+    SQL Server syntax: ALTER TABLE <tbl> ADD <col> <type>
+    (no COLUMN keyword).
+    """
+    if not column_type:
+      return ""
+    tbl = self.render_table_identifier(schema, table)
+    col = self.render_identifier(column)
+    return f"ALTER TABLE {tbl} ADD {col} {column_type}"
 
 
   def render_rename_column(self, schema: str, table: str, old: str, new: str) -> str:
@@ -370,43 +364,58 @@ class MssqlDialect(DuckDBDialect):
     """
     schema_name = td.target_schema.schema_name
     table_name = td.target_dataset_name
+    columns: list[dict[str, object]] = []
+    for c in self._iter_target_columns(td):
+      col_type = self.map_logical_type(
+        datatype=c.datatype,
+        max_length=getattr(c, "max_length", None),
+        precision=getattr(c, "decimal_precision", None),
+        scale=getattr(c, "decimal_scale", None),
+        strict=True,
+      )
+      columns.append({
+        "name": c.target_column_name,
+        "type": col_type,
+        "nullable": bool(getattr(c, "nullable", True)),
+      })
+    return self.render_create_table_if_not_exists_from_columns(
+      schema=schema_name,
+      table=table_name,
+      columns=columns,
+    )
 
+  def render_create_table_if_not_exists_from_columns(
+    self,
+    *,
+    schema: str,
+    table: str,
+    columns: list[dict[str, object]],
+  ) -> str:
     q = self.render_identifier
     qtbl = self.render_table_identifier
-
-    cols = []
-    for c in td.target_columns.all().order_by("ordinal_position"):
-      col_name = c.target_column_name
-
-      col_type = self._render_canonical_type_mssql(
-        datatype=c.datatype,
-        max_length=c.max_length,
-        decimal_precision=c.decimal_precision,
-        decimal_scale=c.decimal_scale,
-      )
-
-      nullable = " NULL" if c.nullable else " NOT NULL"
-      cols.append(f"{q(col_name)} {col_type}{nullable}")
-
-    cols_sql = ",\n  ".join(cols) if cols else ""
-    full_name = f"{schema_name}.{table_name}"  # used in OBJECT_ID()
-
+    col_defs: list[str] = []
+    for c in columns:
+      name = q(str(c["name"]))
+      ctype = str(c["type"])
+      nullable = bool(c.get("nullable", True))
+      null_sql = "NULL" if nullable else "NOT NULL"
+      col_defs.append(f"{name} {ctype} {null_sql}")
+    cols_sql = ",\n  ".join(col_defs)
+    full_name = f"{schema}.{table}"
     return f"""
       IF OBJECT_ID(N'{full_name}', N'U') IS NULL
       BEGIN
-        CREATE TABLE {qtbl(schema_name, table_name)} (
+        CREATE TABLE {qtbl(schema, table)} (
           {cols_sql}
         );
       END;
     """.strip()
-
 
   def render_create_or_replace_view(self, *, schema, view, select_sql):
     return f"""
       CREATE OR ALTER VIEW {schema}.{view} AS
       {select_sql}
       """.strip()
-
 
   def _render_canonical_type_mssql(
     self,
@@ -469,116 +478,34 @@ class MssqlDialect(DuckDBDialect):
   # ---------------------------------------------------------------------------
   # Logging
   # ---------------------------------------------------------------------------
-  def render_create_load_run_log_if_not_exists(self, meta_schema: str) -> str:
-    """
-    Create meta schema and load_run_log table for SQL Server.
-    """
-    return f"""
-      IF NOT EXISTS (SELECT 1 FROM sys.schemas WHERE name = '{meta_schema}')
-      BEGIN
-        EXEC('CREATE SCHEMA {meta_schema};');
-      END;
+  LOAD_RUN_LOG_TYPE_MAP = {
+    "string": "NVARCHAR(255)",
+    "bool": "BIT",
+    "int": "INT",
+    "timestamp": "DATETIME2",
+  }
 
-      IF NOT EXISTS (
-        SELECT 1
-        FROM sys.tables t
-        JOIN sys.schemas s ON t.schema_id = s.schema_id
-        WHERE t.name = 'load_run_log'
-          AND s.name = '{meta_schema}'
-      )
-      BEGIN
-        CREATE TABLE {meta_schema}.load_run_log (
-          id                 BIGINT IDENTITY(1,1) PRIMARY KEY,
-          batch_run_id       NVARCHAR(36) NOT NULL,
-          load_run_id        NVARCHAR(36) NOT NULL,
-          target_schema      NVARCHAR(128) NOT NULL,
-          target_dataset     NVARCHAR(256) NOT NULL,
-          target_dataset_id  BIGINT NULL,
-          target_system      NVARCHAR(128) NOT NULL,
-          target_system_type NVARCHAR(64) NOT NULL,
-          profile            NVARCHAR(128) NOT NULL,
-          load_mode          NVARCHAR(32) NOT NULL,
-          handle_deletes     BIT NOT NULL,
-          historize          BIT NOT NULL,
-          dialect            NVARCHAR(64) NOT NULL,
-          started_at         DATETIME2 NOT NULL,
-          finished_at        DATETIME2 NOT NULL,
-          render_ms          FLOAT NOT NULL,
-          execution_ms       FLOAT NULL,
-          sql_length         BIGINT NOT NULL,
-          rows_affected      BIGINT NULL,
-          load_status        NVARCHAR(16) NOT NULL,
-          error_message      NVARCHAR(MAX) NULL
-        );
-      END;
-    """.strip()
+  def map_load_run_log_type(self, col_name: str, canonical_type: str) -> str | None:
+    if col_name == "error_message":
+      return "NVARCHAR(2000)"
+    return self.LOAD_RUN_LOG_TYPE_MAP.get(canonical_type)
 
-
-  def render_insert_load_run_log(
-    self,
-    meta_schema: str,
-    batch_run_id: str,
-    load_run_id: str,
-    summary: dict[str, object],
-    profile,
-    system,
-    started_at,
-    finished_at,
-    render_ms: float,
-    execution_ms: float | None,
-    sql_length: int,
-    rows_affected: int | None,
-    load_status: str,
-    error_message: str | None,
-  ) -> str:
+  def render_insert_load_run_log(self, *, meta_schema: str, values: dict[str, object]) -> str:
     qtbl = self.render_table_identifier
     lit = self.render_literal
 
     table = qtbl(meta_schema, "load_run_log")
+    cols = list(values.keys())
+
+    col_sql = ",\n        ".join(cols)
+    val_sql = ",\n        ".join([lit(values.get(c)) for c in cols])
 
     return f"""
       INSERT INTO {table} (
-        batch_run_id,
-        load_run_id,
-        target_schema,
-        target_dataset,
-        target_dataset_id,
-        target_system,
-        target_system_type,
-        profile,
-        load_mode,
-        handle_deletes,
-        historize,
-        dialect,
-        started_at,
-        finished_at,
-        render_ms,
-        execution_ms,
-        sql_length,
-        rows_affected,
-        load_status,
-        error_message
+        {col_sql}
       )
       VALUES (
-        {lit(batch_run_id)},
-        {lit(load_run_id)},
-        {lit(summary.get("schema"))},
-        {lit(summary.get("dataset"))},
-        {lit(summary.get("target_dataset_id"))},
-        {lit(system.short_name)},
-        {lit(system.type)},
-        {lit(profile.name)},
-        {lit(summary.get("mode"))},
-        {lit(summary.get("handle_deletes"))},
-        {lit(summary.get("historize"))},
-        {lit(self.DIALECT_NAME)},
-        {lit(started_at)},
-        {lit(finished_at)},
-        {lit(render_ms)},
-        {lit(execution_ms)},
-        {lit(sql_length)},
-        {lit(rows_affected)},
-        {lit(load_status)},
-        {lit(error_message)}
+        {val_sql}
       );
     """.strip()
+  

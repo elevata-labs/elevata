@@ -126,4 +126,4 @@ def test_cast_is_idempotent_if_expression_already_cast(dialect):
 def test_duckdb_map_logical_type_raises_on_unknown():
   d = DuckDBDialect()
   with pytest.raises(ValueError):
-    d.map_logical_type("THIS_TYPE_DOES_NOT_EXIST")
+    d.map_logical_type(datatype="THIS_TYPE_DOES_NOT_EXIST")

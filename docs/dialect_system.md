@@ -518,6 +518,33 @@ All supported dialects must support *idempotent* warehouse provisioning.
 - No destructive operations (no DROP)  
 - Target table DDL must be derived from `TargetColumn` metadata  
 
+**Important clarification (RAW ingestion semantics):**  
+The "no destructive operations" rule applies **only** to *auto-provisioning*  
+of warehouse-managed objects (schemas, tables, columns).
+
+RAW datasets follow **ingestion semantics** and may legitimately use  
+`DROP TABLE` + `CREATE TABLE` during full refreshes to realign the physical  
+landing table with the current source schema.
+
+This behavior is intentional and handled outside of auto-provisioning.  
+
+**Meta logging table provisioning (meta.load_run_log):**  
+Warehouse-level logging table provisioning is **centralized** and **registry-driven**.  
+Dialects must not hardcode the physical schema of `meta.load_run_log` via a dedicated  
+`render_create_load_run_log_if_not_exists(...)` helper anymore.
+
+Instead, `ensure_load_run_log_table(...)` provisions the table and missing columns using:  
+- `LOAD_RUN_LOG_REGISTRY` as the canonical schema definition  
+- `Dialect.LOAD_RUN_LOG_TYPE_MAP` (+ optional `Dialect.map_load_run_log_type(...)`) for type mapping  
+- `Dialect.render_create_table_if_not_exists_from_columns(...)`  
+- `Dialect.render_add_column(...)`
+
+**Dialect contract for registry-driven meta logging:**  
+- Dialects must provide `LOAD_RUN_LOG_TYPE_MAP` (canonical → physical type mapping).  
+- Dialects may optionally provide `map_load_run_log_type(col_name, canonical_type)` for special cases.  
+- Dialects must support `render_create_table_if_not_exists_from_columns(...)` (override if needed).  
+- Dialects must support `render_add_column(...)` (override if needed; e.g. MSSQL syntax).
+
 **Dialect notes:**  
 - DuckDB: avoid unsupported constraints (PRIMARY KEY / IDENTITY may fail)  
 - MSSQL: use `IF OBJECT_ID(...) IS NULL` patterns  
@@ -528,7 +555,12 @@ All supported dialects must support *idempotent* warehouse provisioning.
 Every supported dialect must support warehouse‑level execution logging.  
 
 **Required method:**  
-- `render_insert_load_run_log(...) -> str`  
+- `render_insert_load_run_log(*, meta_schema: str, values: dict[str, object]) -> str | None`  
+
+**Contract:**  
+- `values` is a fully normalized canonical row for `meta.load_run_log`  
+- Keys and order must match the canonical schema defined in `LOAD_RUN_LOG_REGISTRY`  
+- Dialects must only render identifiers and literals safely; no hardcoded column lists   
 
 **Canonical log fields:**  
 - `batch_run_id`, `load_run_id`  
@@ -540,7 +572,15 @@ Every supported dialect must support warehouse‑level execution logging.
 - `sql_length`, `rows_affected`  
 - `load_status`, `error_message`  
 
-The physical schema of `meta.load_run_log` must match this contract exactly.
+`rows_affected` is best-effort and may be `-1` if not reported by the execution engine.
+
+**Canonical schema source of truth:**  
+The physical schema of `meta.load_run_log` must match `LOAD_RUN_LOG_REGISTRY` exactly.
+
+**Dialect type mapping requirements for logging:**  
+- `LOAD_RUN_LOG_TYPE_MAP: dict[str, str]` (canonical → physical type)  
+- Optional: `map_load_run_log_type(col_name: str, canonical_type: str) -> str | None`  
+  for per-column overrides (e.g. MSSQL `error_message` length).
 
 ### 🧩 18.5 Incremental & Historization Contract
 
