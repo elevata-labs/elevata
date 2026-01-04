@@ -8,8 +8,7 @@
 It’s designed as a **Declarative Data Architecture & Metadata Framework** — automated, governed, and platform-agnostic.
 
 Instead of manually crafting endless SQL and pipeline code, elevata lets metadata do the work.  
-By defining datasets, lineage, and transformation logic declaratively, you can generate consistent, auditable, and future-proof data models —  
-including schema evolution and physical execution — ready to run on your preferred platform.
+By defining datasets, lineage, and transformation logic declaratively, you can generate consistent, auditable, and future-proof data models — including schema evolution and physical execution — ready to run on your preferred platform.
 
 ## License & Dependencies
 
@@ -131,6 +130,7 @@ elevata manages schema evolution explicitly and safely:
 - non-destructive behavior for incremental loads  
 
 Schema changes are:  
+
 - metadata-driven (never inferred from SQL)  
 - lineage-aware  
 - deterministic and reproducible across dialects
@@ -206,9 +206,9 @@ The roadmap reflects this direction: structured, ambitious, and aligned with ele
 
 - **Global execution modes**  
   Ability to execute:  
-  - a single target dataset with its dependencies (default)  
-  - all datasets in deterministic dependency order (`--all`)  
-  - optional schema-scoped execution (`--schema`)  
+    - a single target dataset with its dependencies (default)  
+    - all datasets in deterministic dependency order (`--all`)  
+    - optional schema-scoped execution (`--schema`)  
 
   This enables platform-wide batch runs without requiring external orchestration tools.
 
@@ -227,21 +227,21 @@ elevata becomes a **self-contained data platform core**, orchestrable and observ
 
 - **Explicit business logic and calculations (Bizcore MVP)**  
   Bizcore supports:  
-  - derived business fields  
-  - rule-based classifications  
-  - business calculations and KPIs expressed as dataset fields    
-  (e.g. margins, normalized revenues, activity flags, domain rules).
+    - derived business fields  
+    - rule-based classifications  
+    - business calculations and KPIs expressed as dataset fields    
+      (e.g. margins, normalized revenues, activity flags, domain rules).
 
   These definitions are:  
-  - metadata-driven  
-  - deterministic  
-  - compiled into executable plans  
-  without introducing a BI-style semantic or metrics layer.
+    - metadata-driven  
+    - deterministic  
+    - compiled into executable plans  
+      without introducing a BI-style semantic or metrics layer.
 
 - **Clear separation of responsibilities**  
-  - RAW / STAGE / CORE: technical correctness and data truth  
-  - BIZCORE: business meaning, rules, and calculations  
-  - SERVING (optional): tool- or consumer-specific shaping  
+    - RAW / STAGE / CORE: technical correctness and data truth  
+    - BIZCORE: business meaning, rules, and calculations  
+    - SERVING (optional): tool- or consumer-specific shaping  
 
 - **Semantic lineage & explainability**  
   Every Bizcore field is traceable to its Core inputs, transformations,  

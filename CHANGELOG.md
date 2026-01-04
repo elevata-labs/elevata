@@ -22,7 +22,7 @@ This project adheres to [Semantic Versioning](https://semver.org/) and [Keep a C
 
 ---
 
-## [0.8.0] – 2026-01-xx
+## [0.8.0] – 2026-01-04
 
 ### ⚙️ Execution & Orchestration as First-Class Architecture
 
