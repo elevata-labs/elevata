@@ -262,4 +262,4 @@ This architecture supports multiple SQL backends without changing metadata or Lo
 
 ---
 
-© 2025 elevata Labs — Internal Technical Documentation
+© 2025-2026 elevata Labs — Internal Technical Documentation

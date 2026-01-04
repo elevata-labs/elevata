@@ -1,6 +1,6 @@
 """
 elevata - Metadata-driven Data Platform Framework
-Copyright © 2025 Ilona Tag
+Copyright © 2025-2026 Ilona Tag
 
 This file is part of elevata.
 
@@ -27,6 +27,25 @@ def resolve_execution_order(root: TargetDataset) -> list[TargetDataset]:
   graph = build_load_graph(root)
   return topological_sort(graph)
 
+def resolve_execution_order_all(roots: list[TargetDataset]) -> list[TargetDataset]:
+  """
+  Resolve a deterministic execution order for multiple roots.
+
+  Semantics:
+  - Roots define the initial scope, but all required upstream dependencies
+    are included (even if they live in other schemas).
+  - Deterministic ordering is guaranteed via topological_sort() sorting keys.
+  """
+  graph: dict[TargetDataset, set[TargetDataset]] = {}
+  for r in (roots or []):
+    try:
+      graph.update(build_load_graph(r))
+    except Exception:
+      # Best-effort: graph building should never block orchestration.
+      # If a root cannot be resolved, we simply skip it here; caller can decide
+      # how to handle an empty plan.
+      continue
+  return topological_sort(graph)
 
 def resolve_raw_dataset_for_source(source_dataset) -> TargetDataset | None:
   """

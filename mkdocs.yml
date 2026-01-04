@@ -1,6 +1,6 @@
 # ======================================================
 # elevata - Metadata-driven Data Platform Framework
-# Copyright © 2025 Ilona Tag
+# Copyright © 2025-2026 Ilona Tag
 #
 # SPDX-License-Identifier: AGPL-3.0-only
 #
@@ -70,6 +70,9 @@ nav:
       - ⚙️ Dialect System: dialect_system.md
       - ⚙️ Target Backends: target_backends.md
 
+  - Execution & Observability:
+      - ⚙️ Load Execution & Orchestration Architecture: load_execution_architecture.md
+
   - Concepts:
       - ⚙️ Architecture Overview: architecture_overview.md
       - ⚙️ Lineage Model & Logical Plan: logical_plan.md
@@ -83,6 +86,9 @@ nav:
 
   - Testing & Quality:
       - ⚙️ Test Setup & Guidelines: tests.md
+
+  - Strategy & Architecture:
+      - ⚙️ elevata Platform Strategy: strategy/elevata_platform_strategy.md
 
   - Project:
       - ⚙️ Main Project README: readme_ref.md

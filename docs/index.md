@@ -56,6 +56,13 @@ This index gives you an overview of all major topics and how they fit together.
 
 ---
 
+### ▶️ Execution & Observability
+
+- [Load Execution & Orchestration Architecture](load_execution_architecture.md)  
+  How elevata executes load plans: dependency graphs, retries, failure semantics, load run logging and execution snapshots.
+
+---
+
 ### 💡 Concepts
 
 - [Architecture Overview](architecture_overview.md)  
@@ -89,6 +96,13 @@ This index gives you an overview of all major topics and how they fit together.
 
 - [Test Setup & Guidelines](tests.md)  
   How the core test suite is structured, how to add tests for new features, and how to reason about coverage.
+
+---
+
+## ♟️ Strategy & Architecture
+
+- [elevata Platform Strategy](strategy/elevata_platform_strategy.md)  
+  Conceptual overview of elevata’s metadata-native execution and business semantics.
 
 ---
 
@@ -131,7 +145,7 @@ A personal open-source initiative exploring the future of declarative data archi
 
 ---
 
-_Last updated: 2025-12-29_
+_Last updated: 2026-01-04_
 
-© 2025 elevata Labs — Internal Technical Documentation
+© 2025-2026 elevata Labs — Internal Technical Documentation
 Built with purpose. Rendered with precision. 🪶

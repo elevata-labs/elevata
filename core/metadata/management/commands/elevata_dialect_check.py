@@ -1,6 +1,6 @@
 """
 elevata - Metadata-driven Data Platform Framework
-Copyright © 2025 Ilona Tag
+Copyright © 2025-2026 Ilona Tag
 
 This file is part of elevata.
 
@@ -173,19 +173,6 @@ class Command(BaseCommand):
       ))
 
       # Optional capabilities: only run if method is present
-      if hasattr(dialect, "render_create_replace_table"):
-        checks.append((
-          "create_replace_table",
-          *self._run_check(
-            "create_replace_table",
-            lambda _: dialect.render_create_replace_table(
-              schema="dw",
-              table="dummy",
-              select_sql="SELECT 1 AS x",
-            ),
-          ),
-        ))
-
       if hasattr(dialect, "render_insert_into_table"):
         checks.append((
           "insert_into_table",

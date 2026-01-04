@@ -1,6 +1,6 @@
 """
 elevata - Metadata-driven Data Platform Framework
-Copyright © 2025 Ilona Tag
+Copyright © 2025-2026 Ilona Tag
 
 This file is part of elevata.
 
@@ -43,7 +43,7 @@ from utils.db import build_metadata_database_url
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(find_dotenv(filename=".env", raise_error_if_not_found=False))
 
-ELEVATA_VERSION = "0.7.1"
+ELEVATA_VERSION = "0.8.0"
 
 ELEVATA_PROFILES_PATH = os.getenv("ELEVATA_PROFILES_PATH", str((BASE_DIR.parent / "config" / "elevata_profiles.yaml")))
 

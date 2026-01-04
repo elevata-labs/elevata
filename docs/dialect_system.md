@@ -419,7 +419,6 @@ This command:
   - literal rendering for strings, numbers, booleans, dates, datetimes, decimals  
   - `concat_expression(...)`  
   - `hash_expression(...)`  
-  - (optionally) `render_create_replace_table(...)`  
   - (optionally) `render_insert_into_table(...)`  
   - (optionally) `render_merge_statement(...)`  
   - (optionally) `render_delete_detection_statement(...)`  
@@ -508,10 +507,14 @@ Every dialect that is considered *supported* **must provide a working execution 
 
 All supported dialects must support *idempotent* warehouse provisioning.  
 
+> Note: “Contract” refers to a behavioral and structural expectation for dialects,  
+> not a strictly enforced interface.
+
 **Required methods:**  
 - `render_create_schema_if_not_exists(schema: str) -> str`  
 - `render_create_table_if_not_exists(td: TargetDataset) -> str`  
-- `render_create_load_run_log_if_not_exists(meta_schema: str) -> str`  
+- `render_create_table_if_not_exists_from_columns(schema: str, table: str, columns: list[dict[str, object]]) -> str`  
+- `render_add_column(schema: str, table: str, column: str, column_type: str | None) -> str`  
 
 **Rules:**  
 - DDL must be safe to execute multiple times  
@@ -530,8 +533,7 @@ This behavior is intentional and handled outside of auto-provisioning.
 
 **Meta logging table provisioning (meta.load_run_log):**  
 Warehouse-level logging table provisioning is **centralized** and **registry-driven**.  
-Dialects must not hardcode the physical schema of `meta.load_run_log` via a dedicated  
-`render_create_load_run_log_if_not_exists(...)` helper anymore.
+Dialects must not hardcode the physical schema of `meta.load_run_log`.
 
 Instead, `ensure_load_run_log_table(...)` provisions the table and missing columns using:  
 - `LOAD_RUN_LOG_REGISTRY` as the canonical schema definition  
@@ -549,15 +551,17 @@ Instead, `ensure_load_run_log_table(...)` provisions the table and missing colum
 - DuckDB: avoid unsupported constraints (PRIMARY KEY / IDENTITY may fail)  
 - MSSQL: use `IF OBJECT_ID(...) IS NULL` patterns  
 - PostgreSQL: `CREATE TABLE IF NOT EXISTS` is supported  
-
+- BigQuery: `CREATE TABLE IF NOT EXISTS` is supported, but NULL/NOT NULL syntax differs and may require overrides  
+ 
 ### 🧩 18.4 Observability & Run Logging Contract
 
 Every supported dialect must support warehouse‑level execution logging.  
 
-**Required method:**  
-- `render_insert_load_run_log(*, meta_schema: str, values: dict[str, object]) -> str | None`  
-
-**Contract:**  
+**Required behavior:**  
+- Logging is emitted into `meta.load_run_log` with a canonical schema (registry-driven).  
+- The INSERT logic is centralized (dialects must not each hardcode their own log INSERT).  
+ 
+**Canonical logging semantics:**  
 - `values` is a fully normalized canonical row for `meta.load_run_log`  
 - Keys and order must match the canonical schema defined in `LOAD_RUN_LOG_REGISTRY`  
 - Dialects must only render identifiers and literals safely; no hardcoded column lists   
@@ -629,4 +633,4 @@ Execution parity is validated by:
 
 ---
 
-© 2025 elevata Labs — Internal Technical Documentation
+© 2025-2026 elevata Labs — Internal Technical Documentation

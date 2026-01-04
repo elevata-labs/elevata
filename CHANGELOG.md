@@ -22,6 +22,59 @@ This project adheres to [Semantic Versioning](https://semver.org/) and [Keep a C
 
 ---
 
+## [0.8.0] – 2026-01-xx
+
+### ⚙️ Execution & Orchestration as First-Class Architecture
+
+This release introduces an explicit, metadata-driven execution model,  
+establishing **orchestration, failure semantics, and observability** as first-class concerns in elevata.
+
+Execution is now planned, executed, and explained independently of SQL generation,  
+providing a robust foundation for platform-native orchestration and governance.
+
+### ✨ Added
+- Explicit **Execution Plan** model separating planning from execution  
+- Dependency-graph–based dataset execution with deterministic ordering  
+- Multi-dataset batch execution with a shared `batch_run_id`  
+- Structured execution policies (`continue_on_error`, `max_retries`)  
+- Retry semantics with per-attempt tracking (`attempt_no`)  
+- Distinct failure semantics:  
+  - `blocked` (dependency-based non-execution)  
+  - `aborted` (policy-based fail-fast non-execution)  
+- **Load Run Snapshot** (`meta.load_run_snapshot`)  
+  - Batch-level, JSON-based execution state  
+  - Captures plan, policy, dependencies, and aggregated outcomes  
+- Extended **Load Run Log** (`meta.load_run_log`)  
+  - Orchestration-only events (blocked / aborted)  
+  - Best-effort, non-blocking meta logging  
+- CLI execution diagnostics:  
+  - Execution snapshot printing (`--debug-execution`)  
+  - Snapshot persistence (`--write-execution-snapshot`)  
+- Deterministic BigQuery table qualification for execution and metadata writes    
+  (prevents sporadic cross-project `NotFound` errors during streaming inserts)  
+- Global execution modes:  
+  - single-dataset execution with dependencies (default)  
+  - platform-wide execution in deterministic order (`--all`)  
+  - optional schema-scoped execution (`--schema`)
+
+### 🔄 Changed
+- Execution semantics are no longer implicit in SQL or CLI flow  
+- Load execution is now driven by an explicit execution model  
+- Fail-fast behavior is deterministic and explicitly reported  
+- Execution observability is metadata-first and dialect-agnostic  
+
+### 🧪 Quality & Stability
+- Extensive unit tests for execution ordering, retries, fail-fast, and blocking  
+- Guardrails for orchestration-only events and best-effort persistence  
+- Clear separation of execution core vs CLI and dialect adapters  
+- No destructive changes to existing materialization or SQL generation logic
+
+> This release establishes elevata as a **self-orchestrating, explainable  
+> data platform core**, laying the groundwork for native scheduling,  
+> governance rules, and external orchestration integrations.
+
+---
+
 ## [0.7.1] – 2025-12-29
 
 ### 🧱 Metadata-Driven Schema Evolution

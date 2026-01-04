@@ -1,6 +1,6 @@
 """
 elevata - Metadata-driven Data Platform Framework
-Copyright © 2025 Ilona Tag
+Copyright © 2025-2026 Ilona Tag
 
 This file is part of elevata.
 
@@ -91,7 +91,7 @@ def test_literal_non_string_object_uses_str_and_escaped(dialect):
 
 def test_cast_wraps_expression_with_cast(dialect):
   expr = 's."amount"'
-  result = dialect.cast(expr, "DECIMAL(18,2)")
+  result = dialect.cast_expression(expr, "DECIMAL(18,2)")
   # We only assert the general shape; exact spacing can differ slightly.
   normalized = " ".join(result.split())
   assert normalized == 'CAST(s."amount" AS DECIMAL(18,2))'
@@ -99,7 +99,7 @@ def test_cast_wraps_expression_with_cast(dialect):
 
 def test_cast_works_with_complex_expression(dialect):
   expr = 's."amount" / 100'
-  result = dialect.cast(expr, "DOUBLE")
+  result = dialect.cast_expression(expr, "DOUBLE")
   normalized = " ".join(result.split())
   # Important: the whole expression should be inside CAST(...)
   assert normalized.startswith("CAST(")
@@ -109,7 +109,7 @@ def test_cast_works_with_complex_expression(dialect):
 
 def test_cast_with_literal_expression(dialect):
   # Casting a literal should just wrap the literal
-  result = dialect.cast(dialect.literal(1), "INTEGER")
+  result = dialect.cast_expression(dialect.literal(1), "INTEGER")
   normalized = " ".join(result.split())
   assert normalized == "CAST(1 AS INTEGER)"
 
@@ -119,7 +119,7 @@ def test_cast_is_idempotent_if_expression_already_cast(dialect):
   # If the implementation does not try to detect nested CAST,
   # this test can be relaxed. For now we assert we don't break it.
   expr = "CAST(s.amount AS INTEGER)"
-  result = dialect.cast(expr, "INTEGER")
+  result = dialect.cast_expression(expr, "INTEGER")
   # At least the original expression should be contained
   assert "CAST(s.amount AS INTEGER)" in result
 

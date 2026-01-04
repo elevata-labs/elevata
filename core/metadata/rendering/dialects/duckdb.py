@@ -1,6 +1,6 @@
 """
 elevata - Metadata-driven Data Platform Framework
-Copyright © 2025 Ilona Tag
+Copyright © 2025-2026 Ilona Tag
 
 This file is part of elevata.
 
@@ -22,19 +22,15 @@ Contact: <https://github.com/elevata-labs/elevata>.
 
 from __future__ import annotations
 
-from typing import List, Any, Dict, Optional
+from typing import Any, Dict, Optional
 import re
-import datetime
-from decimal import Decimal
 import duckdb
 
 from .base import SqlDialect, BaseExecutionEngine
-from ..expr import Expr, Cast, Concat, Coalesce, ColumnRef, FuncCall, Literal, RawSql, WindowFunction, WindowSpec
-from ..logical_plan import LogicalSelect, SelectItem, SourceTable, Join, SubquerySource
 from metadata.ingestion.types_map import (
   STRING, INTEGER, BIGINT, DECIMAL, FLOAT, BOOLEAN, DATE, TIME, TIMESTAMP, BINARY, UUID, JSON
 )
-
+from metadata.materialization.logging import LOAD_RUN_LOG_REGISTRY
 
 class DuckDbExecutionEngine(BaseExecutionEngine):
   """
@@ -96,7 +92,6 @@ class DuckDbExecutionEngine(BaseExecutionEngine):
 
     self._database = db_path
     self._conn = None
-
 
   def _get_conn(self):
     # Reuse one connection per engine instance to avoid DuckDB "different configuration"
@@ -179,17 +174,203 @@ class DuckDBDialect(SqlDialect):
   - HASH256 is mapped to SHA256(expr) for now (can be adapted if hex encoding is required).
   """
 
+  # ---------------------------------------------------------------------------
+  # 1. Class meta / capabilities
+  # ---------------------------------------------------------------------------
   DIALECT_NAME = "duckdb"
 
-  # ---------------------------------------------------------------------------
-  # Execution
-  # ---------------------------------------------------------------------------
+  @property
+  def supports_merge(self) -> bool:
+    """DuckDB supports a native MERGE statement."""
+    return True
+
+  @property
+  def supports_delete_detection(self) -> bool:
+    """DuckDB supports delete detection via DELETE + NOT EXISTS."""
+    return True
+
   def get_execution_engine(self, system):
     return DuckDbExecutionEngine(system)
 
+  # ---------------------------------------------------------------------------
+  # 2. Identifier & quoting
+  # ---------------------------------------------------------------------------
+  def quote_ident(self, name: str) -> str:
+    """
+    Quote an identifier using DuckDB's double-quote style.
+    Internal double quotes are escaped by doubling them.
+    """
+    escaped = name.replace('"', '""')
+    return f'"{escaped}"'
 
   # ---------------------------------------------------------------------------
-  # Introspection (planner)
+  # 3. Types
+  # ---------------------------------------------------------------------------
+  def render_physical_type(
+    self,
+    *,
+    canonical: str,
+    max_length=None,
+    precision=None,
+    scale=None,
+    strict: bool = True,
+  ) -> str:
+    return self._render_canonical_type_duckdb(
+      datatype=canonical,
+      max_length=max_length,
+      decimal_precision=precision,
+      decimal_scale=scale,
+    )
+
+  def _render_canonical_type_duckdb(
+    self,
+    *,
+    datatype: str,
+    max_length=None,
+    decimal_precision=None,
+    decimal_scale=None,
+  ) -> str:
+    t = (datatype or "").upper()
+
+    if t == STRING:
+      if max_length:
+        return f"VARCHAR({int(max_length)})"
+      return "VARCHAR"
+
+    if t == INTEGER:
+      return "INTEGER"
+    if t == BIGINT:
+      return "BIGINT"
+
+    if t == DECIMAL:
+      if decimal_precision and decimal_scale is not None:
+        return f"DECIMAL({int(decimal_precision)},{int(decimal_scale)})"
+      if decimal_precision:
+        return f"DECIMAL({int(decimal_precision)})"
+      return "DECIMAL"
+
+    if t == FLOAT:
+      return "DOUBLE"
+
+    if t == BOOLEAN:
+      return "BOOLEAN"
+
+    if t == DATE:
+      return "DATE"
+    if t == TIME:
+      return "TIME"
+    if t == TIMESTAMP:
+      return "TIMESTAMP"
+
+    if t == BINARY:
+      return "BLOB"
+
+    if t == UUID:
+      return "UUID"
+
+    if t == JSON:
+      return "JSON"
+
+    raise ValueError(
+      f"Unsupported canonical datatype for DuckDB: {datatype!r}. "
+      "Please fix ingestion type mapping or extend the dialect mapping."
+    )
+
+  # ---------------------------------------------------------------------------
+  # 4. DDL helpers
+  # ---------------------------------------------------------------------------
+  def render_create_schema_if_not_exists(self, schema: str) -> str:
+    """
+    DuckDB supports CREATE SCHEMA IF NOT EXISTS.
+    """
+    q = self.render_identifier
+    return f"CREATE SCHEMA IF NOT EXISTS {q(schema)};"
+
+  # ---------------------------------------------------------------------------
+  # 5. DML / load SQL primitives
+  # ---------------------------------------------------------------------------
+  LOAD_RUN_LOG_TYPE_MAP = {
+    "string": "VARCHAR",
+    "bool": "BOOLEAN",
+    "int": "INTEGER",
+    "timestamp": "TIMESTAMP",
+  }
+
+  def render_insert_load_run_log(self, *, meta_schema: str, values: dict[str, object]) -> str:
+
+    table = self.render_table_identifier(meta_schema, "load_run_log")
+
+    def s(txt: object | None) -> str:
+      if txt is None:
+        return "NULL"
+      txt = str(txt)
+      txt = txt.replace("'", "''")
+      txt = txt.replace("\r\n", "\n")
+      return f"'{txt}'"
+
+    def lit(col: str, v: object) -> str:
+      if v is None:
+        return "NULL"
+      if col in ("started_at", "finished_at"):
+        # DuckDB: prefer TIMESTAMP 'YYYY-MM-DD HH:MM:SS[.ffffff]'
+        iso = v.isoformat() if hasattr(v, "isoformat") else str(v)
+        iso = iso.replace("T", " ")
+        return f"TIMESTAMP {s(iso)}"
+      if isinstance(v, bool):
+        return "TRUE" if v else "FALSE"
+      if isinstance(v, (int, float)):
+        return str(int(v))
+      return s(v)
+
+    # Use the canonical registry order (single source of truth).
+    # Unknown keys in `values` are ignored; missing keys become NULL.
+    cols = list(LOAD_RUN_LOG_REGISTRY.keys())
+
+    col_sql = ",\n        ".join(cols)
+    val_sql = ",\n        ".join([lit(c, values.get(c)) for c in cols])
+
+    return f"""
+      INSERT INTO {table} (
+        {col_sql}
+      )
+      VALUES (
+        {val_sql}
+      )
+      """.strip()
+
+  def _literal_for_meta_insert(self, *, table: str, column: str, value: object) -> str:
+    if value is None:
+      return "NULL"
+    if column in ("created_at", "started_at", "finished_at"):
+      iso = value.isoformat() if hasattr(value, "isoformat") else str(value)
+      iso = iso.replace("T", " ")
+      s = str(iso).replace("'", "''").replace("\r\n", "\n")
+      return f"TIMESTAMP '{s}'"
+    if isinstance(value, bool):
+      return "TRUE" if value else "FALSE"
+    if isinstance(value, (int, float)):
+      return str(int(value))
+    s = str(value).replace("'", "''").replace("\r\n", "\n")
+    return f"'{s}'"
+
+  # ---------------------------------------------------------------------------
+  # 6. Expression / Select renderer
+  # ---------------------------------------------------------------------------
+  def concat_expression(self, parts):
+    # parts are already rendered SQL expressions
+    if not parts:
+      return "''"
+    return "(" + " || ".join(parts) + ")"
+
+  def hash_expression(self, expr: str, algo: str = "sha256") -> str:
+    algo_lower = algo.lower()
+    if algo_lower in ("sha256", "hash256"):
+      return f"SHA256({expr})"
+    # fallback: still SHA256 for unknown algos for now
+    return f"SHA256({expr})"
+
+  # ---------------------------------------------------------------------------
+  # 7. Introspection hooks
   # ---------------------------------------------------------------------------
   def introspect_table(
     self,
@@ -259,182 +440,3 @@ class DuckDBDialect(SqlDialect):
       cols[nm] = {"name": str(name), "type": _norm_type(typ)}
 
     return {"table_exists": True, "physical_table": phys, "actual_cols_by_norm_name": cols}
-
-  # ---------------------------------------------------------------------------
-  # Capabilities
-  # ---------------------------------------------------------------------------
-  @property
-  def supports_merge(self) -> bool:
-    """DuckDB supports a native MERGE statement."""
-    return True
-
-  @property
-  def supports_delete_detection(self) -> bool:
-    """DuckDB supports delete detection via DELETE + NOT EXISTS."""
-    return True
-
-  # ---------------------------------------------------------------------------
-  # Identifier quoting
-  # ---------------------------------------------------------------------------
-  def quote_ident(self, name: str) -> str:
-    """
-    Quote an identifier using DuckDB's double-quote style.
-    Internal double quotes are escaped by doubling them.
-    """
-    escaped = name.replace('"', '""')
-    return f'"{escaped}"'
-
-  # ---------------------------------------------------------------------------
-  # Type mapping
-  # ---------------------------------------------------------------------------
-  def render_physical_type(
-    self,
-    *,
-    canonical: str,
-    max_length=None,
-    precision=None,
-    scale=None,
-    strict: bool = True,
-  ) -> str:
-    return self._render_canonical_type_duckdb(
-      datatype=canonical,
-      max_length=max_length,
-      decimal_precision=precision,
-      decimal_scale=scale,
-    )
-
-  # ---------------------------------------------------------
-  # Concatenation
-  # ---------------------------------------------------------
-  def concat_expression(self, parts):
-    # parts are already rendered SQL expressions
-    if not parts:
-      return "''"
-    return "(" + " || ".join(parts) + ")"
-
-  # ---------------------------------------------------------
-  # Hash expression
-  # ---------------------------------------------------------
-  def hash_expression(self, expr: str, algo: str = "sha256") -> str:
-    algo_lower = algo.lower()
-    if algo_lower in ("sha256", "hash256"):
-      return f"SHA256({expr})"
-    # fallback: still SHA256 for unknown algos for now
-    return f"SHA256({expr})"
-  
-  # ---------------------------------------------------------------------------
-  # DDL statements
-  # ---------------------------------------------------------------------------
-  def render_create_schema_if_not_exists(self, schema: str) -> str:
-    """
-    DuckDB supports CREATE SCHEMA IF NOT EXISTS.
-    """
-    q = self.render_identifier
-    return f"CREATE SCHEMA IF NOT EXISTS {q(schema)};"
-  
-  def _render_canonical_type_duckdb(
-    self,
-    *,
-    datatype: str,
-    max_length=None,
-    decimal_precision=None,
-    decimal_scale=None,
-  ) -> str:
-    t = (datatype or "").upper()
-
-    if t == STRING:
-      if max_length:
-        return f"VARCHAR({int(max_length)})"
-      return "VARCHAR"
-
-    if t == INTEGER:
-      return "INTEGER"
-    if t == BIGINT:
-      return "BIGINT"
-
-    if t == DECIMAL:
-      if decimal_precision and decimal_scale is not None:
-        return f"DECIMAL({int(decimal_precision)},{int(decimal_scale)})"
-      if decimal_precision:
-        return f"DECIMAL({int(decimal_precision)})"
-      return "DECIMAL"
-
-    if t == FLOAT:
-      return "DOUBLE"
-
-    if t == BOOLEAN:
-      return "BOOLEAN"
-
-    if t == DATE:
-      return "DATE"
-    if t == TIME:
-      return "TIME"
-    if t == TIMESTAMP:
-      return "TIMESTAMP"
-
-    if t == BINARY:
-      return "BLOB"
-
-    if t == UUID:
-      return "UUID"
-
-    if t == JSON:
-      return "JSON"
-
-    raise ValueError(
-      f"Unsupported canonical datatype for DuckDB: {datatype!r}. "
-      "Please fix ingestion type mapping or extend the dialect mapping."
-    )
-
-  # ---------------------------------------------------------------------------
-  # Logging
-  # ---------------------------------------------------------------------------
-  LOAD_RUN_LOG_TYPE_MAP = {
-    "string": "VARCHAR",
-    "bool": "BOOLEAN",
-    "int": "INTEGER",
-    "timestamp": "TIMESTAMP",
-  }
-
-  def render_insert_load_run_log(self, *, meta_schema: str, values: dict[str, object]) -> str:
-
-    table = self.render_table_identifier(meta_schema, "load_run_log")
-
-    def s(txt: object | None) -> str:
-      if txt is None:
-        return "NULL"
-      txt = str(txt)
-      txt = txt.replace("'", "''")
-      txt = txt.replace("\r\n", "\n")
-      return f"'{txt}'"
-
-    def lit(col: str, v: object) -> str:
-      if v is None:
-        return "NULL"
-      if col in ("started_at", "finished_at"):
-        # DuckDB: prefer TIMESTAMP 'YYYY-MM-DD HH:MM:SS[.ffffff]'
-        iso = v.isoformat() if hasattr(v, "isoformat") else str(v)
-        iso = iso.replace("T", " ")
-        return f"TIMESTAMP {s(iso)}"
-      if isinstance(v, bool):
-        return "TRUE" if v else "FALSE"
-      if isinstance(v, (int, float)):
-        return str(int(v))
-      return s(v)
-
-    cols = [
-      "batch_run_id","load_run_id","target_schema","target_dataset","target_system","profile",
-      "mode","handle_deletes","historize","started_at","finished_at","render_ms","execution_ms",
-      "sql_length","rows_affected","status","error_message",
-    ]
-    col_sql = ",\n        ".join(cols)
-    val_sql = ",\n        ".join([lit(c, values.get(c)) for c in cols])
-
-    return f"""
-      INSERT INTO {table} (
-        {col_sql}
-      )
-      VALUES (
-        {val_sql}
-      )
-      """.strip()

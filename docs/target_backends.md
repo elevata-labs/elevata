@@ -49,9 +49,25 @@ pip install -r requirements/bigquery.txt
 ### 🧩 Target configuration
 
 The target system may optionally define a project identifier.  
-If omitted, the default project from the active credentials is used.  
+If omitted, elevata falls back to the default project from the active BigQuery client credentials.
+
+Internally, elevata always qualifies BigQuery table identifiers as `project.dataset.table`  
+when required (e.g. for streaming inserts), to avoid ambiguous or cross-project resolution errors.
 
 Schemas correspond to BigQuery datasets.
+
+Execution metadata tables (e.g. `meta.load_run_log`, `meta.load_run_snapshot`)
+are written using BigQuery streaming inserts.
+
+These require:  
+- an existing dataset  
+- a correctly qualified table identifier  
+- matching dataset location
+
+⚠️ Note:
+Previously, unqualified table identifiers could lead to sporadic `NotFound` errors during streaming inserts.  
+This has been addressed by enforcing deterministic project qualification at execution time.
+
 
 ---
 
@@ -208,4 +224,4 @@ For Raw datasets, execution triggers ingestion logic rather than SQL execution.
 
 ---
 
-© 2025 elevata Labs — Internal Technical Documentation
+© 2025-2026 elevata Labs — Internal Technical Documentation

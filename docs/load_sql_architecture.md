@@ -20,6 +20,12 @@ The system is designed so that:
 - dialects encapsulate syntactic differences  
 - execution engines are decoupled from SQL generation
 
+> **Note**  
+> This document focuses exclusively on SQL generation and rendering.  
+> Execution order, orchestration semantics, retries, failure handling,  
+> and execution observability are described separately in  
+> [Load Execution & Orchestration Architecture](load_execution_architecture.md).
+
 ---
 
 ## 🔧 2. Logical Plans for Load Operations
@@ -301,4 +307,4 @@ The `--execute` flag enables direct execution of load SQL in the target warehous
 
 ---
 
-© 2025 elevata Labs — Internal Technical Documentation
+© 2025-2026 elevata Labs — Internal Technical Documentation

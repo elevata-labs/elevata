@@ -1,6 +1,6 @@
 """
 elevata - Metadata-driven Data Platform Framework
-Copyright © 2025 Ilona Tag
+Copyright © 2025-2026 Ilona Tag
 
 This file is part of elevata.
 
@@ -32,7 +32,7 @@ from .base import BaseExecutionEngine, SqlDialect
 from metadata.ingestion.types_map import (
   STRING, INTEGER, BIGINT, DECIMAL, FLOAT, BOOLEAN, DATE, TIME, TIMESTAMP, BINARY, UUID, JSON
 )
-
+from metadata.materialization.logging import LOAD_RUN_LOG_REGISTRY
 
 class PostgresExecutionEngine(BaseExecutionEngine):
   def __init__(self, system):
@@ -67,6 +67,29 @@ class PostgresExecutionEngine(BaseExecutionEngine):
         except Exception:
           return None
 
+  def execute_scalar(self, sql: str):
+    """
+    Execute a SELECT returning a single value (first column of first row).
+    Returns None if no row is returned.
+    """
+    with psycopg2.connect(self.conn_str) as conn:
+      with conn.cursor() as cur:
+        cur.execute(sql)
+        row = cur.fetchone()
+        if not row:
+          return None
+        return row[0]
+
+  def fetch_all(self, sql: str) -> list[tuple]:
+    """
+    Execute a SELECT and return all rows as tuples.
+    """
+    with psycopg2.connect(self.conn_str) as conn:
+      with conn.cursor() as cur:
+        cur.execute(sql)
+        rows = cur.fetchall()
+        return list(rows or [])
+
 
 class PostgresDialect(SqlDialect):
   """
@@ -78,40 +101,11 @@ class PostgresDialect(SqlDialect):
   - RawSql templates
   """
 
+  # ---------------------------------------------------------------------------
+  # 1. Class meta / capabilities
+  # ---------------------------------------------------------------------------
   DIALECT_NAME = "postgres"
 
-  # ---------------------------------------------------------------------------
-  # Execution
-  # ---------------------------------------------------------------------------
-  def get_execution_engine(self, system):
-    return PostgresExecutionEngine(system)
-
-
-  # ---------------------------------------------------------------------------
-  # Introspection
-  # ---------------------------------------------------------------------------
-  def introspect_table(
-    self,
-    *,
-    schema_name: str,
-    table_name: str,
-    introspection_engine,
-    exec_engine=None,
-    debug_plan: bool = False,
-  ):
-    # Use SQLAlchemy-based default introspection for Postgres.
-    return SqlDialect.introspect_table(
-      self,
-      schema_name=schema_name,
-      table_name=table_name,
-      introspection_engine=introspection_engine,
-      exec_engine=exec_engine,
-      debug_plan=debug_plan,
-    )
-
-  # ---------------------------------------------------------------------------
-  # Capabilities
-  # ---------------------------------------------------------------------------
   @property
   def supports_merge(self) -> bool:
     """PostgreSQL supports merge via INSERT ... ON CONFLICT."""
@@ -122,25 +116,18 @@ class PostgresDialect(SqlDialect):
     """Delete detection is implemented via generic DELETE ... NOT EXISTS patterns."""
     return True
 
-  # ---------------------------------------------------------------------------
-  # Parameter placeholders
-  # ---------------------------------------------------------------------------
-  def param_placeholder(self) -> str:
-    """
-    Placeholder for parameterized SQL statements used by the dialect's execution engine.
-    Postgres differs from duckdb.
-    """
-    return "%s"
+  def get_execution_engine(self, system):
+    return PostgresExecutionEngine(system)
 
-  # ---------------------------------------------------------
-  # Identifier quoting
-  # ---------------------------------------------------------
+  # ---------------------------------------------------------------------------
+  # 2. Identifier & quoting
+  # ---------------------------------------------------------------------------
   def quote_ident(self, ident: str) -> str:
     return f"\"{ident}\""
 
-  # ---------------------------------------------------------
-  # Type mapping
-  # ---------------------------------------------------------
+  # ---------------------------------------------------------------------------
+  # 3. Types
+  # ---------------------------------------------------------------------------
   def render_physical_type(
     self,
     *,
@@ -156,139 +143,6 @@ class PostgresDialect(SqlDialect):
       decimal_precision=precision,
       decimal_scale=scale,
     )
-
-  # ---------------------------------------------------------
-  # Concatenation
-  # ---------------------------------------------------------
-  def concat_expression(self, parts: Sequence[str]) -> str:
-    """
-    PostgreSQL string concatenation uses || as well, so we can mirror DuckDB.
-    """
-    if not parts:
-      return "''"
-    return "(" + " || ".join(parts) + ")"
-
-  # ---------------------------------------------------------
-  # Hash expression
-  # ---------------------------------------------------------
-  def hash_expression(self, expr: str, algo: str = "sha256") -> str:
-    """
-    Map the logical HASH256 function to the concrete Postgres SQL implementation.
-    Needs the extension pgcrypto in the database.
-    """
-    algo_lower = algo.lower()
-    if algo_lower in ("sha256", "hash256"):
-      return f"encode(digest(convert_to(({expr})::text, 'UTF8'), 'sha256'), 'hex')"
-    # Fallback still sha256
-    return f"encode(digest(convert_to(({expr})::text, 'UTF8'), 'sha256'), 'hex')"
-
-
-  # ---------------------------------------------------------
-  # Literal rendering
-  # ---------------------------------------------------------
-  def render_literal(self, value):
-    if value is None:
-      return "NULL"
-
-    if isinstance(value, bool):
-      return "TRUE" if value else "FALSE"
-
-    if isinstance(value, int):
-      return str(value)
-
-    if isinstance(value, float):
-      return repr(value)
-
-    if isinstance(value, Decimal):
-      return str(value)
-
-    if isinstance(value, date) and not isinstance(value, datetime):
-      return f"DATE '{value.isoformat()}'"
-
-    if isinstance(value, datetime):
-      ts = value.isoformat(sep=" ", timespec="seconds")
-      return f"TIMESTAMPTZ '{ts}'"
-
-    # treat everything else as string
-    s = str(value).replace("'", "''")
-    return f"'{s}'"
-
-  # ---------------------------------------------------------------------------
-  # Truncate table
-  # ---------------------------------------------------------------------------
-  def render_truncate_table(self, schema: str, table: str) -> str:
-    qtbl = self.render_table_identifier
-    return f"TRUNCATE TABLE {qtbl(schema, table)};"
-
-  def render_create_replace_table(self, schema: str, table: str, select_sql: str) -> str:
-    """
-    Postgres has no CREATE OR REPLACE TABLE.
-    Emulate via DROP TABLE IF EXISTS + CREATE TABLE AS.
-    """
-    full = self.render_table_identifier(schema, table)
-    return (
-      f"DROP TABLE IF EXISTS {full};\n"
-      f"CREATE TABLE {full} AS\n{select_sql}"
-    )
-
-  # ---------------------------------------------------------------------------
-  # Incremental / MERGE Rendering
-  # MERGE / UPSERT
-  # (Using INSERT ... ON CONFLICT for broad PG compatibility)
-  # ---------------------------------------------------------------------------
-  def render_merge_statement(
-    self,
-    schema: str,
-    table: str,
-    select_sql: str,
-    unique_key_columns: list[str],
-    update_columns: list[str],
-  ) -> str:
-    """
-    Implement incremental MERGE via INSERT .. ON CONFLICT.
-
-    Contract:
-      - `select_sql` must produce columns whose names match the target columns.
-      - The column set must at least cover:
-        unique_key_columns + update_columns
-    """
-    target_qualified = self.render_table_identifier(schema, table)
-
-    # ON CONFLICT uses the unique key columns
-    key_list = ", ".join(self.render_identifier(c) for c in unique_key_columns)
-
-    # Insert column order = keys first, then update columns
-    all_columns = unique_key_columns + [
-      c for c in update_columns if c not in unique_key_columns
-    ]
-    insert_col_list = ", ".join(self.render_identifier(c) for c in all_columns)
-
-    # ON CONFLICT DO UPDATE SET <col> = EXCLUDED.<col>
-    update_assignments = ", ".join(
-      f"{self.render_identifier(c)} = EXCLUDED.{self.render_identifier(c)}"
-      for c in update_columns
-    )
-
-    sql = (
-      f"INSERT INTO {target_qualified} ({insert_col_list})\n"
-      f"{select_sql}\n"
-      f"ON CONFLICT ({key_list})\n"
-      f"DO UPDATE SET {update_assignments};"
-    )
-
-    return sql.strip()
-
-  # ---------------------------------------------------------------------------
-  # DDL statements
-  # ---------------------------------------------------------------------------
-  def render_create_schema_if_not_exists(self, schema: str) -> str:
-    q = self.render_identifier
-    return f"CREATE SCHEMA IF NOT EXISTS {q(schema)};"
-  
-  def render_drop_table_if_exists(self, *, schema: str, table: str, cascade: bool = False) -> str:
-    target = self.render_table_identifier(schema, table)
-    cas = " CASCADE" if cascade else ""
-    return f"DROP TABLE IF EXISTS {target}{cas}"
 
   def _render_canonical_type_postgres(
     self,
@@ -347,10 +201,67 @@ class PostgresDialect(SqlDialect):
       "Please fix ingestion type mapping or extend the dialect mapping."
     )
 
+  # ---------------------------------------------------------------------------
+  # 4. DDL helpers
+  # ---------------------------------------------------------------------------
+  def render_create_schema_if_not_exists(self, schema: str) -> str:
+    q = self.render_identifier
+    return f"CREATE SCHEMA IF NOT EXISTS {q(schema)};"
+  
+  def render_drop_table_if_exists(self, *, schema: str, table: str, cascade: bool = False) -> str:
+    target = self.render_table_identifier(schema, table)
+    cas = " CASCADE" if cascade else ""
+    return f"DROP TABLE IF EXISTS {target}{cas}"
+
+  def render_truncate_table(self, schema: str, table: str) -> str:
+    qtbl = self.render_table_identifier
+    return f"TRUNCATE TABLE {qtbl(schema, table)};"
 
   # ---------------------------------------------------------------------------
-  # Logging
+  # 5. DML / load SQL primitives
   # ---------------------------------------------------------------------------
+  def render_merge_statement(
+    self,
+    schema: str,
+    table: str,
+    select_sql: str,
+    unique_key_columns: list[str],
+    update_columns: list[str],
+  ) -> str:
+    """
+    Implement incremental MERGE via INSERT .. ON CONFLICT.
+
+    Contract:
+      - `select_sql` must produce columns whose names match the target columns.
+      - The column set must at least cover:
+        unique_key_columns + update_columns
+    """
+    target_qualified = self.render_table_identifier(schema, table)
+
+    # ON CONFLICT uses the unique key columns
+    key_list = ", ".join(self.render_identifier(c) for c in unique_key_columns)
+
+    # Insert column order = keys first, then update columns
+    all_columns = unique_key_columns + [
+      c for c in update_columns if c not in unique_key_columns
+    ]
+    insert_col_list = ", ".join(self.render_identifier(c) for c in all_columns)
+
+    # ON CONFLICT DO UPDATE SET <col> = EXCLUDED.<col>
+    update_assignments = ", ".join(
+      f"{self.render_identifier(c)} = EXCLUDED.{self.render_identifier(c)}"
+      for c in update_columns
+    )
+
+    sql = (
+      f"INSERT INTO {target_qualified} ({insert_col_list})\n"
+      f"{select_sql}\n"
+      f"ON CONFLICT ({key_list})\n"
+      f"DO UPDATE SET {update_assignments};"
+    )
+
+    return sql.strip()
+
   LOAD_RUN_LOG_TYPE_MAP = {
     "string": "TEXT",
     "bool": "BOOLEAN",
@@ -363,7 +274,9 @@ class PostgresDialect(SqlDialect):
     lit = self.render_literal
 
     table = qtbl(meta_schema, "load_run_log")
-    cols = list(values.keys())
+
+    # Canonical registry order; ignore unknown keys, NULL for missing.
+    cols = list(LOAD_RUN_LOG_REGISTRY.keys())
 
     col_sql = ",\n        ".join(cols)
     val_sql = ",\n        ".join([lit(values.get(c)) for c in cols])
@@ -376,3 +289,81 @@ class PostgresDialect(SqlDialect):
         {val_sql}
       );
     """.strip()
+
+  def param_placeholder(self) -> str:
+    """
+    Placeholder for parameterized SQL statements used by the dialect's execution engine.
+    Postgres differs from duckdb.
+    """
+    return "%s"
+
+  # ---------------------------------------------------------------------------
+  # 6. Expression / Select renderer
+  # ---------------------------------------------------------------------------
+  def render_literal(self, value):
+    if value is None:
+      return "NULL"
+
+    if isinstance(value, bool):
+      return "TRUE" if value else "FALSE"
+
+    if isinstance(value, int):
+      return str(value)
+
+    if isinstance(value, float):
+      return repr(value)
+
+    if isinstance(value, Decimal):
+      return str(value)
+
+    if isinstance(value, date) and not isinstance(value, datetime):
+      return f"DATE '{value.isoformat()}'"
+
+    if isinstance(value, datetime):
+      ts = value.isoformat(sep=" ", timespec="seconds")
+      return f"TIMESTAMPTZ '{ts}'"
+
+    # treat everything else as string
+    s = str(value).replace("'", "''")
+    return f"'{s}'"
+
+  def concat_expression(self, parts: Sequence[str]) -> str:
+    """
+    PostgreSQL string concatenation uses || as well, so we can mirror DuckDB.
+    """
+    if not parts:
+      return "''"
+    return "(" + " || ".join(parts) + ")"
+
+  def hash_expression(self, expr: str, algo: str = "sha256") -> str:
+    """
+    Map the logical HASH256 function to the concrete Postgres SQL implementation.
+    Needs the extension pgcrypto in the database.
+    """
+    algo_lower = algo.lower()
+    if algo_lower in ("sha256", "hash256"):
+      return f"encode(digest(convert_to(({expr})::text, 'UTF8'), 'sha256'), 'hex')"
+    # Fallback still sha256
+    return f"encode(digest(convert_to(({expr})::text, 'UTF8'), 'sha256'), 'hex')"
+
+  # ---------------------------------------------------------------------------
+  # 7. Introspection hooks
+  # ---------------------------------------------------------------------------
+  def introspect_table(
+    self,
+    *,
+    schema_name: str,
+    table_name: str,
+    introspection_engine,
+    exec_engine=None,
+    debug_plan: bool = False,
+  ):
+    # Use SQLAlchemy-based default introspection for Postgres.
+    return SqlDialect.introspect_table(
+      self,
+      schema_name=schema_name,
+      table_name=table_name,
+      introspection_engine=introspection_engine,
+      exec_engine=exec_engine,
+      debug_plan=debug_plan,
+    )

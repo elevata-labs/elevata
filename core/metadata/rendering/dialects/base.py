@@ -1,6 +1,6 @@
 """
 elevata - Metadata-driven Data Platform Framework
-Copyright © 2025 Ilona Tag
+Copyright © 2025-2026 Ilona Tag
 
 This file is part of elevata.
 
@@ -43,7 +43,7 @@ from ..expr import (
 from ..logical_plan import Join, LogicalSelect, SelectItem, SourceTable, SubquerySource
 
 from metadata.system.introspection import read_table_metadata
-
+from metadata.materialization.logging import LOAD_RUN_SNAPSHOT_REGISTRY
 
 class BaseExecutionEngine:
   def execute(self, sql: str) -> int | None:
@@ -56,6 +56,20 @@ class BaseExecutionEngine:
     """
     raise NotImplementedError
 
+  def execute_scalar(self, sql: str):
+    """
+    Optional: execute a SELECT returning a single scalar value (first column of first row).
+    Engines should override if they support fetching results.
+    """
+    raise NotImplementedError
+
+  def fetch_all(self, sql: str) -> list[tuple]:
+    """
+    Optional: execute a SELECT and return all rows as tuples.
+    Engines should override if they support fetching results.
+    """
+    raise NotImplementedError
+  
 
 class SqlDialect(ABC):
   """
@@ -64,69 +78,10 @@ class SqlDialect(ABC):
   """
 
   # ---------------------------------------------------------------------------
-  # Execution
+  # 1. Class meta / capabilities
   # ---------------------------------------------------------------------------
-  def get_execution_engine(self, system) -> "BaseExecutionEngine":
-    raise NotImplementedError(
-      f"{self.__class__.__name__} does not provide an execution engine."
-    )
+  DIALECT_NAME = "base"
 
-
-  # ---------------------------------------------------------------------------
-  # Introspection
-  # ---------------------------------------------------------------------------
-  def introspect_table(
-    self,
-    *,
-    schema_name: str,
-    table_name: str,
-    introspection_engine: Any,
-    exec_engine: Optional["BaseExecutionEngine"] = None,
-    debug_plan: bool = False,
-  ) -> Dict[str, Any]:
-    """
-    Default introspection via SQLAlchemy/read_table_metadata.
-
-    Returns:
-      {
-        "table_exists": bool,
-        "physical_table": str,
-        "actual_cols_by_norm_name": {norm_name: column_meta_dict}
-      }
-    """
-    # Default path uses SQLAlchemy-based metadata reading.
-    try:
-      meta = read_table_metadata(introspection_engine, schema_name, table_name)
-    except Exception:
-      if debug_plan:
-        return {
-          "table_exists": False,
-          "physical_table": table_name,
-          "actual_cols_by_norm_name": {},
-          "debug": f"read_table_metadata failed for {schema_name}.{table_name}",
-        }
-      return {
-        "table_exists": False,
-        "physical_table": table_name,
-        "actual_cols_by_norm_name": {},
-      }
-
-    cols = {}
-    for c in (meta.get("columns") or []):
-      nm = (c.get("name") or c.get("column_name") or "").strip().lower()
-      if nm:
-        cols[nm] = c
-
-    return {
-      "table_exists": True,
-      "physical_table": table_name,
-      "actual_cols_by_norm_name": cols,
-    }
-
-
-  # ---------------------------------------------------------------------------
-  # Capabilities (can be overridden by concrete dialects)
-  # ---------------------------------------------------------------------------
   @property
   def supports_merge(self) -> bool:
     """Whether this dialect supports a native MERGE statement."""
@@ -141,19 +96,14 @@ class SqlDialect(ABC):
     """
     # Dialects must explicitly opt in by overriding this property.
     return False
-  
-  # ---------------------------------------------------------------------------
-  # Parameter placeholders
-  # ---------------------------------------------------------------------------
-  def param_placeholder(self) -> str:
-    """
-    Placeholder for parameterized SQL statements used by the dialect's execution engine.
-    Default matches DB-API qmark style (DuckDB, pyodbc).
-    """
-    return "?"
+
+  def get_execution_engine(self, system) -> "BaseExecutionEngine":
+    raise NotImplementedError(
+      f"{self.__class__.__name__} does not provide an execution engine."
+    )
 
   # ---------------------------------------------------------------------------
-  # Identifier quoting
+  # 2. Identifier & quoting
   # ---------------------------------------------------------------------------
   @abstractmethod
   def quote_ident(self, name: str) -> str:
@@ -180,9 +130,6 @@ class SqlDialect(ABC):
     # future: check dialect keyword lists
     return False
 
-  # -------------------------------------------------------------------------
-  # Generic helpers built on top of quote_ident
-  # -------------------------------------------------------------------------
   def render_identifier(self, name: str) -> str:
     """
     Apply quoting only when necessary.
@@ -204,6 +151,417 @@ class SqlDialect(ABC):
       return f"{schema_sql}.{name_sql}"
     return name_sql
 
+  # ---------------------------------------------------------------------------
+  # 3. Types
+  # ---------------------------------------------------------------------------
+  # Dialects may extend/override via TYPE_ALIASES on the class.
+  TYPE_ALIASES: dict[str, str] = {}
+
+  # Canonical type tokens used across dialects (string constants, intentionally simple).
+  # NOTE: Dialect renderers typically compare via .upper(), so returning these tokens works.
+  _DEFAULT_TYPE_ALIASES: dict[str, str] = {
+    # String
+    "STRING": "STRING",
+    "TEXT": "STRING",
+    "VARCHAR": "STRING",
+    "CHAR": "STRING",
+    "NVARCHAR": "STRING",
+    "NCHAR": "STRING",
+
+    # Int
+    "INT": "INTEGER",
+    "INTEGER": "INTEGER",
+    "INT32": "INTEGER",
+    "SMALLINT": "INTEGER",
+
+    # Big int
+    "BIGINT": "BIGINT",
+    "INT64": "BIGINT",
+    "LONG": "BIGINT",
+
+    # Decimal / numeric
+    "DECIMAL": "DECIMAL",
+    "NUMERIC": "DECIMAL",
+
+    # Float
+    "FLOAT": "FLOAT",
+    "DOUBLE": "FLOAT",
+    "FLOAT64": "FLOAT",
+
+    # Bool
+    "BOOL": "BOOLEAN",
+    "BOOLEAN": "BOOLEAN",
+
+    # Date/time
+    "DATE": "DATE",
+    "TIME": "TIME",
+    "TIMESTAMP": "TIMESTAMP",
+    "DATETIME": "TIMESTAMP",
+    "TIMESTAMPTZ": "TIMESTAMP",
+
+    # Binary
+    "BINARY": "BINARY",
+    "BYTES": "BINARY",
+
+    # Others
+    "UUID": "UUID",
+    "JSON": "JSON",
+  }
+
+  def canonicalize_logical_type(self, logical_type, *, strict: bool = True) -> str:
+    """
+    Convert an input logical type (TargetColumn.datatype or user-specified alias)
+    into a canonical type token (e.g. STRING, INTEGER, BIGINT, DECIMAL, FLOAT...).
+
+    - Does NOT apply dialect-specific physical naming.
+    - Uses a shared default alias map and allows dialect-specific extensions.
+    """
+    lt = (logical_type or "").strip().upper()
+    alias_map = dict(self._DEFAULT_TYPE_ALIASES)
+    alias_map.update(getattr(self, "TYPE_ALIASES", None) or {})
+
+    canonical = alias_map.get(lt)
+    if canonical is None:
+      if strict:
+        raise ValueError(f"Unsupported logical type: {logical_type!r}")
+      return lt
+    return canonical
+
+  def map_logical_type(
+    self,
+    *,
+    datatype: str,
+    max_length=None,
+    precision=None,
+    scale=None,
+    strict: bool = True,
+  ) -> str:
+    canonical = self.canonicalize_logical_type(datatype, strict=strict)
+    return self.render_physical_type(
+      canonical=canonical,
+      max_length=max_length,
+      precision=precision,
+      scale=scale,
+      strict=strict,
+    )
+
+  @abstractmethod
+  def render_physical_type(
+    self,
+    *,
+    canonical: str,
+    max_length=None,
+    precision=None,
+    scale=None,
+    strict: bool = True,
+  ) -> str:
+    """
+    Render a dialect-specific physical SQL type string from a canonical token.
+    Example:
+      canonical=STRING, max_length=50 -> VARCHAR(50) / STRING / NVARCHAR(50)
+    """
+    raise NotImplementedError
+
+  # ---------------------------------------------------------------------------
+  # 4. DDL helpers
+  # ---------------------------------------------------------------------------
+  @abstractmethod
+  def render_create_schema_if_not_exists(self, schema: str) -> str:
+    """
+    Return DDL that creates the given schema if it does not exist.
+    Must be idempotent and safe to run multiple times.
+    """
+    raise NotImplementedError(
+      f"{self.__class__.__name__} does not implement render_create_schema_if_not_exists()"
+    )
+  
+  def render_create_table_if_not_exists(self, td) -> str:
+    """
+    Default implementation: TargetDataset/TargetColumn -> column list
+    and delegate to render_create_table_if_not_exists_from_columns().
+    Dialects override render_create_table_if_not_exists_from_columns() if needed.
+    """
+    schema_name = td.target_schema.schema_name
+    table_name = td.target_dataset_name
+
+    columns: list[dict[str, object]] = []
+    for c in self._iter_target_columns(td):
+      max_length = getattr(c, "max_length", None)
+      precision = getattr(c, "precision", None)
+      if precision is None:
+        precision = getattr(c, "decimal_precision", None)
+      scale = getattr(c, "scale", None)
+      if scale is None:
+        scale = getattr(c, "decimal_scale", None)
+
+      col_type = self.map_logical_type(
+        datatype=c.datatype,
+        max_length=max_length,
+        precision=precision,
+        scale=scale,
+        strict=True,
+      )
+      columns.append({
+        "name": c.target_column_name,
+        "type": col_type,
+        "nullable": bool(getattr(c, "nullable", True)),
+      })
+
+    return self.render_create_table_if_not_exists_from_columns(
+      schema=schema_name,
+      table=table_name,
+      columns=columns,
+    )
+
+  def _iter_target_columns(self, td) -> list[Any]:
+    cols_obj = getattr(td, "target_columns", None)
+    if cols_obj is None:
+      return []
+    if hasattr(cols_obj, "all"):
+      try:
+        qs = cols_obj.all()
+        if hasattr(qs, "order_by"):
+          return list(qs.order_by("ordinal_position"))
+        return list(qs)
+      except Exception:
+        pass
+    try:
+      cols = list(cols_obj)
+      cols.sort(key=lambda c: getattr(c, "ordinal_position", 0) or 0)
+      return cols
+    except Exception:
+      return []
+
+  def render_create_table_if_not_exists_from_columns(
+    self,
+    *,
+    schema: str,
+    table: str,
+    columns: list[dict[str, object]],
+  ) -> str:
+    """
+    Render CREATE TABLE IF NOT EXISTS <schema>.<table> ( ... ) from a simple column list.
+    Dialects may override if they don't support CREATE TABLE IF NOT EXISTS.
+    """
+    target = self.render_table_identifier(schema, table)
+    col_defs: list[str] = []
+    for c in columns:
+      name = self.render_identifier(str(c["name"]))
+      ctype = str(c["type"])
+      nullable = bool(c.get("nullable", True))
+      null_sql = "NULL" if nullable else "NOT NULL"
+      col_defs.append(f"{name} {ctype} {null_sql}")
+    cols_sql = ",\n  ".join(col_defs)
+    return f"CREATE TABLE IF NOT EXISTS {target} (\n  {cols_sql}\n)"
+
+  def render_create_or_replace_view(
+    self,
+    *,
+    schema: str,
+    view: str,
+    select_sql: str,
+  ) -> str:
+    target = self.render_table_identifier(schema, view)
+    return f"CREATE OR REPLACE VIEW {target} AS\n{select_sql}"
+
+  def render_add_column(self, schema: str, table: str, column: str, column_type: str | None) -> str:
+    """
+    Default ADD COLUMN DDL. Dialects can override if needed.
+    """
+    if not column_type:
+      # Fail closed: planner should block if type is missing.
+      return ""
+
+    # Use dialect-safe identifier rendering.
+    tbl = self.render_table_identifier(schema, table)
+    col = self.render_identifier(column)
+    return f"ALTER TABLE {tbl} ADD COLUMN {col} {column_type}"
+
+  def render_drop_table_if_exists(self, *, schema: str, table: str, cascade: bool = False) -> str:
+    """
+    Drop a table if it exists.
+
+    - Default: no CASCADE (dialects may override).
+    - cascade flag is supported for engines like Postgres.
+    """
+    # Default ignores cascade unless overridden by a dialect.
+    target = self.render_table_identifier(schema, table)
+    return f"DROP TABLE IF EXISTS {target}"
+
+  def render_truncate_table(self, *, schema: str, table: str) -> str:
+    """
+    Default implementation: DELETE FROM (safe, widely supported).
+    Dialects can override with TRUNCATE TABLE for performance.
+    """
+    full = self.render_table_identifier(schema, table)
+    return f"DELETE FROM {full};"
+  
+  def render_rename_table(self, schema: str, old_table: str, new_table: str) -> str:
+    """
+    Default table rename (works for DuckDB/Postgres/BigQuery-style dialects):
+      ALTER TABLE <schema>.<old> RENAME TO <new>
+
+    Note: new_table is intentionally unqualified (no schema prefix).
+    """
+    old_full = self.render_table_identifier(schema, old_table)
+    new_name = self.render_identifier(new_table)
+    return f"ALTER TABLE {old_full} RENAME TO {new_name}"
+
+  def render_rename_column(self, schema: str, table: str, old: str, new: str) -> str:
+    # Default ANSI-ish
+    return (
+      f"ALTER TABLE {self.render_table_identifier(schema, table)} "
+      f"RENAME COLUMN {self.render_identifier(old)} TO {self.render_identifier(new)}"
+    )
+
+  # ---------------------------------------------------------------------------
+  # 5. DML / load SQL primitives
+  # ---------------------------------------------------------------------------
+  def render_insert_into_table(
+    self,
+    schema_name: str,
+    table_name: str,
+    select_sql: str,
+    *,
+    target_columns: list[str] | None = None,
+  ) -> str:
+    """
+    Default: INSERT INTO <schema>.<table> [(col, ...)] <select>.
+    """
+    table = self.render_table_identifier(schema_name, table_name)
+    if target_columns:
+      cols = ", ".join(self.render_identifier(c) for c in target_columns)
+      return f"INSERT INTO {table} ({cols})\n{select_sql}"
+    return f"INSERT INTO {table}\n{select_sql}"
+
+  def render_merge_statement(
+    self,
+    schema: str,
+    table: str,
+    select_sql: str,
+    unique_key_columns: list[str],
+    update_columns: list[str],
+  ) -> str:
+    full = self.render_table_identifier(schema, table)
+
+    on_clause = " AND ".join(
+      f"t.{self.render_identifier(c)} = s.{self.render_identifier(c)}"
+      for c in unique_key_columns
+    )
+
+    update_assignments = ", ".join(
+      f"{self.render_identifier(col)} = s.{self.render_identifier(col)}"
+      for col in update_columns
+    )
+
+    all_cols = unique_key_columns + update_columns
+    col_list = ", ".join(self.render_identifier(c) for c in all_cols)
+    val_list = ", ".join(f"s.{self.render_identifier(c)}" for c in all_cols)
+
+    return f"""
+      MERGE INTO {full} AS t
+      USING (
+      {select_sql}
+      ) AS s
+      ON {on_clause}
+      WHEN MATCHED THEN UPDATE SET {update_assignments}
+      WHEN NOT MATCHED THEN INSERT ({col_list}) VALUES ({val_list});
+    """.strip()
+
+  def render_delete_detection_statement(
+    self,
+    target_schema,
+    target_table,
+    stage_schema,
+    stage_table,
+    join_predicates,
+    scope_filter=None,
+  ):
+    """
+    Default delete-detection implementation using DELETE + NOT EXISTS.
+
+    join_predicates are strings like: "t.key = s.key"
+    scope_filter (optional) is a full boolean expression string.
+    """
+    target = self.render_table_identifier(target_schema, target_table)
+    stage = self.render_table_identifier(stage_schema, stage_table)
+
+    join_sql = " AND ".join(join_predicates) if join_predicates else "1=1"
+
+    conditions: list[str] = []
+    if scope_filter:
+      # scope_filter is already a boolean expression
+      conditions.append(f"({scope_filter})")
+
+    conditions.append(
+      "NOT EXISTS (\n"
+      "  SELECT 1\n"
+      f"  FROM {stage} AS s\n"
+      f"  WHERE {join_sql}\n"
+      ")"
+    )
+
+    where_sql = "\n  AND ".join(conditions)
+
+    sql = (
+      f"DELETE FROM {target} AS t\n"
+      f"WHERE {where_sql}"
+    )
+
+    # Always terminate for safe multi-statement execution (e.g., DELETE + MERGE).
+    return sql.rstrip() + ";"
+
+  def render_insert_load_run_log(self, *, meta_schema: str, values: dict[str, object]) -> str | None:
+    """
+    Render an INSERT INTO meta.load_run_log (...) VALUES (...) statement.
+
+    v0.8.0: schema is canonical via LOAD_RUN_LOG_REGISTRY and the caller passes
+    a fully normalized `values` dict (same keys/order as the canonical schema).
+    Dialects must only render identifiers and literals safely.
+    """
+    raise NotImplementedError(f"{self.__class__.__name__} does not implement render_insert_load_run_log()")
+
+  def _literal_for_meta_insert(self, *, table: str, column: str, value: object) -> str:
+    """
+    Hook for meta-table inserts.
+    Default delegates to dialect.literal(); override in dialects if needed.
+    """
+    return self.literal(value)
+
+  def render_insert_load_run_snapshot(self, *, meta_schema: str, values: dict[str, object]) -> str:
+    """
+    Generic INSERT for meta.load_run_snapshot using registry-order columns.
+    """
+    tbl = self.render_table_identifier(meta_schema, "load_run_snapshot")
+    cols = list(LOAD_RUN_SNAPSHOT_REGISTRY.keys())
+
+    col_sql = ",\n        ".join(self.render_identifier(c) for c in cols)
+    val_sql = ",\n        ".join(
+      self._literal_for_meta_insert(table="load_run_snapshot", column=c, value=values.get(c))
+      for c in cols
+    )
+
+    sql = f"""
+      INSERT INTO {tbl} (
+        {col_sql}
+      )
+      VALUES (
+        {val_sql}
+      );
+    """.strip()
+
+    return sql
+
+  def param_placeholder(self) -> str:
+    """
+    Placeholder for parameterized SQL statements used by the dialect's execution engine.
+    Default matches DB-API qmark style (DuckDB, pyodbc).
+    """
+    return "?"
+
+  # ---------------------------------------------------------------------------
+  # 6. Expression / Select renderer
+  # ---------------------------------------------------------------------------
   def literal(self, value: Any) -> str:
     """
     Render a Python value as a SQL literal in a dialect-agnostic way.
@@ -223,43 +581,26 @@ class SqlDialect(ABC):
     s = str(value)
     s = s.replace("'", "''")
     return f"'{s}'"
-  
-  def cast(self, expr: str, target_type: str) -> str:
-    """
-    Wrap an expression in a CAST(... AS ...) construct.
-    Dialects may override this if they need a different syntax.
-    """
-    return f"CAST({expr} AS {target_type})"
 
-  def render_table_alias(
-    self,
-    schema: str | None,
-    name: str,
-    alias: str | None,
-  ) -> str:
+  def render_literal(self, value) -> str:
     """
-    Render a table reference including optional alias, e.g.:
+    ANSI-ish default literals. Dialects override where necessary.
+    """
+    if value is None:
+      return "NULL"
+    if isinstance(value, bool):
+      return "TRUE" if value else "FALSE"
+    if isinstance(value, (int, float, Decimal)):
+      return str(value)
+    if isinstance(value, datetime.date) and not isinstance(value, datetime.datetime):
+      return f"DATE '{value.isoformat()}'"
+    if isinstance(value, datetime.datetime):
+      # ISO without timezone normalization (dialects can override)
+      return f"TIMESTAMP '{value.isoformat(sep=' ', timespec='microseconds')}'"
+    # strings
+    s = str(value).replace("'", "''")
+    return f"'{s}'"
 
-      render_table_alias("rawcore", "customer", "c")
-      -> "rawcore"."customer" AS c
-    """
-    base = self.render_table_identifier(schema, name)
-    if alias:
-      return f"{base} AS {alias}"
-    return base
-
-  def render_column_list(self, columns: list[str] | None) -> str:
-    """
-    Render a comma-separated list of column identifiers, with proper quoting.
-    If columns is None or empty, '*' is returned.
-    """
-    if not columns:
-      return "*"
-    return ", ".join(self.quote_ident(c) for c in columns)
-
-  # ---------------------------------------------------------------------------
-  # Expression rendering
-  # ---------------------------------------------------------------------------
   def render_expr(self, expr: Expr) -> str:
     """
     Default "ANSI-ish" expression renderer.
@@ -369,96 +710,6 @@ class SqlDialect(ABC):
     # Fallback: attempt stringification (kept permissive for DSL growth)
     return str(expr)
 
-  # ---------------------------------------------------------
-  # Concatenation
-  # ---------------------------------------------------------
-  def concat_expression(self, rendered_parts: Sequence[str]) -> str:
-    """
-    Build a dialect-specific concatenation expression from already-rendered
-    parts (each element is a SQL expression string).
-
-    Example DuckDB:  (part1 || part2 || part3)
-    Example Snowflake:  CONCAT(part1, part2, part3)
-    """
-    return " || ".join(rendered_parts)
-
-  # ---------------------------------------------------------
-  # Hash Expression
-  # ---------------------------------------------------------
-  def hash_expression(self, expr: str, algo: str = "sha256") -> str:
-    """
-    Build a dialect-specific hashing expression around `expr`.
-
-    Default implementation raises; dialects that support hashing should
-    override this method.
-    """
-    raise NotImplementedError(
-      f"{self.__class__.__name__} does not implement hash_expression()"
-    )
-
-  # ---------------------------------------------------------------------------
-  # Literal Rendering
-  # ---------------------------------------------------------------------------
-  def render_literal(self, value) -> str:
-    """
-    ANSI-ish default literals. Dialects override where necessary.
-    """
-    if value is None:
-      return "NULL"
-    if isinstance(value, bool):
-      return "TRUE" if value else "FALSE"
-    if isinstance(value, (int, float, Decimal)):
-      return str(value)
-    if isinstance(value, datetime.date) and not isinstance(value, datetime.datetime):
-      return f"DATE '{value.isoformat()}'"
-    if isinstance(value, datetime.datetime):
-      # ISO without timezone normalization (dialects can override)
-      return f"TIMESTAMP '{value.isoformat(sep=' ', timespec='microseconds')}'"
-    # strings
-    s = str(value).replace("'", "''")
-    return f"'{s}'"
-
-  # ---------------------------------------------------------------------------
-  # Type Casting
-  # ---------------------------------------------------------------------------
-  def cast_expression(self, expr: str, target_type: str) -> str:
-    """
-    Wrap the given SQL expression in a dialect-specific CAST expression.
-    """
-    return f"CAST({expr} AS {target_type})"
-
-  # ---------------------------------------------------------------------------
-  # SELECT rendering
-  # ---------------------------------------------------------------------------
-  def _render_from_item(self, item: SourceTable | SubquerySource) -> str:
-    if isinstance(item, SourceTable):
-      schema = getattr(item, "schema_name", None)
-      if schema is None:
-        schema = getattr(item, "schema", None)
-      table = getattr(item, "table_name", None)
-      if table is None:
-        table = getattr(item, "name", None)
-      tbl = self.render_table_identifier(schema, table)
-      if item.alias:
-        return f"{tbl} AS {self.render_identifier(item.alias)}"
-      return tbl
-    if isinstance(item, SubquerySource):
-      inner = self.render_select(item.select)
-      if item.alias:
-        alias = self.render_identifier(item.alias)
-        return f"(\n{inner}\n) AS {alias}"
-      return f"(\n{inner}\n)"
-
-    return str(item)
-
-  def _render_join(self, j: Join) -> str:
-    jt = j.join_type.upper()
-    right = self._render_from_item(j.right)
-    on_sql = self.render_expr(j.on) if j.on is not None else ""
-    if on_sql:
-      return f"{jt} JOIN {right} ON {on_sql}"
-    return f"{jt} JOIN {right}"
-
   def render_select(self, select: LogicalSelect) -> str:
     items_sql: list[str] = []
 
@@ -525,410 +776,118 @@ class SqlDialect(ABC):
 
     return "\n".join(sql)
 
-  # ---------------------------------------------------------------------------
-  # Truncate table
-  # ---------------------------------------------------------------------------
-  def render_truncate_table(self, *, schema: str, table: str) -> str:
+  def _render_from_item(self, item: SourceTable | SubquerySource) -> str:
+    if isinstance(item, SourceTable):
+      schema = getattr(item, "schema_name", None)
+      if schema is None:
+        schema = getattr(item, "schema", None)
+      table = getattr(item, "table_name", None)
+      if table is None:
+        table = getattr(item, "name", None)
+      tbl = self.render_table_identifier(schema, table)
+      if item.alias:
+        return f"{tbl} AS {self.render_identifier(item.alias)}"
+      return tbl
+    if isinstance(item, SubquerySource):
+      inner = self.render_select(item.select)
+      if item.alias:
+        alias = self.render_identifier(item.alias)
+        return f"(\n{inner}\n) AS {alias}"
+      return f"(\n{inner}\n)"
+
+    return str(item)
+
+  def _render_join(self, j: Join) -> str:
+    jt = j.join_type.upper()
+    right = self._render_from_item(j.right)
+    on_sql = self.render_expr(j.on) if j.on is not None else ""
+    if on_sql:
+      return f"{jt} JOIN {right} ON {on_sql}"
+    return f"{jt} JOIN {right}"
+
+  def render_column_list(self, columns: list[str] | None) -> str:
     """
-    Default implementation: DELETE FROM (safe, widely supported).
-    Dialects can override with TRUNCATE TABLE for performance.
+    Render a comma-separated list of column identifiers, with proper quoting.
+    If columns is None or empty, '*' is returned.
     """
-    full = self.render_table_identifier(schema, table)
-    return f"DELETE FROM {full};"
-    
-  # ---------------------------------------------------------------------------
-  # Incremental / MERGE Rendering
-  # ---------------------------------------------------------------------------
-  def render_create_replace_table(self, schema: str, table: str, select_sql: str) -> str:
+    if not columns:
+      return "*"
+    return ", ".join(self.quote_ident(c) for c in columns)
+  
+  def cast_expression(self, expr: str, target_type: str) -> str:
     """
-    Default: CREATE OR REPLACE TABLE <schema>.<table> AS <select>.
-    Dialects that don't support this (e.g. Postgres, MSSQL) should override.
+    Wrap the given SQL expression in a dialect-specific CAST expression.
     """
-    full = self.render_table_identifier(schema, table)
-    return f"CREATE OR REPLACE TABLE {full} AS\n{select_sql}"
+    return f"CAST({expr} AS {target_type})"
 
-  def render_insert_into_table(
-    self,
-    schema_name: str,
-    table_name: str,
-    select_sql: str,
-    *,
-    target_columns: list[str] | None = None,
-  ) -> str:
+  def concat_expression(self, rendered_parts: Sequence[str]) -> str:
     """
-    Default: INSERT INTO <schema>.<table> [(col, ...)] <select>.
+    Build a dialect-specific concatenation expression from already-rendered
+    parts (each element is a SQL expression string).
+
+    Example DuckDB:  (part1 || part2 || part3)
+    Example Snowflake:  CONCAT(part1, part2, part3)
     """
-    table = self.render_table_identifier(schema_name, table_name)
-    if target_columns:
-      cols = ", ".join(self.render_identifier(c) for c in target_columns)
-      return f"INSERT INTO {table} ({cols})\n{select_sql}"
-    return f"INSERT INTO {table}\n{select_sql}"
+    return " || ".join(rendered_parts)
 
-  def render_merge_statement(
-    self,
-    schema: str,
-    table: str,
-    select_sql: str,
-    unique_key_columns: list[str],
-    update_columns: list[str],
-  ) -> str:
-    full = self.render_table_identifier(schema, table)
-
-    on_clause = " AND ".join(
-      f"t.{self.render_identifier(c)} = s.{self.render_identifier(c)}"
-      for c in unique_key_columns
-    )
-
-    update_assignments = ", ".join(
-      f"{self.render_identifier(col)} = s.{self.render_identifier(col)}"
-      for col in update_columns
-    )
-
-    all_cols = unique_key_columns + update_columns
-    col_list = ", ".join(self.render_identifier(c) for c in all_cols)
-    val_list = ", ".join(f"s.{self.render_identifier(c)}" for c in all_cols)
-
-    return f"""
-      MERGE INTO {full} AS t
-      USING (
-      {select_sql}
-      ) AS s
-      ON {on_clause}
-      WHEN MATCHED THEN UPDATE SET {update_assignments}
-      WHEN NOT MATCHED THEN INSERT ({col_list}) VALUES ({val_list});
-    """.strip()
-
-  def render_delete_detection_statement(
-    self,
-    target_schema,
-    target_table,
-    stage_schema,
-    stage_table,
-    join_predicates,
-    scope_filter=None,
-  ):
+  def hash_expression(self, expr: str, algo: str = "sha256") -> str:
     """
-    Default delete-detection implementation using DELETE + NOT EXISTS.
+    Build a dialect-specific hashing expression around `expr`.
 
-    join_predicates are strings like: "t.key = s.key"
-    scope_filter (optional) is a full boolean expression string.
-    """
-    target = self.render_table_identifier(target_schema, target_table)
-    stage = self.render_table_identifier(stage_schema, stage_table)
-
-    join_sql = " AND ".join(join_predicates) if join_predicates else "1=1"
-
-    conditions: list[str] = []
-    if scope_filter:
-      # scope_filter is already a boolean expression
-      conditions.append(f"({scope_filter})")
-
-    conditions.append(
-      "NOT EXISTS (\n"
-      "  SELECT 1\n"
-      f"  FROM {stage} AS s\n"
-      f"  WHERE {join_sql}\n"
-      ")"
-    )
-
-    where_sql = "\n  AND ".join(conditions)
-
-    sql = (
-      f"DELETE FROM {target} AS t\n"
-      f"WHERE {where_sql}"
-    )
-
-    # Always terminate for safe multi-statement execution (e.g., DELETE + MERGE).
-    return sql.rstrip() + ";"
-
-  # ---------------------------------------------------------------------------
-  # Type mapping (single source of truth: canonicalize -> render physical)
-  # ---------------------------------------------------------------------------
-  # Dialects may extend/override via TYPE_ALIASES on the class.
-  TYPE_ALIASES: dict[str, str] = {}
-
-  # Canonical type tokens used across dialects (string constants, intentionally simple).
-  # NOTE: Dialect renderers typically compare via .upper(), so returning these tokens works.
-  _DEFAULT_TYPE_ALIASES: dict[str, str] = {
-    # String
-    "STRING": "STRING",
-    "TEXT": "STRING",
-    "VARCHAR": "STRING",
-    "CHAR": "STRING",
-    "NVARCHAR": "STRING",
-    "NCHAR": "STRING",
-
-    # Int
-    "INT": "INTEGER",
-    "INTEGER": "INTEGER",
-    "INT32": "INTEGER",
-    "SMALLINT": "INTEGER",
-
-    # Big int
-    "BIGINT": "BIGINT",
-    "INT64": "BIGINT",
-    "LONG": "BIGINT",
-
-    # Decimal / numeric
-    "DECIMAL": "DECIMAL",
-    "NUMERIC": "DECIMAL",
-
-    # Float
-    "FLOAT": "FLOAT",
-    "DOUBLE": "FLOAT",
-    "FLOAT64": "FLOAT",
-
-    # Bool
-    "BOOL": "BOOLEAN",
-    "BOOLEAN": "BOOLEAN",
-
-    # Date/time
-    "DATE": "DATE",
-    "TIME": "TIME",
-    "TIMESTAMP": "TIMESTAMP",
-    "DATETIME": "TIMESTAMP",
-    "TIMESTAMPTZ": "TIMESTAMP",
-
-    # Binary
-    "BINARY": "BINARY",
-    "BYTES": "BINARY",
-
-    # Others
-    "UUID": "UUID",
-    "JSON": "JSON",
-  }
-
-  def canonicalize_logical_type(self, logical_type, *, strict: bool = True) -> str:
-    """
-    Convert an input logical type (TargetColumn.datatype or user-specified alias)
-    into a canonical type token (e.g. STRING, INTEGER, BIGINT, DECIMAL, FLOAT...).
-
-    - Does NOT apply dialect-specific physical naming.
-    - Uses a shared default alias map and allows dialect-specific extensions.
-    """
-    lt = (logical_type or "").strip().upper()
-    alias_map = dict(self._DEFAULT_TYPE_ALIASES)
-    alias_map.update(getattr(self, "TYPE_ALIASES", None) or {})
-
-    canonical = alias_map.get(lt)
-    if canonical is None:
-      if strict:
-        raise ValueError(f"Unsupported logical type: {logical_type!r}")
-      return lt
-    return canonical
-
-  @abstractmethod
-  def render_physical_type(
-    self,
-    *,
-    canonical: str,
-    max_length=None,
-    precision=None,
-    scale=None,
-    strict: bool = True,
-  ) -> str:
-    """
-    Render a dialect-specific physical SQL type string from a canonical token.
-    Example:
-      canonical=STRING, max_length=50 -> VARCHAR(50) / STRING / NVARCHAR(50)
-    """
-    raise NotImplementedError
-
-  def map_logical_type(
-    self,
-    *,
-    datatype: str,
-    max_length=None,
-    precision=None,
-    scale=None,
-    strict: bool = True,
-  ) -> str:
-    canonical = self.canonicalize_logical_type(datatype, strict=strict)
-    return self.render_physical_type(
-      canonical=canonical,
-      max_length=max_length,
-      precision=precision,
-      scale=scale,
-      strict=strict,
-    )
-
-  def columns_from_target_dataset(self, td) -> list[dict[str, object]]:
-    """
-    Build a simple column list from TargetDataset metadata.
-
-    Single source of truth used by dialect DDL (CREATE TABLE / log tables etc.):
-      [{"name": str, "type": str, "nullable": bool}, ...]
-    """
-    cols: list[dict[str, object]] = []
-    # Deterministic order
-    for c in td.target_columns.all().order_by("ordinal_position"):
-      col_type = self.map_logical_type(
-        datatype=c.datatype,
-        max_length=getattr(c, "max_length", None),
-        precision=getattr(c, "precision", None) or getattr(c, "decimal_precision", None),
-        scale=getattr(c, "scale", None) or getattr(c, "decimal_scale", None),
-        strict=True,
-      )
-      if not col_type:
-        # Fail closed: missing type mapping should be caught by callers/planner.
-        continue
-      cols.append({
-        "name": c.target_column_name,
-        "type": col_type,
-        "nullable": bool(getattr(c, "nullable", True)),
-      })
-    return cols
-
-  # ---------------------------------------------------------------------------
-  # DDL statements
-  # ---------------------------------------------------------------------------
-  def render_rename_table(self, schema: str, old_table: str, new_table: str) -> str:
-    """
-    Default table rename (works for DuckDB/Postgres/BigQuery-style dialects):
-      ALTER TABLE <schema>.<old> RENAME TO <new>
-
-    Note: new_table is intentionally unqualified (no schema prefix).
-    """
-    old_full = self.render_table_identifier(schema, old_table)
-    new_name = self.render_identifier(new_table)
-    return f"ALTER TABLE {old_full} RENAME TO {new_name}"
-
-  @abstractmethod
-  def render_create_schema_if_not_exists(self, schema: str) -> str:
-    """
-    Return DDL that creates the given schema if it does not exist.
-    Must be idempotent and safe to run multiple times.
+    Default implementation raises; dialects that support hashing should
+    override this method.
     """
     raise NotImplementedError(
-      f"{self.__class__.__name__} does not implement render_create_schema_if_not_exists()"
-    )
-  
-  def render_create_table_if_not_exists(self, td) -> str:
-    """
-    Default implementation: TargetDataset/TargetColumn -> column list
-    and delegate to render_create_table_if_not_exists_from_columns().
-    Dialects override render_create_table_if_not_exists_from_columns() if needed.
-    """
-    schema_name = td.target_schema.schema_name
-    table_name = td.target_dataset_name
-
-    columns: list[dict[str, object]] = []
-    for c in self._iter_target_columns(td):
-      max_length = getattr(c, "max_length", None)
-      precision = getattr(c, "precision", None)
-      if precision is None:
-        precision = getattr(c, "decimal_precision", None)
-      scale = getattr(c, "scale", None)
-      if scale is None:
-        scale = getattr(c, "decimal_scale", None)
-
-      col_type = self.map_logical_type(
-        datatype=c.datatype,
-        max_length=max_length,
-        precision=precision,
-        scale=scale,
-        strict=True,
-      )
-      columns.append({
-        "name": c.target_column_name,
-        "type": col_type,
-        "nullable": bool(getattr(c, "nullable", True)),
-      })
-
-    return self.render_create_table_if_not_exists_from_columns(
-      schema=schema_name,
-      table=table_name,
-      columns=columns,
+      f"{self.__class__.__name__} does not implement hash_expression()"
     )
 
-  def _iter_target_columns(self, td) -> list[Any]:
-    cols_obj = getattr(td, "target_columns", None)
-    if cols_obj is None:
-      return []
-    if hasattr(cols_obj, "all"):
-      try:
-        qs = cols_obj.all()
-        if hasattr(qs, "order_by"):
-          return list(qs.order_by("ordinal_position"))
-        return list(qs)
-      except Exception:
-        pass
+  # ---------------------------------------------------------------------------
+  # 7. Introspection hooks
+  # ---------------------------------------------------------------------------
+  def introspect_table(
+    self,
+    *,
+    schema_name: str,
+    table_name: str,
+    introspection_engine: Any,
+    exec_engine: Optional["BaseExecutionEngine"] = None,
+    debug_plan: bool = False,
+  ) -> Dict[str, Any]:
+    """
+    Default introspection via SQLAlchemy/read_table_metadata.
+
+    Returns:
+      {
+        "table_exists": bool,
+        "physical_table": str,
+        "actual_cols_by_norm_name": {norm_name: column_meta_dict}
+      }
+    """
+    # Default path uses SQLAlchemy-based metadata reading.
     try:
-      cols = list(cols_obj)
-      cols.sort(key=lambda c: getattr(c, "ordinal_position", 0) or 0)
-      return cols
+      meta = read_table_metadata(introspection_engine, schema_name, table_name)
     except Exception:
-      return []
+      if debug_plan:
+        return {
+          "table_exists": False,
+          "physical_table": table_name,
+          "actual_cols_by_norm_name": {},
+          "debug": f"read_table_metadata failed for {schema_name}.{table_name}",
+        }
+      return {
+        "table_exists": False,
+        "physical_table": table_name,
+        "actual_cols_by_norm_name": {},
+      }
 
-  def render_create_table_if_not_exists_from_columns(
-    self,
-    *,
-    schema: str,
-    table: str,
-    columns: list[dict[str, object]],
-  ) -> str:
-    """
-    Render CREATE TABLE IF NOT EXISTS <schema>.<table> ( ... ) from a simple column list.
-    Dialects may override if they don't support CREATE TABLE IF NOT EXISTS.
-    """
-    target = self.render_table_identifier(schema, table)
-    col_defs: list[str] = []
-    for c in columns:
-      name = self.render_identifier(str(c["name"]))
-      ctype = str(c["type"])
-      nullable = bool(c.get("nullable", True))
-      null_sql = "NULL" if nullable else "NOT NULL"
-      col_defs.append(f"{name} {ctype} {null_sql}")
-    cols_sql = ",\n  ".join(col_defs)
-    return f"CREATE TABLE IF NOT EXISTS {target} (\n  {cols_sql}\n)"
+    cols = {}
+    for c in (meta.get("columns") or []):
+      nm = (c.get("name") or c.get("column_name") or "").strip().lower()
+      if nm:
+        cols[nm] = c
 
-  def render_drop_table_if_exists(self, *, schema: str, table: str, cascade: bool = False) -> str:
-    """
-    Drop a table if it exists.
-
-    - Default: no CASCADE (dialects may override).
-    - cascade flag is supported for engines like Postgres.
-    """
-    # Default ignores cascade unless overridden by a dialect.
-    target = self.render_table_identifier(schema, table)
-    return f"DROP TABLE IF EXISTS {target}"
-
-  def render_add_column(self, schema: str, table: str, column: str, column_type: str | None) -> str:
-    """
-    Default ADD COLUMN DDL. Dialects can override if needed.
-    """
-    if not column_type:
-      # Fail closed: planner should block if type is missing.
-      return ""
-
-    # Use dialect-safe identifier rendering.
-    tbl = self.render_table_identifier(schema, table)
-    col = self.render_identifier(column)
-    return f"ALTER TABLE {tbl} ADD COLUMN {col} {column_type}"
-
-  def render_rename_column(self, schema: str, table: str, old: str, new: str) -> str:
-    # Default ANSI-ish
-    return f"ALTER TABLE {self.render_table_identifier(schema, table)} RENAME COLUMN {self.quote_ident(old)} TO {self.quote_ident(new)}"
-
-  def render_create_or_replace_view(
-    self,
-    *,
-    schema: str,
-    view: str,
-    select_sql: str,
-  ) -> str:
-    target = self.render_table_identifier(schema, view)
-    return f"CREATE OR REPLACE VIEW {target} AS\n{select_sql}"
-
-  # ---------------------------------------------------------------------------
-  # Logging
-  # ---------------------------------------------------------------------------
-  def render_insert_load_run_log(self, *, meta_schema: str, values: dict[str, object]) -> str | None:
-    """
-    Render an INSERT INTO meta.load_run_log (...) VALUES (...) statement.
-
-    v0.8.0: schema is canonical via LOAD_RUN_LOG_REGISTRY and the caller passes
-    a fully normalized `values` dict (same keys/order as the canonical schema).
-    Dialects must only render identifiers and literals safely.
-    """
-    raise NotImplementedError(f"{self.__class__.__name__} does not implement render_insert_load_run_log()")
+    return {
+      "table_exists": True,
+      "physical_table": table_name,
+      "actual_cols_by_norm_name": cols,
+    }

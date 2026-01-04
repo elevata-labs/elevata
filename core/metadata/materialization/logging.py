@@ -1,6 +1,6 @@
 """
 elevata - Metadata-driven Data Platform Framework
-Copyright © 2025 Ilona Tag
+Copyright © 2025-2026 Ilona Tag
 
 This file is part of elevata.
 
@@ -138,12 +138,73 @@ LOAD_RUN_LOG_REGISTRY = {
     "nullable": True,
     "description": "Error message if execution failed",
   },
+  "attempt_no": {
+    "datatype": "int",
+    "nullable": False,
+    "description": "Attempt counter for this dataset execution within the batch run (1..N)",
+  },
+  "status_reason": {
+    "datatype": "string",
+    "nullable": True,
+    "description": "Short machine-readable reason for status (e.g. blocked_by_dependency, retry_exhausted)",
+  },
+  "blocked_by": {
+    "datatype": "string",
+    "nullable": True,
+    "description": "Upstream dataset_key that blocked this run (if status=skipped)",
+  },
 }
 
+LOAD_RUN_SNAPSHOT_REGISTRY = {
+  "batch_run_id": {
+    "datatype": "string",
+    "nullable": False,
+    "description": "Logical batch identifier of this execution",
+  },
+  "created_at": {
+    "datatype": "timestamp",
+    "nullable": False,
+    "description": "Snapshot creation timestamp",
+  },
+  "root_dataset_key": {
+    "datatype": "string",
+    "nullable": False,
+    "description": "Root dataset of this execution (schema.dataset)",
+  },
+  "is_execute": {
+     "datatype": "bool",
+     "nullable": False,
+    "description": "Whether this load was executed (true) or dry-run (false)",
+  },
+  "continue_on_error": {
+    "datatype": "bool",
+    "nullable": False,
+    "description": "Execution policy: continue on error",
+  },
+  "max_retries": {
+    "datatype": "int",
+    "nullable": False,
+    "description": "Maximum retries per dataset",
+  },
+  "had_error": {
+    "datatype": "bool",
+    "nullable": False,
+    "description": "Whether any dataset errored during execution",
+  },
+  "step_count": {
+    "datatype": "int",
+    "nullable": False,
+    "description": "Number of execution steps in the plan",
+  },
+  "snapshot_json": {
+    "datatype": "string",
+    "nullable": False,
+    "description": "Full execution snapshot as JSON",
+  },
+}
 
 # Stable column order for CREATE/INSERT.
 LOAD_RUN_LOG_COLUMNS = list(LOAD_RUN_LOG_REGISTRY.keys())
-
 
 def build_load_run_log_row(
   *,
@@ -164,6 +225,9 @@ def build_load_run_log_row(
   rows_affected: int | None,
   status: str,
   error_message: str | None,
+  attempt_no: int = 1,
+  status_reason: str | None = None,
+  blocked_by: str | None = None,
 ) -> dict[str, object]:
   # Centralized normalization for meta.load_run_log inserts.
   return {
@@ -184,8 +248,57 @@ def build_load_run_log_row(
     "rows_affected": int(rows_affected) if rows_affected is not None else None,
     "status": status,
     "error_message": error_message,
+    "attempt_no": int(attempt_no),
+    "status_reason": status_reason,
+    "blocked_by": blocked_by,
   }
 
+def _introspect_existing_columns(
+  *,
+  engine,
+  dialect,
+  schema_name: str,
+  table_name: str,
+) -> tuple[bool, set[str]]:
+  """
+  Return (table_exists, existing_column_names_normalized).
+
+  Prefer dialect.introspect_table(exec_engine=...) because our execution engines
+  are not necessarily SQLAlchemy engines.
+  Fallback to read_table_metadata only if available and needed.
+  """
+  # 1) Preferred path: dialect-driven introspection (exec_engine based)
+  try:
+    if hasattr(dialect, "introspect_table"):
+      res = dialect.introspect_table(
+        schema_name=schema_name,
+        table_name=table_name,
+        introspection_engine=None,
+        exec_engine=engine,
+        debug_plan=False,
+      )
+      table_exists = bool(res.get("table_exists"))
+      cols_by_norm = dict(res.get("actual_cols_by_norm_name") or {})
+
+      # cols_by_norm keys are already normalized in our dialect implementations.
+      existing_norm = set(cols_by_norm.keys())
+      return table_exists, existing_norm
+  except Exception:
+    # Best-effort only: fall through to fallback
+    pass
+
+  # 2) Fallback path: SQLAlchemy-based metadata (only if the environment supports it)
+  try:
+    from metadata.system.introspection import read_table_metadata  # local import to avoid hard dependency
+    meta = read_table_metadata(engine, schema_name, table_name)
+    cols = []
+    for c in (meta.get("columns") or []):
+      if isinstance(c, dict) and c.get("name"):
+        cols.append(str(c["name"]))
+    existing_norm = {str(n).strip().lower() for n in cols if str(n).strip()}
+    return (len(existing_norm) > 0), existing_norm
+  except Exception:
+    return False, set()
 
 def ensure_load_run_log_table(engine, dialect, meta_schema: str, auto_provision: bool) -> None:
   """
@@ -218,20 +331,14 @@ def ensure_load_run_log_table(engine, dialect, meta_schema: str, auto_provision:
   # ------------------------------------------------------------------
   # 2) Introspect table metadata (best-effort)
   # ------------------------------------------------------------------
-  try:
-    meta = read_table_metadata(engine, meta_schema, table_name)
-    existing_columns = {
-      c.get("name") for c in (meta.get("columns") or [])
-      if isinstance(c, dict) and c.get("name")
-    }
-  except Exception:
-    meta = None
-    existing_columns = set()
+  table_exists, existing_columns_norm = _introspect_existing_columns(
+    engine=engine, dialect=dialect, schema_name=meta_schema, table_name=table_name
+  )
 
   # ------------------------------------------------------------------
   # 3) Table does not exist → CREATE
   # ------------------------------------------------------------------
-  if not existing_columns:
+  if not table_exists:
     try:
       columns = []
 
@@ -263,13 +370,20 @@ def ensure_load_run_log_table(engine, dialect, meta_schema: str, auto_provision:
       # Never block a load due to logging DDL
       pass
 
-    return
+    # Important: do NOT return here.
+    # In non-SQLAlchemy environments, introspection may report table_exists=False
+    # even if the table exists (or CREATE IF NOT EXISTS is a no-op).
+    # Continue best-effort with "ADD missing columns".
+    table_exists, existing_columns_norm = _introspect_existing_columns(
+      engine=engine, dialect=dialect, schema_name=meta_schema, table_name=table_name
+    )
 
   # ------------------------------------------------------------------
   # 4) Table exists → ADD missing columns
   # ------------------------------------------------------------------
   for col_name, spec in LOAD_RUN_LOG_REGISTRY.items():
-    if col_name in existing_columns:
+    # Compare normalized names (case/quoting independent)
+    if str(col_name).strip().lower() in existing_columns_norm:
       continue
 
     try:

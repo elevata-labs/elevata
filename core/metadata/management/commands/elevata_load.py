@@ -1,6 +1,6 @@
 """
 elevata - Metadata-driven Data Platform Framework
-Copyright © 2025 Ilona Tag
+Copyright © 2025-2026 Ilona Tag
 
 This file is part of elevata.
 
@@ -23,11 +23,13 @@ Contact: <https://github.com/elevata-labs/elevata>.
 from __future__ import annotations
 
 from typing import Any
+import json
 import time
 import logging
 import os
 import re
 import uuid
+from pathlib import Path
 from django.utils.timezone import now
 from django.core.management.base import BaseCommand, CommandError
 from dataclasses import replace
@@ -45,17 +47,31 @@ from metadata.rendering.load_planner import build_load_plan
 from metadata.rendering.placeholders import resolve_delta_cutoff_for_source_dataset
 from metadata.intent.ingestion import resolve_ingest_mode
 from metadata.ingestion.native_raw import ingest_raw_full
-from metadata.execution.load_graph import resolve_execution_order
-
+from metadata.execution.load_graph import resolve_execution_order, resolve_execution_order_all
+from metadata.execution.executor import build_execution_plan, execute_plan, ExecutionPolicy
+from metadata.execution.snapshot import (
+  build_execution_snapshot,
+  render_execution_snapshot_json,
+  write_execution_snapshot_file,
+)
+from metadata.execution.load_run_snapshot_store import (
+  build_load_run_snapshot_row,
+  ensure_load_run_snapshot_table,
+  render_select_load_run_snapshot_json,
+  fetch_one_value,
+)
+from metadata.execution.snapshot_diff import (
+  diff_execution_snapshots,
+  render_execution_snapshot_diff_text,
+)
 from metadata.materialization.policy import load_materialization_policy
 from metadata.materialization.planner import build_materialization_plan
 from metadata.materialization.applier import apply_materialization_plan
-from metadata.materialization.logging import LOAD_RUN_LOG_REGISTRY, build_load_run_log_row, ensure_load_run_log_table
+from metadata.materialization.logging import LOAD_RUN_SNAPSHOT_REGISTRY, build_load_run_log_row, ensure_load_run_log_table
 from metadata.materialization.schema import ensure_target_schema
 from metadata.ingestion.connectors import engine_for_target
 
 logger = logging.getLogger(__name__)
-
 
 def _get_bool_env(name: str, default: bool) -> bool:
   """Read a boolean flag from the environment (supports true/false/1/0/yes/no)."""
@@ -69,12 +85,10 @@ def _get_bool_env(name: str, default: bool) -> bool:
     return False
   return default
 
-
 AUTO_PROVISION_SCHEMAS = _get_bool_env("ELEVATA_AUTO_PROVISION_SCHEMAS", True)
 AUTO_PROVISION_TABLES = _get_bool_env("ELEVATA_AUTO_PROVISION_TABLES", True)
 AUTO_PROVISION_META_LOG = _get_bool_env("ELEVATA_AUTO_PROVISION_META_LOG", True)
 META_SCHEMA_NAME = os.getenv("ELEVATA_META_SCHEMA_NAME", "meta")
-
 
 def ensure_target_table(engine, dialect, td, auto_provision: bool) -> None:
   """
@@ -94,7 +108,6 @@ def ensure_target_table(engine, dialect, td, auto_provision: bool) -> None:
     return
 
   engine.execute(ddl)
-
 
 def _looks_like_cross_system_sql(sql: str, target_schema: str) -> bool:
   """
@@ -148,14 +161,12 @@ def _looks_like_cross_system_sql(sql: str, target_schema: str) -> bool:
 
   return False
 
-
 def _render_literal_for_dialect(dialect, value):
   # prefer dialect.render_literal if available
   fn = getattr(dialect, "render_literal", None)
   if callable(fn):
     return fn(value)
   return dialect.literal(value)
-
 
 def apply_runtime_placeholders(
   sql: str,
@@ -184,7 +195,6 @@ def apply_runtime_placeholders(
     sql = re.sub(r"\{\s*DELTA_CUTOFF\s*\}", cutoff_sql, sql)
 
   return sql
-
 
 def should_truncate_before_load(td, load_plan) -> bool:
   """
@@ -224,7 +234,6 @@ def should_truncate_before_load(td, load_plan) -> bool:
   # Only full refresh truncates
   return mode == "full" and mat in ("table", "incremental")
 
-
 def resolve_single_source_dataset_for_raw(target_dataset):
   """
   RAW datasets must have exactly one SourceDataset input.
@@ -239,7 +248,6 @@ def resolve_single_source_dataset_for_raw(target_dataset):
     )
   return src[0]
 
-
 def _plan_did_provision(plan) -> bool:
   """
   Return True only if the materialization plan contains steps that actually
@@ -251,7 +259,6 @@ def _plan_did_provision(plan) -> bool:
     return False
   # ENSURE_SCHEMA is intentionally ignored (schema DDL only)
   return any(getattr(s, "op", None) not in (None, "ENSURE_SCHEMA") for s in steps)
-
 
 # NOTE:
 # This function intentionally encapsulates the full lifecycle of a single dataset execution
@@ -274,6 +281,7 @@ def run_single_target_dataset(
   load_run_id: str | None = None,
   load_plan_override=None,
   chunk_size: int = 5000,
+  attempt_no: int = 1,
 ) -> dict[str, object]:
   """
   Execute or render exactly one dataset.
@@ -694,6 +702,9 @@ def run_single_target_dataset(
       rows_affected=rows_affected,
       status=load_status,
       error_message=error_message,
+      attempt_no=attempt_no,
+      status_reason=("retry_exhausted" if (load_status == "error" and attempt_no > 1) else None),
+      blocked_by=None,
     )
 
     log_insert_sql = dialect.render_insert_load_run_log(
@@ -786,7 +797,6 @@ def execute_raw_via_ingestion(
     batch_run_id=batch_run_id,
   )
 
-
 def warn_if_stage_exec_without_raw(target_dataset):
   """
   If a stage dataset is fed directly from SourceDatasets (no upstream RAW),
@@ -812,8 +822,11 @@ def warn_if_stage_exec_without_raw(target_dataset):
       "Otherwise target-only execution guards will prevent cross-system SQL."
     )
 
-
 class Command(BaseCommand):
+  # Stdout guardrails for --all plan printing
+  PLAN_PRINT_HEAD = 25
+  PLAN_PRINT_TAIL = 10
+
   help = (
     "Render (and in future: execute) load SQL for a target dataset.\n\n"
     "Example:\n"
@@ -821,11 +834,29 @@ class Command(BaseCommand):
   )
 
   def add_arguments(self, parser) -> None:
-    # Required: target dataset name (logical name in the warehouse)
+    # Optional: target dataset name (logical name in the warehouse)
+    # can be omitted when --all is used.
     parser.add_argument(
       "target_name",
       type=str,
-      help="TargetDataset.target_dataset_name to load, e.g. 'sap_customer'.",
+      nargs="?",
+      default=None,
+      help=(
+        "Target dataset to execute (default mode).\n"
+        "Executes the dataset and all its upstream dependencies."
+        "Omit when using --all."
+      ),
+    )
+
+    parser.add_argument(
+      "--all",
+      dest="all_datasets",
+      action="store_true",
+      help=(
+        "Execute all datasets in deterministic dependency order. "
+        "Use --schema to scope roots to one target schema (dependencies are still included). "
+        "Ignores target_name if provided."
+      ),
     )
 
     # Optional: disambiguate by target_schema.short_name
@@ -834,7 +865,13 @@ class Command(BaseCommand):
       dest="schema_short",
       type=str,
       default=None,
-      help="Optional target schema short_name to disambiguate, e.g. 'rawcore'.",
+      help=(
+        "Disambiguate dataset selection by schema (for single-dataset mode),\n"
+        "or scope execution to a schema when used with --all.\n"
+        "Examples:\n"
+        "  elevata_load my_dataset --schema raw\n"
+        "  elevata_load --all --schema rawcore"
+      ),
     )
 
     # Optional: explicit dialect override (else: env → profile)
@@ -866,7 +903,8 @@ class Command(BaseCommand):
       help=(
         "Execute the resolved operation.\n"
         "- For RAW targets: run ingestion (extract + load).\n"
-        "- For downstream targets: execute generated SQL in the target system."
+        "- For downstream targets: execute generated SQL in the target system. "
+        "If omitted, elevata runs in dry-run mode."
       ),
     )
 
@@ -907,6 +945,64 @@ class Command(BaseCommand):
       ),
     )
 
+    parser.add_argument(
+      "--max-retries",
+      dest="max_retries",
+      type=int,
+      default=0,
+      help=(
+        "Retry failed dataset executions up to N additional times (execute-mode only). "
+        "0 means: no retries."
+      ),
+    )
+
+    parser.add_argument(
+      "--debug-execution",
+      dest="debug_execution",
+      action="store_true",
+      default=False,
+      help="Print an execution snapshot (plan + policy + outcomes) as JSON to stdout.",
+    )
+
+    parser.add_argument(
+      "--write-execution-snapshot",
+      dest="write_execution_snapshot",
+      action="store_true",
+      default=False,
+      help="Write an execution snapshot JSON file to disk (best-effort).",
+    )
+
+    parser.add_argument(
+      "--execution-snapshot-dir",
+      dest="execution_snapshot_dir",
+      type=str,
+      default="./log/execution_snapshots",
+      help="Directory to write execution snapshot JSON files into.",
+    )
+
+    parser.add_argument(
+      "--diff-against-snapshot",
+      dest="diff_against_snapshot",
+      type=str,
+      default=None,
+      help="Path to a baseline load run snapshot JSON file to diff against (best-effort).",
+    )
+
+    parser.add_argument(
+      "--diff-print",
+      dest="diff_print",
+      action="store_true",
+      default=False,
+      help="Print the snapshot diff to stdout (best-effort).",
+    )
+
+    parser.add_argument(
+      "--diff-against-batch-run-id",
+      dest="diff_against_batch_run_id",
+      type=str,
+      default=None,
+      help="Baseline batch_run_id to diff against (loaded from meta.load_run_snapshot).",
+    )
 
   def _resolve_target_dataset(self, target_name: str, schema_short: str | None) -> TargetDataset:
     """
@@ -931,13 +1027,85 @@ class Command(BaseCommand):
         "Please specify --schema to disambiguate."
       ) from exc
 
+  def _validate_root_selection(
+    self,
+    *,
+    target_name: str | None,
+    all_datasets: bool,
+  ) -> None:
+    """
+    Validate CLI selection rules for root dataset(s).
+    """
+    if all_datasets and target_name:
+      raise CommandError("Invalid arguments: do not pass target_name together with --all.")
+
+    if (not all_datasets) and (not target_name):
+      raise CommandError("Missing target_name. Provide a dataset name or use --all.")
+
+  def _style_warning(self, text: str) -> str:
+    """
+    Best-effort warning style helper.
+    Some tests stub style and may not implement WARNING.
+    """
+    fn = getattr(self.style, "WARNING", None)
+    return fn(text) if callable(fn) else text
+
+  def _print_execution_plan(
+    self,
+    *,
+    execution_order: list["TargetDataset"],
+    batch_run_id: str,
+    all_datasets: bool,
+    schema_short: str | None,
+    no_print: bool,
+  ) -> None:
+    """
+    Print execution plan in a deterministic, stdout-safe way.
+    In --all mode, avoid flooding stdout by printing head+tail with an ellipsis line.
+    """
+    if no_print:
+      return
+
+    self.stdout.write("")
+
+    if all_datasets:
+      scope = f", schema={schema_short}" if schema_short else ""
+      self.stdout.write(self.style.NOTICE(
+        f"Execution plan (all datasets{scope}, batch_run_id={batch_run_id}):"
+      ))
+
+      n = len(execution_order)
+      head = int(getattr(self, "PLAN_PRINT_HEAD", 25))
+      tail = int(getattr(self, "PLAN_PRINT_TAIL", 10))
+
+      def _fmt(td) -> str:
+        return f"{td.target_schema.short_name}.{td.target_dataset_name}"
+
+      if n <= (head + tail + 5):
+        for i, td in enumerate(execution_order, start=1):
+          self.stdout.write(f"  {i}. {_fmt(td)}")
+      else:
+        for i, td in enumerate(execution_order[:head], start=1):
+          self.stdout.write(f"  {i}. {_fmt(td)}")
+        self.stdout.write(self._style_warning(f"  ... ({n - head - tail} more)"))
+
+        start_idx = n - tail + 1
+        for off, td in enumerate(execution_order[-tail:], start=0):
+          self.stdout.write(f"  {start_idx + off}. {_fmt(td)}")
+    else:
+      self.stdout.write(self.style.NOTICE(f"Execution plan (batch_run_id={batch_run_id}):"))
+      for i, td in enumerate(execution_order, start=1):
+        self.stdout.write(f"  {i}. {td.target_schema.short_name}.{td.target_dataset_name}")
+
+    self.stdout.write("")
 
   def handle(self, *args: Any, **options: Any) -> None:
     """
     Process load
     """
-    target_name: str = options["target_name"]
+    target_name: str | None = options.get("target_name")
     schema_short: str | None = options["schema_short"]
+    all_datasets: bool = bool(options.get("all_datasets", False))    
     dialect_name: str | None = options["dialect_name"]
     target_system_name: str | None = options["target_system_name"]
     execute: bool = options["execute"]
@@ -945,12 +1113,46 @@ class Command(BaseCommand):
     debug_plan: bool = bool(options.get("debug_plan", False))
     no_deps: bool = bool(options.get("no_deps", False))
     continue_on_error: bool = bool(options.get("continue_on_error", False))
+    max_retries: int = int(options.get("max_retries") or 0)
+    debug_execution: bool = bool(options.get("debug_execution", False))
+    write_execution_snapshot: bool = bool(options.get("write_execution_snapshot", False))
+    execution_snapshot_dir: str = str(options.get("execution_snapshot_dir") or ".elevata/execution_snapshots")
+    diff_against_snapshot: str | None = options.get("diff_against_snapshot")
+    diff_print: bool = bool(options.get("diff_print", False))
+    diff_against_batch_run_id: str | None = options.get("diff_against_batch_run_id")
 
     # One batch_run_id for the entire run (all datasets).
     batch_run_id = str(uuid.uuid4())
+    created_at = now()
 
-    # 1) Resolve root dataset
-    root_td = self._resolve_target_dataset(target_name, schema_short)
+    # 0) Validate selection
+    self._validate_root_selection(
+      target_name=target_name,
+      all_datasets=all_datasets,
+    )    
+
+    # 1) Resolve root dataset(s)
+    root_td = None
+    roots: list[TargetDataset] = []
+
+    if all_datasets:
+      qs = TargetDataset.objects.all()
+      # In --all mode, --schema scopes the root set (dependencies are still included).
+      if schema_short:
+        qs = qs.filter(target_schema__short_name=schema_short)
+      roots = list(qs)
+      if not roots:
+        raise CommandError(
+          "No TargetDatasets found"
+          + (f" for --schema='{schema_short}'" if schema_short else "")
+          + "."
+        )
+      # Pick a deterministic representative root for existing root-level logging semantics.
+      roots_sorted = sorted(roots, key=lambda d: (d.target_schema.short_name, d.target_dataset_name))
+      root_td = roots_sorted[0]
+    else:
+      root_td = self._resolve_target_dataset(str(target_name), schema_short)
+      roots = [root_td]
 
     # 2) Resolve profile
     profile = load_profile(None)
@@ -965,23 +1167,38 @@ class Command(BaseCommand):
     dialect = get_active_dialect(dialect_name)
 
     engine = None
-    if execute:
+    if execute or diff_against_batch_run_id:
       engine = dialect.get_execution_engine(system)
 
     try:
       # 5) Resolve execution order
-      if no_deps:
-        execution_order = [root_td]
+      if all_datasets:
+        if no_deps:
+          # no_deps in --all means: run only the selected roots (no upstream expansion)
+          execution_order = sorted(roots, key=lambda d: (d.target_schema.short_name, d.target_dataset_name))
+        else:
+          execution_order = resolve_execution_order_all(roots)
       else:
-        execution_order = resolve_execution_order(root_td)
+        if no_deps:
+          execution_order = [root_td]
+        else:
+          execution_order = resolve_execution_order(root_td)
+
+      policy = ExecutionPolicy(
+        continue_on_error=continue_on_error,
+        max_retries=max_retries,
+      )      
+
+      plan = build_execution_plan(batch_run_id=batch_run_id, execution_order=execution_order)
 
       # 6) Print plan
-      if not no_print:
-        self.stdout.write("")
-        self.stdout.write(self.style.NOTICE(f"Execution plan (batch_run_id={batch_run_id}):"))
-        for i, td in enumerate(execution_order, start=1):
-          self.stdout.write(f"  {i}. {td.target_schema.short_name}.{td.target_dataset_name}")
-        self.stdout.write("")
+      self._print_execution_plan(
+        execution_order=execution_order,
+        batch_run_id=batch_run_id,
+        all_datasets=all_datasets,
+        schema_short=schema_short,
+        no_print=no_print,
+      )
 
       # 7) Debug plan for root only (exact formatting expected by tests)
       root_load_plan = None
@@ -1030,60 +1247,238 @@ class Command(BaseCommand):
       )
 
       # 8) Execute datasets in order and collect summary
-      results: list[dict[str, object]] = []
-      had_error = False
+      def _run_dataset_fn(*, target_dataset, batch_run_id, load_run_id, load_plan_override, attempt_no):
+        return run_single_target_dataset(
+          stdout=self.stdout,
+          style=self.style,
+          target_dataset=target_dataset,
+          target_system=system,
+          target_system_engine=engine,
+          profile=profile,
+          dialect=dialect,
+          execute=execute,
+          no_print=no_print,
+          debug_plan=False,
+          debug_materialization=debug_plan,
+          batch_run_id=batch_run_id,
+          load_run_id=load_run_id,
+          load_plan_override=load_plan_override,
+          chunk_size=5000,
+          attempt_no=attempt_no,
+        )
 
-      for td in execution_order:
-        this_load_run_id = root_load_run_id if td is root_td else None
-        this_load_plan = root_load_plan if (td is root_td) else None
+      results, had_error = execute_plan(
+        plan=plan,
+        execution_order=execution_order,
+        policy=policy,
+        execute=bool(execute),
+        root_td=root_td,
+        root_load_run_id=root_load_run_id,
+        root_load_plan=root_load_plan,
+        run_dataset_fn=_run_dataset_fn,
+        logger=logger,
+      )
 
+      # 8.0) Build + persist load_run_snapshot (best-effort)
+      root_dataset_key = f"{root_td.target_schema.short_name}.{root_td.target_dataset_name}"
+
+      snapshot = build_execution_snapshot(
+        batch_run_id=batch_run_id,
+        policy=policy,
+        plan=plan,
+        execute=bool(execute),
+        no_deps=bool(no_deps),
+        continue_on_error=bool(continue_on_error),
+        max_retries=int(max_retries),
+        profile_name=profile.name,
+        target_system_short=system.short_name,
+        target_system_type=system.type,
+        dialect_name=dialect.__class__.__name__,
+        root_dataset_key=root_dataset_key,
+        created_at=created_at,
+        results=results,
+        had_error=had_error,
+      )
+
+      if debug_execution and not no_print:
+        self.stdout.write("")
+        self.stdout.write(self.style.WARNING("-- Execution snapshot (JSON):"))
+        self.stdout.write(render_execution_snapshot_json(snapshot))
+        self.stdout.write("")
+
+      if write_execution_snapshot:
         try:
-          result = run_single_target_dataset(
-            stdout=self.stdout,
-            style=self.style,
-            target_dataset=td,
-            target_system=system,
-            target_system_engine=engine,
-            profile=profile,
-            dialect=dialect,
-            execute=execute,
-            no_print=no_print,
-            debug_plan=False,
-            debug_materialization=debug_plan,
+          path = write_execution_snapshot_file(
+            snapshot=snapshot,
+            snapshot_dir=execution_snapshot_dir,
             batch_run_id=batch_run_id,
-            load_run_id=this_load_run_id,
-            load_plan_override=this_load_plan,
-            chunk_size=5000,
           )
-          results.append(result)
+          if not no_print:
+            self.stdout.write(self.style.NOTICE(f"Execution snapshot written: {path}"))
+        except Exception:
+          # Best-effort only: never block the run because of snapshot writing.
+          pass
 
-        except Exception as exc:
-          had_error = True
-
-          results.append({
-            "status": "error",
-            "kind": "exception",
-            "dataset": f"{td.target_schema.short_name}.{td.target_dataset_name}",
-            "message": str(exc),
-          })
-
-          logger.exception(
-            "elevata_load dataset failed",
-            extra={
-              "batch_run_id": batch_run_id,
-              "target_dataset_name": td.target_dataset_name,
-              "target_schema": td.target_schema.short_name,
-            },
+      # Persist snapshot to meta.load_run_snapshot (best-effort)
+      if execute and engine is not None:
+        try:
+          ensure_load_run_snapshot_table(
+            engine=engine,
+            dialect=dialect,
+            meta_schema=META_SCHEMA_NAME,
+            auto_provision=AUTO_PROVISION_META_LOG,
           )
 
-          if not continue_on_error:
-            # Ensure we still emit the "finished" log for root with best-effort fields
-            break
+          snapshot_json = render_execution_snapshot_json(snapshot)
+
+          row = build_load_run_snapshot_row(
+            batch_run_id=batch_run_id,
+            created_at=created_at,
+            root_dataset_key=root_dataset_key,
+            is_execute=bool(execute),
+            continue_on_error=bool(continue_on_error),
+            max_retries=int(max_retries),
+            had_error=bool(had_error),
+            step_count=len(plan.steps),
+            snapshot_json=snapshot_json,
+          )
+
+          sql = dialect.render_insert_load_run_snapshot(
+            meta_schema=META_SCHEMA_NAME,
+            values=row,
+          )
+          if sql:
+            engine.execute(sql)
+
+        except Exception:
+          # Best-effort: must never block the run
+          pass
+
+      # Snapshot diff (best-effort): DB baseline preferred, file baseline fallback
+      baseline = None
+
+      # Prefer DB baseline if provided (meta.load_run_snapshot)
+      if diff_against_batch_run_id and engine is not None:
+        try:
+          sql = render_select_load_run_snapshot_json(
+            dialect=dialect,
+            meta_schema=META_SCHEMA_NAME,
+            batch_run_id=str(diff_against_batch_run_id),
+          )
+          snapshot_json = fetch_one_value(engine, sql)
+
+          if diff_print and not no_print:
+            self.stdout.write(self.style.WARNING(
+              f"-- Snapshot diff debug: baseline query returned type={type(snapshot_json)} len={len(snapshot_json) if isinstance(snapshot_json, str) else 'n/a'}"
+            ))
+
+          if snapshot_json:
+            baseline = json.loads(snapshot_json)
+        except Exception:
+          baseline = None
+
+      # Fallback: file baseline
+      if baseline is None and diff_against_snapshot:
+        try:
+          baseline_json = Path(diff_against_snapshot).read_text(encoding="utf-8")
+          baseline = json.loads(baseline_json)
+        except Exception:
+          baseline = None
+
+      # Optional hint for live runs (only when user explicitly asked to print diffs)
+      if diff_print and not no_print and diff_against_batch_run_id and baseline is None:
+        self.stdout.write(self.style.WARNING(
+          f"-- Snapshot diff: baseline batch_run_id not found in {META_SCHEMA_NAME}.load_run_snapshot: {diff_against_batch_run_id}"
+        ))
+
+      if baseline is not None:
+        try:
+          diff = diff_execution_snapshots(left=baseline, right=snapshot)
+
+          if diff_print and not no_print:
+            left_id = str(baseline.get("batch_run_id") or "baseline")
+            right_id = str(snapshot.get("batch_run_id") or "current")
+            self.stdout.write("")
+            self.stdout.write(self.style.WARNING("-- Snapshot diff:"))
+            self.stdout.write(render_execution_snapshot_diff_text(
+              diff=diff,
+              left_batch_run_id=left_id,
+              right_batch_run_id=right_id,
+            ))
+        except Exception:
+          pass
+
+      # 8.1) Persist orchestration-only outcomes (blocked/aborted) to meta.load_run_log
+      # Best-effort: must never block the load runner.
+      if execute and engine is not None and hasattr(dialect, "render_insert_load_run_log"):
+        try:
+          ensure_load_run_log_table(
+            engine=engine,
+            dialect=dialect,
+            meta_schema=META_SCHEMA_NAME,
+            auto_provision=AUTO_PROVISION_META_LOG,
+          )
+
+          for r in results:
+            if r.get("status") != "skipped":
+              continue
+            if r.get("kind") not in ("blocked", "aborted"):
+              continue
+
+            ds = str(r.get("dataset") or "")
+            if "." not in ds:
+              continue
+            target_schema, target_dataset = ds.split(".", 1)
+
+            # Use per-step load_run_id if provided, otherwise generate one.
+            load_run_id = str(r.get("load_run_id") or uuid.uuid4())
+
+            ts = now()
+            values = build_load_run_log_row(
+              batch_run_id=batch_run_id,
+              load_run_id=load_run_id,
+              target_schema=target_schema,
+              target_dataset=target_dataset,
+              target_system=system.short_name,
+              profile=profile.name,
+              # Orchestration-only rows: still need non-null semantics fields
+              mode="orchestration",
+              handle_deletes=False,
+              historize=False,
+              started_at=ts,
+              finished_at=ts,
+              render_ms=0.0,
+              execution_ms=0.0,
+              sql_length=0,
+              rows_affected=None,
+              status="skipped",
+              error_message=str(r.get("message") or None),
+              # v0.8.0 extra fields (you added these in logging.py)
+              attempt_no=int(r.get("attempt_no") or 1),
+              status_reason=str(r.get("status_reason") or None),
+              blocked_by=str(r.get("blocked_by") or None),
+            )
+
+            log_insert_sql = dialect.render_insert_load_run_log(
+              meta_schema=META_SCHEMA_NAME,
+              values=values,
+            )
+            if log_insert_sql:
+              engine.execute(log_insert_sql)
+        except Exception:
+          # Never block execution due to meta logging inserts
+          pass
 
       # 9) Execution summary
       if not no_print:
         self.stdout.write("")
-        self.stdout.write(self.style.NOTICE(f"Execution summary (batch_run_id={batch_run_id}):"))
+        if all_datasets:
+          scope = f", schema={schema_short}" if schema_short else ""
+          self.stdout.write(self.style.NOTICE(
+            f"Execution summary (all datasets{scope}, batch_run_id={batch_run_id}):"
+          ))
+        else:
+          self.stdout.write(self.style.NOTICE(f"Execution summary (batch_run_id={batch_run_id}):"))
 
         for r in results:
           status = str(r.get("status", "unknown"))
@@ -1114,6 +1509,9 @@ class Command(BaseCommand):
       started_at = root_result.get("started_at") if root_result else None
       finished_at = root_result.get("finished_at") if root_result else None
 
+      def _iso(x):
+        return x.isoformat() if hasattr(x, "isoformat") else x
+
       logger.info(
         "elevata_load finished",
         extra={
@@ -1123,8 +1521,8 @@ class Command(BaseCommand):
           "target_dataset_name": root_td.target_dataset_name,
           "sql_length": sql_length,
           "execute": execute,
-          "started_at": started_at.isoformat() if started_at else None,
-          "finished_at": finished_at.isoformat() if finished_at else None,
+          "started_at": _iso(started_at) if started_at else None,
+          "finished_at": _iso(finished_at) if finished_at else None,
           "render_ms": render_ms,
         },
       )

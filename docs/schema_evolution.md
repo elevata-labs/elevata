@@ -194,5 +194,4 @@ exactly what you want in production pipelines.
 
 ---
 
-© 2025 elevata Labs — Internal Technical Documentation
-
+© 2025-2026 elevata Labs — Internal Technical Documentation

@@ -1,6 +1,6 @@
 """
 elevata - Metadata-driven Data Platform Framework
-Copyright © 2025 Ilona Tag
+Copyright © 2025-2026 Ilona Tag
 
 This file is part of elevata.
 
@@ -32,6 +32,7 @@ from .base import BaseExecutionEngine, SqlDialect
 from metadata.ingestion.types_map import (
   STRING, INTEGER, BIGINT, DECIMAL, FLOAT, BOOLEAN, DATE, TIME, TIMESTAMP, BINARY, UUID, JSON
 )
+from metadata.materialization.logging import LOAD_RUN_LOG_REGISTRY
 
 
 class MssqlExecutionEngine(BaseExecutionEngine):
@@ -79,7 +80,37 @@ class MssqlExecutionEngine(BaseExecutionEngine):
       raise
     finally:
       conn.close()
-      
+
+  def execute_scalar(self, sql: str):
+    """
+    Execute a SELECT returning a single value (first column of first row).
+    Returns None if no row is returned.
+    """
+    conn = pyodbc.connect(self.conn_str, autocommit=False)
+    try:
+      cursor = conn.cursor()
+      cursor.execute(sql)
+      row = cursor.fetchone()
+      if not row:
+        return None
+      # pyodbc rows are tuple-like
+      return row[0]
+    finally:
+      conn.close()
+
+  def fetch_all(self, sql: str) -> list[tuple]:
+    """
+    Execute a SELECT and return all rows as tuples.
+    """
+    conn = pyodbc.connect(self.conn_str, autocommit=False)
+    try:
+      cursor = conn.cursor()
+      cursor.execute(sql)
+      rows = cursor.fetchall()
+      return [tuple(r) for r in (rows or [])]
+    finally:
+      conn.close()      
+
 
 class MssqlDialect(SqlDialect):
   """
@@ -99,41 +130,11 @@ class MssqlDialect(SqlDialect):
     - CREATE OR REPLACE emulated via DROP + SELECT INTO
   """
 
+  # ---------------------------------------------------------------------------
+  # 1. Class meta / capabilities
+  # ---------------------------------------------------------------------------
   DIALECT_NAME = "mssql"
 
-  # ---------------------------------------------------------------------------
-  # Execution
-  # ---------------------------------------------------------------------------
-  def get_execution_engine(self, system):
-    return MssqlExecutionEngine(system)
-  
-
-  # ---------------------------------------------------------------------------
-  # Introspection
-  # ---------------------------------------------------------------------------
-  def introspect_table(
-    self,
-    *,
-    schema_name: str,
-    table_name: str,
-    introspection_engine: Any,
-    exec_engine: Optional["BaseExecutionEngine"] = None,
-    debug_plan: bool = False,
-  ) -> Dict[str, Any]:
-    # Use SQLAlchemy-based default introspection for MSSQL.
-    return SqlDialect.introspect_table(
-      self,
-      schema_name=schema_name,
-      table_name=table_name,
-      introspection_engine=introspection_engine,
-      exec_engine=exec_engine,
-      debug_plan=debug_plan,
-    )
-
-
-  # ---------------------------------------------------------------------------
-  # Capabilities
-  # ---------------------------------------------------------------------------
   @property
   def supports_merge(self) -> bool:
     """SQL Server supports native MERGE statements."""
@@ -144,8 +145,11 @@ class MssqlDialect(SqlDialect):
     """Delete detection is implemented via DELETE + NOT EXISTS."""
     return True
 
+  def get_execution_engine(self, system):
+    return MssqlExecutionEngine(system)
+
   # ---------------------------------------------------------------------------
-  # Identifier quoting
+  # 2. Identifier & quoting
   # ---------------------------------------------------------------------------
   def quote_ident(self, name: str) -> str:
     """
@@ -159,7 +163,7 @@ class MssqlDialect(SqlDialect):
     return f'"{escaped}"'
 
   # ---------------------------------------------------------------------------
-  # Type mapping
+  # 3. Types
   # ---------------------------------------------------------------------------
   def render_physical_type(
     self,
@@ -176,246 +180,6 @@ class MssqlDialect(SqlDialect):
       decimal_precision=precision,
       decimal_scale=scale,
     )
-
-  # ---------------------------------------------------------
-  # Concatenation
-  # ---------------------------------------------------------
-  def concat_expression(self, parts: Sequence[str]) -> str:
-    """
-    SQL Server uses + for string concatenation.
-
-    We keep it simple and assume the inputs are already string-like.    
-    """
-    if not parts:
-      return "''"
-    return "(" + " + ".join(parts) + ")"
-
-  # ---------------------------------------------------------
-  # Hash expression
-  # ---------------------------------------------------------
-  def hash_expression(self, expr: str, algo: str = "sha256") -> str:
-    """
-    SQL Server: map HASH256 to HASHBYTES('SHA2_256', ...),
-    and convert to a hex string.
-    """
-    algo_lower = algo.lower()
-    if algo_lower in ("sha256", "hash256"):
-      return f"CONVERT(VARCHAR(64), HASHBYTES('SHA2_256', {expr}), 2)"
-    # Fallback: still SHA2_256
-    return f"CONVERT(VARCHAR(64), HASHBYTES('SHA2_256', {expr}), 2)"
-
-  # ---------------------------------------------------------------------------
-  # Literal rendering
-  # ---------------------------------------------------------------------------
-  def render_literal(self, value):
-    if value is None:
-      return "NULL"
-
-    if isinstance(value, bool):
-      # SQL Server has BIT, but no TRUE/FALSE literals
-      return "1" if value else "0"
-
-    if isinstance(value, (int, float, Decimal)):
-      return str(value)
-
-    if isinstance(value, str):
-      escaped = value.replace("'", "''")
-      return f"'{escaped}'"
-
-    if isinstance(value, datetime.date) and not isinstance(value, datetime.datetime):
-      iso = value.isoformat()
-      return f"CAST('{iso}' AS DATE)"
-
-    if isinstance(value, datetime.datetime):
-      # Strip microseconds for a cleaner literal
-      dt = value.replace(microsecond=0)
-      iso = dt.isoformat(sep=" ")
-      return f"CAST('{iso}' AS DATETIME2)"
-
-    raise TypeError(f"Unsupported literal type for MssqlDialect: {type(value)}")
-
-  # ---------------------------------------------------------------------------
-  # Type casting
-  # ---------------------------------------------------------------------------
-  def cast_expression(self, expr: str, target_type: str) -> str:
-    return f"CAST({expr} AS {target_type})"
-
-  # ---------------------------------------------------------------------------
-  # Truncate table
-  # ---------------------------------------------------------------------------
-  def render_truncate_table(self, schema: str, table: str) -> str:
-    qtbl = self.render_table_identifier
-    return f"TRUNCATE TABLE {qtbl(schema, table)};"
-
-  # ---------------------------------------------------------------------------
-  # Incremental / MERGE Rendering
-  # ---------------------------------------------------------------------------
-  def render_create_replace_table(self, schema: str, table: str, select_sql: str) -> str:
-    """
-    Emulate CREATE OR REPLACE TABLE via DROP IF EXISTS + SELECT INTO.
-
-    Note:
-      OBJECT_ID('<schema>.<table>', 'U') is used to detect existing tables.
-    """
-    full = self.render_table_identifier(schema, table)
-
-    return (
-      f"IF OBJECT_ID('{full}', 'U') IS NOT NULL\n"
-      f"  DROP TABLE {full};\n"
-      f"SELECT * INTO {full}\n"
-      f"FROM (\n{select_sql}\n) AS src;"
-    )
-
-  def render_delete_detection_statement(
-    self,
-    target_schema,
-    target_table,
-    stage_schema,
-    stage_table,
-    join_predicates,
-    scope_filter=None,
-  ):
-    """
-    SQL Server delete detection.
-
-    SQL Server does not allow:
-      DELETE FROM tbl AS t ...
-    Correct form:
-      DELETE t
-      FROM tbl AS t
-      WHERE ...
-    """
-    q = self.render_identifier
-
-    target_qualified = f'{q(target_schema)}.{q(target_table)}'
-    stage_qualified = f'{q(stage_schema)}.{q(stage_table)}'
-
-    join_sql = " AND ".join(join_predicates)
-
-    conditions = []
-    if scope_filter:
-      conditions.append(scope_filter)
-
-    conditions.append(
-      f"NOT EXISTS (\n"
-      f"    SELECT 1\n"
-      f"    FROM {stage_qualified} AS s\n"
-      f"    WHERE {join_sql}\n"
-      f")"
-    )
-
-    where_sql = "\n  AND ".join(conditions)
-
-    return (
-      f"DELETE t\n"
-      f"FROM {target_qualified} AS t\n"
-      f"WHERE {where_sql};"
-    )
-
-
-  # ---------------------------------------------------------------------------
-  # DDL statements
-  # ---------------------------------------------------------------------------
-  def render_rename_table(self, schema: str, old_table: str, new_table: str) -> str:
-    old_qualified = f"{self.render_identifier(schema)}.{self.render_identifier(old_table)}"
-    new_name = self.render_identifier(new_table)
-    # sp_rename wants quoted identifiers inside the string; QUOTED_IDENTIFIER should be ON (typisch).
-    return f"EXEC sp_rename N'{old_qualified}', N'{new_name}'"
-  
-
-  def render_add_column(self, schema: str, table: str, column: str, column_type: str | None) -> str:
-    """
-    SQL Server syntax: ALTER TABLE <tbl> ADD <col> <type>
-    (no COLUMN keyword).
-    """
-    if not column_type:
-      return ""
-    tbl = self.render_table_identifier(schema, table)
-    col = self.render_identifier(column)
-    return f"ALTER TABLE {tbl} ADD {col} {column_type}"
-
-
-  def render_rename_column(self, schema: str, table: str, old: str, new: str) -> str:
-    obj = (
-      f"{self.render_identifier(schema)}."
-      f"{self.render_identifier(table)}."
-      f"{self.render_identifier(old)}"
-    )
-    new_name = self.render_identifier(new)
-    return f"EXEC sp_rename N'{obj}', N'{new_name}', 'COLUMN'"
-
-
-  def render_create_schema_if_not_exists(self, schema: str) -> str:
-    """
-    SQL Server uses IF NOT EXISTS on sys.schemas.
-    """
-    return f"""
-      IF NOT EXISTS (SELECT 1 FROM sys.schemas WHERE name = '{schema}')
-      BEGIN
-        EXEC('CREATE SCHEMA {schema}');
-      END;
-    """.strip()
-  
-
-  def render_create_table_if_not_exists(self, td) -> str:
-    """
-    Create the target dataset table based on TargetColumn metadata.
-    SQL Server requires IF OBJECT_ID(...) checks (no CREATE TABLE IF NOT EXISTS).
-    """
-    schema_name = td.target_schema.schema_name
-    table_name = td.target_dataset_name
-    columns: list[dict[str, object]] = []
-    for c in self._iter_target_columns(td):
-      col_type = self.map_logical_type(
-        datatype=c.datatype,
-        max_length=getattr(c, "max_length", None),
-        precision=getattr(c, "decimal_precision", None),
-        scale=getattr(c, "decimal_scale", None),
-        strict=True,
-      )
-      columns.append({
-        "name": c.target_column_name,
-        "type": col_type,
-        "nullable": bool(getattr(c, "nullable", True)),
-      })
-    return self.render_create_table_if_not_exists_from_columns(
-      schema=schema_name,
-      table=table_name,
-      columns=columns,
-    )
-
-  def render_create_table_if_not_exists_from_columns(
-    self,
-    *,
-    schema: str,
-    table: str,
-    columns: list[dict[str, object]],
-  ) -> str:
-    q = self.render_identifier
-    qtbl = self.render_table_identifier
-    col_defs: list[str] = []
-    for c in columns:
-      name = q(str(c["name"]))
-      ctype = str(c["type"])
-      nullable = bool(c.get("nullable", True))
-      null_sql = "NULL" if nullable else "NOT NULL"
-      col_defs.append(f"{name} {ctype} {null_sql}")
-    cols_sql = ",\n  ".join(col_defs)
-    full_name = f"{schema}.{table}"
-    return f"""
-      IF OBJECT_ID(N'{full_name}', N'U') IS NULL
-      BEGIN
-        CREATE TABLE {qtbl(schema, table)} (
-          {cols_sql}
-        );
-      END;
-    """.strip()
-
-  def render_create_or_replace_view(self, *, schema, view, select_sql):
-    return f"""
-      CREATE OR ALTER VIEW {schema}.{view} AS
-      {select_sql}
-      """.strip()
 
   def _render_canonical_type_mssql(
     self,
@@ -474,10 +238,159 @@ class MssqlDialect(SqlDialect):
       "Please fix ingestion type mapping or extend the dialect mapping."
     )
 
+  # ---------------------------------------------------------------------------
+  # 4. DDL helpers
+  # ---------------------------------------------------------------------------
+  def render_create_schema_if_not_exists(self, schema: str) -> str:
+    """
+    SQL Server uses IF NOT EXISTS on sys.schemas.
+    """
+    return f"""
+      IF NOT EXISTS (SELECT 1 FROM sys.schemas WHERE name = '{schema}')
+      BEGIN
+        EXEC('CREATE SCHEMA {schema}');
+      END;
+    """.strip()
+
+  def render_create_table_if_not_exists(self, td) -> str:
+    """
+    Create the target dataset table based on TargetColumn metadata.
+    SQL Server requires IF OBJECT_ID(...) checks (no CREATE TABLE IF NOT EXISTS).
+    """
+    schema_name = td.target_schema.schema_name
+    table_name = td.target_dataset_name
+    columns: list[dict[str, object]] = []
+    for c in self._iter_target_columns(td):
+      col_type = self.map_logical_type(
+        datatype=c.datatype,
+        max_length=getattr(c, "max_length", None),
+        precision=getattr(c, "decimal_precision", None),
+        scale=getattr(c, "decimal_scale", None),
+        strict=True,
+      )
+      columns.append({
+        "name": c.target_column_name,
+        "type": col_type,
+        "nullable": bool(getattr(c, "nullable", True)),
+      })
+    return self.render_create_table_if_not_exists_from_columns(
+      schema=schema_name,
+      table=table_name,
+      columns=columns,
+    )
+
+  def render_create_table_if_not_exists_from_columns(
+    self,
+    *,
+    schema: str,
+    table: str,
+    columns: list[dict[str, object]],
+  ) -> str:
+    q = self.render_identifier
+    qtbl = self.render_table_identifier
+    col_defs: list[str] = []
+    for c in columns:
+      name = q(str(c["name"]))
+      ctype = str(c["type"])
+      nullable = bool(c.get("nullable", True))
+      null_sql = "NULL" if nullable else "NOT NULL"
+      col_defs.append(f"{name} {ctype} {null_sql}")
+    cols_sql = ",\n  ".join(col_defs)
+    full_name = f"{schema}.{table}"
+    return f"""
+      IF OBJECT_ID(N'{full_name}', N'U') IS NULL
+      BEGIN
+        CREATE TABLE {qtbl(schema=schema, name=table)} (
+          {cols_sql}
+        );
+      END;
+    """.strip()
+
+  def render_create_or_replace_view(self, *, schema, view, select_sql):
+    return f"""
+      CREATE OR ALTER VIEW {schema}.{view} AS
+      {select_sql}
+      """.strip()
+
+  def render_add_column(self, schema: str, table: str, column: str, column_type: str | None) -> str:
+    """
+    SQL Server syntax: ALTER TABLE <tbl> ADD <col> <type>
+    (no COLUMN keyword).
+    """
+    if not column_type:
+      return ""
+    tbl = self.render_table_identifier(schema, table)
+    col = self.render_identifier(column)
+    return f"ALTER TABLE {tbl} ADD {col} {column_type}"
+
+  def render_truncate_table(self, schema: str, table: str) -> str:
+    qtbl = self.render_table_identifier
+    return f"TRUNCATE TABLE {qtbl(schema, table)};"
+
+  def render_rename_table(self, schema: str, old_table: str, new_table: str) -> str:
+    old_qualified = f"{self.render_identifier(schema)}.{self.render_identifier(old_table)}"
+    new_name = self.render_identifier(new_table)
+    # sp_rename wants quoted identifiers inside the string; QUOTED_IDENTIFIER should be ON (typisch).
+    return f"EXEC sp_rename N'{old_qualified}', N'{new_name}'"
+  
+  def render_rename_column(self, schema: str, table: str, old: str, new: str) -> str:
+    obj = (
+      f"{self.render_identifier(schema)}."
+      f"{self.render_identifier(table)}."
+      f"{self.render_identifier(old)}"
+    )
+    new_name = self.render_identifier(new)
+    return f"EXEC sp_rename N'{obj}', N'{new_name}', 'COLUMN'"
 
   # ---------------------------------------------------------------------------
-  # Logging
+  # 5. DML / load SQL primitives
   # ---------------------------------------------------------------------------
+  def render_delete_detection_statement(
+    self,
+    target_schema,
+    target_table,
+    stage_schema,
+    stage_table,
+    join_predicates,
+    scope_filter=None,
+  ):
+    """
+    SQL Server delete detection.
+
+    SQL Server does not allow:
+      DELETE FROM tbl AS t ...
+    Correct form:
+      DELETE t
+      FROM tbl AS t
+      WHERE ...
+    """
+    q = self.render_identifier
+
+    target_qualified = f'{q(target_schema)}.{q(target_table)}'
+    stage_qualified = f'{q(stage_schema)}.{q(stage_table)}'
+
+    join_sql = " AND ".join(join_predicates)
+
+    conditions = []
+    if scope_filter:
+      conditions.append(scope_filter)
+
+    conditions.append(
+      f"NOT EXISTS (\n"
+      f"    SELECT 1\n"
+      f"    FROM {stage_qualified} AS s\n"
+      f"    WHERE {join_sql}\n"
+      f")"
+    )
+
+    where_sql = "\n  AND ".join(conditions)
+
+    return (
+      f"DELETE t\n"
+      f"FROM {target_qualified} AS t\n"
+      f"WHERE {where_sql};"
+    )
+
   LOAD_RUN_LOG_TYPE_MAP = {
     "string": "NVARCHAR(255)",
     "bool": "BIT",
@@ -488,6 +401,8 @@ class MssqlDialect(SqlDialect):
   def map_load_run_log_type(self, col_name: str, canonical_type: str) -> str | None:
     if col_name == "error_message":
       return "NVARCHAR(2000)"
+    if col_name == "snapshot_json":
+      return "NVARCHAR(MAX)"
     return self.LOAD_RUN_LOG_TYPE_MAP.get(canonical_type)
 
   def render_insert_load_run_log(self, *, meta_schema: str, values: dict[str, object]) -> str:
@@ -495,7 +410,9 @@ class MssqlDialect(SqlDialect):
     lit = self.render_literal
 
     table = qtbl(meta_schema, "load_run_log")
-    cols = list(values.keys())
+
+    # Canonical registry order; ignore unknown keys, NULL for missing.
+    cols = list(LOAD_RUN_LOG_REGISTRY.keys())    
 
     col_sql = ",\n        ".join(cols)
     val_sql = ",\n        ".join([lit(values.get(c)) for c in cols])
@@ -509,3 +426,88 @@ class MssqlDialect(SqlDialect):
       );
     """.strip()
   
+  def _literal_for_meta_insert(self, *, table: str, column: str, value: object) -> str:
+    """
+    SQL Server does not support TRUE/FALSE literals. Use 1/0 for BIT.
+    Reuse MSSQL literal rendering to keep behavior consistent with load_run_log inserts.
+    """
+    # If the value is a bool, force BIT-compatible literal.
+    if isinstance(value, bool):
+      return "1" if value else "0"
+    return self.render_literal(value)
+
+  # ---------------------------------------------------------------------------
+  # 6. Expression / Select renderer
+  # ---------------------------------------------------------------------------
+  def render_literal(self, value):
+    if value is None:
+      return "NULL"
+
+    if isinstance(value, bool):
+      # SQL Server has BIT, but no TRUE/FALSE literals
+      return "1" if value else "0"
+
+    if isinstance(value, (int, float, Decimal)):
+      return str(value)
+
+    if isinstance(value, str):
+      escaped = value.replace("'", "''")
+      return f"'{escaped}'"
+
+    if isinstance(value, datetime.date) and not isinstance(value, datetime.datetime):
+      iso = value.isoformat()
+      return f"CAST('{iso}' AS DATE)"
+
+    if isinstance(value, datetime.datetime):
+      # Strip microseconds for a cleaner literal
+      dt = value.replace(microsecond=0)
+      iso = dt.isoformat(sep=" ")
+      return f"CAST('{iso}' AS DATETIME2)"
+
+    raise TypeError(f"Unsupported literal type for MssqlDialect: {type(value)}")
+
+  def cast_expression(self, expr: str, target_type: str) -> str:
+    return f"CAST({expr} AS {target_type})"
+
+  def concat_expression(self, parts: Sequence[str]) -> str:
+    """
+    SQL Server uses + for string concatenation.
+
+    We keep it simple and assume the inputs are already string-like.    
+    """
+    if not parts:
+      return "''"
+    return "(" + " + ".join(parts) + ")"
+
+  def hash_expression(self, expr: str, algo: str = "sha256") -> str:
+    """
+    SQL Server: map HASH256 to HASHBYTES('SHA2_256', ...),
+    and convert to a hex string.
+    """
+    algo_lower = algo.lower()
+    if algo_lower in ("sha256", "hash256"):
+      return f"CONVERT(VARCHAR(64), HASHBYTES('SHA2_256', {expr}), 2)"
+    # Fallback: still SHA2_256
+    return f"CONVERT(VARCHAR(64), HASHBYTES('SHA2_256', {expr}), 2)"
+
+  # ---------------------------------------------------------------------------
+  # 7. Introspection hooks
+  # ---------------------------------------------------------------------------
+  def introspect_table(
+    self,
+    *,
+    schema_name: str,
+    table_name: str,
+    introspection_engine: Any,
+    exec_engine: Optional["BaseExecutionEngine"] = None,
+    debug_plan: bool = False,
+  ) -> Dict[str, Any]:
+    # Use SQLAlchemy-based default introspection for MSSQL.
+    return SqlDialect.introspect_table(
+      self,
+      schema_name=schema_name,
+      table_name=table_name,
+      introspection_engine=introspection_engine,
+      exec_engine=exec_engine,
+      debug_plan=debug_plan,
+    )

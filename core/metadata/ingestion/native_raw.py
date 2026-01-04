@@ -1,6 +1,6 @@
 """
 elevata - Metadata-driven Data Platform Framework
-Copyright © 2025 Ilona Tag
+Copyright © 2025-2026 Ilona Tag
 
 This file is part of elevata.
 
@@ -297,6 +297,9 @@ def ingest_raw_full(
       rows_affected=rows_affected,
       status="success",
       error_message=None,
+      attempt_no=1,
+      status_reason=None,
+      blocked_by=None,
     )
     log_sql = target_dialect.render_insert_load_run_log(meta_schema=META_SCHEMA, values=values)
     if log_sql:
@@ -343,6 +346,9 @@ def ingest_raw_full(
         rows_affected=rows_affected,
         status="error",
         error_message=(err or "")[:1000],
+        attempt_no=1,
+        status_reason=None,
+        blocked_by=None,
       )
       log_sql = target_dialect.render_insert_load_run_log(meta_schema=META_SCHEMA, values=values)
       if log_sql:
