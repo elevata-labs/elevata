@@ -98,32 +98,41 @@ to business-facing data products.
 
 Schema drift detection includes dialect-aware semantic equivalence rules to suppress non-actionable type differences.
 
-### 🧩 2.8 Bizcore — Business Logic Layer (Conceptual)
+## 🔧 3. Bizcore — Business Semantics as Metadata
 
-Bizcore represents the layer where technically governed datasets  
-are transformed into intentional business-facing data products.  
+elevata introduces a dedicated **Bizcore layer** for modeling business meaning,
+rules, and calculations as **first-class metadata**.
 
-While upstream layers focus on structure, lineage, and correctness,  
-Bizcore encodes business logic, domain meaning, and analytical intent.  
-It is explicitly separated from presentation and consumption concerns.  
+Bizcore sits explicitly between **Core** and **Serving**:
 
-Bizcore may include:  
-- business derivations and rules  
-- domain-level aggregations  
-- stable business identifiers  
-- optional surrogate keys  
-- optional historization when business semantics require it  
+**RAW → STAGE → CORE → BIZCORE → SERVING**
 
-Bizcore is not a presentation layer.  
-It defines what the data means — not how it is displayed or consumed.  
+### 🧩 What Bizcore is
+- A **business semantics layer**, not a technical projection  
+- Explicitly modeled datasets and columns  
+- Deterministically executed like all other datasets  
+- Fully lineage-aware and explainable
 
-Downstream presentation layers (Serving) may adapt Bizcore datasets  
-for BI tools, applications, or semantic layers without polluting  
-core business logic.
+Bizcore datasets express:
+
+- business concepts (e.g. Customer, Contract, Revenue)  
+- business rules and classifications  
+- derived business identifiers  
+- KPIs and domain logic as dataset fields
+
+### 🧩 What Bizcore is *not*
+- No BI semantic layer  
+- No metric store  
+- No query-time metric resolution  
+- No tool-specific abstraction
+
+Bizcore logic is compiled into the same logical plans and SQL
+as technical datasets, preserving elevata’s guarantees around
+**determinism, transparency, and reproducibility**.
 
 ---
 
-## 🔧 3. Incremental Processing Path
+## 🔧 4. Incremental Processing Path
 
 ```text
 Stage Dataset
@@ -143,7 +152,7 @@ Both operate exclusively between **Stage → Rawcore**.
 
 ---
 
-## 🔧 4. Dialect Resolution Overview
+## 🔧 5. Dialect Resolution Overview
 
 ```text
 ELEVATA_SQL_DIALECT env var  →  Dialect Adapter (override)
@@ -158,7 +167,7 @@ The resolution order is:
 
 ---
 
-## 🔧 5. Unified SQL Generation Pipeline
+## 🔧 6. Unified SQL Generation Pipeline
 
 ```text
 Metadata Model
@@ -170,7 +179,7 @@ Metadata Model
 
 ---
 
-## 🔧 6. Why This Architecture Matters
+## 🔧 7. Why This Architecture Matters
 - **Vendor neutrality** via dialect adapters  
 - **Determinism** via SQL rendering rules  
 - **Traceability** via lineage-driven logic  
@@ -181,7 +190,7 @@ Metadata Model
 
 ---
 
-## 🔧 7. Related Documents
+## 🔧 8. Related Documents
 - [Generation Logic](generation_logic.md)  
 - [Incremental Load Architecture](incremental_load.md)  
 - [Load SQL Architecture](load_sql_architecture.md)  
@@ -190,5 +199,5 @@ Metadata Model
 
 ---
 
-© 2025 elevata Labs — Internal Technical Documentation
+© 2025-2026 elevata Labs — Internal Technical Documentation
 

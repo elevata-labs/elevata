@@ -265,7 +265,7 @@ Outer filter applied via another LogicalSelect.
 
 ---
 
-# 9. Benefits of the Logical Plan
+## 🔧 9. Benefits of the Logical Plan
 - Supports subqueries as first-class citizens  
 - Vendor-neutral window functions  
 - Clean separation between logic and SQL syntax  
@@ -276,4 +276,29 @@ Outer filter applied via another LogicalSelect.
 
 ---
 
-© 2025 elevata Labs — Internal Technical Documentation
+## 🔧 10. Bizcore and the Logical Plan
+
+Bizcore datasets do not introduce new Logical Plan node types.
+
+Instead:
+
+- Bizcore logic is expressed through existing constructs:  
+  - joins  
+  - expressions  
+  - derived SelectItems  
+- Business rules compile into standard AST expressions  
+- No semantic shortcuts or abstractions exist at plan level
+
+This design guarantees:
+
+- identical behavior between technical and business datasets  
+- full reuse of planning, validation, and rendering logic  
+- uniform explainability across layers
+
+From the Logical Plan’s perspective,
+Bizcore is **just another deterministic dataset** —
+with richer intent, not different mechanics.
+
+---
+
+© 2025-2026 elevata Labs — Internal Technical Documentation

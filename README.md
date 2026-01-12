@@ -24,7 +24,12 @@ By defining datasets, lineage, and transformation logic declaratively, you can g
 **elevata** transforms metadata into architecture.  
 It reads source system metadata, derives logical and physical target structures, and enforces consistent, privacy-compliant data models — automatically.  
 
-It codifies architectural best practices, generates high-quality SQL, and provides a declarative way to build Raw → Stage → Core pipelines.  
+elevata transforms metadata into architecture — **from raw ingestion to business-ready, metadata-defined data products**.
+
+It codifies architectural best practices, generates high-quality SQL, and provides a declarative way to build  
+**RAW → STAGE → CORE → BIZCORE → SERVING** pipelines.
+
+Business semantics are modeled as **first-class metadata**, not as BI-layer abstractions.
 
 elevata executes data pipelines in a **dataset-driven** and **lineage-aware** manner. Each execution resolves dependencies automatically and processes datasets in the correct semantic order, rather than layer by layer.
 
@@ -41,7 +46,7 @@ Unlike transformation-centric tools, elevata treats metadata, lineage, and execu
 
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/elevata-labs/elevata/main/docs/elevata_v0_8_0.png" alt="elevata UI preview" width="700"/>
+  <img src="https://raw.githubusercontent.com/elevata-labs/elevata/main/docs/elevata_v0_9_0.png" alt="elevata UI preview" width="700"/>
   <br/>
   <em>Dataset detail view with lineage, metadata, and dialect-aware SQL previews</em>
 </p>
@@ -181,124 +186,77 @@ batch-level execution snapshot explaining plan, policy, and outcomes.
 
 ## 🔮 Roadmap
 
-elevata is evolving from a SQL-generation layer into a **metadata-driven, warehouse-native data platform engine**.  
+elevata is evolving from a SQL-generation layer into a **metadata-driven, warehouse-native data platform engine**.
+
 The roadmap reflects this direction: structured, ambitious, and aligned with elevata’s long-term vision.
-
----
-
-### v0.8.x — Platform Orchestration Layer
-> *Guiding question: Can elevata orchestrate itself reliably at scale?*  
-
-- **Warehouse-native task orchestration**  
-  (retries, idempotency, execution semantics; scheduling optional via integration)
-
-- **Dependency graph–driven pipeline execution**  
-  with deterministic ordering and batching  
-
-- **Multi-dataset execution with explicit failure handling strategies**  
-  (blocked vs aborted, fail-fast vs continue-on-error)
-
-- **Integrations with orchestration frameworks**  
-  (initial adapters and execution hooks)
-
-- **Extended execution monitoring & explainability**  
-  (latency, throughput, volume, change rates, execution snapshots)
-
-- **Global execution modes**  
-  Ability to execute:  
-    - a single target dataset with its dependencies (default)  
-    - all datasets in deterministic dependency order (`--all`)  
-    - optional schema-scoped execution (`--schema`)  
-
-  This enables platform-wide batch runs without requiring external orchestration tools.
-
-**Intent:**  
-elevata becomes a **self-contained data platform core**, orchestrable and observable without external wrappers.
 
 ---
 
 ### v0.9.x — Business Semantics & Bizcore Layer
 > *Guiding question: Can business meaning and business logic be modeled explicitly — without introducing a semantic BI layer?*
 
-- **Bizcore as a first-class business semantics layer**  
-  Bizcore datasets represent business concepts, rules, and calculations  
-  derived explicitly from Core datasets — not technical projections  
-  and not consumption-specific semantic models.
+elevata includes a dedicated **BIZCORE layer** for modeling business meaning, rules, and calculations as  
+**first-class metadata** — executed through the same deterministic planning and execution pipeline  
+as technical datasets.
 
-- **Explicit business logic and calculations (Bizcore MVP)**  
-  Bizcore supports:  
-    - derived business fields  
-    - rule-based classifications  
-    - business calculations and KPIs expressed as dataset fields    
-      (e.g. margins, normalized revenues, activity flags, domain rules).
+#### ✅ Already shipped in v0.9.0
+- **UI support for building Bizcore datasets and columns**  
+- **Join semantics for multi-upstream Bizcore datasets**  
+- **Deterministic SQL preview and execution**  
+- **Lineage-driven qualification and expression handling**  
+- **Core → Bizcore traceability**
 
-  These definitions are:  
-    - metadata-driven  
-    - deterministic  
-    - compiled into executable plans  
-      without introducing a BI-style semantic or metrics layer.
+#### 🔜 Planned within v0.9.x
+- **Expanded business rule expressiveness**  
+  - derived business fields  
+  - rule-based classifications  
+  - KPI-style calculations expressed as dataset fields  
+- **Additional validation & governance rules for Bizcore**  
+  - join completeness & ambiguity detection  
+  - expression validation  
+  - schema & naming conventions  
+- **Cross-Bizcore dependency patterns**  
+  - Bizcore-on-Bizcore dependencies with deterministic execution  
+- **Enhanced impact analysis & documentation tooling**  
+  - structured field-level lineage and semantic dependency inspection
 
-- **Clear separation of responsibilities**  
-    - RAW / STAGE / CORE: technical correctness and data truth  
-    - BIZCORE: business meaning, rules, and calculations  
-    - SERVING (optional): tool- or consumer-specific shaping  
-
-- **Semantic lineage & explainability**  
-  Every Bizcore field is traceable to its Core inputs, transformations,  
-  and assumptions — enabling impact analysis and auditability.
-
-- **Execution remains metadata-driven and deterministic**  
-  Bizcore logic is planned and executed through the same execution model  
-  as technical datasets, preserving elevata’s guarantees around  
-  predictability, transparency, and reproducibility.
-
-**Explicit non-goals (by design):**  
+#### ❌ Explicit non-goals (by design)
 - No BI semantic layer  
 - No metric store or query-time metric resolution  
 - No time-intelligence abstractions  
-- No dbt-style macro or templating system  
+- No dbt-style macro or templating system
 
-**Intent:**  
+**Intent**  
 elevata becomes **business-capable by design**, allowing teams to define  
 business logic and KPIs natively — while deliberately avoiding  
 tool-specific semantic layers or BI-driven abstractions.
 
 ---
 
-### Future Directions (Post-0.9)
+### v1.0.x — First official release
 > *Guiding question: Can execution be governed, validated, and integrated without breaking determinism?*
 
 - **Run- and dataset-level governance rules**  
-  Declarative policies evaluated before and after execution  
-  (e.g. schema drift, delete detection, retry limits, environment guards).
-
+  - schema drift detection  
+  - delete detection  
+  - retry and fail-fast policies  
 - **Rule-based validation framework**  
-  Metadata-defined checks on schema, volumes, and execution outcomes  
-  (non-blocking warnings vs blocking violations).
-
+  - metadata-defined checks  
+  - blocking vs non-blocking violations  
 - **Execution hooks & lifecycle callbacks**  
-  Stable hook API for external orchestration frameworks and platforms  
-  (Airflow, Dagster, Prefect, custom controllers).
-
+  - stable integration API for Airflow, Dagster, Prefect, etc.  
 - **Policy-aware execution outcomes**  
-  Explicit distinction between execution failures and policy violations,  
-  surfaced consistently in logs and snapshots.
-
+  - clear distinction between execution failures and policy violations  
 - **First-class execution metadata**  
-  Structured access to load run logs and snapshots for governance,  
-  observability, and external consumers.
+  - structured access to execution logs and snapshots
 
 ---
 
-### Vision (Towards 1.0)
+### Vision (1.0 onwards)
 
 elevata aims to become a **metadata-native data platform engine**:  
-a system where structure, execution, governance, and business intent are derived from  
-explicit definitions rather than implicit SQL behavior.
-
-By building on deterministic execution, explainable orchestration, and policy-aware governance,  
-elevata provides a stable core on which organizations can model data products, business semantics,  
-and analytical contracts without coupling them to specific tools or warehouses.
+a system where structure, execution, governance, and business intent  
+are derived from explicit definitions rather than implicit SQL behavior.
 
 The long-term goal is not to replace orchestration frameworks or BI tools,  
 but to act as a **reliable, transparent backbone** that makes data pipelines  

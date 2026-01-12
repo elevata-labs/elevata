@@ -1,6 +1,6 @@
 """
 elevata - Metadata-driven Data Platform Framework
-Copyright © 2025 Ilona Tag
+Copyright © 2025-2026 Ilona Tag
 
 This file is part of elevata.
 
@@ -21,7 +21,8 @@ Contact: <https://github.com/elevata-labs/elevata>.
 """
 from django.http import HttpResponse, HttpResponseNotFound, Http404
 from django.shortcuts import render
-from django.urls import reverse_lazy
+from django.urls import reverse, reverse_lazy
+from django.forms import widgets as wdg
 from generic import GenericCRUDView
 from metadata.forms import TargetColumnForm
 from metadata.models import (
@@ -33,6 +34,8 @@ from metadata.models import (
   TargetDatasetReference,
   TargetColumnInput,
   TargetDatasetReferenceComponent,
+  TargetDatasetJoin, 
+  TargetDatasetJoinPredicate,
   # Source-side
   System,
   SourceDataset,
@@ -65,16 +68,17 @@ class _ScopedChildView(GenericCRUDView):
   def get_parent_pk(self):
     """Return the parent object's primary key from URL kwargs."""
     return self.kwargs.get("parent_pk")
-
+  
   def get_success_url(self):
     """After save/delete, redirect back to the scoped list of the same parent."""
     return reverse_lazy(self.route_name, kwargs={"parent_pk": self.get_parent_pk()})
 
   def get_parent_object(self):
     """Load and return the parent model instance, if defined."""
-    if self.parent_model:
-      return self.parent_model.objects.get(pk=self.get_parent_pk())
-    return None
+    pk = self.get_parent_pk()
+    if not pk:
+      return None
+    return self.parent_model.objects.get(pk=pk)
 
   def get_context_base(self, request):
     """
@@ -108,32 +112,31 @@ class _ScopedChildView(GenericCRUDView):
     if parent_obj is not None:
       ctx["parent"] = parent_obj
 
+    # Breadcrumbs (must be here because list() renders get_context_base() directly)
+    ctx["scoped_parent_label"] = str(parent_obj)
+
+    parent_model_name = parent_obj.__class__.__name__.lower()
+    try:
+      ctx["scoped_parent_url"] = reverse(f"{parent_model_name}_detail", args=[parent_obj.pk])
+    except Exception:
+      ctx["scoped_parent_url"] = None
+
     # expose detail_route_name so row.html can build a scoped detail_url
     detail_route_name = getattr(self, "detail_route_name", None)
     if detail_route_name:
       ctx["detail_route_name"] = detail_route_name
       
     return ctx
-  
-  
+
   def _remove_parent_fk_from_form(self, form):
     """
     For scoped views: remove the FK field that points to the parent model
     from the visible form fields so the user can't re-parent or choose
     the wrong parent when creating.
     """
-    if not self.parent_model:
-      return form
-
-    # find FK field(s) that point to parent_model
-    for f in self.model._meta.fields:
-      if getattr(f, "is_relation", False) and getattr(f, "remote_field", None):
-        if f.remote_field.model is self.parent_model:
-          parent_fk_name = f.name
-          # If that field is in the form, drop it from user input
-          if parent_fk_name in form.fields:
-            form.fields.pop(parent_fk_name, None)
-          break
+    parent_field = self._get_parent_relation_field_name()
+    if parent_field and parent_field in form.fields:
+      form.fields.pop(parent_field, None)
 
     return form
 
@@ -179,13 +182,33 @@ class _ScopedChildView(GenericCRUDView):
       return render(request, "generic/_row_form_blocked.html", blocked_ctx, status=200)
 
     FormClass = self.get_form_class()
-    form = FormClass()
 
-    # Apply system-managed field locking
+    parent_fk = self._get_parent_relation_field_name()
+    initial = {}
+
+    # UX refresh: copy current selections into initial, but DO NOT bind (data=None)
+    if request.GET:
+      # QueryDict: values are lists; keep lists for multi-selects, collapse singletons
+      for k in request.GET.keys():
+        vals = request.GET.getlist(k)
+        if len(vals) == 1:
+          initial[k] = vals[0]
+        else:
+          initial[k] = vals
+
+    # keep parent binding in initial (scoped create)
+    # do this AFTER copying request.GET so the parent always wins
+    if parent_fk:
+      initial[parent_fk] = self.get_parent_pk()
+
+    form = FormClass(initial=initial)
+
+    # Apply system-managed field locking + full enhancement pipeline
     self.apply_system_managed_locking(form, instance=None)
-    form = self.enhance_dynamic_fields(form)
+    form = self.enhance_form(form)
 
-    # Hide/remove parent FK field from the form
+    # Hide parent FK field from user input in scoped views.
+    # Note: parent FK is injected into POST in row_create(), so it doesn't need to be in the form.
     form = self._remove_parent_fk_from_form(form)
 
     ctx = {
@@ -198,6 +221,7 @@ class _ScopedChildView(GenericCRUDView):
       "model_class_name": self.model.__name__,
       "is_new": True,
       "parent_pk": self.get_parent_pk(),
+      "refresh_url": request.path,
     }
     parent_obj = self.get_parent_object()
     if parent_obj is not None:
@@ -206,6 +230,19 @@ class _ScopedChildView(GenericCRUDView):
     form = self._apply_autofocus(form)
 
     return render(request, "generic/row_form.html", ctx, status=200)
+
+  def _bind_parent_on_instance(self, instance, parent_obj):
+    """
+    Ensure the FK to parent_model is already set on the instance BEFORE validation.
+    This avoids model.clean() / full_clean() errors when the parent FK field is removed from the form.
+    """
+    if not self.parent_model or parent_obj is None:
+      return
+
+    parent_field = self._get_parent_relation_field_name()
+    if parent_field:
+      setattr(instance, parent_field, parent_obj)
+    return
 
   def row_create(self, request):
     """
@@ -223,14 +260,25 @@ class _ScopedChildView(GenericCRUDView):
       return HttpResponse(status=204)
 
     FormClass = self.get_form_class()
-    form = FormClass(request.POST)
+
+    # Inject parent FK into POST so form __init__ can filter querysets correctly.
+    post = request.POST.copy()
+    parent_fk = self._get_parent_relation_field_name()
+    if parent_fk and not post.get(parent_fk):
+      post[parent_fk] = str(self.get_parent_pk())
+
+    form = FormClass(post)
 
     # lock system-managed fields before validation
     self.apply_system_managed_locking(form, instance=None)
-    form = self.enhance_dynamic_fields(form)
+    form = self.enhance_form(form)
 
-    # Hide/remove parent FK field from the form
+    # Remove parent FK from form (user must not choose parent)
     form = self._remove_parent_fk_from_form(form)
+
+    # IMPORTANT: bind parent BEFORE validation so model.clean() sees it
+    parent_obj = self.get_parent_object()
+    self._bind_parent_on_instance(form.instance, parent_obj)
 
     if form.is_valid():
       instance = form.save(commit=False)
@@ -246,16 +294,13 @@ class _ScopedChildView(GenericCRUDView):
       # enforce integrity of locked/system managed fields
       self.enforce_system_managed_integrity(instance)
 
-      # make sure this row is attached to the correct parent object
-      parent_obj = self.get_parent_object()
-      if parent_obj and self.parent_model:
-        for f in self.model._meta.fields:
-          if getattr(f, "is_relation", False) and getattr(f, "remote_field", None):
-            if f.remote_field.model is self.parent_model:
-              setattr(instance, f.name, parent_obj)
-              break
+      # parent already bound on form.instance before validation
 
       instance.save()
+
+      # Save ManyToMany relationships explicitly (e.g. upstream_columns)
+      if hasattr(form, "save_m2m"):
+        form.save_m2m()
 
       # return a fully-populated row context so row.html won't crash
       ctx = {
@@ -284,7 +329,7 @@ class _ScopedChildView(GenericCRUDView):
     if parent_obj is not None:
       ctx["parent"] = parent_obj
 
-    return render(request, "generic/row_form.html", ctx, status=400)
+    return render(request, "generic/row_form.html", ctx, status=200)
 
   def row_edit(self, request, pk):
     """
@@ -305,13 +350,21 @@ class _ScopedChildView(GenericCRUDView):
 
     if request.method == "GET":
       # render inline edit form
-      form = FormClass(instance=instance)
+      # UX: refresh should not bind the form; use initial overlay instead
+      if request.GET:
+        initial = dict(request.GET)
+        initial = {k: (v[0] if isinstance(v, list) and len(v) == 1 else v) for k, v in initial.items()}
+        form = FormClass(instance=instance, initial=initial)
+      else:
+        form = FormClass(instance=instance)      
 
       self.apply_system_managed_locking(form, instance=instance)
-      form = self.enhance_dynamic_fields(form)
+      form = self.enhance_form(form)
 
-      # Hide/remove parent FK field from the form
+      # Remove parent FK and bind parent BEFORE validation
       form = self._remove_parent_fk_from_form(form)
+      parent_obj = self.get_parent_object()
+      self._bind_parent_on_instance(form.instance, parent_obj)
 
       ctx = {
         "model": self.model,
@@ -321,8 +374,9 @@ class _ScopedChildView(GenericCRUDView):
         "fields": self.get_list_fields(),
         "model_name": self.model._meta.model_name,
         "model_class_name": self.model.__name__,
-        "is_new": False,                # editing existing row
+        "is_new": False,
         "parent_pk": self.get_parent_pk(),  # critical so row_form.html generates scoped hx-post
+        "refresh_url": request.path,
       }
       parent_obj = self.get_parent_object()
       if parent_obj is not None:
@@ -337,10 +391,14 @@ class _ScopedChildView(GenericCRUDView):
       form = FormClass(request.POST, instance=instance)
 
       self.apply_system_managed_locking(form, instance=instance)
-      form = self.enhance_dynamic_fields(form)
+      form = self.enhance_form(form)
 
       # Hide/remove parent FK field from the form
       form = self._remove_parent_fk_from_form(form)
+
+      # IMPORTANT: enforce correct parent BEFORE validation (anti-tamper + clean())
+      parent_obj = self.get_parent_object()
+      self._bind_parent_on_instance(form.instance, parent_obj)      
 
       if form.is_valid():
         updated = form.save(commit=False)
@@ -352,16 +410,13 @@ class _ScopedChildView(GenericCRUDView):
         # keep readonly/system-managed guarantees
         self.enforce_system_managed_integrity(updated)
 
-        # keep row assigned to the same parent (don't allow re-parenting)
-        parent_obj = self.get_parent_object()
-        if parent_obj and self.parent_model:
-          for f in self.model._meta.fields:
-            if getattr(f, "is_relation", False) and getattr(f, "remote_field", None):
-              if f.remote_field.model is self.parent_model:
-                setattr(updated, f.name, parent_obj)
-                break
+        # parent already enforced on form.instance before validation
 
         updated.save()
+
+        # Save ManyToMany relationships explicitly (e.g. upstream_columns)
+        if hasattr(form, "save_m2m"):
+          form.save_m2m()
 
         # return the final row view (static mode again) so HTMX swaps it back
         ctx = {
@@ -390,7 +445,7 @@ class _ScopedChildView(GenericCRUDView):
       if parent_obj is not None:
         ctx["parent"] = parent_obj
 
-      return render(request, "generic/row_form.html", ctx, status=400)
+      return render(request, "generic/row_form.html", ctx, status=200)
 
     return HttpResponseNotFound("Unsupported method for row_edit")
 
@@ -430,12 +485,7 @@ class _ScopedChildView(GenericCRUDView):
 
     # Still enforce correct parent (no re-parenting via toggle)
     parent_obj = self.get_parent_object()
-    if parent_obj and self.parent_model:
-      for f in self.model._meta.fields:
-        if getattr(f, "is_relation", False) and getattr(f, "remote_field", None):
-          if f.remote_field.model is self.parent_model:
-            setattr(instance, f.name, parent_obj)
-            break
+    self._bind_parent_on_instance(instance, parent_obj)
 
     instance.save()
 
@@ -502,10 +552,10 @@ class TargetDatasetInputScopedView(_ScopedChildView):
     return ctx
 
 
-class TargetDatasetColumnScopedView(_ScopedChildView):
+class TargetColumnScopedView(_ScopedChildView):
   model = TargetColumn
   parent_model = TargetDataset
-  route_name = "targetdatasetcolumn_list"
+  route_name = "targetcolumn_list"
   form_class = TargetColumnForm
 
   def get_queryset(self):
@@ -563,7 +613,16 @@ class TargetDatasetReferenceScopedView(_ScopedChildView):
     ctx = super().get_context_data(**kwargs)
     ctx["dataset"] = self.get_parent_object()
     return ctx
-    
+
+  def get_parent_object(self):
+    parent = super().get_parent_object()
+    if parent is None:
+      return None
+    # References only in rawcore allowed
+    if parent.target_schema.short_name != "rawcore":
+      raise Http404("References are only available for rawcore datasets.")
+    return parent
+
 
 class TargetDatasetReferenceComponentScopedView(_ScopedChildView):
   model = TargetDatasetReferenceComponent
@@ -765,4 +824,98 @@ class SourceDatasetIncrementPolicyScopedView(_ScopedChildView):
     ctx = super().get_context_data(**kwargs)
     ctx["dataset"] = self.get_parent_object()
     ctx["title"] = f"Increment policies for source dataset {ctx['dataset']}"
+    return ctx
+
+
+class TargetDatasetJoinScopedView(_ScopedChildView):
+  """
+  Scoped CRUD for TargetDatasetJoin, filtered by parent TargetDataset
+  """
+  model = TargetDatasetJoin
+  parent_model = TargetDataset
+  route_name = "targetdatasetjoin_list"
+  detail_route_name = "targetdatasetjoin_detail_scoped"
+
+  def get_queryset(self):
+    return (
+      self.model.objects
+      .filter(target_dataset_id=self.get_parent_pk())
+      .select_related("left_input", "right_input", "target_dataset")
+      .order_by("join_order", "id")
+    )
+
+  def get_context_data(self, **kwargs):
+    ctx = super().get_context_data(**kwargs)
+    ctx["dataset"] = self.get_parent_object()
+    ctx["title"] = f"Joins for target dataset {ctx['dataset']}"
+    return ctx
+
+  def enhance_dynamic_fields(self, form):
+    form = super().enhance_dynamic_fields(form)
+
+    parent = self.get_parent_object()
+    if not parent:
+      return form
+
+    # Only inputs of this dataset are valid join endpoints
+    inputs_qs = (
+      TargetDatasetInput.objects
+      .filter(target_dataset=parent, active=True)
+      .select_related("source_dataset", "upstream_target_dataset", "target_dataset")
+      .order_by("role", "id")
+    )
+
+    lf = form.fields.get("left_input")
+    rf = form.fields.get("right_input")
+    if lf is not None:
+      lf.queryset = inputs_qs
+    if rf is not None:
+      rf.queryset = inputs_qs
+
+    return form
+
+  def get_parent_object(self):
+    parent = super().get_parent_object()
+    if parent and parent.target_schema.short_name != "bizcore":
+      raise Http404("Joins are only available for Bizcore datasets.")
+    return parent
+
+
+class TargetDatasetJoinPredicateScopedView(_ScopedChildView):
+  """
+  Scoped CRUD for TargetDatasetJoinPredicate, filtered by parent TargetDatasetJoin
+  """
+  model = TargetDatasetJoinPredicate
+  parent_model = TargetDatasetJoin
+  route_name = "targetdatasetjoinpredicate_list"
+
+  def get_queryset(self):
+    return (
+      self.model.objects
+      .filter(join_id=self.get_parent_pk())
+      .select_related("join", "join__left_input", "join__right_input", "join__target_dataset")
+      .order_by("ordinal_position", "id")
+    )
+
+  def get_context_data(self, **kwargs):
+    ctx = super().get_context_data(**kwargs)
+    parent_join = self.get_parent_object()  # parent = TargetDatasetJoin
+    ctx["scoped_parent_label"] = str(parent_join)
+    ctx["scoped_parent_url"] = reverse("targetdatasetjoin_list", args=[parent_join.target_dataset_id])
+    return ctx
+  
+  def get_context_base(self, request):
+    """
+    IMPORTANT:
+    list() renders get_context_base() directly (not get_context_data()).
+    So breadcrumbs for the LIST must be set here.
+    """
+    ctx = super().get_context_base(request)
+    parent_join = self.get_parent_object()  # parent = TargetDatasetJoin
+
+    # Breadcrumb should bring you back to the Joins list of the dataset
+    # (not to a non-existing TargetDatasetJoin "detail" view).
+    ctx["scoped_parent_label"] = str(parent_join)
+    ctx["scoped_parent_url"] = reverse("targetdatasetjoin_list", args=[parent_join.target_dataset_id]) 
+
     return ctx

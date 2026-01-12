@@ -1,6 +1,6 @@
 """
 elevata - Metadata-driven Data Platform Framework
-Copyright © 2025 Ilona Tag
+Copyright © 2025-2026 Ilona Tag
 
 This file is part of elevata.
 
@@ -28,7 +28,7 @@ from django.http import JsonResponse, HttpResponse, HttpResponseBadRequest, Http
 from django.contrib.auth.decorators import login_required, permission_required
 from django.core.management import call_command
 from django.utils.html import escape
-from django.views.decorators.http import require_POST
+from django.views.decorators.http import require_POST, require_GET
 from django.shortcuts import get_object_or_404, render
 from io import StringIO
 from generic import GenericCRUDView
@@ -37,7 +37,7 @@ import traceback
 
 from metadata.constants import DIALECT_HINTS
 from metadata.forms import TargetColumnForm, TargetDatasetForm
-from metadata.models import SourceDataset, System, TargetDataset, TargetDatasetInput
+from metadata.models import SourceDataset, System, TargetDataset, TargetDatasetInput, TargetColumn
 from metadata.ingestion.import_service import import_metadata_for_datasets
 from metadata.rendering.dialects import get_active_dialect
 from metadata.rendering.sql_service import (
@@ -375,15 +375,26 @@ def targetdataset_lineage(request, pk):
 
   return render(request, "metadata/lineage/targetdataset_lineage.html", context)
 
-def _inject_dialect_context(ctx):
+@require_GET
+def targetcolumn_upstream_meta(request):
   """
-  Inject dialect hints and default active dialect into context.
-  Used by the detail template so the dialect dropdown can render.
+  Returns datatype metadata for a given upstream TargetColumn.
+  GET params:
+    - upstream_column_id
   """
-  from metadata.rendering.dialects import get_active_dialect
-  from metadata.constants import DIALECT_HINTS
+  col_id = request.GET.get("upstream_column_id")
+  if not col_id:
+    return JsonResponse({"error": "missing upstream_column_id"}, status=400)
 
-  dialect = get_active_dialect()
-  ctx["DIALECT_HINTS"] = DIALECT_HINTS
-  ctx["active_dialect_code"] = getattr(dialect, "DIALECT_NAME", "duckdb")
-  return ctx
+  try:
+    col = TargetColumn.objects.get(pk=col_id)
+  except TargetColumn.DoesNotExist:
+    return JsonResponse({"error": "not found"}, status=404)
+
+  return JsonResponse({
+    "datatype": col.datatype or "",
+    "max_length": col.max_length,
+    "decimal_precision": col.decimal_precision,
+    "decimal_scale": col.decimal_scale,
+    "nullable": col.nullable,
+  })

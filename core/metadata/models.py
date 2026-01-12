@@ -38,7 +38,7 @@ from metadata.constants import (
   TYPE_CHOICES, INGEST_CHOICES, INCREMENT_INTERVAL_CHOICES, DATATYPE_CHOICES, SYSTEM_COLUMN_ROLE_CHOICES,
   MATERIALIZATION_CHOICES, RELATIONSHIP_TYPE_CHOICES, PII_LEVEL_CHOICES, TARGET_DATASET_INPUT_ROLE_CHOICES,
   ACCESS_INTENT_CHOICES, ROLE_CHOICES, SENSITIVITY_CHOICES, ENVIRONMENT_CHOICES, LINEAGE_ORIGIN_CHOICES,
-  TARGET_COMBINATION_MODE_CHOICES, BIZ_ENTITY_ROLE_CHOICES, INCREMENTAL_STRATEGY_CHOICES)
+  TARGET_COMBINATION_MODE_CHOICES, BIZ_ENTITY_ROLE_CHOICES, INCREMENTAL_STRATEGY_CHOICES, JOIN_TYPE_CHOICES, OPERATOR_CHOICES)
 from metadata.generation.validators import SHORT_NAME_VALIDATOR, TARGET_IDENTIFIER_VALIDATOR
 
 class AuditFields(models.Model):
@@ -546,9 +546,8 @@ class TargetSchema(AuditFields):
   description = models.CharField(max_length=255, blank=True, null=True,
     help_text="Purpose of this layer and what transformations are allowed here."
   )
-  # Physical placement on the target platform
   database_name = models.CharField(max_length=100, validators=[TARGET_IDENTIFIER_VALIDATOR],
-    help_text="Target database / catalog on the destination platform."
+    help_text="Physical target database / catalog on the destination platform."
   )
   schema_name = models.CharField(max_length=10, validators=[SHORT_NAME_VALIDATOR],
     help_text= (
@@ -571,12 +570,11 @@ class TargetSchema(AuditFields):
       "Uncheck for curated layers (e.g. bizcore, serving)."
     )
   )
-  consolidate_groups = models.BooleanField(default=False,
-    help_text="If true, datasets from multiple source systems may be merged/grouped into one physical dataset in this schema."
-  )
-  # Whether end users can actively model new datasets in this layer
   is_user_visible = models.BooleanField(default=True, 
-    help_text="If unchecked, this layer is internal/technical and hidden in normal UIs."
+    help_text=(
+      "Whether end users can actively model new datasets in this layer. "
+      "If unchecked, this layer is internal/technical and hidden in normal UIs."
+    )
   )
   # Default technical behavior for datasets in this schema
   default_materialization_type = models.CharField(max_length=30, choices=MATERIALIZATION_CHOICES, default="table",
@@ -637,20 +635,26 @@ class TargetSchema(AuditFields):
 # TargetDataset
 # -------------------------------------------------------------------
 class TargetDataset(AuditFields):
-  # Which layer / schema this dataset belongs to
   target_schema = models.ForeignKey(TargetSchema, on_delete=models.PROTECT, related_name="target_datasets",
-    help_text="Defines physical DB/schema, default materialization and governance expectations."
+    help_text=(
+      "Which layer / schema this dataset belongs to. "
+      "Defines physical DB/schema, default materialization and governance expectations."
+    )
   )
   # Logical / business-facing name of the dataset in the target platform
   target_dataset_name = models.CharField(max_length=63, validators=[TARGET_IDENTIFIER_VALIDATOR],
-    help_text="Final dataset (table/view) name, snake_case. eg. 'sap_customer', 'sap_sales_order'."
+    help_text=(
+      "Final dataset (table/view) name, snake_case inc. layer prefix. eg. 'rc_sap_customer', 'rc_sap_sales_order'."
+    )
   )
   description = models.CharField(max_length=255, blank=True, null=True,
     help_text="Business description / semantic meaning of the dataset."
   )
-  # Incremental / historization behavior
   handle_deletes = models.BooleanField(default=True, 
-    help_text="Whether deletes in the source should be reflected in this dataset."
+    help_text=(
+      "Whether deletes in the source should be reflected in this dataset. "
+      "Only relevant with incremental or historization tables."
+    )
   )
   historize = models.BooleanField(default=True,
     help_text="Track slowly changing state / valid_from / valid_to, etc."
@@ -711,9 +715,14 @@ class TargetDataset(AuditFields):
   distinct_select = models.BooleanField(default=False,
     help_text="If checked: SELECT DISTINCT is enforced during generation."
   )
-  data_filter = models.CharField(max_length=255, blank=True, null=True,
-    help_text="Optional row-level filter to restrict records."
-  )
+  static_filter = models.CharField(max_length=255, blank=True, null=True,
+    help_text=(
+      "Optional row-level filter to restrict records. "
+      "Static WHERE clause applied to all loads of this dataset. "
+      "Used for permanent business or technical scoping. "
+      "Example: is_deleted_flag = 0 AND country_code = 'DE'."
+    ),
+  )  
   partial_load = models.ManyToManyField("PartialLoad", blank=True, related_name="datasets", db_table="target_dataset_partial_load",
     help_text="Optional subset extraction definitions (per environment / window)."
   )
@@ -977,7 +986,219 @@ class TargetDatasetInput(AuditFields):
     else:
       src_label = "—"
 
-    return f"{src_label} -> {self.target_dataset}"
+    role = getattr(self, "role", "") or ""
+    role_part = f"{role} · " if role else ""
+    return f"{role_part}{src_label} -> {self.target_dataset}"
+
+# -------------------------------------------------------------------
+# TargetDatasetJoin
+# -------------------------------------------------------------------
+class TargetDatasetJoin(AuditFields):
+  """
+  Represents an explicit JOIN edge between two TargetDatasetInputs of the same
+  TargetDataset (typically for Bizcore/Serving multi-upstream enrichment).
+  """
+  target_dataset = models.ForeignKey("TargetDataset", on_delete=models.CASCADE, related_name="joins",
+    help_text=(
+      "The dataset that will be built (Bizcore/Serving). "
+      "This join defines how multiple upstream inputs are combined."
+    ),
+  )
+  left_input = models.ForeignKey("TargetDatasetInput", on_delete=models.CASCADE, related_name="as_left_join",
+    help_text=(
+      "Left side of the join (primary input). "
+      "This is typically the 'main entity' input (e.g. person). "
+      "In generated SQL, this becomes the main FROM source."
+    ),
+  )
+  right_input = models.ForeignKey("TargetDatasetInput", on_delete=models.CASCADE, related_name="as_right_join",
+    help_text=(
+      "Right side of the join (enrichment / lookup input). "
+      "In generated SQL, this becomes the JOINed source."
+    ),
+  )
+  join_type = models.CharField(max_length=10, choices=JOIN_TYPE_CHOICES, default="left",
+    help_text=(
+      "Join type.\n"
+      "Typical patterns:\n"
+      "  - LEFT: keep all rows from the left input and enrich from the right\n"
+      "  - INNER: only rows that match on the join condition\n"
+      "  - CROSS: no condition, creates a Cartesian product (date spine etc.)\n\n"
+      "Note: CROSS JOIN must not have predicates."
+    ),
+  )
+  join_order = models.PositiveIntegerField(default=1,
+    help_text=(
+      "Deterministic ordering when multiple joins exist. "
+      "If you join multiple inputs (A join B join C), elevata applies joins in this order."
+    ),
+  )
+  description = models.TextField(blank=True, default="",
+    help_text=(
+      "Explain the business intent of this join.\n"
+      "Example: 'Enrich customers with their latest known address.'\n"
+      "This text can be shown in details/snapshots for explainability."
+    ),
+  )
+
+  class Meta:
+    ordering = ["join_order", "id"]
+    constraints = [
+      models.UniqueConstraint(
+        fields=["target_dataset", "join_order"],
+        name="uniq_targetdataset_join_order",
+      ),
+      models.UniqueConstraint(
+        fields=["target_dataset", "left_input", "right_input"],
+        name="uniq_targetdataset_join_edge",
+      ),
+    ]
+
+  def clean(self):
+    # Ensure both inputs belong to the same target_dataset.
+    if self.left_input_id and self.left_input.target_dataset_id != self.target_dataset_id:
+      raise ValidationError({"left_input": "left_input must belong to the same target_dataset."})
+
+    if self.right_input_id and self.right_input.target_dataset_id != self.target_dataset_id:
+      raise ValidationError({"right_input": "right_input must belong to the same target_dataset."})
+
+    # Prevent self-joins on the same input.
+    if self.left_input_id and self.right_input_id and self.left_input_id == self.right_input_id:
+      raise ValidationError({"right_input": "right_input must differ from left_input."})
+
+    # CROSS join must not have predicates (enforced in predicate.clean too, but nice to keep here).
+    # Note: At clean() time predicates might not be saved yet; builder should enforce as well.
+    return super().clean()
+
+  def __str__(self):
+    def _upstream_name(inp):
+      # For TargetDatasetInput: prefer upstream_target_dataset, then source_dataset
+      utd = getattr(inp, "upstream_target_dataset", None)
+      if utd is not None:
+        return utd.target_dataset_name
+      sd = getattr(inp, "source_dataset", None)
+      if sd is not None:
+        return sd.source_dataset_name
+      # Fallback: if __str__ is "X -> Y", take left part
+      s = str(inp)
+      if "->" in s:
+        return s.split("->", 1)[0].strip()
+      return s
+
+    left = _upstream_name(self.left_input) if self.left_input_id else "?"
+    right = _upstream_name(self.right_input) if self.right_input_id else "?"
+    return f"{self.join_type} join ({left} -> {right})"
+
+
+# -------------------------------------------------------------------
+# TargetDatasetJoinPredicate
+# -------------------------------------------------------------------
+class TargetDatasetJoinPredicate(AuditFields):
+  """
+  Structured join predicate to support intuitive authoring without requiring
+  deep SQL knowledge.
+
+  Expressions may be:
+    - column references (e.g. country_code)
+    - constants (e.g. 'DE', 1)
+    - DSL blocks (e.g. {{ lower(country_code) }})
+    - function expressions (e.g. lower(country_code))
+  """
+  join = models.ForeignKey("TargetDatasetJoin", on_delete=models.CASCADE, related_name="predicates",
+  )
+  ordinal_position = models.PositiveIntegerField(default=1,
+    help_text=(
+      "Predicate ordering. Predicates are combined with AND in this order (MVP).\n"
+      "Example: 1) id equality, 2) valid_from <= date, 3) date < valid_to."
+    ),
+  )
+  left_expr = models.TextField(
+    help_text=(
+      "Left-side expression.\n"
+      "You can enter:\n"
+      "  - a column name (recommended): address_id\n"
+      "  - a constant: 'DE'\n"
+      "  - a simple expression: lower(country_code)\n"
+      "  - DSL block: {{ coalesce(country_code, 'DE') }}\n\n"
+      "Tip: Usually you do NOT need to add table aliases. elevata can qualify references "
+      "based on your configured upstream inputs."
+    ),
+  )
+  operator = models.CharField(max_length=20, choices=OPERATOR_CHOICES, default="=",
+    help_text=(
+      "Comparison operator.\n"
+      "Rules:\n"
+      "  - BETWEEN uses right_expr (lower) + right_expr_2 (upper)\n"
+      "  - IS NULL / IS NOT NULL do not use right_expr\n"
+      "  - All other operators use right_expr\n\n"
+      "Examples:\n"
+      "  - customer_id = person_id\n"
+      "  - country_code = 'DE'\n"
+      "  - valid_from <= d.date\n"
+      "  - d.date BETWEEN valid_from AND valid_to"
+    ),
+  )
+  right_expr = models.TextField(blank=True, null=True,
+    help_text=(
+      "Right-side expression (required for most operators).\n"
+      "Examples:\n"
+      "  - a column name: person_id\n"
+      "  - a constant: 'DE', 1\n"
+      "  - a function call: date_trunc('day', ts)\n"
+      "  - DSL block: {{ date_trunc('day', ts) }}\n"
+    ),
+  )
+  right_expr_2 = models.TextField(blank=True, null=True,
+    help_text=(
+      "Second right-side expression (only for BETWEEN).\n"
+      "Example:\n"
+      "  d.date BETWEEN valid_from AND valid_to"
+    ),
+  )
+
+  class Meta:
+    ordering = ["ordinal_position", "id"]
+    constraints = [
+      models.UniqueConstraint(
+        fields=["join", "ordinal_position"],
+        name="uniq_join_predicate_order",
+      ),
+    ]
+
+  def clean(self):
+    # CROSS joins must not have predicates.
+    if self.join_id and self.join.join_type == "cross":
+      raise ValidationError("CROSS JOIN must not define predicates.")
+
+    op = self.operator
+
+    unary_ops = {"IS NULL", "IS NOT NULL"}
+    between_ops = {"BETWEEN"}
+    binary_ops = {
+      "=", "!=", "<", "<=", ">", ">=", "LIKE", "IN"
+    }
+
+    if op in unary_ops:
+      if self.right_expr or self.right_expr_2:
+        raise ValidationError({"right_expr": "Unary operator must not have right_expr."})
+
+    if op in binary_ops:
+      if not (self.right_expr and str(self.right_expr).strip()):
+        raise ValidationError({"right_expr": "Binary operator requires right_expr."})
+      if self.right_expr_2:
+        raise ValidationError({"right_expr_2": "Binary operator must not have right_expr_2."})
+
+    if op in between_ops:
+      if not (self.right_expr and str(self.right_expr).strip()):
+        raise ValidationError({"right_expr": "BETWEEN requires right_expr (lower bound)."})
+      if not (self.right_expr_2 and str(self.right_expr_2).strip()):
+        raise ValidationError({"right_expr_2": "BETWEEN requires right_expr_2 (upper bound)."})
+
+    return super().clean()
+
+  def __str__(self):
+    return f"{self.join_id}: {self.left_expr} {self.operator} {self.right_expr or ''}".strip()
+
 
 # -------------------------------------------------------------------
 # TargetDatasetOwnership
@@ -1063,12 +1284,6 @@ class TargetColumn(AuditFields):
       "Used to reliably render/execute technical columns (e.g. load_run_id, loaded_at) "
       "and to support forensics without relying on naming conventions."
     ),
-  )
-  artificial_column = models.BooleanField(default=False,
-    help_text=(
-      "If checked, this column does not directly exist in any single source, "
-      "but is computed / harmonized / derived."
-    )
   )
   manual_expression = models.TextField(blank=True, null=True,
     help_text=(

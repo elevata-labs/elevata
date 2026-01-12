@@ -33,38 +33,54 @@ def resolve_dataset_group_context(source_dataset, target_schema):
   - models.py imports naming, so grouping must live elsewhere
   """
 
-  consolidate = getattr(target_schema, "consolidate_groups", False)
+  schema_short = (getattr(target_schema, "short_name", "") or "").lower()
 
-  # RAW-like behavior
-  if not consolidate:
+  #  raw layer uses source system short name
+  if schema_short == "raw":
     sys_obj = getattr(source_dataset, "source_system", None)
     short_raw = getattr(sys_obj, "short_name", "")
     base_raw = getattr(source_dataset, "source_dataset_name", "")
-    return dict(
-      group=None,
-      short_name=sanitize_name(short_raw),
-      base_name=sanitize_name(base_raw),
+    return {
+      "group": None,
+      "short_name": sanitize_name(short_raw),
+      "base_name": sanitize_name(base_raw),
+    }
+
+  # STAGE: consolidation is allowed, but ONLY if groups exist
+  if schema_short == "stage":
+    membership = (
+      SourceDatasetGroupMembership.objects
+      .filter(source_dataset=source_dataset)
+      .select_related("group")
+      .first()
     )
 
-  # Consolidation allowed (STAGE / RAWCORE)
-  membership = (
-    SourceDatasetGroupMembership.objects
-    .filter(source_dataset=source_dataset)
-    .select_related("group")
-    .first()
-  )
+    if membership and membership.group:
+      grp = membership.group
+      short_raw = getattr(grp, "target_short_name", "")
+      base_raw = getattr(grp, "unified_source_dataset_name", "")
+      return {
+        "group": membership.group,
+        "short_name": sanitize_name(short_raw),
+        "base_name": sanitize_name(base_raw),
+      }
 
-  if membership and membership.group:
-    grp = membership.group
-    short_raw = getattr(grp, "target_short_name", "")
-    base_raw = getattr(grp, "unified_source_dataset_name", "")
-  else:
+    # Stage but no group membership => do NOT consolidate
     sys_obj = getattr(source_dataset, "source_system", None)
     short_raw = getattr(sys_obj, "target_short_name", "")
     base_raw = getattr(source_dataset, "source_dataset_name", "")
+    return {
+      "group": None,
+      "short_name": sanitize_name(short_raw),
+      "base_name": sanitize_name(base_raw),
+    }
 
-  return dict(
-    group=membership.group if membership else None,
-    short_name=sanitize_name(short_raw),
-    base_name=sanitize_name(base_raw),
-  )
+  # Other schemas (rawcore etc.): never consolidate, but use target_short_name
+  sys_obj = getattr(source_dataset, "source_system", None)
+  short_raw = getattr(sys_obj, "target_short_name", "")
+  base_raw = getattr(source_dataset, "source_dataset_name", "")
+  return {
+    "group": None,
+    "short_name": sanitize_name(short_raw),
+    "base_name": sanitize_name(base_raw),
+  }

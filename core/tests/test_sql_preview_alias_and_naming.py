@@ -1,6 +1,6 @@
 """
 elevata - Metadata-driven Data Platform Framework
-Copyright © 2025 Ilona Tag
+Copyright © 2025-2026 Ilona Tag
 
 This file is part of elevata.
 
@@ -33,7 +33,7 @@ from metadata.generation import naming
 class DummyTargetSchema:
   """Minimal schema-like object for naming tests."""
   physical_prefix = "rc"
-  consolidate_groups = False  # RAW-like behavior
+  short_name = "raw"
 
 
 class DummySystem:

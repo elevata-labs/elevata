@@ -115,7 +115,7 @@ When a dataset fails after all retries:
 
 ## 🔧 6. Blocked vs Aborted
 
-Elevata distinguishes two fundamentally different non-success outcomes.
+elevata distinguishes two fundamentally different non-success outcomes.
 
 ### 🧩 6.1 Blocked
 
@@ -269,4 +269,4 @@ and execution analytics in future versions.
 
 ---
 
-© 2026 elevata Labs — Internal Technical Documentation
+© 2025-2026 elevata Labs — Internal Technical Documentation

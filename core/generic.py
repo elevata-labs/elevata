@@ -1,6 +1,6 @@
 """
 elevata - Metadata-driven Data Platform Framework
-Copyright © 2025 Ilona Tag
+Copyright © 2025-2026 Ilona Tag
 
 This file is part of elevata.
 
@@ -34,7 +34,7 @@ from django.db import models
 from django import forms as djforms
 from django.apps import apps
 from django.core.exceptions import FieldDoesNotExist
-from django.db.models import ManyToManyField
+from django.db.models import ManyToManyField, Q
 
 # ------------------------------------------------------------
 # Utility helper
@@ -64,9 +64,6 @@ class GenericCRUDView(LoginRequiredMixin, View):
   template_confirm_delete = None
   success_url = None
   action = "list"
-
-  list_exclude = {"id", "created_at", "created_by", "updated_at", "updated_by", "is_system_managed", "lineage_key", "former_names", "retired_at"}
-  form_exclude = {"id", "created_at", "created_by", "updated_at", "updated_by", "is_system_managed", "lineage_key", "former_names"}
 
   # --------------------------------------------------
   # Dispatch routing
@@ -115,6 +112,20 @@ class GenericCRUDView(LoginRequiredMixin, View):
   # --------------------------------------------------
   # Utility helpers
   # --------------------------------------------------
+  def _initial_from_querydict(self, qd):
+    """
+    Convert a QueryDict (request.GET) to a plain dict usable as ModelForm(initial=...).
+    Keeps multi-value keys (multi-select) via getlist().
+    """
+    if not qd:
+      return None
+    initial = {}
+    for key in qd.keys():
+      vals = qd.getlist(key)
+      initial[key] = vals[0] if len(vals) == 1 else vals
+    return initial
+
+
   def get_system_managed_locked_fields(self, instance=None):
     """
     Returns a set of field names that should be read-only if this row is system-managed.
@@ -250,6 +261,144 @@ class GenericCRUDView(LoginRequiredMixin, View):
     # or share the same lock behavior regardless of schema.
     return None
 
+  def _get_parent_relation_field_name(self, child_model=None, parent_model=None):
+    """
+    Return the name of the child-model field that relates to the scoped parent model.
+
+    This is the *child-side relation field name* (usually a ForeignKey),
+    e.g. TargetColumn.target_dataset, TargetDatasetJoinPredicate.join, etc.
+
+    Centralized here so all scoped views share a single source of truth.
+    """
+    child_model = child_model or getattr(self, "model", None)
+    parent_model = parent_model or getattr(self, "parent_model", None)
+    if not child_model or not parent_model:
+      return None
+
+    # small cache per view instance (safe, scoped views are request-scoped)
+    cache_key = (getattr(child_model, "__name__", str(child_model)), getattr(parent_model, "__name__", str(parent_model)))
+    cache = getattr(self, "_parent_relation_field_cache", None)
+    if cache is None:
+      cache = {}
+      setattr(self, "_parent_relation_field_cache", cache)
+    if cache_key in cache:
+      return cache[cache_key]
+
+    for f in child_model._meta.fields:
+      if getattr(f, "is_relation", False) and getattr(f, "remote_field", None):
+        if f.remote_field.model is parent_model:
+          cache[cache_key] = f.name
+          return f.name
+
+    cache[cache_key] = None
+    return None
+
+  # --------------------------------------------------
+  # UI field visibility (settings-driven)
+  # --------------------------------------------------
+  def _get_ui_cfg(self) -> dict:
+    meta_cfg = getattr(settings, "ELEVATA_CRUD", {}).get("metadata", {})
+    return meta_cfg.get("ui", {}) or {}
+
+  def _get_ui_view_cfg(self, view_kind: str) -> dict:
+    """
+    view_kind: "list" | "form" | "detail"
+
+    Merging rules (SSOT, non-contradicting):
+    - If model_cfg defines include_fields => include-mode (ignore any excludes, incl. defaults)
+    - Else => exclude-mode where exclude_fields = defaults.exclude_fields ∪ model_cfg.exclude_fields
+    """
+    ui_cfg = self._get_ui_cfg()
+    defaults = (ui_cfg.get("defaults", {}) or {}).get(view_kind, {}) or {}
+    model_cfg = ((ui_cfg.get("models", {}) or {}).get(self.model.__name__, {}) or {}).get(view_kind, {}) or {}
+
+    def _as_list(val):
+      if isinstance(val, (list, tuple, set)):
+        return [str(x) for x in val]
+      return []
+
+    default_include = defaults.get("include_fields", None)
+    default_exclude = _as_list(defaults.get("exclude_fields", []))
+
+    model_include = model_cfg.get("include_fields", None)
+    model_exclude = _as_list(model_cfg.get("exclude_fields", []))
+
+    # -----------------------------
+    # include-mode wins if present
+    # -----------------------------
+    if model_include is not None:
+      if not isinstance(model_include, (list, tuple)):
+        # treat invalid include as "not set"
+        model_include = None
+      else:
+        return {
+          "include_fields": [str(x) for x in model_include],
+        }
+
+    # If defaults define include_fields and model does not override it,
+    # we allow defaults include-mode (rare, but consistent).
+    if default_include is not None and isinstance(default_include, (list, tuple)):
+      return {
+        "include_fields": [str(x) for x in default_include],
+      }
+
+    # -----------------------------
+    # exclude-mode (union)
+    # -----------------------------
+    exclude_union = []
+    seen = set()
+
+    for name in default_exclude + model_exclude:
+      if name not in seen:
+        seen.add(name)
+        exclude_union.append(name)
+
+    return {
+      "exclude_fields": exclude_union,
+    }
+
+  def _ui_include_fields(self, view_kind: str) -> list[str] | None:
+    cfg = self._get_ui_view_cfg(view_kind)
+    include = cfg.get("include_fields", None)
+    if include is None:
+      return None
+    if not isinstance(include, (list, tuple)):
+      return None
+    return [str(x) for x in include]
+
+  def _ui_exclude_fields(self, view_kind: str) -> set[str]:
+    """
+    Exclude-mode only. In include-mode, excludes are ignored by design.
+    """
+    cfg = self._get_ui_view_cfg(view_kind)
+    exclude = cfg.get("exclude_fields", []) or []
+    if not isinstance(exclude, (list, tuple, set)):
+      exclude = []
+    return {str(x) for x in exclude}
+
+  def _get_form_exclude_names(self) -> list[str]:
+    """
+    Django ModelForm supports 'exclude' only.
+    We implement include-mode by translating include_fields -> exclude=all-minus-include.
+    """
+    include = self._ui_include_fields("form")
+
+    # Gather "form-capable" field names (normal fields + m2m), skip auto_created.
+    # This mirrors typical Django admin behavior and keeps your current UX.
+    field_names = []
+    for f in list(self.model._meta.fields) + list(self.model._meta.many_to_many):
+      if getattr(f, "auto_created", False):
+        continue
+      field_names.append(f.name)
+
+    if include is not None:
+      include_set = set(include)
+      return [name for name in field_names if name not in include_set]
+
+    # exclude-mode: only settings-driven excludes
+    exclude = set(self._ui_exclude_fields("form") or [])
+    return sorted(exclude)
+
   def is_instance_system_managed(self, instance):
     """
     Returns True if this instance is marked as system-managed,
@@ -348,63 +497,53 @@ class GenericCRUDView(LoginRequiredMixin, View):
   def get_list_fields(self):
     """
     Return the model fields that should appear as columns in the grid.
-
-    Rules:
-    - skip auto_created, m2m, non-concrete
-    - skip anything in self.list_exclude
-    - skip toggle fields (they render as buttons in the Actions column)
-    - skip badge fields (they render as badges in the Actions column)
+    Visibility rules are settings-driven via ELEVATA_CRUD["metadata"]["ui"].
+    - include_fields (whitelist) OR exclude_fields (blacklist)
+    - toggle fields and badge fields are always excluded here (rendered elsewhere)
     """
-
     meta_cfg = getattr(settings, "ELEVATA_CRUD", {}).get("metadata", {})
 
-    # 1. collect toggle fields for this model
-    toggle_cfg_all = meta_cfg.get("list_toggle_fields", {})
+    # toggle fields are not shown as normal columns
     toggle_field_names = set()
-    model_toggle_cfg = toggle_cfg_all.get(self.model.__name__)
+    model_toggle_cfg = (meta_cfg.get("list_toggle_fields", {}) or {}).get(self.model.__name__)
     if model_toggle_cfg:
       for entry in model_toggle_cfg:
-        field_name = entry.get("field")
-        if field_name:
-          toggle_field_names.add(field_name)
+        fn = entry.get("field")
+        if fn:
+          toggle_field_names.add(fn)
 
-    # 2. collect badge fields for this model
-    badge_cfg_all = meta_cfg.get("badges", {})
+    # badge fields are not shown as normal columns (rendered in badge column)
     badge_field_names = set()
-    model_badge_cfg = badge_cfg_all.get(self.model.__name__)
+    model_badge_cfg = (meta_cfg.get("badges", {}) or {}).get(self.model.__name__)
     if model_badge_cfg:
-      # new structure: list of dicts, each has "field": "<fieldname>"
       for entry in model_badge_cfg:
-        field_name = entry.get("field")
-        if field_name:
-          badge_field_names.add(field_name)
+        fn = entry.get("field")
+        if fn:
+          badge_field_names.add(fn)
 
-    fields = []
+    # Build eligible fields
+    eligible = []
     for f in self.model._meta.get_fields():
-      # skip django internals
       if getattr(f, "many_to_many", False):
         continue
       if getattr(f, "auto_created", False):
         continue
       if not getattr(f, "concrete", True):
         continue
-
-      # explicit per-view excludes, if you use that
-      if f.name in getattr(self, "list_exclude", []):
-        continue
-
-      # skip toggle fields (we render buttons instead)
       if f.name in toggle_field_names:
         continue
-
-      # skip badge fields (we render badges instead)
       if f.name in badge_field_names:
         continue
+      eligible.append(f)
 
-      fields.append(f)
+    include = self._ui_include_fields("list")
+    if include is not None:
+      by_name = {f.name: f for f in eligible}
+      return [by_name[name] for name in include if name in by_name]
 
-    return fields
-  
+    exclude = set(self._ui_exclude_fields("list") or [])
+    return [f for f in eligible if f.name not in exclude]
+
   def build_auto_filter_config(self):
     """
     Build filter definitions for:
@@ -594,12 +733,39 @@ class GenericCRUDView(LoginRequiredMixin, View):
     """Return a model form with improved widget defaults (for all models)."""
     from django import forms
     from django.forms import widgets as w
+    from django.forms import ModelForm
 
-    # If a custom form_class is defined on the view, use it
+    exclude = self._get_form_exclude_names()
+
+    # ------------------------------------------------------------
+    # Auto-pick <ModelName>Form from metadata.forms if present.
+    # IMPORTANT: we still apply exclude via modelform_factory(..., exclude=exclude)
+    # so ELEVATA_CRUD visibility rules remain enforced.
+    # ------------------------------------------------------------
+    effective_form_class = None
+    try:
+      import metadata.forms as meta_forms
+      candidate_name = f"{self.model.__name__}Form"
+      Candidate = getattr(meta_forms, candidate_name, None)
+      if Candidate and isinstance(Candidate, type) and issubclass(Candidate, ModelForm):
+        effective_form_class = Candidate
+    except Exception:
+      effective_form_class = None
+
+    # If a custom form_class is defined on the view, it wins over auto-pick
     if hasattr(self, "form_class") and self.form_class:
-      return self.form_class
+      effective_form_class = self.form_class    
 
-    FormClass = modelform_factory(self.model, exclude=list(self.form_exclude))
+    # If a custom form_class is defined on the view, we MUST still apply exclude.
+    # Otherwise Meta.fields="__all__" will expose everything (lineage_key, is_system_managed, etc.).
+    if effective_form_class:
+      FormClass = modelform_factory(
+        self.model,
+        form=effective_form_class,
+        exclude=exclude,
+      )
+    else:
+      FormClass = modelform_factory(self.model, exclude=exclude)
 
     # Tweak widgets for all base fields
     for name, bf in FormClass.base_fields.items():
@@ -717,7 +883,83 @@ class GenericCRUDView(LoginRequiredMixin, View):
       form.fields[field_name].widget = djforms.Select(choices=choices)
 
     return form
-  
+
+  def enhance_domain_fields(self, form):
+    """
+    Domain-specific form enhancements (not generic 'dynamic choices').
+
+    - TargetDataset.upstream_datasets filtered by target_schema
+    - TargetColumn.upstream_columns filtered by TargetDataset.upstream_datasets
+    """
+    try:
+      from metadata.models import TargetDataset, TargetSchema
+    except Exception:
+      return form
+
+    model_name = self.model.__name__
+
+    # ---- TargetDataset.upstream_datasets filtering by layer ----
+    if model_name == "TargetDataset" and "upstream_datasets" in form.fields:
+      upstream_field = form.fields.get("upstream_datasets")
+      if upstream_field is not None:
+        schema_short = None
+
+        ts_id = (getattr(form, "data", {}) or {}).get("target_schema") or getattr(form.instance, "target_schema_id", None)
+        if ts_id:
+          schema_short = (
+            TargetSchema.objects
+              .filter(pk=ts_id)
+              .values_list("short_name", flat=True)
+              .first()
+          )
+        else:
+          schema = getattr(form.instance, "target_schema", None)
+          schema_short = getattr(schema, "short_name", None)
+
+        qs = upstream_field.queryset
+        if schema_short == "bizcore":
+          upstream_field.queryset = (
+            qs.filter(target_schema__short_name="rawcore")
+              .order_by("target_dataset_name")
+          )
+        elif schema_short == "serving":
+          upstream_field.queryset = (
+            qs.filter(target_schema__short_name__in=["rawcore", "bizcore"])
+              .order_by("target_dataset_name")
+          )
+
+    # ---- TargetColumn.upstream_columns filtering by selected upstream_datasets ----
+    if model_name == "TargetColumn" and "upstream_columns" in form.fields:
+      uc_field = form.fields.get("upstream_columns")
+      if uc_field is not None:
+        td = getattr(form.instance, "target_dataset", None)
+        td_id = (getattr(form, "data", {}) or {}).get("target_dataset") or getattr(form.instance, "target_dataset_id", None)
+        if td is None and td_id:
+          td = (
+            TargetDataset.objects
+              .filter(pk=td_id)
+              .prefetch_related("upstream_datasets")
+              .first()
+          )
+
+        if td is not None:
+          upstream_ds_ids = list(td.upstream_datasets.values_list("id", flat=True))
+          if upstream_ds_ids:
+            uc_field.queryset = (
+              uc_field.queryset
+                .filter(target_dataset_id__in=upstream_ds_ids)
+                .order_by("target_dataset__target_dataset_name", "ordinal_position")
+            )
+          else:
+            uc_field.queryset = uc_field.queryset.none()
+
+    return form
+
+  def enhance_form(self, form):
+    form = self.enhance_dynamic_fields(form)
+    form = self.enhance_domain_fields(form)
+    return form
+
   def _apply_autofocus(self, form):
     """
     Set 'autofocus' on the first truly editable field in a full-page form.
@@ -760,7 +1002,7 @@ class GenericCRUDView(LoginRequiredMixin, View):
       form = FormClass(request.POST, instance=obj)
       # lock down if system-managed
       self.apply_system_managed_locking(form, obj)
-      form = self.enhance_dynamic_fields(form)
+      form = self.enhance_form(form)
       if form.is_valid():
         instance = form.save(commit=False)
         user = get_current_user() or request.user
@@ -773,9 +1015,11 @@ class GenericCRUDView(LoginRequiredMixin, View):
         messages.success(request, _("Saved successfully."))
         return redirect(self.get_success_url())
     else:
-      form = FormClass(instance=obj)
+      data = request.GET if request.GET else None
+      form = FormClass(data=data, instance=obj)
+
       self.apply_system_managed_locking(form, obj)
-      form = self.enhance_dynamic_fields(form)
+      form = self.enhance_form(form)
 
     form = self._apply_autofocus(form)
 
@@ -824,7 +1068,7 @@ class GenericCRUDView(LoginRequiredMixin, View):
     if request.method == "POST":
       form = FormClass(request.POST, instance=obj)
       self.apply_system_managed_locking(form, obj)
-      form = self.enhance_dynamic_fields(form)
+      form = self.enhance_form(form)
       if form.is_valid():
         instance = form.save(commit=False)
         user = get_current_user() or request.user
@@ -852,9 +1096,16 @@ class GenericCRUDView(LoginRequiredMixin, View):
 
       # if form is NOT valid, we fall through to render the form with errors
     else:
-      form = FormClass(instance=obj)
+      # Refresh GET should be unbound; keep values via initial.
+      initial = {}
+      if request.GET:
+        for k in request.GET.keys():
+          vals = request.GET.getlist(k)
+          initial[k] = vals[0] if len(vals) == 1 else vals
+
+      form = FormClass(instance=obj, initial=initial)
       self.apply_system_managed_locking(form, obj)
-      form = self.enhance_dynamic_fields(form)
+      form = self.enhance_form(form)
 
     # both GET and invalid POST end up here:
     context = {
@@ -866,6 +1117,7 @@ class GenericCRUDView(LoginRequiredMixin, View):
       "model_name": self.model._meta.model_name,
       "model_class_name": self.model.__name__,
       "is_new": False,
+      "refresh_url": request.path,
     }
     return render(request, "generic/row_form.html", context, status=200)
 
@@ -879,11 +1131,16 @@ class GenericCRUDView(LoginRequiredMixin, View):
       return render(request, "generic/_row_form_blocked.html", context, status=200)
 
     FormClass = self.get_form_class()
-    form = FormClass()
+    # Refresh GET should not be "bound" (prevents required errors).
+    initial = {}
+    if request.GET:
+      for k in request.GET.keys():
+        vals = request.GET.getlist(k)
+        initial[k] = vals[0] if len(vals) == 1 else vals
 
-    # hide is_system_managed etc.
+    form = FormClass(initial=initial)
     self.apply_system_managed_locking(form, instance=None)
-    form = self.enhance_dynamic_fields(form)
+    form = self.enhance_form(form)
 
     context = {
       "model": self.model,
@@ -894,12 +1151,39 @@ class GenericCRUDView(LoginRequiredMixin, View):
       "model_name": self.model._meta.model_name,
       "model_class_name": self.model.__name__,
       "is_new": True,
+      "refresh_url": request.path,
     }
     return render(request, "generic/row_form.html", context, status=200)
       
   def row_create(self, request):
+    # Allow GET for "refresh" (HTMX) so dependent selects can be re-filtered
+    # without saving. POST still performs the actual create.
+    if request.method == "GET":
+      if self.is_creation_blocked_for_model():
+        return HttpResponse(status=204)
+
+      FormClass = self.get_form_class()
+      data = request.GET if request.GET else None
+      form = FormClass(data=data)
+
+      # apply same hiding/locking so that is_system_managed doesn't get user-supplied
+      self.apply_system_managed_locking(form, instance=None)
+      form = self.enhance_form(form)
+
+      context = {
+        "model": self.model,
+        "meta": self.model._meta,
+        "form": form,
+        "object": None,
+        "fields": self.get_list_fields(),
+        "model_name": self.model._meta.model_name,
+        "model_class_name": self.model.__name__,
+        "is_new": True,
+      }
+      return render(request, "generic/row_form.html", context, status=200)
+
     if request.method != "POST":
-      raise Http404("POST required")
+      raise Http404("GET/POST required")
 
     if self.is_creation_blocked_for_model():
       return HttpResponse(status=204)
@@ -909,7 +1193,7 @@ class GenericCRUDView(LoginRequiredMixin, View):
 
     # apply same hiding/locking so that is_system_managed doesn't get user-supplied
     self.apply_system_managed_locking(form, instance=None)
-    form = self.enhance_dynamic_fields(form)
+    form = self.enhance_form(form)
 
     if form.is_valid():
       instance = form.save(commit=False)

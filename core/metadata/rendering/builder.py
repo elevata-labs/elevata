@@ -1,6 +1,6 @@
 """
 elevata - Metadata-driven Data Platform Framework
-Copyright © 2025 Ilona Tag
+Copyright © 2025-2026 Ilona Tag
 
 This file is part of elevata.
 
@@ -22,7 +22,7 @@ Contact: <https://github.com/elevata-labs/elevata>.
 
 from __future__ import annotations
 
-from typing import Optional, TYPE_CHECKING
+from typing import Optional, TYPE_CHECKING, Iterable
 import re
 
 from metadata.rendering.logical_plan import (
@@ -31,6 +31,7 @@ from metadata.rendering.logical_plan import (
   LogicalSelect,
   LogicalUnion,
   SubquerySource,
+  Join
 )
 from metadata.generation.naming import build_surrogate_key_name
 from metadata.rendering.expr import Expr
@@ -38,7 +39,7 @@ from metadata.rendering.dsl import col, raw, row_number, parse_surrogate_dsl
 
 if TYPE_CHECKING:
   # Only for type hints, no runtime import -> no circular import
-  from metadata.models import SourceDataset, TargetDataset, TargetColumn, TargetDatasetReference
+  from metadata.models import SourceDataset, TargetDataset, TargetColumn, TargetDatasetReference, TargetDatasetJoin, TargetDatasetJoinPredicate
 
 """
 Logical Query Builder for TargetDatasets.
@@ -50,8 +51,141 @@ and merging multiple inputs (UNION or single-path).
 # Regex patterns
 # ------------------------------------------------------------------------------
 COL_PATTERN = re.compile(r'col\(["\']([^"\']+)["\']\)')
-_IDENT_PATTERN = re.compile(r"\b[a-zA-Z_][a-zA-Z0-9_]*\b")
+_IDENT_RE = re.compile(r"\b[A-Za-z_][A-Za-z0-9_]*\b")
 
+
+def _collect_input_column_names(tcol) -> set[str]:
+  """
+  Collect upstream column names for this TargetColumn from its active input_links.
+  These names are used to qualify bare identifiers in manual_expression.
+  """
+  names: set[str] = set()
+  for link in (
+    tcol.input_links
+    .select_related("upstream_target_column", "source_column")
+    .filter(active=True)
+  ):
+    if link.upstream_target_column_id:
+      names.add(link.upstream_target_column.target_column_name)
+    if link.source_column_id:
+      names.add(link.source_column.source_column_name)
+  return names
+
+
+def _qualify_expr_identifiers(expr_text: str, *, col_names: set[str], alias: str) -> str:
+  """
+  Heuristically qualify bare column identifiers with `<alias>.`.
+  - Only qualifies identifiers that match known input column names.
+  - Does NOT touch:
+      - already qualified identifiers (preceded by '.')
+      - placeholders like {{ ... }}
+      - quoted identifiers (best effort)
+  This keeps authoring simple: `CONCAT(a, b)` instead of `CONCAT(s.a, s.b)`.
+  """
+  if not expr_text or not col_names:
+    return expr_text
+
+  # Do not attempt to qualify runtime placeholders.
+  if "{{" in expr_text and "}}" in expr_text:
+    return expr_text
+
+  def repl(match: re.Match) -> str:
+    token = match.group(0)
+    if token not in col_names:
+      return token
+    i0 = match.start()
+    # If already qualified (e.g. s.col), keep as-is.
+    if i0 > 0 and expr_text[i0 - 1] == ".":
+      return token
+    # If in a quoted identifier (very rough guard), keep as-is.
+    if i0 > 0 and expr_text[i0 - 1] in ('"', "'"):
+      return token
+    return f"{alias}.{token}"
+
+  return _IDENT_RE.sub(repl, expr_text)
+
+def _collect_input_column_alias_map(tcol, *, ds_alias_by_dataset_id: dict[int, str]) -> dict[str, str]:
+  """
+  Build a mapping { column_name -> table_alias } from TargetColumn input_links.
+
+  We prefer upstream_target_column links because they provide a stable dataset_id.
+  If a column name appears from multiple upstream datasets, we mark it ambiguous
+  and do not qualify it automatically.
+  """
+  name_to_alias: dict[str, str] = {}
+  ambiguous: set[str] = set()
+
+  for link in (
+    tcol.input_links
+      .select_related("upstream_target_column", "source_column")
+      .filter(active=True)
+  ):
+    if link.upstream_target_column_id:
+      up_col = link.upstream_target_column
+      up_ds_id = up_col.target_dataset_id
+      alias = ds_alias_by_dataset_id.get(up_ds_id)
+      if not alias:
+        continue
+
+      name = up_col.target_column_name
+      if name in ambiguous:
+        continue
+      if name in name_to_alias and name_to_alias[name] != alias:
+        name_to_alias.pop(name, None)
+        ambiguous.add(name)
+        continue
+      name_to_alias[name] = alias
+
+    # NOTE: We deliberately do NOT map source_column_name here because
+    # bizcore/serving join path currently joins target datasets, not sources.
+
+  return name_to_alias
+
+def _qualify_expr_identifiers_by_map(expr_text: str, *, name_to_alias: dict[str, str]) -> str:
+  """
+  Qualify bare identifiers using a {name -> alias} map.
+  - Keeps already qualified identifiers (preceded by '.')
+  - Preserves placeholders like {{ ... }}
+  - Conservative: only touches tokens present in name_to_alias
+  """
+  if not expr_text or not name_to_alias:
+    return expr_text
+
+  if "{{" in expr_text and "}}" in expr_text:
+    return expr_text
+
+  def repl(match: re.Match) -> str:
+    token = match.group(0)
+    alias = name_to_alias.get(token)
+    if not alias:
+      return token
+    i0 = match.start()
+    if i0 > 0 and expr_text[i0 - 1] == ".":
+      return token
+    if i0 > 0 and expr_text[i0 - 1] in ('"', "'"):
+      return token
+    return f"{alias}.{token}"
+
+  return _IDENT_RE.sub(repl, expr_text)
+
+def _pick_single_upstream_target_dataset(target_dataset) -> Optional["TargetDataset"]:
+  """
+  For non-stage layers, we treat multiple upstream TargetDatasets as unsupported
+  (MVP) because it would require explicit join semantics.
+  """
+  upstreams = [
+    inp.upstream_target_dataset
+    for inp in (
+      target_dataset.input_links
+      .select_related("upstream_target_dataset", "upstream_target_dataset__target_schema")
+      .filter(active=True, upstream_target_dataset__isnull=False)
+    )
+  ]
+  if not upstreams:
+    return None
+  if len(upstreams) > 1:
+    return "MULTIPLE"
+  return upstreams[0]
 
 # ------------------------------------------------------------------------------
 # Extract Stage-level lineage of a RawCore column
@@ -188,7 +322,7 @@ def qualify_source_filter(
       return f"{source_alias}.{tok}"
     return tok
 
-  expr = _IDENT_PATTERN.sub(repl, expr)
+  expr = _IDENT_RE.sub(repl, expr)
   return " ".join(expr.split())
 
 
@@ -592,6 +726,205 @@ def _build_single_select_for_source_stage(
 
   return logical
 
+def _qualify_expr(expr_sql: str, left_alias: str, right_alias: str, left_cols: set[str], right_cols: set[str], side: str) -> str:
+  """
+  Qualify bare identifiers in expr_sql.
+
+  side:
+    - "left": prefer left alias for ambiguous columns
+    - "right": prefer right alias for ambiguous columns
+
+  Rules (MVP):
+    - keep already qualified identifiers (a.col)
+    - if token in only one side's colset -> qualify with that side
+    - if token in both -> qualify with preferred side
+    - else -> leave as-is
+  """
+  if not expr_sql:
+    return expr_sql
+
+  def repl(m: re.Match) -> str:
+    tok = m.group(0)
+    start = m.start()
+
+    # Already qualified?
+    if start > 0 and expr_sql[start - 1] == ".":
+      return tok
+
+    in_left = tok in left_cols
+    in_right = tok in right_cols
+
+    if in_left and not in_right:
+      return f"{left_alias}.{tok}"
+    if in_right and not in_left:
+      return f"{right_alias}.{tok}"
+    if in_left and in_right:
+      pref = left_alias if side == "left" else right_alias
+      return f"{pref}.{tok}"
+
+    return tok
+
+  return _IDENT_RE.sub(repl, expr_sql)
+
+def _get_active_target_colnames(upstream_ds: "TargetDataset") -> set[str]:
+  return set(
+    upstream_ds.target_columns
+      .filter(active=True)
+      .values_list("target_column_name", flat=True)
+  )
+
+def _render_join_predicate_sql(
+  pred: "TargetDatasetJoinPredicate",
+  left_alias: str,
+  right_alias: str,
+  left_cols: set[str],
+  right_cols: set[str],
+) -> str:
+  """
+  Render a single structured predicate into SQL.
+  MVP rules:
+    - left_expr is qualified against left input
+    - right_expr/right_expr_2 qualified against right input
+  """
+  op = (pred.operator or "").strip().upper()
+
+  left_sql = _qualify_expr((pred.left_expr or "").strip(), left_alias, right_alias, left_cols, right_cols, side="left")
+
+  if op in ("IS NULL", "IS NOT NULL"):
+    return f"{left_sql} {op}"
+
+  if op == "BETWEEN":
+    r1 = _qualify_expr((pred.right_expr or "").strip(), left_alias, right_alias, left_cols, right_cols, side="right")
+    r2 = _qualify_expr((pred.right_expr_2 or "").strip(), left_alias, right_alias, left_cols, right_cols, side="right")
+    return f"{left_sql} BETWEEN {r1} AND {r2}"
+
+  right_sql = _qualify_expr((pred.right_expr or "").strip(), left_alias, right_alias, left_cols, right_cols, side="right")
+  return f"{left_sql} {op} {right_sql}"
+
+def _build_joined_select_for_target(
+  target_dataset: "TargetDataset",
+  inputs_qs,
+) -> "LogicalSelect":
+  """
+  Build a joined LogicalSelect for Bizcore/Serving when multiple upstream inputs exist.
+
+  MVP:
+    - requires explicit TargetDatasetJoin rows (join_order defines chain)
+    - predicates are AND combined
+    - CROSS join => no predicates / no ON
+  """
+
+  # collect inputs that are upstream TargetDatasets
+  upstream_inputs = [i for i in inputs_qs if i.upstream_target_dataset is not None]
+  if len(upstream_inputs) <= 1:
+    raise ValueError("_build_joined_select_for_target called with <= 1 upstream input")
+
+  joins = list(
+    target_dataset.joins
+      .select_related(
+        "left_input", "right_input",
+        "left_input__upstream_target_dataset",
+        "right_input__upstream_target_dataset",
+      )
+      .prefetch_related("predicates")
+      .order_by("join_order", "id")
+  )
+
+  if not joins:
+    raise ValueError(
+      f"bizcore/serving dataset '{target_dataset.target_dataset_name}' has multiple upstream inputs "
+      f"but no TargetDatasetJoin definitions."
+    )
+
+  # --- assign stable aliases per input (deterministic) ---
+  # We keep it simple: i1, i2, i3 ... based on sorted input ids
+  input_by_id = {i.id: i for i in upstream_inputs}
+  input_ids_sorted = sorted(input_by_id.keys())
+
+  alias_by_input_id: dict[int, str] = {}
+  for idx, inp_id in enumerate(input_ids_sorted, start=1):
+    alias_by_input_id[inp_id] = f"i{idx}"
+
+  # --- determine base FROM input from first join's left_input ---
+  base_input = joins[0].left_input
+  if base_input_id := getattr(base_input, "id", None):
+    pass
+  else:
+    raise ValueError("Join left_input has no id (unexpected)")
+
+  base_alias = alias_by_input_id[base_input.id]
+  base_upstream = base_input.upstream_target_dataset
+  if base_upstream is None:
+    raise ValueError("Join left_input has no upstream_target_dataset (unexpected)")
+
+  logical = LogicalSelect(
+    from_=SourceTable(
+      schema=base_upstream.target_schema.schema_name,
+      name=base_upstream.target_dataset_name,
+      alias=base_alias,
+    )
+  )
+
+  # --- add JOIN chain in order ---
+  used_inputs: set[int] = {base_input.id}
+
+  for j in joins:
+    left_inp = j.left_input
+    right_inp = j.right_input
+
+    if left_inp.id not in used_inputs:
+      # MVP chain constraint: each join must attach to already-built relation
+      raise ValueError(
+        f"Join chain is not connected at join_order={j.join_order}. "
+        f"left_input {left_inp.id} not yet part of join tree."
+      )
+
+    right_up = right_inp.upstream_target_dataset
+    if right_up is None:
+      raise ValueError("Join right_input has no upstream_target_dataset (unexpected)")
+
+    left_alias = alias_by_input_id[left_inp.id]
+    right_alias = alias_by_input_id[right_inp.id]
+
+    join_type = (j.join_type or "").strip().lower()
+
+    on_expr = None
+    if join_type != "cross":
+      preds = list(j.predicates.all().order_by("ordinal_position", "id"))
+      if not preds:
+        raise ValueError(
+          f"Join join_order={j.join_order} is not CROSS but has no predicates."
+        )
+
+      left_cols = _get_active_target_colnames(left_inp.upstream_target_dataset)
+      right_cols = _get_active_target_colnames(right_inp.upstream_target_dataset)
+
+      pred_sqls = [
+        _render_join_predicate_sql(p, left_alias, right_alias, left_cols, right_cols)
+        for p in preds
+      ]
+      on_sql = " AND ".join([s for s in pred_sqls if s])
+      on_expr = raw(on_sql)
+    else:
+      # CROSS join must have no predicates (model validation should already enforce)
+      on_expr = None
+
+    logical.joins.append(
+      Join(
+        left_alias=left_alias,
+        right=SourceTable(
+          schema=right_up.target_schema.schema_name,
+          name=right_up.target_dataset_name,
+          alias=right_alias,
+        ),
+        on=on_expr,           # may be None for CROSS
+        join_type=join_type,  # "left" / "inner" / "cross" ...
+      )
+    )
+
+    used_inputs.add(right_inp.id)
+
+  return logical
 
 # ------------------------------------------------------------------------------
 # Main builder: Build logical select for a target dataset
@@ -680,6 +1013,91 @@ def build_logical_select_for_target(target_dataset: TargetDataset):
     # -------------------- SINGLE-SOURCE STAGE (fall through) ----------------
 
   # ==========================================================================
+  # 1c) BIZCORE / SERVING: MULTI-UPSTREAM via explicit joins
+  # ==========================================================================
+  if schema_short in ("bizcore", "serving"):
+    upstream_inputs = [i for i in inputs_qs if i.upstream_target_dataset is not None]
+
+    if len(upstream_inputs) > 1:
+      # Use explicit join semantics from metadata
+      logical = _build_joined_select_for_target(target_dataset, inputs_qs)
+
+      # Build projection list based on target columns, but now FROM alias is not always "s"
+      # For MVP, we keep existing column logic, but you likely want:
+      #   - if TargetColumn has upstream_columns, pick the upstream alias based on that column's dataset
+      # For now: if a column has exactly one upstream_target_column, we qualify against that upstream dataset alias.
+
+      tcols = (
+        target_dataset.target_columns
+          .filter(active=True)
+          .order_by("ordinal_position", "id")
+      )
+
+      # helper: map upstream dataset id -> alias by inspecting the FROM and joins we built
+      # base
+      ds_alias: dict[int, str] = {}
+      # from_
+      # we need to find dataset id for from_ table: easiest is via joins metadata again
+      # (MVP) build ds_alias from inputs_qs ids -> alias logic of helper:
+      input_ids_sorted = sorted([i.id for i in upstream_inputs])
+      for idx, inp_id in enumerate(input_ids_sorted, start=1):
+        inp = next(i for i in upstream_inputs if i.id == inp_id)
+        if inp.upstream_target_dataset_id:
+          ds_alias[inp.upstream_target_dataset_id] = f"i{idx}"
+
+      # project columns
+      for tcol in tcols:
+        col_input = (
+          tcol.input_links
+            .select_related("upstream_target_column", "source_column")
+            .filter(active=True)
+            .order_by("ordinal_position", "id")
+            .first()
+        )
+
+        # Expressions:
+        if tcol.manual_expression:
+          # manual_expression may contain bare identifiers; qualify based on input_links.
+          manual = (tcol.manual_expression or "").strip()
+          name_to_alias = _collect_input_column_alias_map(
+            tcol,
+            ds_alias_by_dataset_id=ds_alias,
+          )
+          qualified = _qualify_expr_identifiers_by_map(
+            manual,
+            name_to_alias=name_to_alias,
+          )
+          expr = raw(qualified)
+
+        elif col_input and col_input.upstream_target_column:
+          up_col = col_input.upstream_target_column
+          up_ds_id = up_col.target_dataset_id
+          alias = ds_alias.get(up_ds_id)
+          if not alias:
+            # fallback to first FROM alias
+            alias = getattr(logical.from_, "alias", "i1")
+          expr = col(up_col.target_column_name, alias)
+        else:
+          # fallback: assume column exists on base alias
+          base_alias = getattr(logical.from_, "alias", "i1")
+          expr = col(tcol.target_column_name, base_alias)
+
+        logical.select_list.append(SelectItem(expr=expr, alias=tcol.target_column_name))
+
+      return logical
+
+    # Single upstream: fall through into single-path resolution below,
+    # but we should treat FROM as upstream dataset, not the target itself.
+    if len(upstream_inputs) == 1:
+      up = upstream_inputs[0].upstream_target_dataset
+      from_schema = up.target_schema.schema_name
+      from_table = up.target_dataset_name
+      source_table = SourceTable(schema=from_schema, name=from_table, alias="s")
+      logical = LogicalSelect(from_=source_table)
+      # and then continue with your existing column projection logic (which uses alias "s")
+      # easiest: jump into the existing code by not returning here
+
+  # ==========================================================================
   # 2) single-path FROM resolution (raw, stage, rawcore, fallback)
   # ==========================================================================
   from_schema = target_dataset.target_schema.schema_name
@@ -735,6 +1153,19 @@ def build_logical_select_for_target(target_dataset: TargetDataset):
     if stage_input:
       up = stage_input.upstream_target_dataset
       from_schema, from_table = up.target_schema.schema_name, up.target_dataset_name
+
+  # --------------------------------------------------------------------------
+  # Non-stage curated layers: bizcore / serving (and any future non-stage layer)
+  # --------------------------------------------------------------------------
+  elif schema_short in ("bizcore", "serving"):
+    utd = _pick_single_upstream_target_dataset(target_dataset)
+    if utd == "MULTIPLE":
+      raise ValueError(
+        f"{schema_short} dataset '{target_dataset.target_dataset_name}' has multiple upstream "
+        "TargetDatasetInputs. This requires explicit join semantics and is not supported yet."
+      )
+    if utd:
+      from_schema, from_table = utd.target_schema.schema_name, utd.target_dataset_name
 
   # ==========================================================================
   # 3) Build the LogicalSelect for the single-path scenario
@@ -803,27 +1234,38 @@ def build_logical_select_for_target(target_dataset: TargetDataset):
 
     # 4) Normal column: derive from upstream or fall back to same-name column
     else:
-      col_input = (
-        tcol.input_links
-        .select_related(
-          "upstream_target_column",
-          "source_column",
-          "source_column__source_dataset",
+      # 0) Manual override: author does not need to type alias; we qualify from inputs.
+      manual = (tcol.manual_expression or "").strip()
+      if manual:
+        input_names = _collect_input_column_names(tcol)
+        qualified = _qualify_expr_identifiers(manual, col_names=input_names, alias="s")
+
+        # Keep DSL text without braces or plain SQL as-is (renderer will handle raw text).
+        if qualified.startswith("{{") and qualified.endswith("}}"):
+          qualified = qualified[2:-2].strip()
+        expr = raw(qualified)
+      else:
+        col_input = (
+          tcol.input_links
+          .select_related(
+            "upstream_target_column",
+            "source_column",
+            "source_column__source_dataset",
+          )
+          .filter(active=True)
+          .order_by("ordinal_position", "id")
+          .first()
         )
-        .filter(active=True)
-        .order_by("ordinal_position", "id")
-        .first()
-      )
 
-      upstream_col_name = (
-        col_input.upstream_target_column.target_column_name
-        if col_input and col_input.upstream_target_column
-        else col_input.source_column.source_column_name
-        if col_input and col_input.source_column
-        else tcol.target_column_name
-      )
+        upstream_col_name = (
+          col_input.upstream_target_column.target_column_name
+          if col_input and col_input.upstream_target_column
+          else col_input.source_column.source_column_name
+          if col_input and col_input.source_column
+          else tcol.target_column_name
+        )
 
-      expr = col(upstream_col_name, "s")
+        expr = col(upstream_col_name, "s")
 
     logical.select_list.append(
       SelectItem(expr=expr, alias=tcol.target_column_name)

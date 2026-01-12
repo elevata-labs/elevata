@@ -1,6 +1,6 @@
 """
 elevata - Metadata-driven Data Platform Framework
-Copyright © 2025 Ilona Tag
+Copyright © 2025-2026 Ilona Tag
 
 This file is part of elevata.
 
@@ -24,6 +24,7 @@ from django import template
 from metadata.constants import classify_type, TYPE_SUPPORT_LABEL, TYPE_BADGE_CLASS
 
 register = template.Library()
+
 
 @register.filter
 def get(d, key):

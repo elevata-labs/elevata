@@ -1,6 +1,6 @@
 """
 elevata - Metadata-driven Data Platform Framework
-Copyright © 2025 Ilona Tag
+Copyright © 2025-2026 Ilona Tag
 
 This file is part of elevata.
 
@@ -34,11 +34,13 @@ from metadata.models import SourceDataset, System
 from .views_scoped import (
   # Target side
   TargetDatasetInputScopedView,
-  TargetDatasetColumnScopedView,
+  TargetColumnScopedView,
   TargetDatasetReferenceScopedView,
   TargetColumnInputScopedView,
   TargetDatasetOwnershipScopedView,
   TargetDatasetReferenceComponentScopedView,
+  TargetDatasetJoinScopedView,
+  TargetDatasetJoinPredicateScopedView,
   # Source side
   SourceSystemDatasetScopedView,
   SourceDatasetColumnScopedView,
@@ -133,6 +135,7 @@ for model in models_sorted:
 urlpatterns += [
   path("source-type-hint/", views.source_type_hint, name="source_type_hint"),
   path("generate-targets/", views.generate_targets, name="generate_targets"),
+  path("api/targetcolumns/upstream-meta/", views.targetcolumn_upstream_meta, name="targetcolumn_upstream_meta"),
 ]
 
 # Custom import endpoints (UI-Buttons → HTMX POST)
@@ -162,7 +165,7 @@ scoped_views = {
     "targetdatasetinput",
   ),
   "targetdataset/<int:parent_pk>/columns/": (
-    TargetDatasetColumnScopedView,
+    TargetColumnScopedView,
     "targetcolumn",
   ),
   "targetdataset/<int:parent_pk>/references/": (
@@ -200,6 +203,14 @@ scoped_views = {
   "sourcedataset/<int:parent_pk>/increment-policies/": (
     SourceDatasetIncrementPolicyScopedView,
     "sourcedatasetincrementpolicy",
+  ),
+  "targetdataset/<int:parent_pk>/joins/": (
+    TargetDatasetJoinScopedView,
+    "targetdatasetjoin",
+  ),
+  "targetdatasetjoin/<int:parent_pk>/predicates/": (
+    TargetDatasetJoinPredicateScopedView,
+    "targetdatasetjoinpredicate",
   ),
 }
 

@@ -1,6 +1,6 @@
 """
 elevata - Metadata-driven Data Platform Framework
-Copyright © 2025 Ilona Tag
+Copyright © 2025-2026 Ilona Tag
 
 This file is part of elevata.
 
@@ -37,7 +37,6 @@ def create_default_target_schemas(apps, schema_editor):
       "schema_name": "raw",
       "physical_prefix": "raw",
       "generate_layer": True,
-      "consolidate_groups": False,
       "is_user_visible": False,
       "default_materialization_type": "table",
       "default_historize": False,
@@ -63,7 +62,6 @@ def create_default_target_schemas(apps, schema_editor):
       "schema_name": "stage",
       "physical_prefix": "stg",
       "generate_layer": True,
-      "consolidate_groups": True,
       "is_user_visible": True,
       "default_materialization_type": "view",
       "default_historize": False,
@@ -89,7 +87,6 @@ def create_default_target_schemas(apps, schema_editor):
       "schema_name": "rawcore",
       "physical_prefix": "rc",
       "generate_layer": True,
-      "consolidate_groups": True,
       "is_user_visible": True,
       "default_materialization_type": "table",
       "default_historize": True,
@@ -115,7 +112,6 @@ def create_default_target_schemas(apps, schema_editor):
       "schema_name": "bizcore",
       "physical_prefix": "bc",
       "generate_layer": False,
-      "consolidate_groups": False,
       "is_user_visible": True,
       "default_materialization_type": "table",
       "default_historize": True,
@@ -141,7 +137,6 @@ def create_default_target_schemas(apps, schema_editor):
       "schema_name": "serving",
       "physical_prefix": "",
       "generate_layer": False,
-      "consolidate_groups": False,
       "is_user_visible": True,
       "default_materialization_type": "view",
       "default_historize": False,

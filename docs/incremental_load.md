@@ -138,5 +138,4 @@ DuckDB is the default fallback dialect to ensure consistent behavior when no act
 
 ---
 
-© 2025 elevata Labs — Internal Technical Documentation
-
+© 2025-2026 elevata Labs — Internal Technical Documentation

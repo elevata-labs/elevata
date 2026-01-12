@@ -76,6 +76,28 @@ The preview does not simplify or truncate SQL. It always shows:
 
 This ensures that the preview accurately reflects the actual SQL generator.
 
+### 🧩 Bizcore in SQL Preview
+
+Bizcore datasets are rendered through the **same SQL Preview pipeline**
+as all other datasets.
+
+This means:
+
+- business rules are shown as real SQL  
+- joins and calculations are fully expanded  
+- aliases and lineage are explicit  
+- preview SQL matches execution SQL exactly
+
+There is no abstraction or simplification for Bizcore previews.
+
+If a Bizcore SQL preview looks correct,
+the executed SQL will be correct.
+
+This property is intentional and foundational:
+Bizcore semantics are **transparent, inspectable, and executable** —  
+not inferred or resolved at query time.
+
+
 ---
 
 ## 🔧 3. Dialect Handling in the UI
@@ -198,4 +220,4 @@ The preview pipeline is a key part of elevata’s transparency and usability.
 
 ---
 
-© 2025 elevata Labs — Internal Technical Documentation
+© 2025-2026 elevata Labs — Internal Technical Documentation

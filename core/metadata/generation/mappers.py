@@ -1,6 +1,6 @@
 """
 elevata - Metadata-driven Data Platform Framework
-Copyright © 2025 Ilona Tag
+Copyright © 2025-2026 Ilona Tag
 
 This file is part of elevata.
 
@@ -60,7 +60,6 @@ class TargetColumnDraft:
   nullable: bool
 
   system_role: str
-  artificial_column: bool = False  # optional, may stay default False
 
   lineage_origin: str = "direct"  # e.g. "direct", "surrogate_key", "derived"
 

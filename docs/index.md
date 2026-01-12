@@ -80,6 +80,10 @@ This index gives you an overview of all major topics and how they fit together.
 - [SQL Preview & Rendering Pipeline](sql_preview_pipeline.md)  
   How the UI builds previews from metadata, Logical Plan and dialect selection (HTMX-based).
 
+- [Bizcore — Business Semantics Layer](bizcore.md)  
+  Bizcore is elevata’s dedicated layer for modeling business meaning  
+  and rules as first-class metadata — without introducing a BI semantic layer.
+
 - [Metadata Health Check](health_check.md)  
   Built-in checks for incomplete or inconsistent metadata, and how to interpret them.
 

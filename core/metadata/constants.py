@@ -1,6 +1,6 @@
 """
 elevata - Metadata-driven Data Platform Framework
-Copyright © 2025 Ilona Tag
+Copyright © 2025-2026 Ilona Tag
 
 This file is part of elevata.
 
@@ -169,6 +169,28 @@ MATERIALIZATION_CHOICES=[
   ("view", "view"),
   ("incremental", "incremental"),
   ("external_passthrough", "external_passthrough"),
+]
+
+JOIN_TYPE_CHOICES = [
+  ("inner", "INNER"),
+  ("left", "LEFT"),
+  ("right", "RIGHT"),
+  ("full", "FULL"),
+  ("cross", "CROSS"),
+]
+
+OPERATOR_CHOICES = [
+  ("=", "="),
+  ("!=", "!="),
+  ("<", "<"),
+  ("<=", "<="),
+  (">", ">"),
+  (">=", ">="),
+  ("LIKE", "LIKE"),
+  ("IN", "IN"),
+  ("BETWEEN", "BETWEEN"),
+  ("IS NULL", "IS NULL"),
+  ("IS NOT NULL", "IS NOT NULL"),
 ]
 
 RELATIONSHIP_TYPE_CHOICES=[

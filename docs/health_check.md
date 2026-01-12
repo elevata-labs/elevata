@@ -161,4 +161,4 @@ Running the Health Check regularly helps maintain a stable, predictable, and wel
 
 ---
 
-© 2025 elevata Labs — Internal Technical Documentation
+© 2025-2026 elevata Labs — Internal Technical Documentation

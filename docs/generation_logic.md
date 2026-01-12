@@ -249,6 +249,31 @@ This ensures:
 
 ---
 
+## 🔧 11. Bizcore Generation Semantics
+
+Bizcore datasets follow the **same generation pipeline**
+as Raw, Stage, Core, and Serving datasets.
+
+There is no special-case SQL generation for Bizcore.
+
+Key properties:
+
+- Bizcore datasets are planned via the same Logical Plan builder  
+- Expressions, joins, and calculations are compiled identically  
+- Execution semantics (ordering, retries, blocking) are unchanged  
+- Lineage is preserved across Core → Bizcore boundaries
+
+This ensures that business semantics are:
+
+- deterministic  
+- testable  
+- explainable  
+- warehouse-native
+
+Bizcore is therefore a **semantic layer by metadata**, not by execution logic.
+
+---
+
 ## 🔧 11. Summary
 
 The generation logic is the heart of elevata:  

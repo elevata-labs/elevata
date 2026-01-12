@@ -1,6 +1,6 @@
 """
 elevata - Metadata-driven Data Platform Framework
-Copyright © 2025 Ilona Tag
+Copyright © 2025-2026 Ilona Tag
 
 This file is part of elevata.
 
@@ -88,7 +88,7 @@ def test_build_physical_dataset_name(monkeypatch):
   """Verify build_physical_dataset_name logic using dummy objects."""
   class DummyTargetSchema:
     physical_prefix = "rc"
-    consolidate_groups = False
+    short_name = "raw"
 
   class DummySystem:
     short_name = "sap1"

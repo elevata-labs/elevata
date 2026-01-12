@@ -1,6 +1,6 @@
 """
 elevata - Metadata-driven Data Platform Framework
-Copyright © 2025 Ilona Tag
+Copyright © 2025-2026 Ilona Tag
 
 This file is part of elevata.
 
@@ -218,7 +218,6 @@ def test_stage_union_sets_source_identity_id_literal_per_branch():
     max_length=30,
     nullable=False,
     system_role="business_key",
-    artificial_column=True,
   )
   TargetColumn.objects.create(
     target_dataset=stage_ds,

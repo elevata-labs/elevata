@@ -254,4 +254,4 @@ All tests pass when AST rendering is correct.
 
 ---
 
-© 2025 elevata Labs — Internal Technical Documentation
+© 2025-2026 elevata Labs — Internal Technical Documentation

@@ -1,6 +1,6 @@
 """
 elevata - Metadata-driven Data Platform Framework
-Copyright © 2025 Ilona Tag
+Copyright © 2025-2026 Ilona Tag
 
 This file is part of elevata.
 
@@ -68,6 +68,7 @@ class DummyTargetColumn:
     self.target_column_name = target_column_name
     self.system_role = system_role
     self.surrogate_expression = None
+    self.manual_expression = None
     # builder.py expects tcol.input_links to exist (queryset-like)
     self.input_links = EmptyQS()
 

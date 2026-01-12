@@ -1,6 +1,6 @@
 <!--
 elevata - Metadata-driven Data Platform Framework
-Copyright © 2025 Ilona Tag
+Copyright © 2025-2026 Ilona Tag
 
 This file is part of elevata.
 
@@ -31,7 +31,7 @@ Contact: <https://github.com/elevata-labs/elevata>.
     <h1 class="h4 mb-0">{{ title|default:object }}</h1>
 
     {% if object %}
-      {% if model_name == 'system' or model_name == 'sourcedataset' or model_name == 'sourcedatasetgroup' or model_name == 'targetdataset' or model_name == 'targetdatasetreference' %}
+      {% if model_name == 'system' or model_name == 'sourcedataset' or model_name == 'sourcedatasetgroup' or model_name == 'targetdataset' or model_name == 'targetdatasetreference' or model_name == 'targetdatasetjoin' %}
         <nav class="subnav ms-2">
           {% if model_name == 'system' and object.is_source %}
             <a href="{% url 'sourcedataset_list' object.pk %}" class="btn btn-sm btn-outline-primary">
@@ -58,18 +58,32 @@ Contact: <https://github.com/elevata-labs/elevata>.
             <a href="{% url 'targetcolumn_list' object.pk %}" class="btn btn-sm btn-outline-primary">
               <i class="bi bi-columns"></i> Columns
             </a>
-            <a href="{% url 'targetdatasetreference_list' object.pk %}" class="btn btn-sm btn-outline-primary">
-              <i class="bi bi-link-45deg"></i> References
-            </a>
+            {% if object.target_schema.short_name == "rawcore" %}
+              <a href="{% url 'targetdatasetreference_list' object.pk %}" class="btn btn-sm btn-outline-primary">
+                <i class="bi bi-link-45deg"></i> References
+              </a>
+            {% endif %}
             <a href="{% url 'targetdatasetownership_list' object.pk %}" class="btn btn-sm btn-outline-primary">
               <i class="bi bi-person-badge"></i> Ownership
             </a>
             <a href="{% url 'targetdataset_lineage' object.pk %}" class="btn btn-sm btn-outline-primary">
               <i class="bi bi-diagram-3"></i> Lineage
             </a>
+            {% if object.target_schema.short_name == "bizcore" %}
+              <a href="{% url 'targetdatasetjoin_list' object.pk %}" class="btn btn-sm btn-outline-primary">
+                <i class="bi bi-sign-merge-left"></i> Joins
+              </a>
+            {% endif %}
           {% elif model_name == 'targetdatasetreference' %}
             <a href="{% url 'targetdatasetreferencecomponent_list' object.pk %}" class="btn btn-sm btn-outline-primary">
               <i class="bi bi-link-45deg"></i> Key Components
+            </a>
+          {% elif model_name == 'targetdatasetjoin' %}
+            <a href="{% url 'targetdatasetjoinpredicate_list' object.pk %}" class="btn btn-sm btn-outline-primary">
+              <i class="bi bi-filter-circle"></i> Predicates
+            </a>
+            <a href="{% url 'targetdataset_detail' object.target_dataset_id %}" class="btn btn-sm btn-outline-secondary">
+              <i class="bi bi-arrow-left"></i> Dataset
             </a>
           {% endif %}
         </nav>

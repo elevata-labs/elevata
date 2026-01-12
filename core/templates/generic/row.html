@@ -1,6 +1,6 @@
 <!--
 elevata - Metadata-driven Data Platform Framework
-Copyright © 2025 Ilona Tag
+Copyright © 2025-2026 Ilona Tag
 
 This file is part of elevata.
 
@@ -189,7 +189,14 @@ because there is no *_detail route under a parent. -->
         >
           Key Components
         </a>
-      {% elif detail_url %}
+      {% elif model_name == 'targetdatasetjoin' %}
+        <a
+          href="{% url 'targetdatasetjoinpredicate_list' object.pk %}"
+          class="btn btn-outline-secondary"
+        >
+          Predicates
+        </a>
+        {% elif detail_url %}
         {# Standard-Detail-Button für alle anderen Modelle #}
         <a
           href="{{ detail_url }}"

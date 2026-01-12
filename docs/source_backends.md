@@ -73,4 +73,4 @@ generic reflection where possible, but may not retrieve primary or foreign key d
 
 ---
 
-© 2025 elevata Labs — Internal Technical Documentation
+© 2025-2026 elevata Labs — Internal Technical Documentation

@@ -1,6 +1,6 @@
 <!--
 elevata - Metadata-driven Data Platform Framework
-Copyright © 2025 Ilona Tag
+Copyright © 2025-2026 Ilona Tag
 
 This file is part of elevata.
 
@@ -31,15 +31,19 @@ In scoped mode (parent_pk set) we include parent_pk in the URL. -->
   {# creating a new row #}
   {% if parent_pk %}
     {% url model_name|add:'_row_create' parent_pk as form_post_url %}
+    {% url model_name|add:'_row_new' parent_pk as refresh_url %}
   {% else %}
     {% url model_name|add:'_row_create' as form_post_url %}
+    {% url model_name|add:'_row_new' as refresh_url %}
   {% endif %}
 {% else %}
   {# editing an existing row #}
   {% if parent_pk %}
     {% url model_name|add:'_row_edit' parent_pk object.pk as form_post_url %}
+    {% url model_name|add:'_row_edit' parent_pk object.pk as refresh_url %}
   {% else %}
     {% url model_name|add:'_row_edit' object.pk as form_post_url %}
+    {% url model_name|add:'_row_edit' object.pk as refresh_url %}
   {% endif %}
 {% endif %}
 
@@ -62,12 +66,15 @@ temporary <tr> in JS. -->
 
   <td colspan="{{ fields|length|add:'1' }}">
 
+  <div data-elevata-form-wrapper>
     <form method="post"
           class="elevata-form elevata-form-inline"
+          data-elevata-refresh-url="{{ refresh_url }}"
           hx-post="{{ form_post_url }}"
           hx-target="{% if is_new %}#row-new{% else %}#row-{{ object.pk }}{% endif %}"
           hx-swap="outerHTML"
           hx-disabled-elt="button[type=submit]"
+          data-elevata-refresh-url="{{ refresh_url }}"
     >
       {% csrf_token %}
 
@@ -99,5 +106,102 @@ temporary <tr> in JS. -->
       </div>
 
     </form>
+  </div>
   </td>
 </tr>
+
+<script>
+(function() {
+  function bindElevataRefresh(root) {
+    const container = root || document;
+    const triggers = container.querySelectorAll("[data-elevata-refresh='1']");
+    triggers.forEach(el => {
+      el.addEventListener("change", () => {
+        const formEl = el.closest("form");
+        if (!formEl) return;
+
+        // Collect the controlling field value and request refreshed form HTML
+        const refreshUrl = formEl.getAttribute("data-elevata-refresh-url");
+        if (!refreshUrl) return;
+
+        const params = new URLSearchParams(new FormData(formEl));
+        // Use GET refresh (no validation, no saving)
+        const url = refreshUrl + "?" + params.toString();
+
+        // HTMX request: replace the form block
+        const row = formEl.closest("tr");
+        if (!row || !row.id) return;
+        htmx.ajax("GET", url, { target: "#" + row.id, swap: "outerHTML" });
+
+      }, { once: false });
+    });
+  }
+
+  document.addEventListener("DOMContentLoaded", () => bindElevataRefresh(document));
+  document.body.addEventListener("htmx:afterSwap", (e) => bindElevataRefresh(e.target));
+})();
+</script>
+
+{% if model_name == "targetcolumn" %}
+<script>
+(function() {
+  function getSelect() {
+    return document.querySelector('[name="upstream_columns"]');
+  }
+
+  function setVal(name, value) {
+    const el = document.querySelector('[name="' + name + '"]');
+    if (!el) return;
+    el.value = (value === null || value === undefined) ? "" : value;
+    // Trigger change for any dependent UI
+    el.dispatchEvent(new Event("change", { bubbles: true }));
+  }
+
+  async function onUpstreamChange() {
+    const sel = getSelect();
+    if (!sel) return;
+
+    // Handle M2M: selectedOptions
+    const opts = Array.from(sel.selectedOptions || []);
+    if (opts.length === 0) return;
+
+    // MVP: take first selected column
+    const upstreamId = opts[0].value;
+    if (!upstreamId) return;
+
+    const url = "{% url 'targetcolumn_upstream_meta' %}" + "?upstream_column_id=" + encodeURIComponent(upstreamId);
+    const resp = await fetch(url, { headers: { "X-Requested-With": "XMLHttpRequest" } });
+    if (!resp.ok) return;
+    const data = await resp.json();
+
+    // Hard overwrite (your preference)
+    setVal("datatype", data.datatype || "");
+    setVal("max_length", data.max_length);
+    setVal("decimal_precision", data.decimal_precision);
+    setVal("decimal_scale", data.decimal_scale);
+
+    // nullable is boolean; handle checkbox/select depending on widget
+    const nullableEl = document.querySelector('[name="nullable"]');
+    if (nullableEl) {
+      if (nullableEl.type === "checkbox") {
+        nullableEl.checked = !!data.nullable;
+      } else {
+        nullableEl.value = data.nullable ? "True" : "False";
+      }
+      nullableEl.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+  }
+
+  // Bind after HTMX swaps
+  function bind() {
+    const sel = getSelect();
+    if (!sel) return;
+    sel.removeEventListener("change", onUpstreamChange);
+    sel.addEventListener("change", onUpstreamChange);
+  }
+
+  document.addEventListener("DOMContentLoaded", bind);
+  document.body.addEventListener("htmx:afterSwap", bind);
+})();
+</script>
+{% endif %}

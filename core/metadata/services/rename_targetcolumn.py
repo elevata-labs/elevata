@@ -63,7 +63,7 @@ def _ensure_targetcolumn_rename_allowed(col: TargetColumn) -> list[str]:
     )
 
   # Non-rawcore schemas: names are system-managed
-  if schema_short is not None and schema_short != "rawcore":
+  if schema_short is not None and schema_short not in ["bizcore", "rawcore", "serving"]:
     errors.append(
       f"Column '{col_name}' belongs to schema '{schema_short}', "
       "where names are system-managed. Column names can only be changed in schema 'rawcore'."

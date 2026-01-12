@@ -479,7 +479,6 @@ class TargetGenerationService:
             decimal_scale=None,
             nullable=False,
             system_role="business_key",
-            artificial_column=True,
             lineage_origin="source_identity",
             source_column_id=None,
             ordinal_position=0,
@@ -547,7 +546,6 @@ class TargetGenerationService:
         decimal_scale=None,
         nullable=False,
         system_role="row_hash",
-        artificial_column=True,
         lineage_origin="technical",
         source_column_id=None,
         ordinal_position=ordinal_counter,
@@ -576,7 +574,7 @@ class TargetGenerationService:
     Return SourceDatasets that should feed this target_schema.
 
     - Basis: only integrate=True, active=True (get_relevant_source_datasets)
-    - RAW (consolidate_groups == False):
+    - RAW (layer short_name = raw):
         only datasets, for which actually a RAW object should be generated
         (landing_required)
     - STAGE / RAWCORE:
@@ -584,12 +582,10 @@ class TargetGenerationService:
     """
     all_ds = self.get_relevant_source_datasets()
 
-    if not getattr(target_schema, "consolidate_groups", False):
-        # RAW / raw-like layer
-        return [
-            ds for ds in all_ds
-            if landing_required(ds)
-        ]
+    schema_short = (getattr(target_schema, "short_name", "") or "").lower()
+    if schema_short == "raw":
+      # RAW layer: only generate datasets that actually require landing
+      return [ds for ds in all_ds if landing_required(ds)]
 
     # STAGE / RAWCORE
     return all_ds

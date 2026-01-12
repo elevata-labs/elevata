@@ -43,7 +43,7 @@ from utils.db import build_metadata_database_url
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(find_dotenv(filename=".env", raise_error_if_not_found=False))
 
-ELEVATA_VERSION = "0.8.0"
+ELEVATA_VERSION = "0.9.0"
 
 ELEVATA_PROFILES_PATH = os.getenv("ELEVATA_PROFILES_PATH", str((BASE_DIR.parent / "config" / "elevata_profiles.yaml")))
 
@@ -184,11 +184,11 @@ ELEVATA_CRUD = {
       "PartialLoad", 
       "System", 
       "SourceDataset", 
+      "SourceDatasetGroup",
       "SourceColumn",
       "TargetSchema", 
       "TargetDataset", 
       "TargetColumn", 
-      "SourceDatasetGroup",
       ],
     "descriptions": {
       "Team": "Organize data teams and functional groups.",
@@ -196,11 +196,11 @@ ELEVATA_CRUD = {
       "PartialLoad": "Define additional loads to process subsets of datasets at individual frequencies.",
       "System": "Register and describe systems which can be targets or upstream systems that provide raw data to the platform.",
       "SourceDataset": "Define datasets extracted from source systems — the entry point for ingestion.",
+      "SourceDatasetGroup": "Group structurally similar source datasets to enable unified target generation.",
       "SourceColumn": "Capture technical metadata and profiling details for each source column.",
       "TargetSchema": "Model your platform’s architectural layers and their default behaviors.",
       "TargetDataset": "Design target datasets and map them to their corresponding source inputs.",
       "TargetColumn": "Define business-ready columns and manage data quality at the attribute level.",
-      "SourceDatasetGroup": "Group structurally similar source datasets to enable unified target generation.",
     },
     "icons": {
       "Team": "users",
@@ -208,11 +208,11 @@ ELEVATA_CRUD = {
       "PartialLoad": "timer",
       "System": "database",
       "SourceDataset": "file",
+      "SourceDatasetGroup": "merge",
       "SourceColumn": "grid-2x2",
       "TargetSchema": "layers",
       "TargetDataset": "file-check-2",
       "TargetColumn": "grid-2x2-check",
-      "SourceDatasetGroup": "merge",
     },
     "exclude": [
       "SourceDatasetOwnership", 
@@ -221,6 +221,8 @@ ELEVATA_CRUD = {
       "SourceDatasetGroupMembership",
       "TargetDatasetInput",
       "TargetColumnInput",
+      "TargetDatasetJoin",
+      "TargetDatasetJoinPredicate",
       "TargetDatasetReference",
       "TargetDatasetReferenceComponent",
     ],
@@ -233,7 +235,6 @@ ELEVATA_CRUD = {
         "schema_name",
         "physical_prefix",
         "generate_layer",
-        "consolidate_groups",
         "is_user_visible",
         "default_materialization_type",
         "default_historize",
@@ -259,7 +260,7 @@ ELEVATA_CRUD = {
         "biz_grain_note",
         "manual_model",
         "distinct_select",
-        "data_filter",
+        "static_filter",
         "active",
         "retired_at",
       ],
@@ -275,7 +276,6 @@ ELEVATA_CRUD = {
         "decimal_scale",
         "nullable",
         "system_role",
-        "artificial_column",
         "manual_expression",
         "lineage_origin",
         "surrogate_expression",
@@ -305,7 +305,7 @@ ELEVATA_CRUD = {
               "historize",
               "manual_model",
               "distinct_select",
-              "data_filter",
+              "static_filter",
               "active",
             ],
           },
@@ -327,12 +327,12 @@ ELEVATA_CRUD = {
       "schema_readonly": {
         "bizcore": {
           "TargetDataset": [
-            "handle_deletes",
             "manual_model",
             "incremental_source",
             "source_datasets"
           ],
           "TargetColumn": [
+            "source_columns"
           ],
         },
         "serving": {
@@ -553,6 +553,21 @@ ELEVATA_CRUD = {
             "default": "",
           },
         },
+        {
+          "field": "sensitivity",
+          "class_map": {
+            "highly_confidential": "badge badge-pii-high",
+            "confidential": "badge badge-pii-medium",
+            "internal": "badge badge-pii-low",
+            "public": "badge badge-pii-none",
+          },
+          "label_map": {
+            "highly_confidential": "Highly Conf",
+            "confidential": "Confidential",
+            "internal": "Internal",
+            "public": "",
+          },
+        },
       ],
       "TargetColumn": [
         {
@@ -612,6 +627,21 @@ ELEVATA_CRUD = {
             "default": "",
           },
         },
+        {
+          "field": "sensitivity",
+          "class_map": {
+            "highly_confidential": "badge badge-pii-high",
+            "confidential": "badge badge-pii-medium",
+            "internal": "badge badge-pii-low",
+            "public": "badge badge-pii-none",
+          },
+          "label_map": {
+            "highly_confidential": "Highly Conf",
+            "confidential": "Confidential",
+            "internal": "Internal",
+            "public": "",
+          },
+        },
       ],
       "TargetDatasetReference": [
         {
@@ -629,6 +659,140 @@ ELEVATA_CRUD = {
         },
       ],
     },
+    "ui": {
+      "defaults": {
+        "list": {
+          "exclude_fields": [
+            "id", "created_at", "created_by", "updated_at", "updated_by",
+            "is_system_managed", "lineage_key", "former_names", "retired_at",
+          ],
+        },
+        "form": {
+          "exclude_fields": [
+            "id", "created_at", "created_by", "updated_at", "updated_by",
+            "is_system_managed", "lineage_key", "former_names", "retired_at"
+          ],
+        },
+      },
+      "models": {
+        "TargetSchema": {
+          "form": {
+            "include_fields": [
+              "short_name",
+              "display_name",
+              "description",
+              "sensitivity_default",
+              "access_intent_default",
+            ]
+          }
+        },
+        "TargetDataset": {
+          "list": {
+            "include_fields": [
+              "target_schema", 
+              "target_dataset_name",
+              "description",
+              "handle_deletes",
+              "historize",
+              "combination_mode",
+              "biz_entity_role",
+              "biz_grain_note",
+              "incremental_strategy",
+              "manual_model",
+              "distinct_select",
+              "static_filter",
+              "materialization_type",
+              "sensitivity",
+              "access_intent",
+              "active",
+            ],
+          },
+          "form": {
+            "include_fields": [
+              "target_schema", 
+              "target_dataset_name",
+              "description",
+              "handle_deletes",
+              "historize",
+              "upstream_datasets",
+              "combination_mode",
+              "biz_entity_role",
+              "biz_grain_note",
+              "incremental_strategy",
+              "manual_model",
+              "distinct_select",
+              "static_filter",
+              "partial_load",
+              "owner",
+              "materialization_type",
+              "sensitivity",
+              "access_intent",
+              "active",
+            ],
+          },
+        },
+        "TargetDatasetInput": {
+          "list": {
+            "include_fields": [
+              "target_dataset",
+              "source_dataset",
+              "upstream_target_dataset",
+              "role",
+              "active",
+            ],
+          },
+          "form": {
+            "include_fields": [
+              "role",
+            ],
+          },
+        },
+        "TargetColumn": {
+          "list": {
+            "include_fields": [
+              "target_dataset",
+              "target_column_name",
+              "ordinal_position",
+              "datatype",
+              "max_length",
+              "decimal_precision",
+              "decimal_scale",
+              "nullable",
+              "system_role",
+              "manual_expression",
+              "description",
+              "pii_level",
+              "remark",
+              "sensitivity",
+              "lineage_origin",
+              "surrogate_expression",
+              "active",
+            ],
+          },
+          "form": {
+            "include_fields": [
+              "target_dataset",
+              "target_column_name",
+              "ordinal_position",
+              "upstream_columns",
+              "datatype",
+              "max_length",
+              "decimal_precision",
+              "decimal_scale",
+              "nullable",
+              "manual_expression",
+              "description",
+              "pii_level",
+              "remark",
+              "sensitivity",
+              "lineage_origin",
+              "profiling_stats",
+              "active",
+            ],
+          },
+        },
+      },
+    }
   }
 }
 

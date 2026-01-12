@@ -22,6 +22,45 @@ This project adheres to [Semantic Versioning](https://semver.org/) and [Keep a C
 
 ---
 
+## [0.9.0] – 2026-01-12
+
+### 🧠 Bizcore: Business Semantics as First-Class Metadata
+
+This release introduces **Bizcore**, a dedicated layer for modeling  
+business meaning, rules, and calculations as explicit metadata —  
+executed deterministically alongside technical datasets.
+
+Bizcore makes elevata **business-capable by design**, without introducing  
+BI-style semantic layers or query-time abstractions.
+
+### ✨ Added
+- Bizcore datasets and columns as first-class metadata objects  
+- Multi-upstream join support for Bizcore datasets  
+- UI support for building and validating Bizcore structures  
+- Deterministic SQL preview for Bizcore datasets  
+- Lineage-driven qualification of expressions and joins  
+- End-to-end traceability from Core → Bizcore → Serving
+
+### 🔄 Changed
+- SQL generation now fully respects semantic lineage in expressions  
+- Join aliasing and qualification are applied consistently across layers
+
+### 🧪 Quality & Stability
+- Extensive validation of join correctness and expression rendering  
+- Scoped and non-scoped UI flows aligned under a single metadata model  
+- No breaking changes to existing Raw, Stage, or Core pipelines
+
+### ✨ Improved
+- Manual expressions now automatically qualify unaliased column references  
+  with the correct input alias during SQL generation.  
+  This ensures consistent, unambiguous SQL for Bizcore calculations  
+  without requiring users to manually prefix column names.
+
+> This release marks a major milestone: elevata now supports  
+> **explicit business semantics as metadata**, not as BI-layer logic.
+
+---
+
 ## [0.8.0] – 2026-01-04
 
 ### ⚙️ Execution & Orchestration as First-Class Architecture
