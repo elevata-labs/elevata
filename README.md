@@ -46,19 +46,20 @@ Unlike transformation-centric tools, elevata treats metadata, lineage, and execu
 
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/elevata-labs/elevata/main/docs/elevata_v0_9_0.png" alt="elevata UI preview" width="700"/>
+  <img src="https://raw.githubusercontent.com/elevata-labs/elevata/main/docs/elevata_v0_9_1.png" alt="elevata UI preview" width="700"/>
   <br/>
   <em>Dataset detail view with lineage, metadata, and dialect-aware SQL previews</em>
 </p>
 
 **elevata** uses Django models to define:
 
-- **datasets** (sources, raw, stage, core)
+- **datasets** (sources and targets: raw, stage, rawcore, bizcore, serving)
 - **business keys, surrogate keys, foreign keys**
 - **column expressions**
 - **incremental strategies**
 - **source systems & target systems**
 - **dependencies between datasets**
+- **joins between datasets**
 
 From this metadata, elevata generates:
 

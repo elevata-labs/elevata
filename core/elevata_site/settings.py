@@ -43,7 +43,7 @@ from utils.db import build_metadata_database_url
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(find_dotenv(filename=".env", raise_error_if_not_found=False))
 
-ELEVATA_VERSION = "0.9.0"
+ELEVATA_VERSION = "0.9.1"
 
 ELEVATA_PROFILES_PATH = os.getenv("ELEVATA_PROFILES_PATH", str((BASE_DIR.parent / "config" / "elevata_profiles.yaml")))
 
@@ -329,14 +329,17 @@ ELEVATA_CRUD = {
           "TargetDataset": [
             "manual_model",
             "incremental_source",
-            "source_datasets"
+            "source_datasets",
           ],
           "TargetColumn": [
-            "source_columns"
+            "source_columns",
           ],
         },
         "serving": {
           "TargetDataset": [
+            "manual_model",
+            "incremental_source",
+            "source_datasets",
           ],
           "TargetColumn": [
           ],

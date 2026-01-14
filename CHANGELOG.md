@@ -22,6 +22,29 @@ This project adheres to [Semantic Versioning](https://semver.org/) and [Keep a C
 
 ---
 
+## [0.9.1] – 2026-01-14
+
+### ✨ Improved
+- Refined lineage visualization with configurable multi-hop upstream and downstream views  
+- Clearer lineage semantics distinguishing direct inputs from extended execution dependencies  
+- Improved lineage UX with consistent ordering and scope labeling
+
+### 🧠 Serving Layer
+- Serving datasets now support presentation-oriented identifiers (friendly names)  
+- Dataset and column naming in Serving layer allows casing, spaces, and special characters  
+- Identifier handling is dialect-aware and uses proper quoting where required
+
+### 🛡️ Validation & Health
+- Extended metadata validation to distinguish blocking vs advisory findings  
+- Improved health checks for Serving and Bizcore datasets  
+- Validation logic consolidated and aligned across layers
+
+### 🧩 Internal
+- Improved consistency between lineage analysis, validators, and UI  
+- Minor internal cleanups in metadata services and views
+
+---
+
 ## [0.9.0] – 2026-01-12
 
 ### 🧠 Bizcore: Business Semantics as First-Class Metadata

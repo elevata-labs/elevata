@@ -21,6 +21,9 @@ Contact: <https://github.com/elevata-labs/elevata>.
 """
 
 import re
+import traceback
+from io import StringIO
+
 from django.core.management import call_command
 from django.apps import apps
 from django.conf import settings
@@ -30,22 +33,25 @@ from django.core.management import call_command
 from django.utils.html import escape
 from django.views.decorators.http import require_POST, require_GET
 from django.shortcuts import get_object_or_404, render
-from io import StringIO
-from generic import GenericCRUDView
 from sqlalchemy.exc import SQLAlchemyError
-import traceback
+
+from generic import GenericCRUDView
 
 from metadata.constants import DIALECT_HINTS
 from metadata.forms import TargetColumnForm, TargetDatasetForm
-from metadata.models import SourceDataset, System, TargetDataset, TargetDatasetInput, TargetColumn
+from metadata.generation.validators import summarize_targetdataset_health
 from metadata.ingestion.import_service import import_metadata_for_datasets
+from metadata.models import (
+  SourceDataset, System, TargetDataset, TargetDatasetInput, TargetColumn,
+  TargetDatasetJoin, TargetDatasetJoinPredicate,
+)
 from metadata.rendering.dialects import get_active_dialect
 from metadata.rendering.sql_service import (
   render_preview_sql,
   render_merge_sql,
   render_delete_detection_sql,
 )
-from metadata.generation.validators import summarize_targetdataset_health
+from metadata.services.lineage_analysis import collect_upstream_targets_extra, collect_downstream_targets_extra
 
 
 def _render_sql_ok(sql: str) -> HttpResponse:
@@ -323,12 +329,20 @@ def targetdataset_lineage(request, pk):
     pk=pk,
   )
 
-  # Upstream: how this dataset is built
-  upstream_inputs = (
+  depth = int(request.GET.get("depth") or 0)
+  depth = max(0, min(depth, 6))  # depth here = extra depth beyond direct
+
+  show_inactive = request.GET.get("show_inactive") == "1"
+
+  upstream_qs = (
     dataset.input_links
     .select_related("source_dataset", "upstream_target_dataset")
     .order_by("role", "id")
   )
+  if not show_inactive:
+    upstream_qs = upstream_qs.filter(active=True)
+
+  upstream_inputs = upstream_qs
 
   # Downstream: other targets that use this dataset as input (via upstream_target_dataset)
   downstream_inputs = (
@@ -337,6 +351,23 @@ def targetdataset_lineage(request, pk):
     .filter(upstream_target_dataset=dataset)
     .order_by("target_dataset__target_dataset_name")
   )
+
+  upstream_transitive = {}
+  downstream_transitive = {}
+  upstream_levels_desc = []
+  downstream_levels_desc = []
+  reverse_count = 0
+  impact_count = 0
+
+  if depth > 0:
+    upstream_transitive = collect_upstream_targets_extra(dataset, depth)
+    downstream_transitive = collect_downstream_targets_extra(dataset, depth)
+
+    upstream_levels_desc = sorted(upstream_transitive.items(), key=lambda x: x[0], reverse=True)
+    downstream_levels_desc = sorted(downstream_transitive.items(), key=lambda x: x[0], reverse=True)
+
+    reverse_count = sum(len(v) for v in upstream_transitive.values())
+    impact_count = sum(len(v) for v in downstream_transitive.values())
 
   # Semantic references (FK-style)
   incoming_refs = (
@@ -361,16 +392,29 @@ def targetdataset_lineage(request, pk):
 
   health_level, health_messages = summarize_targetdataset_health(dataset)
 
+  # --- Impact counts (for header badge) ---
+  reverse_count = 0
+  impact_count = 0
+  if depth > 0:
+    reverse_count = sum(len(v) for v in upstream_transitive.values())
+    impact_count = sum(len(v) for v in downstream_transitive.values())
+
   context = {
     "object": dataset,
     "title": f"Lineage for {dataset.target_dataset_name}",
     "upstream_inputs": upstream_inputs,
     "downstream_inputs": downstream_inputs,
+    "upstream_levels_desc": upstream_levels_desc,
+    "downstream_levels_desc": downstream_levels_desc,
     "incoming_refs": incoming_refs,
     "outgoing_refs": outgoing_refs,
     "effective_materialization": effective_mat,
     "health_level": health_level,
     "health_messages": health_messages,
+    "depth_options": [0, 1, 2, 3],
+    "depth": depth,
+    "reverse_count": reverse_count,
+    "impact_count": impact_count,
   }
 
   return render(request, "metadata/lineage/targetdataset_lineage.html", context)

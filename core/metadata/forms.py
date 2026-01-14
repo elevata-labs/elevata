@@ -27,8 +27,21 @@ from django.core.exceptions import ValidationError
 from metadata.models import TargetDataset, TargetColumn, TargetSchema
 from metadata.generation import validators  # reuse central naming rules
 
+# Single source of truth for serving-friendly naming
+from metadata.generation.validators import (
+  serving_clean_identifier,
+  serving_normalize_identifier,
+)
+
 class TargetDatasetForm(forms.ModelForm):
   """Validation form for TargetDataset with consistent naming rules."""
+
+  def _is_serving_schema(self) -> bool:
+    schema = (
+      self.cleaned_data.get("target_schema")
+      or getattr(self.instance, "target_schema", None)
+    )
+    return getattr(schema, "short_name", None) == "serving"
 
   def __init__(self, *args, **kwargs):
     super().__init__(*args, **kwargs)
@@ -100,12 +113,32 @@ class TargetDatasetForm(forms.ModelForm):
 
   def clean_target_dataset_name(self):
     name = self.cleaned_data["target_dataset_name"]
+
+    # Serving: friendly names allowed
+    if self._is_serving_schema():
+      name = serving_clean_identifier(name, kind="Dataset")
+
+      # Optional: prevent duplicates (normalized) inside serving schema
+      schema = self.cleaned_data.get("target_schema") or getattr(self.instance, "target_schema", None)
+      if schema and getattr(schema, "pk", None):
+        norm = serving_normalize_identifier(name)
+        qs = TargetDataset.objects.filter(target_schema=schema)
+        if self.instance and getattr(self.instance, "pk", None):
+          qs = qs.exclude(pk=self.instance.pk)
+        # Compare in Python to avoid collation differences between DBs
+        for other in qs.values_list("target_dataset_name", flat=True):
+          if serving_normalize_identifier(other or "") == norm:
+            raise ValidationError(
+              f"Dataset name duplicates another dataset after normalization: '{other}' vs '{name}'."
+            )
+      return name
+
+    # Non-serving: strict technical naming via shared validator
     try:
       validators.validate_or_raise(name, context="target_dataset_name")
     except Exception as e:
       raise forms.ValidationError(str(e))
     return name
-
 
 class TargetColumnForm(forms.ModelForm):
   """
@@ -186,10 +219,7 @@ class TargetColumnForm(forms.ModelForm):
     if col and col.pk and new_name == col.target_column_name:
       return new_name
 
-    # 1) Syntax & convention via shared validator
-    validators.validate_or_raise(new_name, context="target_column_name")
-
-    # 2) Collision inside the same dataset
+    # Collision inside the same dataset
     # When creating, instance may not have pk; fallback to submitted dataset id.
     # In scoped create forms, target_dataset field is removed from POST,
     # but the instance is already bound to the parent before validation.
@@ -202,6 +232,29 @@ class TargetColumnForm(forms.ModelForm):
     if not dataset_id:
       # Defensive guard; your UI typically provides it
       raise ValidationError("Missing dataset reference for collision check.")
+
+    td = TargetDataset.objects.select_related("target_schema").filter(pk=dataset_id).first()
+
+    # Serving: friendly names allowed
+    if td and getattr(getattr(td, "target_schema", None), "short_name", None) == "serving":
+      new_name = serving_clean_identifier(new_name, kind="Column")
+
+      # Normalized collision (case-insensitive + collapse spaces)
+      norm = serving_normalize_identifier(new_name)
+      existing = (
+        TargetColumn.objects
+        .filter(target_dataset_id=dataset_id)
+        .exclude(pk=getattr(col, "pk", None) or None)
+        .values_list("target_column_name", flat=True)
+      )
+      for other in existing:
+        if serving_normalize_identifier(other or "") == norm:
+          raise ValidationError("Name already exists in this dataset (after normalization).")
+
+      return new_name
+
+    # Non-serving: strict technical naming via shared validator
+    validators.validate_or_raise(new_name, context="target_column_name")
 
     qs = TargetColumn.objects.filter(
       target_dataset_id=dataset_id,

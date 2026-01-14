@@ -642,7 +642,9 @@ class TargetDataset(AuditFields):
     )
   )
   # Logical / business-facing name of the dataset in the target platform
-  target_dataset_name = models.CharField(max_length=63, validators=[TARGET_IDENTIFIER_VALIDATOR],
+  # NOTE: Naming rules are enforced in forms.py (schema-dependent) and in health/validators.
+  # Model field validators are static and cannot depend on target_schema.
+  target_dataset_name = models.CharField(max_length=63,
     help_text=(
       "Final dataset (table/view) name, snake_case inc. layer prefix. eg. 'rc_sap_customer', 'rc_sap_sales_order'."
     )
@@ -1240,7 +1242,9 @@ class TargetColumn(AuditFields):
   target_dataset = models.ForeignKey(TargetDataset, on_delete=models.CASCADE, related_name="target_columns",
     help_text="The dataset this column belongs to."
   )
-  target_column_name = models.CharField(max_length=63, validators=[TARGET_IDENTIFIER_VALIDATOR],
+  # NOTE: Naming rules are enforced in forms.py (schema-dependent) and in health/validators.
+  # Model field validators are static and cannot depend on target_schema.
+  target_column_name = models.CharField(max_length=63,
     help_text="Final column name in snake_case. eg. 'customer_name', 'order_created_tms'."
   )
   ordinal_position = models.PositiveIntegerField(

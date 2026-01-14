@@ -1,6 +1,6 @@
 """
 elevata - Metadata-driven Data Platform Framework
-Copyright © 2025 Ilona Tag
+Copyright © 2025-2026 Ilona Tag
 
 This file is part of elevata.
 
@@ -22,7 +22,7 @@ Contact: <https://github.com/elevata-labs/elevata>.
 
 from __future__ import annotations
 from dataclasses import dataclass
-from typing import Callable, Iterable, Any
+from typing import Callable, Iterable, Any, Optional
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from metadata.generation import validators  # shared naming rules
@@ -39,35 +39,79 @@ class RenameSpec:
   validator_context: str
   extra_update_fields: list[str] | None = None
 
-  # New: human readable labels for collision messages
+  # Optional: collision normalization (e.g., serving friendly names)
+  normalize_for_collision: Callable[[str], str] | None = None
+
+  # Optional: human-readable kind for schema-aware validators (Dataset/Column)
+  validator_kind: str | None = None
+
+  # human readable labels for collision messages
   collision_label: str = "Name"
   collision_scope_label: str | None = None  # e.g. "in this dataset"
 
 
-def validate_name(new_name: str, context: str) -> list[str]:
+def _schema_short_for_instance(instance) -> str | None:
+  """ TargetDataset has target_schema; TargetColumn has target_dataset.target_schema """
+  if hasattr(instance, "target_schema") and getattr(instance, "target_schema", None):
+    return getattr(instance.target_schema, "short_name", None)
+  if hasattr(instance, "target_dataset") and getattr(instance, "target_dataset", None):
+    td = instance.target_dataset
+    if getattr(td, "target_schema", None):
+      return getattr(td.target_schema, "short_name", None)
+  return None
+
+def validate_name(instance, new_name: str, spec: RenameSpec) -> list[str]:
   """
-  Apply elevata's shared naming rules with a specific context.
+  Apply elevata's naming rules. Schema-aware:
+    - serving: friendly identifiers (spaces/case), validated via serving_clean_identifier
+    - others: shared strict validator via validators.validate_or_raise(context=...)  
   Returns a list of error messages (empty if valid).
   """
   try:
-    validators.validate_or_raise(new_name, context=context)
+    schema_short = _schema_short_for_instance(instance)
+    if schema_short == "serving":
+      # Use central helper (Single Source of Truth)
+      kind = spec.validator_kind or "Name"
+      validators.serving_clean_identifier(new_name, kind=kind)
+    else:
+      validators.validate_or_raise(new_name, context=spec.validator_context)
+
     return []
   except ValidationError as e:
-    return [str(e)]
-
+    errors = [str(e)]
+    if schema_short == "serving":
+      errors.append("Note: Serving layer allows presentation-friendly names.")
+    else:
+      errors.append("Note: This layer enforces strict technical naming rules.")
+    return errors
 
 def check_collision(scope_qs, name_attr: str, new_name: str,
-                    exclude_pk, label: str, scope_label: str | None) -> list[str]:
+                    exclude_pk, label: str, scope_label: str | None,
+                    normalize: Callable[[str], str] | None = None) -> list[str]:  
   """
   Ensure the new name does not already exist inside the scope.
 
   scope_qs is expected to be a QuerySet, not a callable.
   """
+  # If normalize is provided, do collision checks in Python to avoid DB collation differences.
+  if normalize is not None:
+    norm_new = normalize(new_name or "")
+    qs = scope_qs
+    if exclude_pk is not None:
+      qs = qs.exclude(pk=exclude_pk)
+    existing = qs.values_list(name_attr, flat=True)
+    for other in existing:
+      if normalize(other or "") == norm_new:
+        if scope_label:
+          return [f"{label} '{new_name}' already exists {scope_label}."]
+        return [f"{label} '{new_name}' already exists in this scope."]
+    return []
+
+  # Exact match collision check (fast path)
   filt = {name_attr: new_name}
   qs = scope_qs.filter(**filt)
   if exclude_pk is not None:
     qs = qs.exclude(pk=exclude_pk)
-
   if not qs.exists():
     return []
 
@@ -84,7 +128,7 @@ def dry_run_rename(instance, new_name: str, spec: RenameSpec) -> dict:
   The caller can enrich 'impacts' with lineage/SQL preview if desired.
   """
   errors = []
-  errors += validate_name(new_name, spec.validator_context)
+  errors += validate_name(instance, new_name, spec)
   errors += check_collision(
     spec.get_scope_qs(),
     spec.name_attr,
@@ -92,6 +136,7 @@ def dry_run_rename(instance, new_name: str, spec: RenameSpec) -> dict:
     exclude_pk=instance.pk,
     label=spec.collision_label,
     scope_label=spec.collision_scope_label,
+    normalize=spec.normalize_for_collision,
   )
   if errors:
     return {"ok": False, "errors": errors}
@@ -138,7 +183,7 @@ def commit_rename(instance, new_name: str, spec: RenameSpec, user=None) -> dict:
   Sets updated_by/updated_at when present on the instance.
   """
   errors = []
-  errors += validate_name(new_name, spec.validator_context)
+  errors += validate_name(instance, new_name, spec)
   errors += check_collision(
     spec.get_scope_qs(),
     spec.name_attr,
@@ -146,6 +191,7 @@ def commit_rename(instance, new_name: str, spec: RenameSpec, user=None) -> dict:
     exclude_pk=instance.pk,
     label=spec.collision_label,
     scope_label=spec.collision_scope_label,
+    normalize=spec.normalize_for_collision,
   )
   if errors:
     return {"ok": False, "errors": errors}

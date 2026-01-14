@@ -22,8 +22,14 @@ Bizcore takes a different approach.
 `BIZCORE` → business meaning & rules  
 `SERVING` (optional) → consumer-specific shaping
 
-Bizcore exists to make **business semantics explicit, deterministic,  
+**Bizcore** exists to make **business semantics explicit, deterministic,  
 and executable** — not inferred later.
+
+**Serving** — Presentation Logic & Consumer Hand-off  
+Serving is the **presentation-facing** layer. Serving datasets typically expose Bizcore datasets 1:1  
+(often as views), while allowing **consumer-specific shaping** such as naming, ordering, and lightweight joins  
+where required. Serving is intended as the **hand-off layer to BI tools / semantic layers / frontend use cases** —  
+without moving business logic out of Bizcore.
 
 ---
 

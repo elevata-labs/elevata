@@ -126,6 +126,7 @@ def _looks_like_cross_system_sql(sql: str, target_schema: str) -> bool:
     "raw",
     "stage",
     "rawcore",
+    "bizcore",
     "meta",
     "information_schema",
     "pg_catalog",

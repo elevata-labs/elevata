@@ -1,6 +1,6 @@
 """
 elevata - Metadata-driven Data Platform Framework
-Copyright © 2025 Ilona Tag
+Copyright © 2025-2026 Ilona Tag
 
 This file is part of elevata.
 
@@ -48,6 +48,74 @@ TARGET_IDENTIFIER_VALIDATOR = RegexValidator(
   ),
 )
 
+"""
+Validator overview (intentional, non-versioned)
+
+This module contains semantic and metadata validations with two categories:
+
+BLOCKING (must be correct for deterministic execution):
+- validate_incremental_target_dataset
+- validate_semantic_join_integrity
+
+ADVISORY (quality, governance, presentation):
+- validate_bizcore_target_dataset
+- validate_serving_friendly_names
+- validate_materialization_for_target
+
+Aggregation:
+- summarize_targetdataset_health determines overall health level
+  based on presence of blocking vs advisory findings.
+"""
+
+# --- Serving-friendly identifier helpers (Single Source of Truth) ---
+#
+# Rationale:
+# - Model field validators are static and cannot be schema-dependent.
+# - Forms + health checks need the same rules (avoid drift).
+#
+# Philosophy:
+# - allow "what most SQL engines allow in quoted identifiers"
+# - block only foot-guns that routinely break tools/pipelines
+#
+def serving_clean_identifier(value: str, *, kind: str) -> str:
+  """
+  Validate and return a cleaned serving identifier.
+  'kind' is used for human-readable error messages (Dataset/Column).
+  """
+  if value is None:
+    raise ValidationError(f"{kind} name is required.")
+
+  v = str(value)
+
+  if not v.strip():
+    raise ValidationError(f"{kind} name must not be empty.")
+
+  if v.strip() != v:
+    raise ValidationError(f"{kind} name must not have leading/trailing spaces.")
+
+  if any(ch in v for ch in ["\n", "\t", "\r"]):
+    raise ValidationError(f"{kind} name must not contain newline/tab characters.")
+
+  # Conservative: block quote characters unless you're sure all dialects escape correctly
+  # across all supported backends + BI tools.
+  if any(ch in v for ch in ['"', "`"]):
+    raise ValidationError(f"{kind} name must not contain quote characters (\") or (`).")
+
+  return v
+
+
+def serving_normalize_identifier(value: str) -> str:
+  """
+  Case-insensitive + collapse whitespace to catch near-duplicates.
+  Example: 'Customer  Name' == 'customer name'
+  """
+  return " ".join(str(value).lower().split())
+
+# NOTE:
+# Friendly identifier validation for Serving is handled via health/validators,
+# because Django model field validators are static and cannot inspect td.target_schema.
+# See validate_serving_friendly_names() further below.
+
 # --- Generic validator for internal name logic (used by naming.py etc.) ---
 
 NAME_REGEX = r"^[a-z_][a-z0-9_]*$"
@@ -60,11 +128,6 @@ def validate_or_raise(name: str, context: str = "name"):
       f"{context}: '{name}' is not a valid identifier. "
       "Rules: lowercase letters / digits / underscore, must not start with a digit."
     )
-
-
-from typing import List, Dict
-from django.apps import apps
-
 
 def validate_incremental_target_dataset(td: "TargetDataset") -> List[str]:
   """
@@ -158,10 +221,164 @@ def validate_bizcore_target_dataset(td: "TargetDataset") -> List[str]:
   return issues
 
 
-def validate_all_bizcore_targets() -> Dict[int, List[str]]:
+def validate_semantic_join_integrity(td: "TargetDataset") -> List[str]:
   """
-  Validate BizCore semantics for all TargetDatasets that belong to
-  a target schema with short_name == 'bizcore'.
+  Validate join metadata integrity for semantic layers (bizcore + serving).
+
+  We treat BOTH bizcore and serving as correctness-critical:
+    - if multiple active upstream targets exist, joins must be defined
+    - non-cross joins must have predicates
+    - join chain must be connected (matches builder MVP constraint)
+    - all upstream inputs must be covered by the join tree
+
+  Returns human-readable issues prefixed with ERROR/WARN.
+  """
+  issues: List[str] = []
+
+  schema = getattr(td, "target_schema", None)
+  short_name = getattr(schema, "short_name", None)
+  if short_name not in {"bizcore", "serving"}:
+    return issues
+
+  severity = "ERROR"  # per your decision: serving must be correct as well
+
+  TargetDatasetInput = apps.get_model("metadata", "TargetDatasetInput")
+  TargetDatasetJoin = apps.get_model("metadata", "TargetDatasetJoin")
+
+  upstream_input_ids = list(
+    TargetDatasetInput.objects
+    .filter(
+      target_dataset=td,
+      active=True,
+      upstream_target_dataset__isnull=False,
+    )
+    .values_list("id", flat=True)
+  )
+
+  # 0 or 1 upstream target -> no joins required
+  if len(upstream_input_ids) <= 1:
+    return issues
+
+  joins = list(
+    TargetDatasetJoin.objects
+    .filter(target_dataset=td)
+    .select_related("left_input", "right_input")
+    .prefetch_related("predicates")
+    .order_by("join_order", "id")
+  )
+
+  if not joins:
+    issues.append(
+      f"{severity}: dataset has multiple active upstream targets but no join definitions."
+    )
+    return issues
+
+  # Predicates required unless CROSS; CROSS must not define predicates
+  for j in joins:
+    join_type = (j.join_type or "").strip().lower()
+    preds = list(j.predicates.all())
+
+    if join_type != "cross" and not preds:
+      issues.append(
+        f"{severity}: join_order={j.join_order} is '{join_type}' but has no predicates."
+      )
+
+    if join_type == "cross" and preds:
+      issues.append(
+        f"{severity}: join_order={j.join_order} is CROSS but defines predicates (must be empty)."
+      )
+
+  # Chain connectivity (MVP model: left side must already be part of join tree)
+  used_inputs: set[int] = {joins[0].left_input_id}
+  for j in joins:
+    if j.left_input_id not in used_inputs:
+      issues.append(
+        f"{severity}: join chain not connected at join_order={j.join_order} "
+        f"(left_input_id={j.left_input_id} not yet part of join tree)."
+      )
+    used_inputs.add(j.right_input_id)
+
+  # Coverage: every active upstream target input should appear in join tree
+  missing = [i for i in upstream_input_ids if i not in used_inputs]
+  if missing:
+    issues.append(
+      f"{severity}: not all active upstream inputs are covered by joins "
+      f"(missing TargetDatasetInput ids: {missing})."
+    )
+
+  return issues
+
+
+def validate_serving_friendly_names(td: "TargetDataset") -> List[str]:
+  """
+  Serving is presentation-facing and may use friendly names (spaces/case/etc.).
+
+  We keep this intentionally pragmatic:
+  - block only on obviously broken cases (control whitespace, empty after trim)
+  - warn on likely-tooling problems (too long, duplicates after normalization)
+
+  IMPORTANT: This does NOT replace model field validators. See discussion in chat:
+  model validators are static and cannot be schema-dependent.
+  """
+  issues: List[str] = []
+
+  schema = getattr(td, "target_schema", None)
+  short_name = getattr(schema, "short_name", None)
+  if short_name != "serving":
+    return issues
+
+  # Dataset name checks via central helper (Single Source of Truth)
+  ds_name = (getattr(td, "target_dataset_name", "") or "")
+  try:
+    serving_clean_identifier(ds_name, kind="Dataset")
+  except ValidationError as e:
+    issues.append(f"ERROR: {e}")
+  else:
+    # Keep portability guardrails as advisory
+    if len(ds_name) > 127:
+      issues.append("WARN: dataset name is longer than 127 characters (tool compatibility risk).")
+
+  # Column checks
+  TargetColumn = apps.get_model("metadata", "TargetColumn")
+  cols = list(
+    TargetColumn.objects
+    .filter(target_dataset=td)
+    .order_by("ordinal_position", "id")
+    .values_list("target_column_name", flat=True)
+  )
+
+  # Normalization: case-insensitive + collapse whitespace
+  # This catches confusing near-duplicates in BI tools.
+  seen = {}
+  for nm in cols:
+    name = (nm or "")
+    try:
+      # Use central helper for hard constraints
+      serving_clean_identifier(name, kind="Column")
+    except ValidationError as e:
+      issues.append(f"ERROR: {e}")
+      continue
+
+    norm = serving_normalize_identifier(name)
+
+    if norm in seen:
+      issues.append(
+        f"ERROR: duplicate serving column names after normalization: '{seen[norm]}' and '{name}'."
+      )
+    else:
+      seen[norm] = name
+
+    # Length: 63 is common, but quoted identifiers can be longer on many platforms.
+    # Treat as warning to keep it portable; can be hardened later per dialect.
+    if len(name) > 63:
+      issues.append(f"WARN: column '{name}' is longer than 63 characters (tool compatibility risk).")
+
+  return issues
+
+def validate_all_semantic_targets() -> Dict[int, List[str]]:
+  """
+  Validate semantic-layer hints for all TargetDatasets that belong to
+  target schemas in {'bizcore', 'serving'}.  
   """
   TargetDataset = apps.get_model("metadata", "TargetDataset")
 
@@ -170,11 +387,13 @@ def validate_all_bizcore_targets() -> Dict[int, List[str]]:
   qs = (
     TargetDataset.objects
     .select_related("target_schema")
-    .filter(target_schema__short_name="bizcore")
+    .filter(target_schema__short_name__in=["bizcore", "serving"])
   )
 
   for td in qs:
     issues = validate_bizcore_target_dataset(td)
+    issues.extend(validate_semantic_join_integrity(td))
+    issues.extend(validate_serving_friendly_names(td))
     if issues:
       result[td.pk] = issues
 
@@ -250,28 +469,46 @@ def summarize_targetdataset_health(td: "TargetDataset") -> tuple[str, List[str]]
 
   Returns:
       (level, issues)
-      level: 'ok' | 'warning' (can be extended to 'error' later)
+      level: 'ok' | 'warning' | 'error'
       issues: list of human-readable messages
   """
   issues: List[str] = []
+  has_error = False
 
   # Incremental
   inc_issues = validate_incremental_target_dataset(td)
-  issues.extend(f"Incremental: {msg}" for msg in inc_issues)
+  if inc_issues:
+    has_error = True
+    issues.extend(f"Incremental: {msg}" for msg in inc_issues)
 
   # BizCore semantics
   biz_issues = validate_bizcore_target_dataset(td)
-  issues.extend(f"BizCore: {msg}" for msg in biz_issues)
+  issues.extend(f"BizCore: WARN: {msg}" for msg in biz_issues)
+
+  # Join integrity (bizcore + serving) => correctness-critical
+  join_issues = validate_semantic_join_integrity(td)
+  if join_issues:
+    has_error = True
+    issues.extend(f"Joins: {msg}" for msg in join_issues)
+
+  # Serving friendly name checks (presentation layer)
+  srv_issues = validate_serving_friendly_names(td)
+  if srv_issues:
+    issues.extend(f"Serving: {msg}" for msg in srv_issues)
+    if any("ERROR:" in m for m in srv_issues):
+      has_error = True 
 
   # Materialization
   mat_issues = validate_materialization_for_target(td)
-  issues.extend(f"Materialization: {msg}" for msg in mat_issues)
+  issues.extend(f"Materialization: WARN: {msg}" for msg in mat_issues)
+
+  # Detect ERROR messages (prefix-based)
+  if any("ERROR:" in msg for msg in issues):
+    has_error = True
 
   if not issues:
     level = "ok"
   else:
-    # For now we have only 'ok' and 'warning'. We could introduce 'error'
-    # later if we classify individual messages.
-    level = "warning"
+    level = "error" if has_error else "warning"
 
   return level, issues

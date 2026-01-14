@@ -126,9 +126,15 @@ Bizcore datasets express:
 - No query-time metric resolution  
 - No tool-specific abstraction
 
-Bizcore logic is compiled into the same logical plans and SQL
-as technical datasets, preserving elevata’s guarantees around
-**determinism, transparency, and reproducibility**.
+Bizcore logic is compiled into the same logical plans and SQL as technical datasets,  
+preserving elevata’s guarantees around **determinism, transparency, and reproducibility**.
+
+### 🧩 Serving — Presentation Logic & Consumer Hand-off  
+Serving is the **presentation-facing** layer. Serving datasets typically expose Bizcore datasets 1:1  
+(often as views), while allowing **consumer-specific shaping** such as naming, ordering, and lightweight joins  
+where required. Serving is intended as the **hand-off layer to BI tools / semantic layers / frontend use cases** —  
+without moving business logic out of Bizcore.
+
 
 ---
 

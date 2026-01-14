@@ -1,6 +1,6 @@
 <!--
 elevata - Metadata-driven Data Platform Framework
-Copyright © 2025 Ilona Tag
+Copyright © 2025-2026 Ilona Tag
 
 This file is part of elevata.
 
@@ -41,7 +41,7 @@ Contact: <https://github.com/elevata-labs/elevata>.
     {% elif health_level == "error" %}
       <span class="badge badge-health-error ms-2">Health: Issues</span>
     {% endif %}
-  </span>
+    </span>
 
   <a href="{% url 'targetdataset_detail' object.pk %}" class="btn btn-sm btn-outline-primary">
     <i class="bi bi-arrow-left"></i> Back to details
@@ -93,10 +93,90 @@ Contact: <https://github.com/elevata-labs/elevata>.
     </div>
   {% endif %}
 
+  <div class="mb-4">
+    <div class="fw-semibold mb-1">Lineage scope</div>
+
+    <div class="d-flex align-items-center gap-2 mb-1">
+      {% for d in depth_options %}
+        <a
+          class="btn btn-sm {% if depth == d %}btn-primary{% else %}btn-outline-secondary{% endif %}"
+          href="?depth={{ d }}"
+        >
+          {% if d == 0 %}
+            Direct
+          {% else %}
+            {{ d }} hop{{ d|pluralize }}
+          {% endif %}
+        </a>
+      {% endfor %}
+    </div>
+
+    {% if depth > 0 %}
+      <div class="text-muted small">
+        Showing up to +{{ depth }} hop{{ depth|pluralize }} beyond direct:
+        ↑ {{ reverse_count }} upstream · ↓ {{ impact_count }} downstream
+      </div>
+    {% endif %}
+  </div>
+
+
+  {% if depth > 0 %}
+  <hr class="my-4">
+
+  <div class="row g-4">
+    <div class="col-lg-6">
+      <h2 class="h5 mb-2">Upstream lineage</h2>
+
+      {% if upstream_levels_desc %}
+        {% for level, datasets in upstream_levels_desc %}
+          <div class="small text-muted">Level {{ level }}</div>
+          <ul>
+            {% for ds in datasets %}
+              <li>
+                <a href="{% url 'targetdataset_lineage' ds.pk %}">
+                  {{ ds.target_dataset_name }}
+                </a>
+                <span class="badge badge-lineage-layer ms-1">
+                  {{ ds.target_schema.short_name }}
+                </span>
+              </li>
+            {% endfor %}
+          </ul>
+        {% endfor %}
+      {% else %}
+        <p class="text-muted">No additional upstream lineage beyond direct inputs.</p>
+      {% endif %}
+    </div>
+
+    <div class="col-lg-6">
+      <h2 class="h5 mb-2">Downstream lineage</h2>
+      {% if downstream_levels_desc %}
+        {% for level, datasets in downstream_levels_desc %}
+          <div class="small text-muted">Level {{ level }}</div>
+          <ul>
+            {% for ds in datasets %}
+              <li>
+                <a href="{% url 'targetdataset_lineage' ds.pk %}">
+                  {{ ds.target_dataset_name }}
+                </a>
+                <span class="badge badge-lineage-layer ms-1">
+                  {{ ds.target_schema.short_name }}
+                </span>
+              </li>
+            {% endfor %}
+          </ul>
+        {% endfor %}
+      {% else %}
+        <p class="text-muted">No additional downstream lineage beyond direct inputs.</p>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+
   <div class="row g-4">
     <!-- Upstream -->
     <div class="col-lg-6">
-      <h2 class="h5 mb-2">Upstream inputs</h2>
+      <h2 class="h5 mb-2">Direct upstream inputs</h2>
       {% if upstream_inputs %}
         <table class="table table-sm align-middle">
           <thead>
@@ -153,7 +233,7 @@ Contact: <https://github.com/elevata-labs/elevata>.
 
     <!-- Downstream -->
     <div class="col-lg-6">
-      <h2 class="h5 mb-2">Downstream consumers</h2>
+      <h2 class="h5 mb-2">Direct downstream consumers</h2>
       {% if downstream_inputs %}
         <table class="table table-sm align-middle">
           <thead>

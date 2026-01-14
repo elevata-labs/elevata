@@ -1,6 +1,6 @@
 """
 elevata - Metadata-driven Data Platform Framework
-Copyright © 2025 Ilona Tag
+Copyright © 2025-2026 Ilona Tag
 
 This file is part of elevata.
 
@@ -31,6 +31,7 @@ from metadata.models import TargetDataset, TargetColumn
 from .rename_common import RenameSpec, dry_run_rename, commit_rename
 from django.db import transaction
 from metadata.services.rename_common import sync_key_former_names_for_rawcore_dataset
+from metadata.generation import validators  # for serving_normalize_identifier
 
 
 def _ensure_targetdataset_rename_allowed(ds: TargetDataset) -> list[str]:
@@ -38,7 +39,7 @@ def _ensure_targetdataset_rename_allowed(ds: TargetDataset) -> list[str]:
   Enforce elevata rules for when a TargetDataset may be renamed.
 
   Rules:
-    - Only datasets in schema 'rawcore' are renameable.
+    - Only datasets in schemas 'rawcore', 'bizcore' and 'serving' are renameable.
   """
   errors: list[str] = []
 
@@ -46,7 +47,7 @@ def _ensure_targetdataset_rename_allowed(ds: TargetDataset) -> list[str]:
   if getattr(ds, "target_schema", None):
     schema_short = getattr(ds.target_schema, "short_name", None)
 
-  if schema_short is not None and schema_short != "rawcore":
+  if schema_short is not None and schema_short not in ["bizcore", "rawcore", "serving"]:
     errors.append(
       f"Dataset '{ds.target_dataset_name}' belongs to schema '{schema_short}', "
       "where names are system-managed. Dataset names can only be changed in schema 'rawcore'."
@@ -67,6 +68,8 @@ def _targetdataset_spec(ds: TargetDataset) -> RenameSpec:
     collision_label="Target dataset name",
     collision_scope_label="in this environment",
     extra_update_fields=["former_names"],
+    validator_kind="Dataset",
+    normalize_for_collision=validators.serving_normalize_identifier,    
   )
 
 

@@ -1,6 +1,6 @@
 """
 elevata - Metadata-driven Data Platform Framework
-Copyright © 2025 Ilona Tag
+Copyright © 2025-2026 Ilona Tag
 
 This file is part of elevata.
 
@@ -29,6 +29,7 @@ consistent validation, collision checks and atomic commit logic.
 
 from metadata.models import TargetColumn
 from .rename_common import RenameSpec, dry_run_rename, commit_rename
+from metadata.generation import validators  # for serving_normalize_identifier
 
 
 def _ensure_targetcolumn_rename_allowed(col: TargetColumn) -> list[str]:
@@ -36,7 +37,7 @@ def _ensure_targetcolumn_rename_allowed(col: TargetColumn) -> list[str]:
   Enforce elevata rules for when a TargetColumn may be renamed.
 
   Rules:
-    - Only columns in schema 'rawcore' are renameable.
+    - Only columns in schemas 'rawcore', 'bizcore' and 'serving' are renameable.
     - Derived/technical columns (system_role set) are system-managed and cannot be renamed.
     - Columns in *_hist datasets are system-managed and cannot be renamed.
   """
@@ -84,6 +85,8 @@ def _targetcolumn_spec(col: TargetColumn) -> RenameSpec:
     collision_label="Target column name",
     collision_scope_label="in this dataset",
     extra_update_fields=["former_names"],
+    validator_kind="Column",
+    normalize_for_collision=validators.serving_normalize_identifier,
   )
 
 

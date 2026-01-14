@@ -1,6 +1,6 @@
 """
 elevata - Metadata-driven Data Platform Framework
-Copyright © 2025 Ilona Tag
+Copyright © 2025-2026 Ilona Tag
 
 This file is part of elevata.
 
@@ -27,7 +27,7 @@ from django.core.management.base import BaseCommand
 from metadata.models import TargetDataset
 from metadata.generation.validators import (
   validate_all_incremental_targets,
-  validate_all_bizcore_targets,
+  validate_all_semantic_targets,
   validate_all_materialization,
   summarize_targetdataset_health,
 )
@@ -52,11 +52,11 @@ class Command(BaseCommand):
     self.stdout.write("Running elevata metadata health checks…\n")
 
     incr_issues: Dict[int, List[str]] = validate_all_incremental_targets()
-    biz_issues: Dict[int, List[str]] = validate_all_bizcore_targets()
+    sem_issues: Dict[int, List[str]] = validate_all_semantic_targets()
     mat_issues: Dict[int, List[str]] = validate_all_materialization()
 
     # Collect all datasets that have at least one issue in any category
-    problematic_ids = set(incr_issues.keys()) | set(biz_issues.keys()) | set(mat_issues.keys())
+    problematic_ids = set(incr_issues.keys()) | set(sem_issues.keys()) | set(mat_issues.keys())
 
     total_targets = TargetDataset.objects.count()
     total_problematic = len(problematic_ids)
@@ -84,9 +84,9 @@ class Command(BaseCommand):
           self.stdout.write(f"  - Incremental: {msg}")
 
       # BizCore issues
-      if pk in biz_issues:
-        for msg in biz_issues[pk]:
-          self.stdout.write(f"  - BizCore: {msg}")
+      if pk in sem_issues:
+        for msg in sem_issues[pk]:
+          self.stdout.write(f"  - Semantic: {msg}")
 
       # Materialization issues
       if pk in mat_issues:
