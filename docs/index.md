@@ -68,6 +68,16 @@ This index gives you an overview of all major topics and how they fit together.
 - [Architecture Overview](architecture_overview.md)  
   High-level view of elevata’s architecture: metadata, lineage, Logical Plan, rendering and execution.
 
+- [Query Builder & Query Tree](query_builder_and_query_tree.md)  
+  Conceptual introduction to elevata’s Query Builder and Query Tree.  
+  Explains *why* custom query logic exists, *when* it should be used,  
+  and *how* it integrates with metadata-driven generation.
+
+- [Determinism & Execution Semantics](determinism_and_execution_semantics.md)  
+  Rules and guarantees for deterministic SQL generation,  
+  including ORDER BY requirements, window functions, aggregation semantics  
+  and error vs warning classification.
+
 - [Lineage Model & Logical Plan](logical_plan.md)  
   How datasets depend on each other, how lineage is represented, and how the Logical Plan encodes queries.
 
@@ -131,6 +141,19 @@ If you are new to elevata, a good reading path is:
 5. [Hashing Architecture](hashing_architecture.md)  
 
 This will give you a mental model for how metadata flows through the platform and becomes executable SQL.
+
+---
+
+## 🧭 Advanced Reading Path: Semantic Modeling & Query Logic
+
+If you want to understand how elevata models advanced business logic  
+while remaining metadata-native and deterministic, continue with:
+
+1. [Bizcore — Business Semantics Layer](bizcore.md)  
+2. [Query Builder & Query Tree](query_builder_and_query_tree.md)  
+3. [Determinism & Execution Semantics](determinism_and_execution_semantics.md)  
+4. [Lineage Model & Logical Plan](logical_plan.md)  
+5. [SQL Preview & Rendering Pipeline](sql_preview_pipeline.md)
 
 ---
 

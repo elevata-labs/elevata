@@ -135,6 +135,21 @@ Serving is the **presentation-facing** layer. Serving datasets typically expose 
 where required. Serving is intended as the **hand-off layer to BI tools / semantic layers / frontend use cases** —  
 without moving business logic out of Bizcore.
 
+### 🧩 Custom Query Logic (Query Tree)
+
+For most datasets, elevata generates SQL automatically from metadata.  
+In semantic layers (`bizcore`, `serving`), elevata additionally supports
+**Custom Query Logic** via an explicit **Query Tree**.
+
+The Query Tree defines the *shape* of a query (e.g. windowing, aggregation steps, union composition)  
+while remaining fully metadata-native.
+
+If enabled, the Query Tree is compiled into the same Logical Plan and Expression AST  
+used by the default generation pipeline.  
+If disabled, elevata falls back to fully automatic SQL generation.
+
+This ensures advanced query shaping without introducing manual SQL or breaking determinism,  
+lineage, or governance guarantees.
 
 ---
 
@@ -206,4 +221,3 @@ Metadata Model
 ---
 
 © 2025-2026 elevata Labs — Internal Technical Documentation
-

@@ -24,7 +24,7 @@ import os
 import hashlib
 import logging
 from django.db import transaction
-from django.db.models import Max
+from django.db.models import Max, Q
 from django.core.exceptions import ValidationError
 from django.conf import settings
 from django.db import models
@@ -38,8 +38,34 @@ from metadata.constants import (
   TYPE_CHOICES, INGEST_CHOICES, INCREMENT_INTERVAL_CHOICES, DATATYPE_CHOICES, SYSTEM_COLUMN_ROLE_CHOICES,
   MATERIALIZATION_CHOICES, RELATIONSHIP_TYPE_CHOICES, PII_LEVEL_CHOICES, TARGET_DATASET_INPUT_ROLE_CHOICES,
   ACCESS_INTENT_CHOICES, ROLE_CHOICES, SENSITIVITY_CHOICES, ENVIRONMENT_CHOICES, LINEAGE_ORIGIN_CHOICES,
-  TARGET_COMBINATION_MODE_CHOICES, BIZ_ENTITY_ROLE_CHOICES, INCREMENTAL_STRATEGY_CHOICES, JOIN_TYPE_CHOICES, OPERATOR_CHOICES)
+  TARGET_COMBINATION_MODE_CHOICES, BIZ_ENTITY_ROLE_CHOICES, INCREMENTAL_STRATEGY_CHOICES, JOIN_TYPE_CHOICES, 
+  OPERATOR_CHOICES, AGGREGATE_MODE_CHOICES, ORDER_BY_DIR_CHOICES, NULLS_PLACEMENT_CHOICES, WINDOW_FUNCTION_CHOICES, 
+  WINDOW_ARG_TYPE_CHOICES)
 from metadata.generation.validators import SHORT_NAME_VALIDATOR, TARGET_IDENTIFIER_VALIDATOR
+
+
+class QueryNodeType(models.TextChoices):
+  SELECT = "select", "Select"
+  AGGREGATE = "aggregate", "Aggregate"
+  UNION = "union", "Union"
+  # Future:
+  WINDOW = "window", "Window"
+  CTE = "cte", "CTE"
+
+
+class AggregateFunction(models.TextChoices):
+  SUM = "SUM", "SUM"
+  COUNT = "COUNT", "COUNT"
+  MIN = "MIN", "MIN"
+  MAX = "MAX", "MAX"
+  AVG = "AVG", "AVG"
+  # Future: COUNT_DISTINCT, STRING_AGG, etc.
+
+
+class UnionMode(models.TextChoices):
+  UNION = "union", "UNION"
+  UNION_ALL = "union_all", "UNION ALL"
+
 
 class AuditFields(models.Model):
   created_at = models.DateTimeField(auto_now_add=True, db_index=True)
@@ -724,7 +750,17 @@ class TargetDataset(AuditFields):
       "Used for permanent business or technical scoping. "
       "Example: is_deleted_flag = 0 AND country_code = 'DE'."
     ),
-  )  
+  ) 
+  query_root = models.ForeignKey("QueryNode", on_delete=models.SET_NULL, null=True, blank=True, related_name="+",
+    help_text="Optional query-tree root. If empty, dataset uses the classic select/joins definition.",
+  )
+  query_head = models.ForeignKey("QueryNode", on_delete=models.SET_NULL, null=True, blank=True, related_name="+",
+    help_text=(
+      "Optional query-tree head (leaf): the final node that represents the dataset output. "
+      "query_root stays stable (Base select); query_head moves when adding wrapper nodes "
+      "(aggregate/window/union). If null while query_root is set, treat query_root as head."
+    ),
+  )
   partial_load = models.ManyToManyField("PartialLoad", blank=True, related_name="datasets", db_table="target_dataset_partial_load",
     help_text="Optional subset extraction definitions (per environment / window)."
   )
@@ -815,6 +851,83 @@ class TargetDataset(AuditFields):
       .values_list("target_column_name", flat=True)
     )
     return sorted(list(qs))
+  
+  def _active_input_links_qs(self):
+    qs = getattr(self, "input_links", None)
+    if qs is None:
+      return self.input_links.none()
+    qs = qs.select_related("source_dataset", "upstream_target_dataset")
+    if hasattr(qs.model, "active"):
+      qs = qs.filter(active=True)
+    return qs.order_by("role", "id")
+
+  def _active_joins_qs(self):
+    qs = getattr(self, "joins", None)
+    if qs is None:
+      return []
+    qs = qs.all()
+    if hasattr(qs.model, "active"):
+      qs = qs.filter(active=True)
+    return qs
+
+  @property
+  def missing_join_inputs(self) -> list[str]:
+    """
+    Best-effort: if there are multiple active inputs but no active join defined,
+    list the non-base inputs that are effectively 'unjoined'.
+    """
+    inputs = list(self._active_input_links_qs())
+    if len(inputs) <= 1:
+      return []
+
+    joins_qs = self._active_joins_qs()
+    try:
+      join_count = joins_qs.count()
+    except Exception:
+      join_count = len(list(joins_qs))
+
+    problems: list[str] = []
+
+    # Case A: no joins at all
+    if join_count == 0:
+      # Treat first input as "base", all others need to be joined somehow.
+      for link in inputs[1:]:
+        src = getattr(link, "source_dataset", None)
+        up = getattr(link, "upstream_target_dataset", None)
+        role = (getattr(link, "role", "") or "").strip()
+        name = ""
+        if up is not None:
+          name = getattr(up, "target_dataset_name", "") or str(up)
+        elif src is not None:
+          name = getattr(src, "dataset_name", "") or getattr(src, "name", "") or str(src)
+        else:
+          name = str(link)
+        label = f"{name}"
+        if role:
+          label = f"{label} ({role})"
+        problems.append(label)
+
+      return problems
+
+    # Case B: joins exist but some have no predicates (common “half configured” state)
+    try:
+      for j in joins_qs:
+        pred_qs = getattr(j, "predicates", None)
+        if pred_qs is None:
+          continue
+        pred_qs = pred_qs.all()
+        if hasattr(pred_qs.model, "active"):
+          pred_qs = pred_qs.filter(active=True)
+        if pred_qs.count() == 0:
+          problems.append(f"{str(j)} (no predicates)")
+    except Exception:
+      pass
+
+    return problems
+
+  @property
+  def has_incomplete_joins(self) -> bool:
+    return bool(self.missing_join_inputs)
 
   def build_natural_key_string(self, record_dict):
     """
@@ -931,6 +1044,541 @@ class TargetDataset(AuditFields):
             ref.sync_child_fk_column()
         except Exception:
           pass
+
+
+# -------------------------------------------------------------------
+# QueryNode
+# -------------------------------------------------------------------
+class QueryNode(AuditFields):
+  """
+  Query tree node owned by a single TargetDataset.
+  Base/root is referenced from TargetDataset.query_root; the current leaf/head is TargetDataset.query_head.  
+  """
+  target_dataset = models.ForeignKey("TargetDataset", on_delete=models.CASCADE, related_name="query_nodes",
+    help_text="Owning dataset (lifecycle/permissions scope).",
+  )
+  node_type = models.CharField(max_length=16, choices=QueryNodeType.choices,
+    help_text="Type of query operator represented by this node.",
+  )
+  name = models.CharField(max_length=128, blank=True, default="",
+    help_text="Optional label for UI (e.g. 'Base Select', 'Agg: Daily', 'Union: Sources').",
+  )
+  active = models.BooleanField(default=True,
+    help_text="Enable/disable this query node. Disabled nodes are ignored by the builder.",
+  )
+
+  class Meta:
+    db_table = "query_node"
+    indexes = [
+      models.Index(fields=["target_dataset", "node_type"]),
+    ]
+
+  def __str__(self):
+    lbl = (self.name or self.node_type or "").strip()
+    lbl = lbl or (getattr(self, "node_type", "") or "").strip() or "node"
+    # Use QueryNode.pk (not target_dataset_id) to avoid confusing labels.
+    return f"node#{self.pk}: {lbl}"
+
+# -------------------------------------------------------------------
+# QuerySelectNode
+# -------------------------------------------------------------------
+class QuerySelectNode(AuditFields):
+  node = models.OneToOneField(QueryNode, on_delete=models.CASCADE, related_name="select",
+    limit_choices_to={"node_type": QueryNodeType.SELECT},
+    help_text="Query node header for this SELECT operator.",  
+  )
+  # Optional: in future allow a select-node to reference a *different* dataset definition
+  # For now: always use node.target_dataset
+  use_dataset_definition = models.BooleanField(default=True,
+    help_text="When true, build select from owning TargetDataset definition (joins/columns/manual expressions).",
+  )
+
+  class Meta:
+    db_table = "query_select_node"
+    verbose_name = "Query select node"
+    verbose_name_plural = "Query select nodes"
+
+  def __str__(self) -> str:
+    node = getattr(self, "node", None)
+    if node is not None:
+      return str(node)
+    return f"select#{self.pk}"
+
+
+# -------------------------------------------------------------------
+# QueryAggregateNode
+# -------------------------------------------------------------------
+class QueryAggregateNode(AuditFields):
+  node = models.OneToOneField(QueryNode, on_delete=models.CASCADE, related_name="aggregate",
+    limit_choices_to={"node_type": QueryNodeType.AGGREGATE},
+    help_text="Query node header for this AGGREGATE operator.",
+  )
+  input_node = models.ForeignKey(QueryNode, on_delete=models.PROTECT, related_name="used_as_aggregate_input",
+    help_text="Input query node providing rows to aggregate (wrapped as subquery).",
+  )
+  mode = models.CharField(max_length=16, choices=AGGREGATE_MODE_CHOICES, default="grouped",
+    help_text="Grouped requires group keys; Global allows measures without group keys.",
+  )
+
+  class Meta:
+    db_table = "query_aggregate_node"
+    verbose_name = "Query aggregate node"
+    verbose_name_plural = "Query aggregate nodes"
+
+  def __str__(self) -> str:
+    node = getattr(self, "node", None)
+    if node is not None:
+      return str(node)
+    return f"aggregate#{self.pk}"
+
+
+# -------------------------------------------------------------------
+# QueryAggregateNodeGroupKey
+# -------------------------------------------------------------------
+class QueryAggregateGroupKey(AuditFields):
+  aggregate_node = models.ForeignKey(QueryAggregateNode, on_delete=models.CASCADE, related_name="group_keys",
+    help_text="Aggregate operator this group key belongs to.",
+  )
+  # Start minimal: reference by column name from the input projection.
+  # Later: FK to a QueryExpression table.
+  input_column_name = models.CharField(max_length=255,
+    help_text="Column name exposed by input node to group by.",
+  )
+  output_name = models.CharField(max_length=255, blank=True, default="",
+    help_text="Optional alias in the aggregate output (defaults to input_column_name).",
+  )
+  ordinal_position = models.PositiveIntegerField(default=0,
+    help_text="Ordering of group keys in UI and generated SQL.",
+  )
+
+  class Meta:
+    db_table = "query_aggregate_node_group_key"
+    unique_together = [("aggregate_node", "ordinal_position")]
+
+  def __str__(self) -> str:
+    col = (getattr(self, "input_column_name", "") or "").strip()
+    out = (getattr(self, "output_name", "") or "").strip()
+    ordpos = getattr(self, "ordinal_position", None)
+    bits = []
+    if ordpos is not None:
+      bits.append(f"#{ordpos}")
+    if col:
+      bits.append(col)
+    if out and out != col:
+      bits.append(f"→ {out}")
+    return " ".join(bits) if bits else f"group_key#{self.pk}"
+
+
+# -------------------------------------------------------------------
+# QueryAggregateMeasure
+# -------------------------------------------------------------------
+class QueryAggregateMeasure(AuditFields):
+  aggregate_node = models.ForeignKey(QueryAggregateNode, on_delete=models.CASCADE, related_name="measures",
+    help_text="Aggregate operator this measure belongs to.",
+  )
+  output_name = models.CharField(max_length=255,
+    help_text="Output column name (can be friendly in serving).",
+  )
+  function = models.CharField(max_length=32, choices=AggregateFunction.choices,
+    help_text="Aggregate function.",
+  )
+  # Minimal: one arg column.
+  # Later: allow expression args via QueryExpression / AST serialization.
+  input_column_name = models.CharField(max_length=255, blank=True, default="",
+    help_text="Input column used as argument (empty for COUNT(*)).",
+  )
+  delimiter = models.CharField(max_length=64, blank=True, default=",",
+    help_text="Delimiter used by STRING_AGG (ignored for other aggregate functions).",
+  )
+  order_by = models.ForeignKey("OrderByExpression", null=True, blank=True, on_delete=models.PROTECT,
+    help_text="Optional ORDER BY expression used inside the aggregate function (e.g., STRING_AGG).",
+  )  
+  distinct = models.BooleanField(default=False,
+    help_text="If true, applies DISTINCT on the argument when supported (e.g., COUNT(DISTINCT x)).",
+  )
+  ordinal_position = models.PositiveIntegerField(default=0,
+    help_text="Ordering of measures in UI and generated SQL.",
+  )
+
+  class Meta:
+    db_table = "query_aggregate_measure"
+    unique_together = [("aggregate_node", "ordinal_position")]
+
+  def __str__(self) -> str:
+    out = (getattr(self, "output_name", "") or "").strip()
+    fn = (getattr(self, "function", "") or "").strip()
+    col = (getattr(self, "input_column_name", "") or "").strip()
+    ordpos = getattr(self, "ordinal_position", None)
+    sig = fn
+    if col:
+      sig = f"{fn}({col})"
+    elif fn.upper() == "COUNT":
+      sig = "COUNT(*)"
+    bits = []
+    if ordpos is not None:
+      bits.append(f"#{ordpos}")
+    if out:
+      bits.append(out)
+    if sig:
+      bits.append(sig)
+    return " · ".join(bits) if bits else f"measure#{self.pk}"
+
+# -------------------------------------------------------------------
+# OrderByExpression
+# -------------------------------------------------------------------
+class OrderByExpression(AuditFields):
+  """
+  Reusable ORDER BY definition (multi-key) for aggregates/windows.
+  Scoped to a TargetDataset so validation/UX stays intuitive.
+  """
+  target_dataset = models.ForeignKey("TargetDataset", on_delete=models.CASCADE, related_name="order_by_expressions",
+    help_text="Owning dataset (permissions / lifecycle scope).",
+  )
+  name = models.CharField(max_length=128,
+    help_text="Label used in the UI (e.g. 'By Date Desc', 'By Customer, Date').",
+  )
+  active = models.BooleanField(default=True,
+    help_text="Whether this ORDER BY definition is active and used by referencing expressions.",
+  )
+
+  class Meta:
+    db_table = "order_by_expression"
+    unique_together = [("target_dataset", "name")]
+    indexes = [
+      models.Index(fields=["target_dataset", "active"]),
+    ]
+
+  def __str__(self) -> str:
+    return (getattr(self, "name", "") or "").strip() or f"orderby#{self.pk}"
+
+
+# -------------------------------------------------------------------
+# OrderByItem
+# -------------------------------------------------------------------
+class OrderByItem(AuditFields):
+  """
+  One sort key of an OrderByExpression.
+  References columns by name from the *input projection*.
+  """
+  order_by = models.ForeignKey(OrderByExpression, on_delete=models.CASCADE, related_name="items",
+    help_text="ORDER BY definition this item belongs to.",
+  )
+  input_column_name = models.CharField(max_length=255,
+    help_text="Column name exposed by the input node to order by.",
+  )
+  direction = models.CharField(max_length=4, choices=ORDER_BY_DIR_CHOICES, default="ASC",
+    help_text="Sort direction.",
+  )
+  nulls_placement = models.CharField(max_length=5, choices=NULLS_PLACEMENT_CHOICES, blank=True, default="",
+    help_text="NULLS placement if supported by dialect.",
+  )
+  ordinal_position = models.PositiveIntegerField(default=0,
+    help_text="Position of this item inside the ORDER BY list (0..n).",
+  )
+
+  class Meta:
+    db_table = "order_by_item"
+    unique_together = [("order_by", "ordinal_position")]
+
+  def __str__(self) -> str:
+    col = (getattr(self, "input_column_name", "") or "").strip()
+    direction = (getattr(self, "direction", "") or "").strip() or "ASC"
+    nulls = (getattr(self, "nulls_placement", "") or "").strip()
+    ordpos = getattr(self, "ordinal_position", None)
+    bits = []
+    if ordpos is not None:
+      bits.append(f"#{ordpos}")
+    if col:
+      bits.append(f"{col} {direction}")
+    else:
+      bits.append(direction)
+    if nulls:
+      bits.append(f"NULLS {nulls}")
+    return " ".join(bits) if bits else f"order_item#{self.pk}"
+
+
+# -------------------------------------------------------------------
+# QueryUnionNode
+# -------------------------------------------------------------------
+class QueryUnionNode(AuditFields):
+  node = models.OneToOneField(QueryNode, on_delete=models.CASCADE, related_name="union",
+    limit_choices_to={"node_type": QueryNodeType.UNION},
+    help_text="Query node header for this UNION operator.",
+  )
+  mode = models.CharField(max_length=16, choices=UnionMode.choices, default=UnionMode.UNION_ALL,
+    help_text="UNION removes duplicates, UNION ALL keeps duplicates (faster).",
+  )
+
+  class Meta:
+    db_table = "query_union_node"
+    verbose_name = "Query union node"
+    verbose_name_plural = "Query union nodes"
+
+  def __str__(self) -> str:
+    node = getattr(self, "node", None)
+    if node is not None:
+      return str(node)
+    return f"union#{self.pk}"
+
+
+# -------------------------------------------------------------------
+# QueryUnionOutputColumn
+# -------------------------------------------------------------------
+class QueryUnionOutputColumn(AuditFields):
+  union_node = models.ForeignKey(QueryUnionNode, on_delete=models.CASCADE, related_name="output_columns",
+    help_text="Union operator this output column belongs to (schema contract).",
+  )
+  name = models.CharField(max_length=255,
+    help_text="Output column name of the UNION schema contract.",
+  )
+  ordinal_position = models.PositiveIntegerField(default=0,
+    help_text="Ordering of output columns in the UNION schema contract.",
+  )
+  datatype = models.CharField(max_length=20, choices=DATATYPE_CHOICES, blank=True, null=True,
+    help_text="Optional logical datatype of the UNION output column.",
+  )
+
+  class Meta:
+    db_table = "query_union_output_column"
+    unique_together = [("union_node", "ordinal_position")]
+
+  def __str__(self) -> str:
+    name = (getattr(self, "name", "") or "").strip()
+    dt = getattr(self, "datatype", None)
+    ordpos = getattr(self, "ordinal_position", None)
+    bits = []
+    if ordpos is not None:
+      bits.append(f"#{ordpos}")
+    if name:
+      bits.append(name)
+    if dt:
+      bits.append(f": {dt}")
+    return " ".join(bits) if bits else f"union_col#{self.pk}"
+
+
+# -------------------------------------------------------------------
+# QueryUnionBranch
+# -------------------------------------------------------------------
+class QueryUnionBranch(AuditFields):
+  union_node = models.ForeignKey(QueryUnionNode, on_delete=models.CASCADE, related_name="branches",
+    help_text="Union operator this branch belongs to.",
+  )
+  input_node = models.ForeignKey(QueryNode, on_delete=models.PROTECT, related_name="used_as_union_branch",
+    help_text="Branch query node producing rows to union.",
+  )
+  ordinal_position = models.PositiveIntegerField(default=0,
+    help_text="Ordering of UNION branches in UI and generated SQL.",
+  )
+
+  class Meta:
+    db_table = "query_union_branch"
+    unique_together = [("union_node", "ordinal_position")]
+
+  def __str__(self) -> str:
+    ordpos = getattr(self, "ordinal_position", None)
+    input_node = getattr(self, "input_node", None)
+    input_label = ""
+    if input_node is not None:
+      input_label = (getattr(input_node, "name", "") or "").strip() or f"node#{getattr(input_node, 'pk', '')}"
+    if ordpos is not None and input_label:
+      return f"Branch #{ordpos}: {input_label}"
+    if ordpos is not None:
+      return f"Branch #{ordpos}"
+    return input_label or f"union_branch#{self.pk}"
+
+
+# -------------------------------------------------------------------
+# QueryUnionBranchMapping
+# -------------------------------------------------------------------
+class QueryUnionBranchMapping(AuditFields):
+  branch = models.ForeignKey(QueryUnionBranch, on_delete=models.CASCADE, related_name="mappings",
+    help_text="Branch this mapping belongs to.",
+  )
+  output_column = models.ForeignKey(QueryUnionOutputColumn, on_delete=models.CASCADE, related_name="branch_mappings",
+    help_text="Output column of the UNION schema contract that is being populated.",
+  )
+  # Minimal: map by input column name from branch projection.
+  # Later: allow expressions/casts via QueryExpression.
+  input_column_name = models.CharField(max_length=255,
+    help_text="Column name exposed by branch input node.",
+  )
+
+  class Meta:
+    db_table = "query_union_branch_mapping"
+    unique_together = [("branch", "output_column")]
+
+  def __str__(self) -> str:
+    out = getattr(self, "output_column", None)
+    out_name = (getattr(out, "name", "") or "").strip() if out is not None else ""
+    inp = (getattr(self, "input_column_name", "") or "").strip()
+    if out_name and inp:
+      return f"{out_name} ← {inp}"
+    return out_name or inp or f"mapping#{self.pk}"
+
+
+# -------------------------------------------------------------------
+# QueryWindowNode
+# -------------------------------------------------------------------
+class QueryWindowNode(AuditFields):
+  node = models.OneToOneField(QueryNode, on_delete=models.CASCADE, related_name="window",
+    limit_choices_to={"node_type": QueryNodeType.WINDOW},
+    help_text="Query node holding window function definitions.",
+  )
+  input_node = models.ForeignKey(QueryNode, on_delete=models.PROTECT, related_name="used_as_window_input",
+    help_text="Input query node providing rows for window functions (wrapped as subquery).",
+  )
+
+  class Meta:
+    db_table = "query_window_node"
+    verbose_name = "Query window node"
+    verbose_name_plural = "Query window nodes"
+
+  def __str__(self) -> str:
+    node = getattr(self, "node", None)
+    if node is not None:
+      return str(node)
+    return f"window#{self.pk}"
+
+
+# -------------------------------------------------------------------
+# PartitionByExpression
+# -------------------------------------------------------------------
+class PartitionByExpression(AuditFields):
+  target_dataset = models.ForeignKey("TargetDataset", on_delete=models.CASCADE, related_name="partition_by_expressions",
+    help_text="Owning dataset (permissions / lifecycle scope).",
+  )
+  name = models.CharField(max_length=128,
+    help_text="Label used in the UI (e.g. 'By Customer', 'By Customer + Day').",
+  )
+  active = models.BooleanField(default=True,
+    help_text="Controls whether this PARTITION BY definition can be selected and used in queries.",
+  )
+
+  class Meta:
+    db_table = "partition_by_expression"
+    unique_together = [("target_dataset", "name")]
+    indexes = [models.Index(fields=["target_dataset", "active"])]
+
+  def __str__(self) -> str:
+    name = (getattr(self, "name", "") or "").strip()
+    return name or f"partition_by#{self.pk}"
+
+
+# -------------------------------------------------------------------
+# PartitionByItem
+# -------------------------------------------------------------------
+class PartitionByItem(AuditFields):
+  partition_by = models.ForeignKey(PartitionByExpression, on_delete=models.CASCADE, related_name="items",
+    help_text="PARTITION BY definition this item belongs to.",
+  )
+  input_column_name = models.CharField(max_length=255,
+    help_text="Column name exposed by the input node to partition by.",
+  )
+  ordinal_position = models.PositiveIntegerField(default=0,
+    help_text="Position of this partition key within the PARTITION BY clause.",
+  )
+
+  class Meta:
+    db_table = "partition_by_item"
+    unique_together = [("partition_by", "ordinal_position")]
+
+  def __str__(self) -> str:
+    col = (getattr(self, "input_column_name", "") or "").strip()
+    ordpos = getattr(self, "ordinal_position", None)
+    if ordpos is not None and col:
+      return f"#{ordpos} {col}"
+    return col or f"partition_item#{self.pk}"
+
+
+# -------------------------------------------------------------------
+# QueryWindowColumn
+# -------------------------------------------------------------------
+class QueryWindowColumn(AuditFields):
+  window_node = models.ForeignKey(QueryWindowNode, on_delete=models.CASCADE, related_name="columns",
+    help_text="Window operator this output column belongs to.",
+  )
+  output_name = models.CharField(max_length=255,
+    help_text="Output column name (can be friendly in serving).",
+  )
+  function = models.CharField(max_length=32, choices=WINDOW_FUNCTION_CHOICES,
+    help_text="Window function.",
+  )
+  partition_by = models.ForeignKey(PartitionByExpression, null=True, blank=True, on_delete=models.PROTECT,
+    help_text="Optional PARTITION BY definition.",
+  )
+  order_by = models.ForeignKey(OrderByExpression, null=True, blank=True, on_delete=models.PROTECT,
+    help_text="Optional ORDER BY definition (recommended for deterministic results).",
+  )
+  ordinal_position = models.PositiveIntegerField(default=0,
+    help_text="Position of this window output column in the projection.",
+  )
+  active = models.BooleanField(default=True,
+    help_text="Whether this window output column is enabled (included in SQL rendering).",
+  )
+
+  class Meta:
+    db_table = "query_window_column"
+    unique_together = [("window_node", "ordinal_position")]
+
+  def __str__(self) -> str:
+    out = (getattr(self, "output_name", "") or "").strip()
+    fn = (getattr(self, "function", "") or "").strip()
+    ordpos = getattr(self, "ordinal_position", None)
+    if ordpos is not None and out and fn:
+      return f"#{ordpos} {out} · {fn}"
+    if out and fn:
+      return f"{out} · {fn}"
+    return out or fn or f"window_col#{self.pk}"
+
+
+class QueryWindowColumnArg(AuditFields):
+  """
+  Ordered arguments for window functions (e.g. NTILE(4), LAG(col, 1, 'n/a')).
+  Stored in a normalized form so the UI can evolve without schema changes.
+  """
+  window_column = models.ForeignKey(QueryWindowColumn,  on_delete=models.CASCADE, related_name="args",
+    help_text="Window column this argument belongs to.",
+  )
+  arg_type = models.CharField(max_length=8, choices=WINDOW_ARG_TYPE_CHOICES,
+    help_text="Argument type.",
+  )
+  column_name = models.CharField(max_length=255, blank=True, default="",
+    help_text="Input column name (required when arg_type='column').",
+  )
+  int_value = models.IntegerField(null=True, blank=True,
+    help_text="Integer literal (required when arg_type='int').",
+  )
+  str_value = models.CharField(max_length=255, blank=True, default="",
+    help_text="String literal (required when arg_type='str').",
+  )
+  ordinal_position = models.PositiveIntegerField(default=0,
+    help_text="Position of this argument in the function call.",
+  )
+
+  class Meta:
+    db_table = "query_window_column_arg"
+    unique_together = [("window_column", "ordinal_position")]
+
+  def __str__(self) -> str:
+    arg_type = (getattr(self, "arg_type", "") or "").strip()
+    col = (getattr(self, "column_name", "") or "").strip()
+    ival = getattr(self, "int_value", None)
+    sval = (getattr(self, "str_value", "") or "").strip()
+    ordpos = getattr(self, "ordinal_position", None)
+
+    value = ""
+    if arg_type == "column":
+      value = col
+    elif arg_type == "int" and ival is not None:
+      value = str(ival)
+    elif arg_type == "str" and sval:
+      value = f"'{sval}'"
+    else:
+      value = col or (str(ival) if ival is not None else "") or (f"'{sval}'" if sval else "")
+
+    if ordpos is not None and value:
+      return f"#{ordpos}: {value}"
+    return value or f"arg#{self.pk}"
 
 
 # -------------------------------------------------------------------
@@ -1055,6 +1703,34 @@ class TargetDatasetJoin(AuditFields):
         name="uniq_targetdataset_join_edge",
       ),
     ]
+
+  @property
+  def has_missing_predicates(self) -> bool:
+    """
+    True if this join requires ON predicates but none are defined.
+    CROSS joins do not require predicates.
+    """
+    join_type = (getattr(self, "join_type", "") or "").lower().strip()
+    if join_type == "cross":
+      return False
+
+    preds = getattr(self, "predicates", None)
+    if preds is None:
+      # be conservative: if we cannot inspect predicates, do not claim it's missing
+      return False
+
+    qs = preds.all()
+    # if Predicate model has active flag, respect it
+    try:
+      if qs.model and hasattr(qs.model, "active"):
+        qs = qs.filter(active=True)
+    except Exception:
+      pass
+
+    try:
+      return not qs.exists()
+    except Exception:
+      return len(list(qs)) == 0
 
   def clean(self):
     # Ensure both inputs belong to the same target_dataset.

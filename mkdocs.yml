@@ -75,6 +75,8 @@ nav:
 
   - Concepts:
       - ⚙️ Architecture Overview: architecture_overview.md
+      - ⚙️ Query Builder & Query Tree: query_builder_and_query_tree.md
+      - ⚙️ Determinism & Execution Semantics: determinism_and_execution_semantics.md
       - ⚙️ Lineage Model & Logical Plan: logical_plan.md
       - ⚙️ Expression DSL & AST: expression_dsl_and_ast.md
       - ⚙️ Hashing Architecture: hashing_architecture.md

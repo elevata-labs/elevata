@@ -1,6 +1,6 @@
 """
 elevata - Metadata-driven Data Platform Framework
-Copyright © 2025 Ilona Tag
+Copyright © 2025-2026 Ilona Tag
 
 This file is part of elevata.
 
@@ -20,7 +20,6 @@ along with elevata. If not, see <https://www.gnu.org/licenses/>.
 Contact: <https://github.com/elevata-labs/elevata>.
 """
 
-import json
 from django.shortcuts import get_object_or_404, render
 from django.views.decorators.http import require_POST
 from django.contrib.auth.decorators import login_required
@@ -29,15 +28,6 @@ from metadata.models import TargetColumn, TargetDataset
 from metadata.services.rename_targetdataset import dry_run_targetdataset_rename, commit_targetdataset_rename
 from metadata.services.rename_targetcolumn import dry_run_targetcolumn_rename, commit_targetcolumn_rename
 from metadata.generation.target_generation_service import TargetGenerationService
-
-
-def _is_htmx(request) -> bool:
-  """
-  Detect HTMX requests to decide whether to return HTML partials or JSON.
-
-  HTMX sets the 'HX-Request' header to 'true' on asynchronous requests.
-  """
-  return request.headers.get("HX-Request", "").lower() == "true"
 
 
 @login_required

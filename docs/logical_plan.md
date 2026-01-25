@@ -30,9 +30,26 @@ The Logical Plan:
 
 ---
 
-## 🔧 2. Core Node Types
+## 🔧 2. Query Tree and Logical Plan
 
-### 🧩 2.1 LogicalSelect
+The **Query Tree** operates at a higher abstraction level than the Logical Plan.
+
+- The Query Tree defines *what* operations occur and in which order  
+  (e.g. SELECT → WINDOW → AGGREGATE).  
+- The Logical Plan defines *how* these operations are represented as  
+  structured SQL components (LogicalSelect, SubquerySource, LogicalUnion, …).
+
+When custom query logic is enabled, the Query Tree is compiled into a Logical Plan  
+using the same builder infrastructure as default generation.
+
+This design keeps the Logical Plan as a stable, vendor-neutral intermediate representation,  
+regardless of whether SQL is generated automatically or via an explicit Query Tree.
+
+---
+
+## 🔧 3. Core Node Types
+
+### 🧩 3.1 LogicalSelect
 Represents a SELECT statement.  
 
 Fields:  
@@ -52,7 +69,7 @@ LogicalSelect(
 
 ---
 
-### 🧩 2.2 SelectItem
+### 🧩 3.2 SelectItem
 Represents a single column in the SELECT list.  
 
 Fields:  
@@ -61,7 +78,7 @@ Fields:
 
 ---
 
-### 🧩 2.3 Source Nodes
+### 🧩 3.3 Source Nodes
 
 #### 🔎 TableSource
 ```
@@ -78,7 +95,7 @@ Used for:
 - derived tables  
 - complex transformations  
 
-### 🧩 2.4 LogicalUnion
+### 🧩 3.4 LogicalUnion
 Represents a UNION or UNION ALL.
 
 Fields:
@@ -96,7 +113,7 @@ often wrapped in a SubquerySource.
 
 ---
 
-## 🔧 3. Window Functions
+## 🔧 4. Window Functions
 
 Window functions appear via:
 ```
@@ -123,7 +140,7 @@ Used primarily in Stage **non-identity** mode.
 
 ---
 
-## 🔧 4. Subqueries in Multi-Source Stage
+## 🔧 5. Subqueries in Multi-Source Stage
 
 Multi-source Stage requires optional ranking logic:
 
@@ -161,7 +178,7 @@ LogicalSelect(
 
 ---
 
-## 🔧 5. Integration With Expression DSL & AST
+## 🔧 6. Integration With Expression DSL & AST
 
 All expressions inside the Logical Plan use the DSL/AST layer:  
 - column references  
@@ -175,7 +192,7 @@ This ensures cross-dialect consistency.
 
 ---
 
-## 🔧 6. Dialect Rendering Responsibilities
+## 🔧 7. Dialect Rendering Responsibilities
 
 Each dialect must render:  
 - SELECT lists  
@@ -201,9 +218,9 @@ Example dialect responsibilities:
 
 ---
 
-## 🔧 7. Logical Plan Rendering Rules (Dialect-Agnostic)
+## 🔧 8. Logical Plan Rendering Rules (Dialect-Agnostic)
 
-### 🧩 7.1 SELECT
+### 🧩 8.1 SELECT
 ```
 SELECT <select_list>
 FROM <source>
@@ -212,21 +229,21 @@ FROM <source>
 [ORDER BY <order_items>]
 ```
 
-### 🧩 7.2 UNION
+### 🧩 8.2 UNION
 ```
 SELECT ...
 UNION ALL
 SELECT ...
 ```
 
-### 🧩 7.3 Subquery
+### 🧩 8.3 Subquery
 ```
 (
   SELECT ...
 ) AS alias
 ```
 
-### 🧩 7.4 Window Function
+### 🧩 8.4 Window Function
 ```
 ROW_NUMBER() OVER (PARTITION BY ... ORDER BY ...)
 ```
@@ -238,21 +255,21 @@ Dialect modifies only:
 
 ---
 
-## 🔧 8. How the Builder Constructs Logical Plans
+## 🔧 9. How the Builder Constructs Logical Plans
 
 Key builder patterns:
 
-### 🧩 8.1 Single-Source Stage
+### 🧩 9.1 Single-Source Stage
 ```
 LogicalSelect(from_=TableSource(...))
 ```
 
-### 🧩 8.2 Multi-Source Stage Identity
+### 🧩 9.2 Multi-Source Stage Identity
 ```
 LogicalUnion([...])
 ```
 
-### 🧩 8.3 Multi-Source Stage Non-Identity
+### 🧩 9.3 Multi-Source Stage Non-Identity
 ```
 SubquerySource(
   select=LogicalSelect(
@@ -265,7 +282,7 @@ Outer filter applied via another LogicalSelect.
 
 ---
 
-## 🔧 9. Benefits of the Logical Plan
+## 🔧 10. Benefits of the Logical Plan
 - Supports subqueries as first-class citizens  
 - Vendor-neutral window functions  
 - Clean separation between logic and SQL syntax  
@@ -276,7 +293,7 @@ Outer filter applied via another LogicalSelect.
 
 ---
 
-## 🔧 10. Bizcore and the Logical Plan
+## 🔧 11. Bizcore and the Logical Plan
 
 Bizcore datasets do not introduce new Logical Plan node types.
 

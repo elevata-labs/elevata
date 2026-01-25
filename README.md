@@ -40,13 +40,13 @@ Where most tools stop at SQL generation, elevata goes further:
 it defines **how a modern data architecture should look** — opinionated, governed, reproducible.  
 *In other words: elevata brings structure, governance, and automation to modern data platforms — from metadata to SQL.*  
 
-elevata is designed for data engineers and architects who want to build governed, reproducible data platforms without hard-coding architecture into pipelines.
+elevata is designed for teams that want governed, predictable, explainable data pipelines — without hiding logic behind implicit SQL behavior.
 
 Unlike transformation-centric tools, elevata treats metadata, lineage, and execution semantics as first-class concepts, not as conventions embedded in SQL.
 
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/elevata-labs/elevata/main/docs/elevata_v0_9_1.png" alt="elevata UI preview" width="700"/>
+  <img src="https://raw.githubusercontent.com/elevata-labs/elevata/main/docs/elevata_v1_0_0.png" alt="elevata UI preview" width="700"/>
   <br/>
   <em>Dataset detail view with lineage, metadata, and dialect-aware SQL previews</em>
 </p>
@@ -87,9 +87,24 @@ including incremental loads, merges, historization, and schema synchronization.
 
 ## 🧩 Architecture Overview
 
-elevata is a metadata-driven, warehouse-native data pipeline engine.  
+elevata is a metadata-driven SQL generation engine for building deterministic,  
+warehouse-native data pipelines.  
 It manages the full lifecycle from metadata to SQL generation to execution — including  
 incremental loads, historization, schema evolution, and observability.
+
+At its core, elevata provides a first-class **Query Builder**  
+that allows complex transformations to be modeled declaratively  
+using structured metadata instead of handwritten SQL.
+
+The Query Builder is not a visual abstraction layer, but a deterministic planning system  
+that produces fully explainable SQL based on:
+
+- explicit query trees (select, join, aggregate, union, window)  
+- schema-aware governance rules  
+- lineage-driven column resolution  
+- stable query contracts
+
+> *The Query Builder is the most opinionated and distinctive part of elevata.*
 
 The architecture consists of the following layers:
 
@@ -167,7 +182,7 @@ elevata is designed for execution — not just preview.
 
 ---
 
-## 📦 Load Runner CLI
+## 💻 Load Runner CLI
 
 elevata includes a dataset-driven load runner (`elevata_load`) that executes
 pipelines in dependency order.  
@@ -185,83 +200,65 @@ batch-level execution snapshot explaining plan, policy, and outcomes.
 
 ---
 
-## 🔮 Roadmap
+## 📐 Query Builder & Query Trees
 
-elevata is evolving from a SQL-generation layer into a **metadata-driven, warehouse-native data platform engine**.
+elevata models transformations explicitly using **Query Trees**.
 
-The roadmap reflects this direction: structured, ambitious, and aligned with elevata’s long-term vision.
+Each TargetDataset may define a query tree composed of well-defined  
+operators such as SELECT, JOIN, AGGREGATE, UNION and WINDOW.  
+These operators are represented as metadata objects, not as opaque SQL fragments.
 
----
+The Query Builder derives executable SQL from this tree in a fully deterministic way.  
+This enables:
 
-### v0.9.x — Business Semantics & Bizcore Layer
-> *Guiding question: Can business meaning and business logic be modeled explicitly — without introducing a semantic BI layer?*
+- reliable SQL previews  
+- stable query contracts  
+- field-level lineage inspection  
+- safe evolution of datasets over time
 
-elevata includes a dedicated **BIZCORE layer** for modeling business meaning, rules, and calculations as  
-**first-class metadata** — executed through the same deterministic planning and execution pipeline  
-as technical datasets.
-
-#### ✅ Already shipped in v0.9.0
-- **UI support for building Bizcore datasets and columns**  
-- **Join semantics for multi-upstream Bizcore datasets**  
-- **Deterministic SQL preview and execution**  
-- **Lineage-driven qualification and expression handling**  
-- **Core → Bizcore traceability**
-
-#### 🔜 Planned within v0.9.x
-- **Expanded business rule expressiveness**  
-  - derived business fields  
-  - rule-based classifications  
-  - KPI-style calculations expressed as dataset fields  
-- **Additional validation & governance rules for Bizcore**  
-  - join completeness & ambiguity detection  
-  - expression validation  
-  - schema & naming conventions  
-- **Cross-Bizcore dependency patterns**  
-  - Bizcore-on-Bizcore dependencies with deterministic execution  
-- **Enhanced impact analysis & documentation tooling**  
-  - structured field-level lineage and semantic dependency inspection
-
-#### ❌ Explicit non-goals (by design)
-- No BI semantic layer  
-- No metric store or query-time metric resolution  
-- No time-intelligence abstractions  
-- No dbt-style macro or templating system
-
-**Intent**  
-elevata becomes **business-capable by design**, allowing teams to define  
-business logic and KPIs natively — while deliberately avoiding  
-tool-specific semantic layers or BI-driven abstractions.
+Query Trees are validated against schema-specific governance rules and downstream  
+dependencies before execution.
 
 ---
 
-### v1.0.x — First official release
-> *Guiding question: Can execution be governed, validated, and integrated without breaking determinism?*
+## 🚀 elevata 1.0 — Stable Foundation
 
-- **Run- and dataset-level governance rules**  
-  - schema drift detection  
-  - delete detection  
-  - retry and fail-fast policies  
-- **Rule-based validation framework**  
-  - metadata-defined checks  
-  - blocking vs non-blocking violations  
-- **Execution hooks & lifecycle callbacks**  
-  - stable integration API for Airflow, Dagster, Prefect, etc.  
-- **Policy-aware execution outcomes**  
-  - clear distinction between execution failures and policy violations  
-- **First-class execution metadata**  
-  - structured access to execution logs and snapshots
+With version **1.0**, elevata reaches a major milestone.
+
+This release establishes a **stable, backward-compatible core** for
+metadata-driven data platform engineering, including:
+
+- Deterministic SQL planning and generation  
+- Explicit dataset modeling with lineage and contracts  
+- Query Trees as a first-class metadata model for controlled query logic  
+- A metadata-native Query Builder for authoring, inspecting and governing query trees  
+- Business semantics via Bizcore datasets (joins, aggregations, rules)  
+- Policy-enforced governance and validation
+
+From this release onward, elevata preserves compatibility of
+its core metadata models and execution semantics.
 
 ---
 
-### Vision (1.0 onwards)
+## 🔮 Roadmap (Post-1.0)
 
-elevata aims to become a **metadata-native data platform engine**:  
-a system where structure, execution, governance, and business intent  
-are derived from explicit definitions rather than implicit SQL behavior.
+The roadmap looks ahead, building on the stable 1.0 foundation.
 
-The long-term goal is not to replace orchestration frameworks or BI tools,  
-but to act as a **reliable, transparent backbone** that makes data pipelines  
-predictable, governable, and evolvable across teams and platforms.
+### Execution & Governance
+- Rule-based validation framework (blocking vs non-blocking)  
+- Policy-aware execution outcomes  
+- Execution lifecycle hooks for orchestration tools  
+  (Airflow, Dagster, Prefect, …)
+
+### Modeling Ergonomics
+- Improved authoring UX for complex Bizcore logic  
+- Optional helper abstractions for reusable query patterns  
+- Enhanced query modeling workflows
+
+### Observability & Impact Analysis
+- Structured field-level lineage  
+- Semantic impact analysis across datasets  
+- Improved documentation and inspection tooling
 
 ---
 
@@ -291,13 +288,6 @@ see the [elevata Platform Strategy](https://github.com/elevata-labs/elevata/blob
 elevata itself does not require personal data.  
 If used with customer datasets, responsibility for compliance remains with the implementing organisation.  
 The system supports pseudo-key hashing and consistent anonymisation strategies via its hashing DSL.
-
----
-
-### 🚧 Note
-
-elevata is currently in an early preview phase (v0.x).
-Breaking changes may occur before the 1.0 release as the metadata model stabilizes.
 
 ---
 

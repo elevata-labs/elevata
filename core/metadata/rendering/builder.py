@@ -22,7 +22,7 @@ Contact: <https://github.com/elevata-labs/elevata>.
 
 from __future__ import annotations
 
-from typing import Optional, TYPE_CHECKING, Iterable
+from typing import Optional, TYPE_CHECKING
 import re
 
 from metadata.rendering.logical_plan import (
@@ -31,15 +31,25 @@ from metadata.rendering.logical_plan import (
   LogicalSelect,
   LogicalUnion,
   SubquerySource,
-  Join
+  Join,
+  SubquerySource,
 )
 from metadata.generation.naming import build_surrogate_key_name
-from metadata.rendering.expr import Expr
-from metadata.rendering.dsl import col, raw, row_number, parse_surrogate_dsl
+from metadata.rendering.expr import (
+  Expr,
+  ColumnRef,
+  FuncCall,
+  OrderByExpr,
+  OrderByClause,
+  RawSql,
+  WindowSpec,
+  WindowFunction,
+)
+from metadata.rendering.dsl import col, lit, raw, row_number, parse_surrogate_dsl
 
 if TYPE_CHECKING:
   # Only for type hints, no runtime import -> no circular import
-  from metadata.models import SourceDataset, TargetDataset, TargetColumn, TargetDatasetReference, TargetDatasetJoin, TargetDatasetJoinPredicate
+  from metadata.models import SourceDataset, TargetDataset, TargetColumn, TargetDatasetReference, TargetDatasetJoinPredicate
 
 """
 Logical Query Builder for TargetDatasets.
@@ -926,6 +936,328 @@ def _build_joined_select_for_target(
 
   return logical
 
+
+# ------------------------------------------------------------------------------
+# Query graph compiler (QueryNode -> LogicalPlan)
+# ------------------------------------------------------------------------------
+def _build_plan_from_query_root(target_dataset: TargetDataset):
+  """
+  Compile a query graph (QueryNode tree) into a LogicalSelect / LogicalUnion.
+  The query graph is owned by the TargetDataset; only the root is referenced from it.
+  """
+  query_root = getattr(target_dataset, "query_root", None)
+  query_head = getattr(target_dataset, "query_head", None) or query_root
+  if query_head is None:
+    return None
+
+  return _build_plan_for_query_node(query_head)
+
+
+def _build_plan_for_query_node(node):
+  """
+  Recursively compile a QueryNode into a logical plan.
+  """
+  node_type = getattr(node, "node_type", None)
+  if not node_type:
+    raise ValueError("QueryNode has no node_type")
+
+  node_type = str(node_type).lower()
+
+  if node_type == "select":
+    # Reuse the dataset definition (joins/columns/manual expressions).
+    td = node.target_dataset
+    return _build_plan_from_dataset_definition(td)
+
+  if node_type == "aggregate":
+    return _build_aggregate_plan_for_node(node)
+  
+  if node_type == "window":
+    return _build_window_plan_for_node(node)
+
+  if node_type == "union":
+    return _build_union_plan_for_node(node)
+
+  raise ValueError(f"Unsupported QueryNode type: {node_type}")
+
+
+def _build_aggregate_plan_for_node(node):
+  """
+  Build an aggregation as a wrapped SELECT:
+    outer SELECT (group keys + measures) FROM (inner plan) u GROUP BY ...
+  """
+  agg = getattr(node, "aggregate", None)
+  if agg is None:
+    raise ValueError("Aggregate node has no aggregate details (node.aggregate is None)")
+
+  inner_plan = _build_plan_for_query_node(agg.input_node)
+
+  # With dialect.render_plan() we can safely embed unions as subqueries.
+  if not isinstance(inner_plan, (LogicalSelect, LogicalUnion)):
+    raise TypeError(
+      f"Aggregate input must compile to LogicalSelect or LogicalUnion, got {type(inner_plan).__name__}"
+    )
+
+  src = SubquerySource(select=inner_plan, alias="u")
+
+  group_items: list[SelectItem] = []
+  group_exprs = []
+  for g in agg.group_keys.all().order_by("ordinal_position", "id"):
+    in_name = (g.input_column_name or "").strip()
+    if not in_name:
+      continue
+    out_name = (g.output_name or "").strip() or in_name
+    expr = ColumnRef(table_alias="u", column_name=in_name)
+    group_exprs.append(expr)
+    group_items.append(SelectItem(expr=expr, alias=out_name))
+
+  measure_items: list[SelectItem] = []
+  for m in agg.measures.all().order_by("ordinal_position", "id"):
+    out_name = (m.output_name or "").strip()
+    if not out_name:
+      continue
+
+    fn = (m.function or "").strip().upper()
+    in_name = (m.input_column_name or "").strip()
+    delimiter = (getattr(m, "delimiter", "") or ",")
+    order_by_obj = getattr(m, "order_by", None)
+
+    # COUNT(*) support
+    if fn == "COUNT" and not in_name:
+      expr = FuncCall(name="COUNT", args=[RawSql("*")])
+
+    else:
+      arg = ColumnRef(table_alias="u", column_name=in_name) if in_name else None
+
+      # DISTINCT handling: prefer a logical function name to keep dialect rendering clean.
+      # Dialects can map COUNT_DISTINCT(x) -> COUNT(DISTINCT x), etc.
+      if getattr(m, "distinct", False):
+        if fn == "COUNT":
+          expr = FuncCall(name="COUNT_DISTINCT", args=[arg] if arg else [])
+        else:
+          expr = FuncCall(name=f"{fn}_DISTINCT", args=[arg] if arg else [])
+      else:
+        # Optional deterministic ordering for STRING_AGG (and future order-sensitive aggregates).
+        if fn == "STRING_AGG":
+          args = [arg] if arg else []
+          # Delimiter from model (default ',')
+          args.append(lit(delimiter))
+          if order_by_obj:
+            items = []
+            for it in order_by_obj.items.all().order_by("ordinal_position", "id"):
+              dir_sql = (it.direction or "ASC").strip().upper()
+              if dir_sql not in ("ASC", "DESC"):
+                dir_sql = "ASC"
+              items.append(
+                OrderByExpr(
+                  expr=ColumnRef(table_alias="u", column_name=it.input_column_name),
+                  direction=dir_sql,
+                )
+              )
+            if items:
+              args.append(OrderByClause(items=items))
+          expr = FuncCall(name="STRING_AGG", args=args)
+        else:
+          expr = FuncCall(name=fn, args=[arg] if arg else [])
+
+    measure_items.append(SelectItem(expr=expr, alias=out_name))
+
+  mode = (getattr(agg, "mode", "") or "").strip().lower()
+  if mode != "global" and not group_exprs:
+    raise ValueError("Aggregate mode is grouped but no group keys are defined.")
+  if not measure_items:
+    raise ValueError("Aggregate node has no measures.")
+
+  return LogicalSelect(
+    from_=src,
+    select_list=(group_items + measure_items),
+    group_by=group_exprs,
+  )
+
+
+def _build_union_plan_for_node(node):
+  """
+  Build a UNION / UNION ALL from fully compiled branch nodes.
+  Each branch is aligned to the union output contract using a derived-table select.
+  """
+  un = getattr(node, "union", None)
+  if un is None:
+    raise ValueError("Union node has no union details (node.union is None)")
+
+  # Map union mode -> LogicalUnion.union_type ("ALL" or "DISTINCT")
+  mode = (getattr(un, "mode", "") or "").strip().lower()
+  union_type = "ALL" if mode in ("union_all", "all") else "DISTINCT"
+
+  out_cols = list(un.output_columns.all().order_by("ordinal_position", "id"))
+  if not out_cols:
+    raise ValueError("Union has no output_columns defined (contract required).")
+
+  aligned_selects: list[LogicalSelect] = []
+  branches = list(un.branches.all().order_by("ordinal_position", "id"))
+  if not branches:
+    raise ValueError("Union has no branches.")
+
+  for b in branches:
+    branch_plan = _build_plan_for_query_node(b.input_node)
+
+    # Nested unions are now supported by embedding the branch plan as a subquery.
+    if not isinstance(branch_plan, (LogicalSelect, LogicalUnion)):
+      raise TypeError(
+        f"Union branch must compile to LogicalSelect or LogicalUnion, got {type(branch_plan).__name__}"
+      )
+
+    src = SubquerySource(select=branch_plan, alias="b")
+
+    mappings = {
+      m.output_column_id: (m.input_column_name or "").strip()
+      for m in b.mappings.select_related("output_column").all()
+    }
+
+    items: list[SelectItem] = []
+    for oc in out_cols:
+      in_name = mappings.get(oc.id, "")
+      if not in_name:
+        raise ValueError(
+          f"Union branch {b.id} has no mapping for output column '{oc.name}'."
+        )
+      items.append(
+        SelectItem(
+          expr=ColumnRef(table_alias="b", column_name=in_name),
+          alias=oc.name,
+        )
+      )
+
+    aligned_selects.append(
+      LogicalSelect(
+        from_=src,
+        select_list=items,
+      )
+    )
+
+  return LogicalUnion(selects=aligned_selects, union_type=union_type)
+
+
+def _build_window_select_items(window_node, upstream_alias: str) -> list[SelectItem]:
+  items: list[SelectItem] = []
+
+  for col in window_node.columns.all().order_by("ordinal_position", "id"):
+    fn = (col.function or "").strip().upper()
+    out_name = (col.output_name or "").strip()
+    if not out_name:
+      continue
+
+    # Build function args (normalized)
+    fn_args = []
+    for a in col.args.all().order_by("ordinal_position", "id"):
+      t = (a.arg_type or "").strip().lower()
+      if t == "column":
+        nm = (a.column_name or "").strip()
+        if nm:
+          fn_args.append(ColumnRef(table_alias=upstream_alias, column_name=nm))
+      elif t == "int":
+        if a.int_value is not None:
+          fn_args.append(lit(a.int_value))
+      elif t == "str":
+        fn_args.append(lit(a.str_value or ""))
+
+    partition_by_exprs = []
+    if col.partition_by:
+      for it in col.partition_by.items.all().order_by("ordinal_position", "id"):
+        partition_by_exprs.append(
+          ColumnRef(table_alias=upstream_alias, column_name=it.input_column_name)
+        )
+
+    order_by_exprs = []
+    if col.order_by:
+      for it in col.order_by.items.all().order_by("ordinal_position", "id"):
+        direction = (it.direction or "ASC").strip().upper()
+        if direction not in ("ASC", "DESC"):
+          direction = "ASC"
+        order_by_exprs.append(
+          OrderByExpr(
+            expr=ColumnRef(table_alias=upstream_alias, column_name=it.input_column_name),
+            direction=direction,
+          )
+        )
+
+    wf = WindowFunction(
+      name=fn,
+      args=fn_args,
+      window=WindowSpec(
+        partition_by=partition_by_exprs,
+        order_by=order_by_exprs,
+      ),
+    )
+    items.append(SelectItem(expr=wf, alias=out_name))
+
+  return items
+
+
+def _get_plan_output_column_names(plan) -> list[str]:
+  """
+  Return output column aliases of a compiled plan.
+  Used to project pass-through columns when wrapping a plan as subquery.
+  """
+  if isinstance(plan, LogicalSelect):
+    return [i.alias for i in plan.select_list if getattr(i, "alias", None)]
+
+  if isinstance(plan, LogicalUnion):
+    # UNION branches are aligned to the same contract; use first branch aliases.
+    if not plan.selects:
+      return []
+    first = plan.selects[0]
+    if isinstance(first, LogicalSelect):
+      return [i.alias for i in first.select_list if getattr(i, "alias", None)]
+    return []
+
+  return []
+
+
+def _build_window_plan_for_node(node):
+  win = getattr(node, "window", None)
+  if win is None:
+    raise ValueError("Window node has no window details (node.window is None)")
+
+  inner_plan = _build_plan_for_query_node(win.input_node)
+
+  # Same safety rule as aggregate/union: only these can be embedded as subqueries.
+  if not isinstance(inner_plan, (LogicalSelect, LogicalUnion)):
+    raise TypeError(
+      f"Window input must compile to LogicalSelect or LogicalUnion, got {type(inner_plan).__name__}"
+    )
+
+  upstream_alias = "u"
+  src = SubquerySource(select=inner_plan, alias=upstream_alias)
+  outer = LogicalSelect(from_=src, select_list=[])
+
+  # 1) pass-through input projection (u.<col> AS <col>)
+  existing_aliases: set[str] = set()
+  for name in _get_plan_output_column_names(inner_plan):
+    if name in existing_aliases:
+      raise ValueError(f"Duplicate output column alias in window input: '{name}'")
+    existing_aliases.add(name)
+    outer.select_list.append(
+      SelectItem(
+        expr=ColumnRef(table_alias=upstream_alias, column_name=name),
+        alias=name,
+      )
+    )
+
+  # 2) add window expressions (using existing helper)
+  win_items = _build_window_select_items(win, upstream_alias)
+  for it in win_items:
+    alias = (getattr(it, "alias", "") or "").strip()
+    if not alias:
+      raise ValueError("Window select item has empty alias.")
+    if alias in existing_aliases:
+      raise ValueError(
+        f"Window output alias '{alias}' collides with an existing column in the input projection."
+      )
+    existing_aliases.add(alias)
+  outer.select_list.extend(win_items)
+
+  return outer
+
+
 # ------------------------------------------------------------------------------
 # Main builder: Build logical select for a target dataset
 # ------------------------------------------------------------------------------
@@ -935,6 +1267,19 @@ def build_logical_select_for_target(target_dataset: TargetDataset):
   for the given TargetDataset, using dataset- and column-level lineage.
   """
 
+  # If a query graph root is defined, compile the query tree instead of the classic path.
+  query_plan = _build_plan_from_query_root(target_dataset)
+  if query_plan is not None:
+    return query_plan
+
+  return _build_plan_from_dataset_definition(target_dataset)
+
+
+def _build_plan_from_dataset_definition(target_dataset: TargetDataset):
+  """
+  Classic elevata path: build from TargetDataset definition (inputs, joins, columns, manual expressions).
+  This function contains the previous body of build_logical_select_for_target().
+  """
   schema_short = target_dataset.target_schema.short_name
 
   inputs_qs = (

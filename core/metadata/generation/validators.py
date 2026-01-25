@@ -23,12 +23,22 @@ Contact: <https://github.com/elevata-labs/elevata>.
 from django.core.validators import RegexValidator
 from django.core.exceptions import ValidationError
 import re
-from typing import List, Dict, TYPE_CHECKING
+from typing import List, Dict, Set, Tuple, Literal, TYPE_CHECKING
 from django.apps import apps
 
 if TYPE_CHECKING:
   # Only for static analysis; NOT executed at runtime → no circular import
   from metadata.models import TargetDataset
+
+from metadata.generation.policies import (
+  query_tree_allowed_for_dataset, allowed_query_node_types_for_dataset,
+  allowed_function_kinds_for_dataset
+)
+from metadata.generation.query_contract import infer_query_node_contract
+from metadata.generation.window_fn_registry import get_window_fn_spec
+
+Severity = Literal["error", "warning"]
+Issue = Tuple[Severity, str]
 
 # --- Specific Django field validators (for model fields) ---
 
@@ -76,7 +86,8 @@ Aggregation:
 # Philosophy:
 # - allow "what most SQL engines allow in quoted identifiers"
 # - block only foot-guns that routinely break tools/pipelines
-#
+
+
 def serving_clean_identifier(value: str, *, kind: str) -> str:
   """
   Validate and return a cleaned serving identifier.
@@ -491,6 +502,13 @@ def summarize_targetdataset_health(td: "TargetDataset") -> tuple[str, List[str]]
     has_error = True
     issues.extend(f"Joins: {msg}" for msg in join_issues)
 
+  # Query tree integrity (if dataset uses a query_root) => correctness-critical
+  qt_issues = validate_query_tree_integrity(td)
+  for sev, msg in qt_issues:
+    issues.append(f"Query: {sev.upper()}: {msg}")
+    if sev == "error":
+      has_error = True
+
   # Serving friendly name checks (presentation layer)
   srv_issues = validate_serving_friendly_names(td)
   if srv_issues:
@@ -502,9 +520,12 @@ def summarize_targetdataset_health(td: "TargetDataset") -> tuple[str, List[str]]
   mat_issues = validate_materialization_for_target(td)
   issues.extend(f"Materialization: WARN: {msg}" for msg in mat_issues)
 
-  # Detect ERROR messages (prefix-based)
-  if any("ERROR:" in msg for msg in issues):
-    has_error = True
+  # Query contract / governance (if query tree exists)
+  q_issues = validate_query_tree_integrity(td)
+  if q_issues:
+    issues.extend(f"Query: {m}" for m in q_issues)
+    if any("ERROR:" in m for m in q_issues):
+      has_error = True
 
   if not issues:
     level = "ok"
@@ -512,3 +533,396 @@ def summarize_targetdataset_health(td: "TargetDataset") -> tuple[str, List[str]]
     level = "error" if has_error else "warning"
 
   return level, issues
+
+# ------------------------------------------------------------------------------
+# QueryTree validation (blocking correctness checks)
+# ------------------------------------------------------------------------------
+def validate_query_tree_integrity(td: "TargetDataset") -> List[str]:
+  """
+  Validate query graph definition attached to a TargetDataset (if present).
+  Returns messages with 'ERROR:' (blocking) or 'WARN:' (advisory).
+  """
+  issues: List[Issue] = []
+
+  query_root = getattr(td, "query_root", None)
+  if not query_root:
+    return issues
+
+  if not query_tree_allowed_for_dataset(td):
+    issues.append((
+      "error",
+      f"Custom query logic is only allowed in bizcore/serving. "
+      f"Schema '{td.target_schema.short_name}' must not define a query root."
+    ))
+    return issues
+
+  # Resolve models lazily
+  QueryNode = apps.get_model("metadata", "QueryNode")
+  QueryNodeType = apps.get_model("metadata", "QueryNodeType") if False else None  # type: ignore
+  QuerySelectNode = apps.get_model("metadata", "QuerySelectNode")
+  QueryAggregateNode = apps.get_model("metadata", "QueryAggregateNode")
+  QueryAggregateGroupKey = apps.get_model("metadata", "QueryAggregateGroupKey")
+  QueryAggregateMeasure = apps.get_model("metadata", "QueryAggregateMeasure")
+  QueryUnionNode = apps.get_model("metadata", "QueryUnionNode")
+  QueryUnionOutputColumn = apps.get_model("metadata", "QueryUnionOutputColumn")
+  QueryUnionBranch = apps.get_model("metadata", "QueryUnionBranch")
+  QueryUnionBranchMapping = apps.get_model("metadata", "QueryUnionBranchMapping")
+  TargetColumn = apps.get_model("metadata", "TargetColumn")
+
+  schema_cache: Dict[int, Set[str]] = {}
+  visiting: Set[int] = set()
+
+  # Shared contract cache for the whole validation run
+  contract_cache: Dict[int, object] = {}
+  contract_visiting: Set[int] = set()
+
+  # Inject root contract issues once (structure/contract-level governance)
+  root_contract = infer_query_node_contract(query_root, cache=contract_cache, visiting=contract_visiting)
+  for msg in root_contract.issues:
+    level = "error" if msg.startswith("ERROR:") else "warning"
+    issues.append((level, msg))
+
+  def _infer_output_cols(n) -> Set[str]:
+    nid = int(getattr(n, "id", 0) or 0)
+    if nid in schema_cache:
+      return schema_cache[nid]
+    if nid in visiting:
+      return set()
+    visiting.add(nid)
+
+    # Keep the allowed-node-type check (this is policy, not contract inference)
+    ntype = (getattr(n, "node_type", "") or "").strip().lower()
+    allowed = allowed_query_node_types_for_dataset(td)
+    if ntype not in allowed:
+      issues.append((
+        "error",
+        f"Query node type '{ntype}' is not allowed for schema '{td.target_schema.short_name}'."
+      ))
+
+    # Contract-based inference (single source of truth)
+    cr = infer_query_node_contract(n, cache=contract_cache, visiting=contract_visiting)
+    cols = {c.lower() for c in cr.columns}
+
+    visiting.remove(nid)
+    schema_cache[nid] = cols
+    return cols
+
+  # Ownership check: root must belong to this dataset
+  if getattr(query_root, "target_dataset_id", None) != td.id:
+    issues.append(("error", "Query root does not belong to this dataset."))
+    return issues
+
+  seen: Set[int] = set()
+  stack: Set[int] = set()
+
+  def _node_label(n) -> str:
+    nm = getattr(n, "name", "") or ""
+    return nm or f"node:{getattr(n, 'id', '?')}"
+
+  def _validate_aggregate(node) -> None:
+    agg = getattr(node, "aggregate", None)
+    if not agg:
+      issues.append(("error", f"Aggregate node '{_node_label(node)}' has no aggregate details."))
+      return
+
+    # Input node existence
+    if not getattr(agg, "input_node_id", None):
+      issues.append(("error", f"Aggregate node '{_node_label(node)}' has no input_node."))
+      return
+
+    mode = (getattr(agg, "mode", "") or "").strip().lower()
+    group_keys = list(agg.group_keys.all().order_by("ordinal_position", "id"))
+    measures = list(agg.measures.all().order_by("ordinal_position", "id"))
+    input_cols = _infer_output_cols(agg.input_node) if getattr(agg, "input_node", None) else set()
+
+    allowed_kinds = allowed_function_kinds_for_dataset(td)
+
+    if not measures:
+      issues.append(("error", f"Aggregate node '{_node_label(node)}' has no measures."))
+
+    if mode != "global" and not group_keys:
+      issues.append(("error", f"Aggregate node '{_node_label(node)}' is grouped but has no group keys."))
+
+    # Basic name collision rules inside aggregate output
+    out_names: Set[str] = set()
+    for g in group_keys:
+      in_name = (getattr(g, "input_column_name", "") or "").strip()
+      if not in_name:
+        issues.append(("error", f"Aggregate group key in '{_node_label(node)}' has empty input_column_name."))
+        continue
+
+      if input_cols and in_name.lower() not in input_cols:
+        issues.append((
+          "error",
+          f"Aggregate node '{_node_label(node)}' references missing input column '{in_name}' in group keys."
+        ))
+
+      out_name = (getattr(g, "output_name", "") or "").strip() or in_name
+      key = out_name.lower()
+      if key in out_names:
+        issues.append(("error", f"Aggregate node '{_node_label(node)}' has duplicate output column '{out_name}'."))
+      out_names.add(key)
+
+    for m in measures:
+      out_name = (getattr(m, "output_name", "") or "").strip()
+      if not out_name:
+        issues.append(("error", f"Aggregate measure in '{_node_label(node)}' has empty output_name."))
+        continue
+      key = out_name.lower()
+      if key in out_names:
+        issues.append(("error", f"Aggregate node '{_node_label(node)}' has duplicate output column '{out_name}'."))
+      out_names.add(key)
+
+      fn = (getattr(m, "function", "") or "").strip()
+      if not fn:
+        issues.append(("error", f"Aggregate measure '{out_name}' in '{_node_label(node)}' has no function."))
+      else:
+        fn_upper = fn.upper()
+        # Aggregate measures are always aggregate functions by definition.
+        if "aggregate" not in allowed_kinds:
+          issues.append((
+            "error",
+            f"Aggregate functions are not allowed for schema '{td.target_schema.short_name}' "
+            f"(measure '{out_name}' uses '{fn_upper}')."
+          ))
+
+        # Determinism rule: STRING_AGG should define ordering
+        if fn_upper == "STRING_AGG":
+          delim = (getattr(m, "delimiter", "") or ",")
+          if delim == "":
+            issues.append((
+              "warning",
+              f"Measure '{out_name}' uses STRING_AGG with an empty delimiter."
+            ))
+
+          ob = getattr(m, "order_by", None)
+          if not ob:
+            issues.append((
+              "warning",
+              f"Measure '{out_name}' uses STRING_AGG without an explicit ORDER BY; results may be non-deterministic."
+            ))
+          else:
+            items = list(ob.items.all().order_by("ordinal_position", "id"))
+            if not items:
+              issues.append((
+                "error",
+                f"Measure '{out_name}' references ORDER BY '{ob.name}', but it has no items."
+              ))
+            else:
+              for it in items:
+                col = (it.input_column_name or "").strip()
+                if not col:
+                  issues.append((
+                    "error",
+                    f"ORDER BY '{ob.name}' contains an empty column name."
+                  ))
+                  continue
+                if input_cols and col.lower() not in input_cols:
+                  issues.append((
+                    "error",
+                    f"ORDER BY '{ob.name}' references missing input column '{col}' (used by measure '{out_name}')."
+                  ))
+
+      # COUNT(*) allowed via empty input column; otherwise require arg
+      in_col = (getattr(m, "input_column_name", "") or "").strip()
+      if fn.strip().upper() != "COUNT" and not in_col:
+        issues.append(("error", f"Aggregate measure '{out_name}' in '{_node_label(node)}' requires an input column."))
+
+      if in_col and input_cols and in_col.lower() not in input_cols:
+        issues.append((
+          "error",
+          f"Aggregate node '{_node_label(node)}' references missing input column '{in_col}' in measure '{out_name}'."
+        ))
+
+
+  def _validate_union(node) -> None:
+    un = getattr(node, "union", None)
+    if not un:
+      issues.append(("error", f"Union node '{_node_label(node)}' has no union details."))
+      return
+
+    out_cols = list(un.output_columns.all().order_by("ordinal_position", "id"))
+    if not out_cols:
+      issues.append(("error", f"Union node '{_node_label(node)}' has no output columns (schema contract required)."))
+      return
+
+    # Ensure output column names are unique (case-insensitive)
+    seen_names: Set[str] = set()
+    for oc in out_cols:
+      name = (getattr(oc, "name", "") or "").strip()
+      if not name:
+        issues.append(("error", f"Union node '{_node_label(node)}' has an empty output column name."))
+        continue
+      key = name.lower()
+      if key in seen_names:
+        issues.append(("error", f"Union node '{_node_label(node)}' has duplicate output column '{name}'."))
+      seen_names.add(key)
+
+    branches = list(un.branches.all().order_by("ordinal_position", "id"))
+    if not branches:
+      issues.append(("error", f"Union node '{_node_label(node)}' has no branches."))
+      return
+
+    # For each branch, ensure mappings cover all output columns exactly once.
+    out_ids = [oc.id for oc in out_cols]
+    for b in branches:
+      if not getattr(b, "input_node_id", None):
+        issues.append(("error", f"Union branch in '{_node_label(node)}' has no input_node."))
+        continue
+
+      branch_cols = _infer_output_cols(b.input_node)
+
+      mappings = list(b.mappings.select_related("output_column").all())
+      by_out: Dict[int, List[str]] = {}
+      for m in mappings:
+        oc_id = getattr(m, "output_column_id", None)
+        in_name = (getattr(m, "input_column_name", "") or "").strip()
+        if not oc_id:
+          issues.append(("error", f"Union branch {getattr(b,'id','?')} has mapping without output_column."))
+          continue
+        if not in_name:
+          issues.append(("error", f"Union branch {getattr(b,'id','?')} mapping for '{m.output_column.name}' has empty input_column_name."))
+          continue
+        if branch_cols and in_name.lower() not in branch_cols:
+          issues.append((
+            "error",
+            f"Union branch {getattr(b,'id','?')} references missing input column '{in_name}' for output '{m.output_column.name}'."
+          ))
+        by_out.setdefault(int(oc_id), []).append(in_name)
+
+      for oc in out_cols:
+        hits = by_out.get(int(oc.id), [])
+        if not hits:
+          issues.append(("error", f"Union branch {getattr(b,'id','?')} has no mapping for output column '{oc.name}'."))
+        elif len(hits) > 1:
+          issues.append(("error", f"Union branch {getattr(b,'id','?')} has multiple mappings for output column '{oc.name}'."))
+
+  def _walk(n) -> None:
+    nid = int(getattr(n, "id", 0) or 0)
+    if nid in stack:
+      issues.append(("error", f"Query graph cycle detected at '{_node_label(n)}'."))
+      return
+    if nid in seen:
+      return
+    seen.add(nid)
+    stack.add(nid)
+
+    ntype = (getattr(n, "node_type", "") or "").strip().lower()
+    if ntype == "select":
+      # Ensure select details exist
+      if not getattr(n, "select", None):
+        issues.append(("error", f"Select node '{_node_label(n)}' has no select details."))
+    elif ntype == "aggregate":
+      _validate_aggregate(n)
+      agg = getattr(n, "aggregate", None)
+      if agg and getattr(agg, "input_node", None):
+        _walk(agg.input_node)
+    elif ntype == "union":
+      _validate_union(n)
+      un = getattr(n, "union", None)
+      if un:
+        for b in un.branches.all():
+          if getattr(b, "input_node", None):
+            _walk(b.input_node)
+    elif ntype == "window":
+      w = getattr(n, "window", None)
+      if not w:
+        issues.append(("error", f"Window node '{_node_label(n)}' has no window details."))
+      else:
+        if not getattr(w, "input_node_id", None):
+          issues.append(("error", f"Window node '{_node_label(n)}' has no input_node."))
+        input_cols = _infer_output_cols(w.input_node) if getattr(w, "input_node", None) else set()
+
+        cols = list(w.columns.all().order_by("ordinal_position", "id"))
+        if not cols:
+          issues.append(("error", f"Window node '{_node_label(n)}' has no window output columns."))
+
+        for c in cols:
+          out_name = (c.output_name or "").strip()
+          fn = (c.function or "").strip().upper()
+          if not out_name:
+            issues.append(("error", f"Window column in '{_node_label(n)}' has empty output_name."))
+            continue
+          if fn == "ROW_NUMBER":
+            if not c.order_by:
+              issues.append(("warning", f"Window column '{out_name}' uses ROW_NUMBER without ORDER BY; results may be non-deterministic."))
+
+          spec = get_window_fn_spec(fn)
+          if not spec:
+            issues.append(("error", f"Unsupported window function '{fn}' (column '{out_name}')."))
+            _walk(w.input_node)
+            continue
+
+          args = list(c.args.all().order_by("ordinal_position", "id"))
+
+          if not (spec.min_args <= len(args) <= spec.max_args):
+            issues.append((
+              "error",
+              f"Window function {fn} expects {spec.min_args}..{spec.max_args} args, got {len(args)} (column '{out_name}')."
+            ))
+
+          # Validate positional arg types (where defined)
+          for idx, a in enumerate(args):
+            at = (a.arg_type or "").strip().lower()
+            if idx < len(spec.arg_schema):
+              allowed = spec.arg_schema[idx]
+              if at not in allowed:
+                issues.append((
+                  "error",
+                  f"Window function {fn} arg {idx+1} must be one of {allowed}, got '{at}' (column '{out_name}')."
+                ))
+
+            # extra numeric constraints
+            if fn == "NTILE" and at == "int" and a.int_value is not None and a.int_value <= 0:
+              issues.append(("error", f"Window function NTILE requires n > 0 (column '{out_name}')."))
+            if fn == "NTH_VALUE" and idx == 1 and at == "int" and a.int_value is not None and a.int_value <= 0:
+              issues.append(("error", f"Window function NTH_VALUE requires n > 0 (column '{out_name}')."))
+            if fn in ("LAG", "LEAD") and idx == 1 and at == "int" and a.int_value is not None and a.int_value < 0:
+              issues.append(("error", f"Window function {fn} offset must be >= 0 (column '{out_name}')."))
+
+            # Verify referenced columns exist in input projection
+            if at == "column":
+              nm = (a.column_name or "").strip()
+              if not nm:
+                issues.append(("error", f"Window function {fn} arg {idx+1} column name is empty (column '{out_name}')."))
+              elif input_cols and nm.lower() not in input_cols:
+                issues.append(("error", f"Window function {fn} arg references missing input column '{nm}' (used by '{out_name}')."))
+
+          if spec.requires_order_by and not c.order_by:
+            issues.append(("warning", f"Window column '{out_name}' uses {fn} without ORDER BY; results may be non-deterministic."))
+
+          if c.order_by:
+            items = list(c.order_by.items.all())
+            if not items:
+              issues.append(("error", f"Window column '{out_name}' references ORDER BY '{c.order_by.name}' with no items."))
+            for it in items:
+              nm = (it.input_column_name or "").strip()
+              if input_cols and nm.lower() not in input_cols:
+                issues.append(("error", f"ORDER BY '{c.order_by.name}' references missing input column '{nm}' (used by window column '{out_name}')."))
+          if c.partition_by:
+            items = list(c.partition_by.items.all())
+            if not items:
+              issues.append(("error", f"Window column '{out_name}' references PARTITION BY '{c.partition_by.name}' with no items."))
+            for it in items:
+              nm = (it.input_column_name or "").strip()
+              if input_cols and nm.lower() not in input_cols:
+                issues.append(("error", f"PARTITION BY '{c.partition_by.name}' references missing input column '{nm}' (used by window column '{out_name}')."))
+
+        _walk(w.input_node)
+    else:
+      issues.append(("error", f"Unsupported query node type '{ntype}' in '{_node_label(n)}'."))
+
+    stack.remove(nid)
+
+  _walk(query_root)
+
+  # Deduplicate messages (same level + same message)
+  seen_msgs: Set[Tuple[str, str]] = set()
+  out: List[Issue] = []
+  for lvl, msg in issues:
+    key = (lvl, msg)
+    if key in seen_msgs:
+      continue
+    seen_msgs.add(key)
+    out.append((lvl, msg))
+  return out

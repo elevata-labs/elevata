@@ -26,13 +26,25 @@ Contact: <https://github.com/elevata-labs/elevata>.
 {% block title %}{{ object }} · elevata{% endblock %}
 
 {% block content %}
-<div class="d-flex align-items-center justify-content-between mb-3">
+<div class="d-flex align-items-start justify-content-between mb-3 gap-3">
+  <!-- Left: title + actions -->
   <div class="d-flex align-items-center gap-2 flex-wrap">
-    <h1 class="h4 mb-0">{{ title|default:object }}</h1>
+    <h1 class="h4 mb-0">{{ title }}</h1>
+
+    {% if scoped_parent_is_query_builder and scoped_parent_url %}
+      <a
+        href="{{ scoped_parent_url }}"
+        class="btn btn-outline-secondary btn-sm d-inline-flex align-items-center gap-1"
+        title="Back to Query Builder"
+      >
+        <i class="bi bi-compass"></i>
+        Query builder
+      </a>
+    {% endif %}
 
     {% if object %}
       {% if model_name == 'system' or model_name == 'sourcedataset' or model_name == 'sourcedatasetgroup' or model_name == 'targetdataset' or model_name == 'targetdatasetreference' or model_name == 'targetdatasetjoin' %}
-        <nav class="subnav ms-2">
+        <nav class="subnav">
           {% if model_name == 'system' and object.is_source %}
             <a href="{% url 'sourcedataset_list' object.pk %}" class="btn btn-sm btn-outline-primary">
               <i class="bi bi-table"></i> Datasets
@@ -69,7 +81,18 @@ Contact: <https://github.com/elevata-labs/elevata>.
             <a href="{% url 'targetdataset_lineage' object.pk %}" class="btn btn-sm btn-outline-primary">
               <i class="bi bi-diagram-3"></i> Lineage
             </a>
-            {% if object.target_schema.short_name == "bizcore" %}
+            {% if object.target_schema.short_name in "bizcore serving" %}
+              <a href="{% url 'targetdataset_query_builder' object.pk %}" class="btn btn-sm btn-outline-primary">
+                <i class="bi bi-compass"></i> Query builder
+              </a>
+              <a href="{% url 'targetdataset_query_contract' object.pk %}" class="btn btn-sm btn-outline-primary">
+                <i class="bi bi-clipboard-check"></i> Query contract
+              </a>
+              {% if object.query_root %}
+                <a href="{% url 'targetdataset_query_tree' object.pk %}" class="btn btn-sm btn-outline-secondary">
+                  <i class="bi bi-diagram-3"></i> Query tree
+                </a>
+              {% endif %}
               <a href="{% url 'targetdatasetjoin_list' object.pk %}" class="btn btn-sm btn-outline-primary">
                 <i class="bi bi-sign-merge-left"></i> Joins
               </a>
@@ -90,309 +113,232 @@ Contact: <https://github.com/elevata-labs/elevata>.
       {% endif %}
     {% endif %}
 
-    <!-- Summary badges for SourceColumn -->
-    {% if object and model_name == 'sourcecolumn' %}
-      {% if object.primary_key_column %}
-        <span class="ec-chip ec-chip--pk ms-2" title="Primary key">PK</span>
-      {% endif %}
+    {% if object and model_name == 'sourcecolumn' and object.primary_key_column %}
+      <span class="ec-chip ec-chip--pk ms-2" title="Primary key">PK</span>
     {% endif %}
   </div>
 
-  <!-- top-align back button -->
-  {% if model_name == 'targetdatasetreference' %}
-    <!-- back to scoped References-List of the child dataset -->
-    <a class="btn btn-secondary btn-sm d-flex align-self-start"
-      href="{% url 'targetdatasetreference_list' object.referencing_dataset.pk %}">
-      <i class="bi bi-arrow-left"></i> Back
-    </a>
-  {% else %}
-    <a class="btn btn-secondary btn-sm d-flex align-self-start"
-      href="{% url model_name|add:'_list' %}">
-      <i class="bi bi-arrow-left"></i> Back
-    </a>
-  {% endif %}
-
-  {% if object and model_name == 'targetdatasetreference' and object.has_incomplete_bk_components %}
-    <div class="alert alert-danger mt-3">
-      <strong>Missing Business-Key components</strong>
-      <p class="mb-1">
-        This reference does not yet map all parent business key columns.
-        The surrogate foreign key will not be generated until the mapping is complete.
-      </p>
-      <ul class="mb-0">
-        {% for col in object.missing_bk_components %}
-          <li>{{ col }}</li>
-        {% endfor %}
-      </ul>
-    </div>
-  {% endif %}
+  <!-- Right: back button -->
+  <div class="d-flex align-items-start">
+    {% if model_name == 'targetdatasetreference' %}
+      <a class="btn btn-secondary btn-sm"
+         href="{% url 'targetdatasetreference_list' object.referencing_dataset.pk %}">
+        <i class="bi bi-arrow-left"></i> Back
+      </a>
+    {% else %}
+      <a class="btn btn-secondary btn-sm"
+         href="{% url model_name|add:'_list' %}">
+        <i class="bi bi-arrow-left"></i> Back
+      </a>
+    {% endif %}
   </div>
+</div>
 
-  <table class="table table-striped align-middle mb-4">
-    <tbody>
-      {% for field in fields %}
-        <tr>
-          <th style="width: 25%;">{{ field.verbose_name|capfirst }}</th>
-
-          <!-- Special rendering for 'type' with dialect badge + hint -->
-          {% if field.name == "type" %}
-            <td>
-              {{ object|attr:field.name }}
-              {% if model_name == 'system' and object.is_source %}
-                {% with level=object.type|support_level %}
-                  <span class="badge {{ level|support_badge_class }} ms-1">
-                    {{ level|support_label }}
-                  </span>
-                {% endwith %}
-              {% endif %}
-
-              <div id="type-hint"
-                   class="small text-muted mt-1"
-                   hx-get="{% url 'source_type_hint' %}"
-                   hx-trigger="load"
-                   hx-vals='{"type":"{{ object.type|default_if_none:"" }}"}'>
-              </div>
-            </td>
-
-          {% else %}
-            <td>{{ object|attr:field.name }}</td>
-          {% endif %}
-        </tr>
+{% if object and model_name == 'targetdataset' and object.has_incomplete_joins %}
+  <div class="alert alert-danger mt-3">
+    <strong>Missing joins</strong>
+    <p class="mb-1">
+      This dataset has multiple active inputs, but the join structure is incomplete.
+      SQL generation may fail or produce unintended results until joins are defined.
+    </p>
+    <ul class="mb-0">
+      {% for item in object.missing_join_inputs %}
+        <li>{{ item }}</li>
       {% endfor %}
+    </ul>
+  </div>
+{% endif %}
 
-      {% for field in many_to_many %}
-        <tr>
-          <th style="width: 25%;">{{ field.verbose_name|capfirst }}</th>
+{% if object and model_name == 'targetdatasetreference' and object.has_incomplete_bk_components %}
+  <div class="alert alert-danger mt-3">
+    <strong>Missing Business-Key components</strong>
+    <p class="mb-1">
+      This reference does not yet map all parent business key columns.
+      The surrogate foreign key will not be generated until the mapping is complete.
+    </p>
+    <ul class="mb-0">
+      {% for col in object.missing_bk_components %}
+        <li>{{ col }}</li>
+      {% endfor %}
+    </ul>
+  </div>
+{% endif %}
+
+<table class="table table-striped align-middle mb-4">
+  <tbody>
+    {% for field in fields %}
+      <tr>
+        <th style="width: 25%;">{{ field.verbose_name|capfirst }}</th>
+
+        <!-- Special rendering for 'type' with dialect badge + hint -->
+        {% if field.name == "type" %}
           <td>
-            {% with rel_mgr=object|attr:field.name %}
-              {% for rel_obj in rel_mgr.all %}
-                {{ rel_obj }}{% if not forloop.last %}, {% endif %}
-              {% empty %}
-                <span class="text-muted">–</span>
-              {% endfor %}
-            {% endwith %}
+            {{ object|attr:field.name }}
+            {% if model_name == 'system' and object.is_source %}
+              {% with level=object.type|support_level %}
+                <span class="badge {{ level|support_badge_class }} ms-1">
+                  {{ level|support_label }}
+                </span>
+              {% endwith %}
+            {% endif %}
+
+            <div id="type-hint"
+                  class="small text-muted mt-1"
+                  hx-get="{% url 'source_type_hint' %}"
+                  hx-trigger="load"
+                  hx-vals='{"type":"{{ object.type|default_if_none:"" }}"}'>
+            </div>
           </td>
-        </tr>
-      {% endfor %}
-    </tbody>
-  </table>
 
-  <!-- Import button for SourceDataset detail -->
-  {% if object and model_name == 'sourcedataset' %}
-    <hr>
-    {% if object.source_system.is_source and object.source_system.type|is_import_supported %}
-      <form class="mt-3 d-inline">
-        {% csrf_token %}
-        <label class="me-2">
-          <input type="checkbox" name="autointegrate_pk" checked> auto-integrate PK
-        </label>
-        <label class="me-2">
-          <input type="checkbox" name="reset_flags"> reset flags
-        </label>
+        {% else %}
+          <td>{{ object|attr:field.name }}</td>
+        {% endif %}
+      </tr>
+    {% endfor %}
 
-        <button
-          type="button"
-          class="btn btn-primary hx-trigger-btn"
-          hx-post="{% url 'sourcedataset_import_metadata' object.id %}"
-          hx-include="closest form"
-          hx-target="#feedback-{{ object.id }}"
-          hx-swap="innerHTML"
-          hx-on::before-request="this.setAttribute('disabled','disabled')"
-          hx-on::after-request="this.removeAttribute('disabled')"
-          hx-indicator="#loading-dataset-{{ object.id }}"
-        >
-          <i class="bi bi-arrow-repeat"></i>
-          Import metadata
-        </button>
-      </form>
+    {% for field in many_to_many %}
+      <tr>
+        <th style="width: 25%;">{{ field.verbose_name|capfirst }}</th>
+        <td>
+          {% with rel_mgr=object|attr:field.name %}
+            {% for rel_obj in rel_mgr.all %}
+              {{ rel_obj }}{% if not forloop.last %}, {% endif %}
+            {% empty %}
+              <span class="text-muted">–</span>
+            {% endfor %}
+          {% endwith %}
+        </td>
+      </tr>
+    {% endfor %}
+  </tbody>
+</table>
 
-      <!-- Indicator for this dataset import -->
-      <div id="loading-dataset-{{ object.id }}"
-           class="htmx-indicator mt-2"
-           style="display:none;">
-        <div class="spinner-border spinner-border-sm text-info me-2" role="status"></div>
-        <span class="text-muted small">Import running, please wait …</span>
-      </div>
+<!-- Import button for SourceDataset detail -->
+{% if object and model_name == 'sourcedataset' %}
+  <hr>
+  {% if object.source_system.is_source and object.source_system.type|is_import_supported %}
+    <form class="mt-3 d-inline">
+      {% csrf_token %}
+      <label class="me-2">
+        <input type="checkbox" name="autointegrate_pk" checked> auto-integrate PK
+      </label>
+      <label class="me-2">
+        <input type="checkbox" name="reset_flags"> reset flags
+      </label>
 
-      <!-- Import result -->
-      <div id="feedback-{{ object.id }}" class="mt-2"></div>
-
-    {% elif not object.source_system.is_source %}
-      <div class="alert alert-secondary mt-3 mb-0">
-        This system is not marked as a source (is_source = False) — automated metadata import
-        is only available for source systems.
-      </div>
-    {% else %}
-      <div class="alert alert-secondary mt-3 mb-0">
-        Manual source type — automated import is not available for
-        <strong>{{ object.source_system.type }}</strong>.
-      </div>
-    {% endif %}
-  {% endif %}
-  <!-- Import button for System detail -->
-  {% if object and model_name == 'system' %}
-    <hr>
-    {% if object.is_source and object.type|is_import_supported %}
-      <form class="mt-3 d-inline">
-        {% csrf_token %}
-        <label class="me-2">
-          <input type="checkbox" name="autointegrate_pk" checked> auto-integrate PK
-        </label>
-        <label class="me-2">
-          <input type="checkbox" name="reset_flags"> reset flags
-        </label>
-
-        <button
-          type="button"
-          class="btn btn-primary hx-trigger-btn"
-          hx-post="{% url 'sourcesystem_import_metadata' object.id %}"
-          hx-include="closest form"
-          hx-target="#system-feedback"
-          hx-swap="innerHTML"
-          hx-on::before-request="this.setAttribute('disabled','disabled')"
-          hx-on::after-request="this.removeAttribute('disabled')"
-          hx-indicator="#loading-system-{{ object.id }}"
-        >
-          <i class="bi bi-arrow-repeat"></i>
-          Import metadata for all datasets
-        </button>
-      </form>
-
-      <!-- Indicator for this system import -->
-      <div id="loading-system-{{ object.id }}"
-           class="htmx-indicator mt-2"
-           style="display:none;">
-        <div class="spinner-border spinner-border-sm text-info me-2" role="status"></div>
-        <span class="text-muted small">Import running, please wait …</span>
-      </div>
-
-      <!-- Import result -->
-      <div id="system-feedback" class="mt-3"></div>
-    {% elif not object.is_source %}
-      <div class="alert alert-secondary mt-3 mb-0">
-        This system is not marked as a source (is_source = False) — automated metadata import
-        is only available for source systems.
-      </div>
-    {% else %}
-      <div class="alert alert-secondary mt-3 mb-0">
-        Manual source type — automated import is not available for
-        <strong>{{ object.type }}</strong>.
-      </div>
-    {% endif %}
-  {% endif %}
-
-  <!-- SQL Preview for TargetDataset detail -->
-  {% if object and model_name == 'targetdataset' %}
-    <hr>
-
-    <div class="mt-3 d-flex flex-wrap align-items-center gap-3">
-
-      <!-- Dialect selector -->
-      <div class="d-flex align-items-center">
-        <label for="sql-dialect-select" class="me-2 mb-0 small">
-          SQL dialect:
-        </label>
-        <select
-          id="sql-dialect-select"
-          name="dialect"
-          class="form-select form-select-sm"
-          style="width:auto; min-width: 140px;"
-          hx-get="{% url 'targetdataset_sql_preview' object.id %}"
-          hx-target="#sql-preview"
-          hx-swap="innerHTML"
-          hx-include="#sql-dialect-select"
-          hx-trigger="change"
-        >
-          {% for name in SQL_DIALECT_CHOICES %}
-            <option value="{{ name }}"
-              {% if name == SQL_DIALECT_ACTIVE %}selected{% endif %}
-            >
-              {{ name|upper }}
-            </option>
-          {% endfor %}
-        </select>
-      </div>
-
-      <!-- Full SQL -->
       <button
         type="button"
-        class="btn btn-primary btn-sm"
-        hx-get="{% url 'targetdataset_sql_preview' object.id %}"
-        hx-target="#sql-preview"
+        class="btn btn-primary hx-trigger-btn"
+        hx-post="{% url 'sourcedataset_import_metadata' object.id %}"
+        hx-include="closest form"
+        hx-target="#feedback-{{ object.id }}"
         hx-swap="innerHTML"
-        hx-include="#sql-dialect-select"
         hx-on::before-request="this.setAttribute('disabled','disabled')"
         hx-on::after-request="this.removeAttribute('disabled')"
-        hx-indicator="#loading-sql-{{ object.id }}"
+        hx-indicator="#loading-dataset-{{ object.id }}"
       >
-        <i class="bi bi-infinity"></i>
-        Full SQL
+        <i class="bi bi-arrow-repeat"></i>
+        Import metadata
       </button>
+    </form>
 
-      <!-- Incremental MERGE -->
-      <button
-        type="button"
-        class="btn btn-primary btn-sm"
-        {% if not object.is_incremental or object.incremental_strategy != 'merge' %}disabled{% endif %}
-        hx-get="{% url 'targetdataset_merge_sql_preview' object.id %}"
-        hx-target="#sql-preview"
-        hx-swap="innerHTML"
-        hx-include="#sql-dialect-select"
-        hx-on::before-request="this.setAttribute('disabled','disabled')"
-        hx-on::after-request="this.removeAttribute('disabled')"
-        hx-indicator="#loading-sql-{{ object.id }}"
-      >
-        <i class="bi bi-diagram-3"></i>
-        Incremental MERGE
-      </button>
-
-      <!-- Delete detection -->
-      <button
-        type="button"
-        class="btn btn-primary btn-sm"
-        {% if not object.is_incremental or not object.handle_deletes %}disabled{% endif %}
-        hx-get="{% url 'targetdataset_delete_sql_preview' object.id %}"
-        hx-target="#sql-preview"
-        hx-swap="innerHTML"
-        hx-include="#sql-dialect-select"
-        hx-on::before-request="this.setAttribute('disabled','disabled')"
-        hx-on::after-request="this.removeAttribute('disabled')"
-        hx-indicator="#loading-sql-{{ object.id }}"
-      >
-        <i class="bi bi-trash3"></i>
-        Delete Detection
-      </button>
-
-      <!-- Loading indicator -->
-      <div id="loading-sql-{{ object.id }}"
+    <!-- Indicator for this dataset import -->
+    <div id="loading-dataset-{{ object.id }}"
           class="htmx-indicator mt-2"
           style="display:none;">
-        <div class="spinner-border spinner-border-sm text-info me-2" role="status"></div>
-        <span class="text-muted small">Building SQL …</span>
-      </div>
+      <div class="spinner-border spinner-border-sm text-info me-2" role="status"></div>
+      <span class="text-muted small">Import running, please wait …</span>
     </div>
 
-    <!-- Container that receives the rendered SQL -->
-    <div id="sql-preview" class="mt-3"></div>
-  {% endif %}
+    <!-- Import result -->
+    <div id="feedback-{{ object.id }}" class="mt-2"></div>
 
-  {% if related_objects %}
-    <h5 class="mt-4 mb-3">Related Data</h5>
-    {% for label, items in related_objects %}
-      <div class="mb-3">
-        <strong>{{ label }}</strong>
-        {% if items %}
-          <ul class="mb-0">
-            {% for item in items %}
-              <li>{{ item }}</li>
-            {% empty %}
-              <li><em>No related records</em></li>
-            {% endfor %}
-          </ul>
-        {% else %}
-          <p class="text-muted mb-0">–</p>
-        {% endif %}
-      </div>
-    {% endfor %}
+  {% elif not object.source_system.is_source %}
+    <div class="alert alert-secondary mt-3 mb-0">
+      This system is not marked as a source (is_source = False) — automated metadata import
+      is only available for source systems.
+    </div>
+  {% else %}
+    <div class="alert alert-secondary mt-3 mb-0">
+      Manual source type — automated import is not available for
+      <strong>{{ object.source_system.type }}</strong>.
+    </div>
   {% endif %}
+{% endif %}
+<!-- Import button for System detail -->
+{% if object and model_name == 'system' %}
+  <hr>
+  {% if object.is_source and object.type|is_import_supported %}
+    <form class="mt-3 d-inline">
+      {% csrf_token %}
+      <label class="me-2">
+        <input type="checkbox" name="autointegrate_pk" checked> auto-integrate PK
+      </label>
+      <label class="me-2">
+        <input type="checkbox" name="reset_flags"> reset flags
+      </label>
+
+      <button
+        type="button"
+        class="btn btn-primary hx-trigger-btn"
+        hx-post="{% url 'sourcesystem_import_metadata' object.id %}"
+        hx-include="closest form"
+        hx-target="#system-feedback"
+        hx-swap="innerHTML"
+        hx-on::before-request="this.setAttribute('disabled','disabled')"
+        hx-on::after-request="this.removeAttribute('disabled')"
+        hx-indicator="#loading-system-{{ object.id }}"
+      >
+        <i class="bi bi-arrow-repeat"></i>
+        Import metadata for all datasets
+      </button>
+    </form>
+
+    <!-- Indicator for this system import -->
+    <div id="loading-system-{{ object.id }}"
+          class="htmx-indicator mt-2"
+          style="display:none;">
+      <div class="spinner-border spinner-border-sm text-info me-2" role="status"></div>
+      <span class="text-muted small">Import running, please wait …</span>
+    </div>
+
+    <!-- Import result -->
+    <div id="system-feedback" class="mt-3"></div>
+  {% elif not object.is_source %}
+    <div class="alert alert-secondary mt-3 mb-0">
+      This system is not marked as a source (is_source = False) — automated metadata import
+      is only available for source systems.
+    </div>
+  {% else %}
+    <div class="alert alert-secondary mt-3 mb-0">
+      Manual source type — automated import is not available for
+      <strong>{{ object.type }}</strong>.
+    </div>
+  {% endif %}
+{% endif %}
+
+<!-- SQL Preview for TargetDataset detail -->
+{% if object and model_name == 'targetdataset' %}
+  {% include "metadata/partials/_targetdataset_sql_preview_panel.html" %}
+{% endif %}
+
+{% if related_objects %}
+  <h5 class="mt-4 mb-3">Related Data</h5>
+  {% for label, items in related_objects %}
+    <div class="mb-3">
+      <strong>{{ label }}</strong>
+      {% if items %}
+        <ul class="mb-0">
+          {% for item in items %}
+            <li>{{ item }}</li>
+          {% empty %}
+            <li><em>No related records</em></li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p class="text-muted mb-0">–</p>
+      {% endif %}
+    </div>
+  {% endfor %}
+{% endif %}
 {% endblock %}

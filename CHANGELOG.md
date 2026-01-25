@@ -22,6 +22,44 @@ This project adheres to [Semantic Versioning](https://semver.org/) and [Keep a C
 
 ---
 
+## [1.0.0] - 2026-01-25 — First stable release
+
+This release marks the **first stable, backwards-compatible version** of elevata.
+
+elevata has evolved from a SQL generation layer into a **metadata-driven, deterministic data platform engine**.  
+From this version onwards, interfaces, metadata structures and execution semantics are considered stable.
+
+### ✨ Highlights
+
+#### 🪄 Query Builder (Major Feature)
+- Explicit, metadata-driven **query planning** with SELECT, AGGREGATE, WINDOW and UNION nodes  
+- Deterministic query execution via a formal **Query Tree**  
+- Clear separation between **query structure** and generated SQL  
+- Guided UI for building and evolving queries without writing SQL  
+- SQL preview reflects the *exact* executed query
+
+#### 🧠 Query Contracts
+- Explicit, inspectable **output schema contracts**  
+- Field-level validation and error reporting  
+- Early detection of incompatible unions, missing mappings and invalid transformations
+
+#### 🧬 Lineage & Explainability
+- End-to-end lineage across datasets, fields and query nodes  
+- Full traceability from source to serving layer  
+- Query tree visualization for complex transformations
+
+#### 🔒 Determinism & Governance
+- Deterministic execution guarantees for aggregates and window functions  
+- ORDER BY / PARTITION BY governance with clear warnings and errors  
+- Clear distinction between execution errors and policy violations
+
+#### 🧩 Platform Maturity
+- Stable execution semantics  
+- Backwards compatibility guarantees from this release onwards  
+- Foundation for orchestration and governance integrations in future releases
+
+---
+
 ## [0.9.1] – 2026-01-14
 
 ### ✨ Improved

@@ -1,6 +1,6 @@
-<!--
+"""
 elevata - Metadata-driven Data Platform Framework
-Copyright © 2025 Ilona Tag
+Copyright © 2025-2026 Ilona Tag
 
 This file is part of elevata.
 
@@ -18,24 +18,22 @@ You should have received a copy of the GNU Affero General Public License
 along with elevata. If not, see <https://www.gnu.org/licenses/>.
 
 Contact: <https://github.com/elevata-labs/elevata>.
--->
+"""
 
-{% extends "base.html" %}
+def test_query_tree_allowed_for_dataset_only_bizcore_and_serving():
+  from metadata.generation.policies import query_tree_allowed_for_dataset
 
-{% block title %}{{ title }} · elevata{% endblock %}
+  class FakeSchema:
+    def __init__(self, short_name):
+      self.short_name = short_name
 
-{% block content %}
-<h1 class="h4 mb-3">{{ title }}</h1>
+  class FakeTD:
+    def __init__(self, short_name):
+      self.target_schema = FakeSchema(short_name)
 
-<div class="alert alert-warning">
-  Do you really want to delete „<strong>{{ object }}</strong>“? This action cannot be undone.
-</div>
+  assert query_tree_allowed_for_dataset(FakeTD("bizcore")) is True
+  assert query_tree_allowed_for_dataset(FakeTD("serving")) is True
 
-<form method="post">
-  {% csrf_token %}
-  <div class="page-actions">
-    <button class="btn btn-danger" type="submit">Yes, delete</button>
-    <a class="btn btn-secondary" href="{{ cancel_url|default:'javascript:history.back()' }}">Cancel</a>
-  </div>
-</form>
-{% endblock %}
+  assert query_tree_allowed_for_dataset(FakeTD("raw")) is False
+  assert query_tree_allowed_for_dataset(FakeTD("rawcore")) is False
+  assert query_tree_allowed_for_dataset(FakeTD("stage")) is False

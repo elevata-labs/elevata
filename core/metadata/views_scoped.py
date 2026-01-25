@@ -19,11 +19,23 @@ along with elevata. If not, see <https://www.gnu.org/licenses/>.
 
 Contact: <https://github.com/elevata-labs/elevata>.
 """
-from django.http import HttpResponse, HttpResponseNotFound, Http404
-from django.shortcuts import render
-from django.urls import reverse, reverse_lazy
+
+from django import forms
+from django.apps import apps
+from django.contrib import messages
+from django.db import transaction
 from django.forms import widgets as wdg
+from django.http import HttpResponse, HttpResponseNotFound, Http404
+from django.shortcuts import render, get_object_or_404, redirect
+from django.urls import reverse, reverse_lazy
+from django.utils.translation import gettext_lazy as _
+from crum import get_current_user
 from generic import GenericCRUDView
+from metadata.generation.policies import (
+  query_tree_allowed_for_dataset,
+  query_tree_mutations_allowed_for_dataset,
+  query_tree_mutation_block_reason,
+)
 from metadata.forms import TargetColumnForm
 from metadata.models import (
   # Target-side
@@ -36,6 +48,23 @@ from metadata.models import (
   TargetDatasetReferenceComponent,
   TargetDatasetJoin, 
   TargetDatasetJoinPredicate,
+  # Query-side (bizcore/serving)
+  QueryNode,
+  QuerySelectNode,
+  QueryAggregateNode,
+  QueryAggregateGroupKey,
+  QueryAggregateMeasure,
+  OrderByExpression,
+  OrderByItem,
+  QueryUnionNode,
+  QueryUnionOutputColumn,
+  QueryUnionBranch,
+  QueryUnionBranchMapping,
+  QueryWindowNode,
+  QueryWindowColumn,
+  QueryWindowColumnArg,
+  PartitionByExpression,
+  PartitionByItem,
   # Source-side
   System,
   SourceDataset,
@@ -45,6 +74,137 @@ from metadata.models import (
   SourceDatasetOwnership,
   SourceDatasetIncrementPolicy,
 )
+
+
+QUERY_SCOPED_MODEL_NAMES = {
+  "QueryNode",
+  "QuerySelectNode",
+  "QueryAggregateNode",
+  "QueryAggregateGroupKey",
+  "QueryAggregateMeasure",
+  "OrderByExpression",
+  "OrderByItem",
+  "QueryUnionNode",
+  "QueryUnionOutputColumn",
+  "QueryUnionBranch",
+  "QueryUnionBranchMapping",
+  "QueryWindowNode",
+  "QueryWindowColumn",
+  "QueryWindowColumnArg",
+  "PartitionByExpression",
+  "PartitionByItem",
+}
+
+
+def _is_query_scoped_model(model) -> bool:
+  try:
+    return model.__name__ in QUERY_SCOPED_MODEL_NAMES
+  except Exception:
+    return False
+
+
+def _get_query_builder_dataset(parent_obj):
+  """
+  Return the owning TargetDataset for query-scoped objects so scoped views can
+  reliably link back to the Query Builder (instead of an unrelated detail page).
+  """
+  if parent_obj is None:
+    return None
+
+  if isinstance(parent_obj, TargetDataset):
+    return parent_obj
+
+  if isinstance(parent_obj, QueryNode):
+    return getattr(parent_obj, "target_dataset", None)
+
+  if isinstance(parent_obj, (QuerySelectNode, QueryAggregateNode, QueryUnionNode, QueryWindowNode)):
+    node = getattr(parent_obj, "node", None)
+    return getattr(node, "target_dataset", None) if node is not None else None
+
+  if isinstance(parent_obj, (QueryAggregateGroupKey, QueryAggregateMeasure)):
+    agg = getattr(parent_obj, "aggregate_node", None)
+    node = getattr(agg, "node", None) if agg is not None else None
+    return getattr(node, "target_dataset", None) if node is not None else None
+
+  if isinstance(parent_obj, (QueryUnionOutputColumn, QueryUnionBranch)):
+    un = getattr(parent_obj, "union_node", None)
+    node = getattr(un, "node", None) if un is not None else None
+    return getattr(node, "target_dataset", None) if node is not None else None
+
+  if isinstance(parent_obj, QueryUnionBranchMapping):
+    br = getattr(parent_obj, "branch", None)
+    un = getattr(br, "union_node", None) if br is not None else None
+    node = getattr(un, "node", None) if un is not None else None
+    return getattr(node, "target_dataset", None) if node is not None else None
+
+  if isinstance(parent_obj, QueryWindowColumn):
+    wn = getattr(parent_obj, "window_node", None)
+    node = getattr(wn, "node", None) if wn is not None else None
+    return getattr(node, "target_dataset", None) if node is not None else None
+
+  if isinstance(parent_obj, QueryWindowColumnArg):
+    wc = getattr(parent_obj, "window_column", None)
+    wn = getattr(wc, "window_node", None) if wc is not None else None
+    node = getattr(wn, "node", None) if wn is not None else None
+    return getattr(node, "target_dataset", None) if node is not None else None
+
+  if isinstance(parent_obj, (OrderByExpression, PartitionByExpression)):
+    return getattr(parent_obj, "target_dataset", None)
+
+  if isinstance(parent_obj, OrderByItem):
+    ob = getattr(parent_obj, "order_by", None)
+    return getattr(ob, "target_dataset", None) if ob is not None else None
+
+  if isinstance(parent_obj, PartitionByItem):
+    pb = getattr(parent_obj, "partition_by", None)
+    return getattr(pb, "target_dataset", None) if pb is not None else None
+
+  return None
+
+
+def _candidate_column_names_for_targetdataset(td, query_node=None):  
+  """
+  Best-effort list of column names to help users pick input_column_name fields.
+  Prefers inferred query contract if available; falls back to dataset columns.
+  If query_node is provided, infer columns from that node's contract (preferred).  
+  """
+  # 1) Try inferred contract (if the helper exists in your codebase)
+  try:
+    from metadata.generation.query_contract import infer_query_node_contract
+    root = query_node or getattr(td, "query_root", None)
+    if root:
+      contract = infer_query_node_contract(root)
+      cols = getattr(contract, "output_columns", None) or getattr(contract, "columns", None) or []
+      cols = [str(c) for c in cols]
+      if cols:
+        return cols
+  except Exception:
+    pass
+
+  # 2) Fallback: use TargetColumns of the dataset (if present)
+  cols = []
+  try:
+    for c in td.columns.all():
+      name = getattr(c, "target_column_name", "") or getattr(c, "name", "")
+      if name:
+        cols.append(name)
+  except Exception:
+    pass
+  return cols
+
+
+def _select_widget_from_columns(cols):
+  cols = cols or []
+  # de-dup but keep order
+  seen = set()
+  out = []
+  for c in cols:
+    c = str(c)
+    if c and c not in seen:
+      seen.add(c)
+      out.append(c)
+  choices = [("", "---------")] + [(c, c) for c in out]
+  return forms.Select(choices=choices)
 
 
 class _ScopedChildView(GenericCRUDView):
@@ -64,6 +224,109 @@ class _ScopedChildView(GenericCRUDView):
 
   route_name = None
   parent_model = None
+  page_title = None
+  page_title_singular = None
+
+
+  def _guard_query_mutation_or_redirect(self, request):
+    """
+    Block create/edit/delete/toggle for query-scoped models if:
+    - dataset is not allowed for query logic (raw/stage/rawcore), OR
+    - downstream datasets depend on it (contract-changing).
+    Returns an HttpResponse redirect if blocked, else None.
+    """
+    if not _is_query_scoped_model(self.model):
+      return None
+
+    parent_obj = None
+    try:
+      parent_obj = self.get_parent_object()
+    except Exception:
+      parent_obj = None
+
+    td = _get_query_builder_dataset(parent_obj)
+    if td is None:
+      return None
+
+    # Layer restriction (hard rule)
+    if not query_tree_allowed_for_dataset(td):
+      messages.error(request, query_tree_mutation_block_reason(td))
+      return redirect("targetdataset_query_builder", td.pk)
+
+    # Downstream restriction (contract safety)
+    if not query_tree_mutations_allowed_for_dataset(td):
+      messages.error(request, query_tree_mutation_block_reason(td))
+      return redirect("targetdataset_query_builder", td.pk)
+
+    return None
+
+
+  def _apply_scoped_nav_context(self, ctx):
+    """
+    Ensure scoped list/edit/detail pages can always navigate back to the owning Query Builder
+    (instead of unrelated/unscoped pages).
+    """
+    parent_obj = self.get_parent_object()
+
+    ctx["parent_pk"] = self.get_parent_pk()
+    ctx["parent"] = parent_obj if parent_obj is not None else None
+
+    # Defaults: show breadcrumb to *parent* unless we can point higher (Query Builder)
+    ctx["scoped_parent_label"] = str(parent_obj) if parent_obj is not None else ""
+    ctx["scoped_parent_url"] = None
+    ctx["scoped_parent_is_query_builder"] = False
+    ctx["scoped_query_dataset_pk"] = None
+
+    if parent_obj is not None:
+      # Special cases where the parent does NOT have a global detail route,
+      # but is managed via a scoped list.
+      try:
+        from metadata.models import TargetDatasetReference, TargetDatasetJoin
+      except Exception:
+        TargetDatasetReference = None
+        TargetDatasetJoin = None
+
+      if TargetDatasetReference is not None and isinstance(parent_obj, TargetDatasetReference):
+        # References are scoped under the referencing dataset
+        try:
+          ctx["scoped_parent_url"] = reverse(
+            "targetdatasetreference_list",
+            args=[parent_obj.referencing_dataset_id],
+          )
+        except Exception:
+          pass
+
+      elif TargetDatasetJoin is not None and isinstance(parent_obj, TargetDatasetJoin):
+        # Joins are scoped under the target dataset
+        try:
+          ctx["scoped_parent_url"] = reverse(
+            "targetdatasetjoin_list",
+            args=[parent_obj.target_dataset_id],
+          )
+        except Exception:
+          pass
+
+      # Fallback: parent's detail route (only if still unresolved)
+      if ctx["scoped_parent_url"] is None:
+        parent_model_name = parent_obj.__class__.__name__.lower()
+        for route in (f"{parent_model_name}_detail", f"{parent_model_name}_detail_scoped"):
+          try:
+            ctx["scoped_parent_url"] = reverse(route, args=[parent_obj.pk])
+            break
+          except Exception:
+            # IMPORTANT: don't overwrite a previously valid URL
+            continue
+
+    # Query-scoped navigation: prefer owning dataset's Query Builder.
+    query_ds = _get_query_builder_dataset(parent_obj)
+    if query_ds is not None:
+      ctx["scoped_parent_label"] = str(query_ds)
+      ctx["scoped_parent_url"] = reverse("targetdataset_query_builder", args=[query_ds.pk])
+      ctx["scoped_parent_is_query_builder"] = True
+      ctx["scoped_query_dataset_pk"] = query_ds.pk
+
+    return ctx
+
 
   def get_parent_pk(self):
     """Return the parent object's primary key from URL kwargs."""
@@ -94,6 +357,10 @@ class _ScopedChildView(GenericCRUDView):
       else:
         qs = qs.order_by("id")
 
+    title = self.model._meta.verbose_name_plural.title()
+    if getattr(self, "page_title", None):
+      title = self.page_title
+
     ctx = {
       "model": self.model,
       "objects": qs,
@@ -101,25 +368,13 @@ class _ScopedChildView(GenericCRUDView):
       "model_name": self.model._meta.model_name,
       "model_class_name": self.model.__name__,
       "meta": self.model._meta,
-      "title": self.model._meta.verbose_name_plural.title(),
+      "title": title,      
       "auto_filter_cfgs": auto_filter_cfgs,
       "active_filters": active_filters,
     }
 
-    # Scoped additions
-    ctx["parent_pk"] = self.get_parent_pk()
-    parent_obj = self.get_parent_object()
-    if parent_obj is not None:
-      ctx["parent"] = parent_obj
-
-    # Breadcrumbs (must be here because list() renders get_context_base() directly)
-    ctx["scoped_parent_label"] = str(parent_obj)
-
-    parent_model_name = parent_obj.__class__.__name__.lower()
-    try:
-      ctx["scoped_parent_url"] = reverse(f"{parent_model_name}_detail", args=[parent_obj.pk])
-    except Exception:
-      ctx["scoped_parent_url"] = None
+    # Scoped breadcrumb/query-builder nav for LIST pages
+    self._apply_scoped_nav_context(ctx)
 
     # expose detail_route_name so row.html can build a scoped detail_url
     detail_route_name = getattr(self, "detail_route_name", None)
@@ -127,6 +382,111 @@ class _ScopedChildView(GenericCRUDView):
       ctx["detail_route_name"] = detail_route_name
       
     return ctx
+  
+
+  def edit(self, request, pk=None):
+    """
+    Same as GenericCRUDView.edit(), but:
+    - Cancel returns to the scoped list (same parent)
+    - Context includes scoped breadcrumb + Query Builder navigation
+    """
+    obj = get_object_or_404(self.model, pk=pk) if pk else None
+    FormClass = self.get_form_class()
+    if request.method == "POST":
+      blocked = self._guard_query_mutation_or_redirect(request)
+      if blocked is not None:
+        return blocked
+      form = FormClass(request.POST, instance=obj)
+      self.apply_system_managed_locking(form, obj)
+      form = self.enhance_form(form)
+      if form.is_valid():
+        instance = form.save(commit=False)
+        user = get_current_user() or request.user
+        self._set_audit_fields(instance, user, pk is None)
+        self.enforce_system_managed_integrity(instance)
+
+        try:
+          model_name = instance.__class__.__name__
+          is_query_relevant = model_name.startswith("Query") or model_name.startswith("OrderBy") or model_name.startswith("PartitionBy")
+          if is_query_relevant:
+            # resolve owning dataset
+            td = getattr(instance, "target_dataset", None)
+            if td is None:
+              node = getattr(instance, "node", None)
+              td = getattr(node, "target_dataset", None) if node is not None else None
+            if td is None:
+              parent_obj = self.get_parent_object()
+              td = _get_query_builder_dataset(parent_obj)
+
+            if td is not None:
+              # Only bizcore/serving may define custom query logic
+              if query_tree_allowed_for_dataset(td):
+                TargetDatasetInput = apps.get_model("metadata", "TargetDatasetInput")
+                qs = TargetDatasetInput.objects.filter(upstream_target_dataset=td)
+                if hasattr(TargetDatasetInput, "active"):
+                  qs = qs.filter(active=True)
+                if qs.exists():
+                  messages.error(request, _("Blocked: downstream datasets depend on this dataset (see Lineage)."))
+                  return redirect(self.get_success_url())
+        except Exception:
+          pass
+
+        instance.save()
+        messages.success(request, _("Saved successfully."))
+        return redirect(self.get_success_url())
+    else:
+      data = request.GET if request.GET else None
+      form = FormClass(data=data, instance=obj)
+      self.apply_system_managed_locking(form, obj)
+      form = self.enhance_form(form)
+
+    form = self._apply_autofocus(form)
+
+    title = _("Edit") if pk else _("Create")
+    if getattr(self, "page_title_singular", None):
+      title = f"{title} {self.page_title_singular}"
+
+    context = {
+      "form": form,
+      "object": obj,
+      "model": self.model,
+      "title": title,
+      "cancel_url": self.get_success_url(),
+    }
+    self._apply_scoped_nav_context(context)
+    return render(request, self.template_form, context)
+
+  def detail(self, request, pk):
+    """
+    Same as GenericCRUDView.detail(), but includes scoped breadcrumb + Query Builder navigation.
+    """
+    obj = get_object_or_404(self.model, pk=pk)
+    excluded = {"id", "created_at", "created_by", "updated_at", "updated_by", "lineage_key", "former_names"}
+
+    clean_rows = []
+    for f in self.model._meta.fields:
+      if f.name not in excluded:
+        raw_value = getattr(obj, f.name, "")
+        display_value = "" if raw_value is None else raw_value
+        clean_rows.append((f, display_value))
+
+    title = f"{self.model._meta.verbose_name.title()} Details"
+    if getattr(self, "page_title_singular", None):
+      title = f"{self.page_title_singular} details"
+
+    context = {
+      "object": obj,
+      "model": self.model,
+      "model_name": self.model._meta.model_name,
+      "title": title,
+      "fields": [f for f in self.model._meta.fields if f.name not in excluded],
+      "rows": clean_rows,
+      "many_to_many": [f for f in self.model._meta.many_to_many if f.name not in excluded],
+      "related_objects": self.get_related_objects(obj),
+    }
+    self._apply_scoped_nav_context(context)
+    return render(request, "generic/detail.html", context)
+
 
   def _remove_parent_fk_from_form(self, form):
     """
@@ -147,7 +507,6 @@ class _ScopedChildView(GenericCRUDView):
         continue
       w = field.widget
       # skip hidden/checkbox
-      from django.forms import widgets as wdg
       if isinstance(w, (wdg.HiddenInput, wdg.CheckboxInput)):
         continue
       if w.attrs.get("readonly") or w.attrs.get("disabled"):
@@ -171,6 +530,10 @@ class _ScopedChildView(GenericCRUDView):
     when rendering the inline form (row_form.html). This is critical
     for child tables that must maintain a parent reference.
     """
+    blocked = self._guard_query_mutation_or_redirect(request)
+    if blocked is not None:
+      return blocked
+
     if self.is_creation_blocked_for_model():
       blocked_ctx = {
         "fields": self.get_list_fields(),
@@ -211,6 +574,9 @@ class _ScopedChildView(GenericCRUDView):
     # Note: parent FK is injected into POST in row_create(), so it doesn't need to be in the form.
     form = self._remove_parent_fk_from_form(form)
 
+    # Apply autofocus BEFORE building ctx so templates receive the final widget attrs
+    form = self._apply_autofocus(form)    
+
     ctx = {
       "model": self.model,
       "meta": self.model._meta,
@@ -226,8 +592,6 @@ class _ScopedChildView(GenericCRUDView):
     parent_obj = self.get_parent_object()
     if parent_obj is not None:
       ctx["parent"] = parent_obj
-
-    form = self._apply_autofocus(form)
 
     return render(request, "generic/row_form.html", ctx, status=200)
 
@@ -253,6 +617,10 @@ class _ScopedChildView(GenericCRUDView):
       - set audit fields
       - return row.html with all required context keys
     """
+    blocked = self._guard_query_mutation_or_redirect(request)
+    if blocked is not None:
+      return blocked
+
     if request.method != "POST":
       return HttpResponseNotFound("POST required")
 
@@ -341,6 +709,11 @@ class _ScopedChildView(GenericCRUDView):
       - audit fields
       - returning full row.html context
     """
+
+    blocked = self._guard_query_mutation_or_redirect(request)
+    if blocked is not None:
+      return blocked
+
     try:
       instance = self.model.objects.get(pk=pk)
     except self.model.DoesNotExist:
@@ -366,6 +739,9 @@ class _ScopedChildView(GenericCRUDView):
       parent_obj = self.get_parent_object()
       self._bind_parent_on_instance(form.instance, parent_obj)
 
+      # Apply autofocus BEFORE ctx so the template sees the final attrs
+      form = self._apply_autofocus(form)      
+
       ctx = {
         "model": self.model,
         "meta": self.model._meta,
@@ -381,8 +757,6 @@ class _ScopedChildView(GenericCRUDView):
       parent_obj = self.get_parent_object()
       if parent_obj is not None:
         ctx["parent"] = parent_obj
-
-      form = self._apply_autofocus(form)
 
       return render(request, "generic/row_form.html", ctx, status=200)
 
@@ -430,6 +804,8 @@ class _ScopedChildView(GenericCRUDView):
         return render(request, "generic/row.html", ctx, status=200)
 
       # invalid -> send edit form with errors
+      form = self._apply_autofocus(form)
+
       ctx = {
         "model": self.model,
         "meta": self.model._meta,
@@ -449,12 +825,73 @@ class _ScopedChildView(GenericCRUDView):
 
     return HttpResponseNotFound("Unsupported method for row_edit")
 
+
+  def row_delete(self, request, pk):
+    blocked = self._guard_query_mutation_or_redirect(request)
+    if blocked is not None:
+      return blocked
+
+    # If we delete a QueryNode that is currently used as td.query_root,
+    # we must "rewind" td.query_root to the node's input to avoid silently
+    # disabling custom query logic.
+    try:
+      obj = self.model.objects.get(pk=pk)
+    except self.model.DoesNotExist:
+      return HttpResponseNotFound("Row not found")
+
+    if obj.__class__.__name__ == "QueryNode":
+      td = getattr(obj, "target_dataset", None)
+      if td is not None:
+        obj_id = getattr(obj, "id", None)
+        is_root = (getattr(td, "query_root_id", None) == obj_id)
+        is_head = (getattr(td, "query_head_id", None) == obj_id)
+
+        if is_root or is_head:
+          next_root = None
+          ntype = (getattr(obj, "node_type", "") or "").strip().lower()
+
+          if ntype == "window":
+            w = getattr(obj, "window", None)
+            next_root = getattr(w, "input_node", None) if w is not None else None
+          elif ntype == "aggregate":
+            a = getattr(obj, "aggregate", None)
+            next_root = getattr(a, "input_node", None) if a is not None else None
+          elif ntype == "union":
+            un = getattr(obj, "union", None)
+            if un is not None:
+              b = un.branches.all().order_by("ordinal_position", "id").first()
+              next_root = getattr(b, "input_node", None) if b is not None else None
+          else:
+            next_root = None
+
+          with transaction.atomic():
+            update_fields = []
+            # query_head drives SQL generation
+            if is_head:
+              td.query_head = next_root
+              update_fields.append("query_head")
+
+            # query_root is the base-select anchor. Only update it if we delete the root itself.
+            if is_root:
+              td.query_root = next_root
+              update_fields.append("query_root")
+
+            if update_fields:
+              td.save(update_fields=update_fields)
+
+    return super().row_delete(request, pk)
+
+
   def row_toggle(self, request, pk):
     """
     Inline toggle of a boolean field (e.g. 'integrate') in a scoped list.
     Expects POST with {"field": "<fieldname>"}.
     Returns the updated <tr> (row.html).
     """
+    blocked = self._guard_query_mutation_or_redirect(request)
+    if blocked is not None:
+      return blocked
+
     if request.method != "POST":
       return HttpResponseNotFound("POST required")
 
@@ -876,8 +1313,9 @@ class TargetDatasetJoinScopedView(_ScopedChildView):
 
   def get_parent_object(self):
     parent = super().get_parent_object()
-    if parent and parent.target_schema.short_name != "bizcore":
-      raise Http404("Joins are only available for Bizcore datasets.")
+    if parent and parent.target_schema.short_name not in ("bizcore", "serving"):
+      raise Http404("Joins are only available for Bizcore/Serving datasets.")
+
     return parent
 
 
@@ -919,3 +1357,435 @@ class TargetDatasetJoinPredicateScopedView(_ScopedChildView):
     ctx["scoped_parent_url"] = reverse("targetdatasetjoin_list", args=[parent_join.target_dataset_id]) 
 
     return ctx
+
+
+# -------------------------------------------------------------------
+# Query scoped views (UI/CRUD support, excluded from main menu)
+# -------------------------------------------------------------------
+class QueryNodeScopedView(_ScopedChildView):
+  model = QueryNode
+  parent_model = TargetDataset
+  route_name = "querynode_list"
+  detail_route_name = "querynode_detail_scoped"
+  page_title = "Query nodes"
+  page_title_singular = "Query node"
+
+  def get_queryset(self):
+    # select_related to avoid N+1 when building summaries
+    return (
+      self.model.objects
+      .filter(target_dataset_id=self.get_parent_pk())
+      .select_related("window", "aggregate", "union", "select")
+      .order_by("id")
+    )
+
+  def get_context_base(self, request):
+    ctx = super().get_context_base(request)
+    # Build lightweight summaries for UX ("what did I configure here?")
+    summaries = {}
+    for n in ctx.get("objects", []):
+      parts = []
+      try:
+        nt = getattr(n, "node_type", "") or ""
+        if nt == "select":
+          parts.append("base select")
+
+        elif nt == "window":
+          w = getattr(n, "window", None)
+          if w is not None:
+            cols_qs = getattr(w, "columns", None)
+            c_cnt = cols_qs.filter(active=True).count() if cols_qs is not None else 0
+            parts.append(f"columns: {c_cnt}")
+            if c_cnt:
+              first = cols_qs.filter(active=True).order_by("ordinal_position").first()
+              if first is not None:
+                out = (getattr(first, "output_name", "") or "").strip()
+                if out:
+                  parts.append(f"e.g. {out}")
+
+        elif nt == "aggregate":
+          a = getattr(n, "aggregate", None)
+          if a is not None:
+            gk_qs = getattr(a, "group_keys", None)
+            m_qs = getattr(a, "measures", None)
+            gk_cnt = gk_qs.filter(active=True).count() if gk_qs is not None else 0
+            m_cnt = m_qs.filter(active=True).count() if m_qs is not None else 0
+            parts.append(f"group keys: {gk_cnt}")
+            parts.append(f"measures: {m_cnt}")
+
+        elif nt == "union":
+          u = getattr(n, "union", None)
+          if u is not None:
+            b_qs = getattr(u, "branches", None)
+            o_qs = getattr(u, "output_columns", None)
+            b_cnt = b_qs.filter(active=True).count() if b_qs is not None else 0
+            o_cnt = o_qs.filter(active=True).count() if o_qs is not None else 0
+            parts.append(f"branches: {b_cnt}")
+            parts.append(f"outputs: {o_cnt}")
+      except Exception:
+        pass
+
+      if parts:
+        summaries[n.pk] = " · ".join([p for p in parts if p])
+
+    ctx["node_summaries"] = summaries
+    return ctx
+  
+
+class QuerySelectNodeScopedView(_ScopedChildView):
+  model = QuerySelectNode
+  parent_model = QueryNode
+  route_name = "queryselectnode_list"
+  detail_route_name = "queryselectnode_detail_scoped"
+  page_title = "Select operator"
+  page_title_singular = "Select operator"
+
+  def get_queryset(self):
+    return self.model.objects.filter(node_id=self.get_parent_pk()).select_related("node").order_by("id")
+
+
+class QueryAggregateNodeScopedView(_ScopedChildView):
+  model = QueryAggregateNode
+  parent_model = QueryNode
+  route_name = "queryaggregatenode_list"
+  detail_route_name = "queryaggregatenode_detail_scoped"
+  page_title = "Aggregate operator"
+  page_title_singular = "Aggregate operator"
+
+  def get_queryset(self):
+    return self.model.objects.filter(node_id=self.get_parent_pk()).select_related("node", "input_node").order_by("id")
+
+
+class QueryAggregateGroupKeyScopedView(_ScopedChildView):
+  model = QueryAggregateGroupKey
+  parent_model = QueryAggregateNode
+  route_name = "queryaggregategroupkey_list"
+  detail_route_name = "queryaggregategroupkey_detail_scoped"
+  page_title = "Aggregate group keys"
+  page_title_singular = "Aggregate group key"
+
+  def get_queryset(self):
+    return self.model.objects.filter(aggregate_node_id=self.get_parent_pk()).order_by("ordinal_position", "id")
+  
+  def enhance_form(self, form):
+    form = super().enhance_form(form)
+    try:
+      parent = self.get_parent_object()  # QueryAggregateNode
+      td = _get_query_builder_dataset(parent)
+      input_node = getattr(parent, "input_node", None)
+      if td and "input_column_name" in form.fields:
+        cols = _candidate_column_names_for_targetdataset(td, query_node=input_node)
+        form.fields["input_column_name"].widget = _select_widget_from_columns(cols)
+    except Exception:
+      pass
+    return form
+
+
+class QueryAggregateMeasureScopedView(_ScopedChildView):
+  model = QueryAggregateMeasure
+  parent_model = QueryAggregateNode
+  route_name = "queryaggregatemeasure_list"
+  detail_route_name = "queryaggregatemeasure_detail_scoped"
+  page_title = "Aggregate measures"
+  page_title_singular = "Aggregate measure"
+
+  def get_queryset(self):
+    return self.model.objects.filter(aggregate_node_id=self.get_parent_pk()).select_related("order_by").order_by("ordinal_position", "id")
+  
+  def enhance_form(self, form):
+    form = super().enhance_form(form)
+    try:
+      parent = self.get_parent_object()  # QueryAggregateNode
+      td = _get_query_builder_dataset(parent)
+      input_node = getattr(parent, "input_node", None)
+      # Some implementations call it input_column_name, others source_column_name etc.
+      for fname in ("input_column_name", "source_column_name"):
+        if td and fname in form.fields:
+          cols = _candidate_column_names_for_targetdataset(td, query_node=input_node)
+          form.fields[fname].widget = _select_widget_from_columns(cols)
+    except Exception:
+      pass
+    return form
+  
+
+class OrderByExpressionScopedView(_ScopedChildView):
+  model = OrderByExpression
+  parent_model = TargetDataset
+  route_name = "orderbyexpression_list"
+  detail_route_name = "orderbyexpression_detail_scoped"
+  page_title = "Order by definitions"
+  page_title_singular = "Order by definition"
+
+  def get_queryset(self):
+    return self.model.objects.filter(target_dataset_id=self.get_parent_pk()).order_by("name", "id")
+
+  def row_create(self, request):
+    """
+    HTMX inline-create: after creating an OrderByExpression, immediately jump
+    into the items editor (OrderByItem scoped list).
+    """
+    if request.method != "POST":
+      return HttpResponseNotFound("POST required")
+
+    if self.is_creation_blocked_for_model():
+      return HttpResponse(status=204)
+
+    FormClass = self.get_form_class()
+    post = request.POST.copy()
+    # parent = TargetDataset
+    parent_fk = self._get_parent_relation_field_name()
+    if parent_fk and not post.get(parent_fk):
+      post[parent_fk] = str(self.get_parent_pk())
+
+    form = FormClass(post)
+    self.apply_system_managed_locking(form, instance=None)
+    form = self.enhance_form(form)
+    form = self._remove_parent_fk_from_form(form)
+
+    parent_obj = self.get_parent_object()
+    self._bind_parent_on_instance(form.instance, parent_obj)
+
+    if form.is_valid():
+      obj = form.save(commit=False)
+      user = getattr(request, "user", None)
+      self._set_audit_fields(obj, user, is_new=True)
+      if hasattr(obj, "is_system_managed"):
+        obj.is_system_managed = False
+      self.enforce_system_managed_integrity(obj)
+      obj.save()
+
+      redirect_url = reverse("orderbyitem_list", kwargs={"parent_pk": obj.pk})
+      resp = HttpResponse(status=204)
+      resp["HX-Redirect"] = redirect_url
+      return resp
+
+    # invalid -> keep inline editor open
+    ctx = {
+      "model": self.model,
+      "meta": self.model._meta,
+      "form": form,
+      "object": None,
+      "fields": self.get_list_fields(),
+      "model_name": self.model._meta.model_name,
+      "model_class_name": self.model.__name__,
+      "is_new": True,
+      "parent_pk": self.get_parent_pk(),
+    }
+    parent_obj = self.get_parent_object()
+    if parent_obj is not None:
+      ctx["parent"] = parent_obj
+    return render(request, "generic/row_form.html", ctx, status=200)
+
+
+class OrderByItemScopedView(_ScopedChildView):
+  model = OrderByItem
+  parent_model = OrderByExpression
+  route_name = "orderbyitem_list"
+  detail_route_name = "orderbyitem_detail_scoped"
+  page_title = "Order by items"
+  page_title_singular = "Order by item"
+
+  def get_queryset(self):
+    return self.model.objects.filter(order_by_id=self.get_parent_pk()).order_by("ordinal_position", "id")
+  
+  def enhance_form(self, form):
+    form = super().enhance_form(form)
+    try:
+      parent = self.get_parent_object()  # OrderByExpression
+      td = getattr(parent, "target_dataset", None)
+      if td and "input_column_name" in form.fields:
+        cols = _candidate_column_names_for_targetdataset(td)
+        form.fields["input_column_name"].widget = _select_widget_from_columns(cols)
+    except Exception:
+      pass
+    return form
+
+
+class QueryUnionNodeScopedView(_ScopedChildView):
+  model = QueryUnionNode
+  parent_model = QueryNode
+  route_name = "queryunionnode_list"
+  detail_route_name = "queryunionnode_detail_scoped"
+  page_title = "UNION operator"
+  page_title_singular = "UNION operator"
+
+  def get_queryset(self):
+    return self.model.objects.filter(node_id=self.get_parent_pk()).select_related("node").order_by("id")
+
+
+class QueryUnionOutputColumnScopedView(_ScopedChildView):
+  model = QueryUnionOutputColumn
+  parent_model = QueryUnionNode
+  route_name = "queryunionoutputcolumn_list"
+  detail_route_name = "queryunionoutputcolumn_detail_scoped"
+  page_title = "UNION output columns"
+  page_title_singular = "UNION output column"
+
+  def get_queryset(self):
+    return self.model.objects.filter(union_node_id=self.get_parent_pk()).order_by("ordinal_position", "id")
+
+
+class QueryUnionBranchScopedView(_ScopedChildView):
+  model = QueryUnionBranch
+  parent_model = QueryUnionNode
+  route_name = "queryunionbranch_list"
+  detail_route_name = "queryunionbranch_detail_scoped"
+  page_title = "UNION branches"
+  page_title_singular = "UNION branch"
+
+  def get_queryset(self):
+    return self.model.objects.filter(union_node_id=self.get_parent_pk()).select_related("input_node").order_by("ordinal_position", "id")
+
+
+class QueryUnionBranchMappingScopedView(_ScopedChildView):
+  model = QueryUnionBranchMapping
+  parent_model = QueryUnionBranch
+  route_name = "queryunionbranchmapping_list"
+  detail_route_name = "queryunionbranchmapping_detail_scoped"
+  page_title = "UNION branch mappings"
+  page_title_singular = "UNION branch mapping"
+
+  def get_queryset(self):
+    return self.model.objects.filter(branch_id=self.get_parent_pk()).select_related("output_column").order_by("id")
+  
+  def enhance_form(self, form):
+    form = super().enhance_form(form)
+    try:
+      parent = self.get_parent_object()  # QueryUnionBranch
+      td = _get_query_builder_dataset(parent)
+      input_node = getattr(parent, "input_node", None)
+      if td:
+        for fname in ("input_column_name", "source_column_name"):
+          if fname in form.fields:
+            cols = _candidate_column_names_for_targetdataset(td, query_node=input_node)
+            form.fields[fname].widget = _select_widget_from_columns(cols)
+    except Exception:
+      pass
+    return form
+
+
+class QueryWindowNodeScopedView(_ScopedChildView):
+  model = QueryWindowNode
+  parent_model = QueryNode
+  route_name = "querywindownode_list"
+  detail_route_name = "querywindownode_detail_scoped"
+  page_title = "Window operator"
+  page_title_singular = "Window operator"
+
+  def get_queryset(self):
+    return self.model.objects.filter(node_id=self.get_parent_pk()).select_related("node", "input_node").order_by("id")
+
+
+class PartitionByExpressionScopedView(_ScopedChildView):
+  model = PartitionByExpression
+  parent_model = TargetDataset
+  route_name = "partitionbyexpression_list"
+  detail_route_name = "partitionbyexpression_detail_scoped"
+  page_title = "Partition by definitions"
+  page_title_singular = "Partition by definition"
+
+  def get_queryset(self):
+    return self.model.objects.filter(target_dataset_id=self.get_parent_pk()).order_by("name", "id")
+
+  def row_create(self, request):
+    """
+    HTMX inline-create: after creating a PartitionByExpression, immediately jump
+    into the items editor (PartitionByItem scoped list).
+    """
+    if request.method != "POST":
+      return HttpResponseNotFound("POST required")
+
+    if self.is_creation_blocked_for_model():
+      return HttpResponse(status=204)
+
+    FormClass = self.get_form_class()
+    post = request.POST.copy()
+    parent_fk = self._get_parent_relation_field_name()
+    if parent_fk and not post.get(parent_fk):
+      post[parent_fk] = str(self.get_parent_pk())
+
+    form = FormClass(post)
+    self.apply_system_managed_locking(form, instance=None)
+    form = self.enhance_form(form)
+    form = self._remove_parent_fk_from_form(form)
+
+    parent_obj = self.get_parent_object()
+    self._bind_parent_on_instance(form.instance, parent_obj)
+
+    if form.is_valid():
+      obj = form.save(commit=False)
+      user = getattr(request, "user", None)
+      self._set_audit_fields(obj, user, is_new=True)
+      if hasattr(obj, "is_system_managed"):
+        obj.is_system_managed = False
+      self.enforce_system_managed_integrity(obj)
+      obj.save()
+
+      redirect_url = reverse("partitionbyitem_list", kwargs={"parent_pk": obj.pk})
+      resp = HttpResponse(status=204)
+      resp["HX-Redirect"] = redirect_url
+      return resp
+
+    ctx = {
+      "model": self.model,
+      "meta": self.model._meta,
+      "form": form,
+      "object": None,
+      "fields": self.get_list_fields(),
+      "model_name": self.model._meta.model_name,
+      "model_class_name": self.model.__name__,
+      "is_new": True,
+      "parent_pk": self.get_parent_pk(),
+    }
+    parent_obj = self.get_parent_object()
+    if parent_obj is not None:
+      ctx["parent"] = parent_obj
+    return render(request, "generic/row_form.html", ctx, status=200)
+
+
+class PartitionByItemScopedView(_ScopedChildView):
+  model = PartitionByItem
+  parent_model = PartitionByExpression
+  route_name = "partitionbyitem_list"
+  detail_route_name = "partitionbyitem_detail_scoped"
+  page_title = "Partition by items"
+  page_title_singular = "Partition by item"
+
+  def get_queryset(self):
+    return self.model.objects.filter(partition_by_id=self.get_parent_pk()).order_by("ordinal_position", "id")
+  
+  def enhance_form(self, form):
+    form = super().enhance_form(form)
+    try:
+      parent = self.get_parent_object()  # PartitionByExpression
+      td = getattr(parent, "target_dataset", None)
+      if td and "input_column_name" in form.fields:
+        cols = _candidate_column_names_for_targetdataset(td)
+        form.fields["input_column_name"].widget = _select_widget_from_columns(cols)
+    except Exception:
+      pass
+    return form
+
+
+class QueryWindowColumnScopedView(_ScopedChildView):
+  model = QueryWindowColumn
+  parent_model = QueryWindowNode
+  route_name = "querywindowcolumn_list"
+  detail_route_name = "querywindowcolumn_detail_scoped"
+  page_title = "Window columns"
+  page_title_singular = "Window column"
+
+  def get_queryset(self):
+    return self.model.objects.filter(window_node_id=self.get_parent_pk()).select_related("order_by", "partition_by").order_by("ordinal_position", "id")
+
+
+class QueryWindowColumnArgScopedView(_ScopedChildView):
+  model = QueryWindowColumnArg
+  parent_model = QueryWindowColumn
+  route_name = "querywindowcolumnarg_list"
+  detail_route_name = "querywindowcolumnarg_detail_scoped"
+  page_title = "Window function arguments"
+  page_title_singular = "Window function argument"
+
+  def get_queryset(self):
+    return self.model.objects.filter(window_column_id=self.get_parent_pk()).order_by("ordinal_position", "id")

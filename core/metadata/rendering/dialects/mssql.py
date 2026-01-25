@@ -466,6 +466,18 @@ class MssqlDialect(SqlDialect):
 
     raise TypeError(f"Unsupported literal type for MssqlDialect: {type(value)}")
 
+
+  def render_string_agg(self, args) -> str:
+    if len(args) < 2:
+      raise ValueError("STRING_AGG requires at least 2 arguments: value, delimiter.")
+    value_sql = self.render_expr(args[0])
+    delim_sql = self.render_expr(args[1])
+    if len(args) >= 3 and args[2] is not None:
+      order_by_sql = self.render_expr(args[2])
+      return f"STRING_AGG({value_sql}, {delim_sql}) WITHIN GROUP (ORDER BY {order_by_sql})"
+    return f"STRING_AGG({value_sql}, {delim_sql})"
+
+
   def cast_expression(self, expr: str, target_type: str) -> str:
     return f"CAST({expr} AS {target_type})"
 

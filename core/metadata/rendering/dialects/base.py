@@ -23,6 +23,7 @@ Contact: <https://github.com/elevata-labs/elevata>.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from typing import Sequence, Any, Dict, Optional
 
 import datetime
@@ -36,11 +37,13 @@ from ..expr import (
   Expr,
   FuncCall,
   Literal,
+  OrderByExpr,
+  OrderByClause,
   RawSql,
   WindowFunction,
   WindowSpec,
 )
-from ..logical_plan import Join, LogicalSelect, SelectItem, SourceTable, SubquerySource
+from ..logical_plan import Join, LogicalSelect, LogicalUnion, SelectItem, SourceTable, SubquerySource
 
 from metadata.system.introspection import read_table_metadata
 from metadata.materialization.logging import LOAD_RUN_SNAPSHOT_REGISTRY
@@ -81,6 +84,25 @@ class SqlDialect(ABC):
   # 1. Class meta / capabilities
   # ---------------------------------------------------------------------------
   DIALECT_NAME = "base"
+
+  @dataclass(frozen=True)
+  class FunctionSpec:
+    name: str
+    kind: str  # "scalar" | "aggregate" | "window"
+
+  BASE_FUNCTION_REGISTRY = {
+    # Aggregates
+    "SUM": FunctionSpec("SUM", "aggregate"),
+    "COUNT": FunctionSpec("COUNT", "aggregate"),
+    "COUNT_DISTINCT": FunctionSpec("COUNT_DISTINCT", "aggregate"),
+    "MIN": FunctionSpec("MIN", "aggregate"),
+    "MAX": FunctionSpec("MAX", "aggregate"),
+    "AVG": FunctionSpec("AVG", "aggregate"),
+    "STRING_AGG": FunctionSpec("STRING_AGG", "aggregate"),
+
+    # Windows (already in AST: WindowFunction, but FuncCall can still appear)
+    "ROW_NUMBER": FunctionSpec("ROW_NUMBER", "window"),
+  }
 
   @property
   def supports_merge(self) -> bool:
@@ -679,6 +701,18 @@ class SqlDialect(ABC):
       rendered_parts = [self.render_expr(p) for p in expr.parts]
       return self.concat_expression(rendered_parts)
     
+    if isinstance(expr, OrderByExpr):
+      dir_sql = (expr.direction or "ASC").strip().upper()
+      if dir_sql not in ("ASC", "DESC"):
+        raise ValueError(f"Invalid ORDER BY direction: {dir_sql}")
+      inner_sql = self.render_expr(expr.expr)
+      return f"{inner_sql} {dir_sql}"
+
+    if isinstance(expr, OrderByClause):
+      if not expr.items:
+        raise ValueError("ORDER BY clause requires at least one item.")
+      return ", ".join(self.render_expr(i) for i in expr.items)
+
     if isinstance(expr, FuncCall):
       fn = (expr.name or "").strip()
       fn_lc = fn.lower()
@@ -689,7 +723,19 @@ class SqlDialect(ABC):
       if fn_lc in ("hash256", "sha256") and len(args) == 1:
         return self.hash_expression(self.render_expr(args[0]), algo="sha256")
 
-      args_sql = ", ".join(self.render_expr(a) for a in args)
+      args_sql_list = [self.render_expr(a) for a in args]
+      args_sql = ", ".join(args_sql_list)
+
+      # COUNT_DISTINCT(x) -> COUNT(DISTINCT x)
+      if fn == "COUNT_DISTINCT":
+        if len(args) != 1:
+          raise ValueError("COUNT_DISTINCT requires exactly one argument.")
+        return f"COUNT(DISTINCT {args_sql_list[0]})"
+
+      # STRING_AGG(value, delimiter[, order_by]) -> dialect-specific rendering
+      if fn == "STRING_AGG":
+        return self.render_string_agg(args)
+
       return f"{fn}({args_sql})"
 
     if isinstance(expr, WindowFunction):
@@ -709,6 +755,26 @@ class SqlDialect(ABC):
 
     # Fallback: attempt stringification (kept permissive for DSL growth)
     return str(expr)
+
+
+  def render_string_agg(self, args) -> str:
+    """
+    Render STRING_AGG in a dialect-friendly way.
+    Signature: STRING_AGG(value, delimiter, order_by_expr?)
+    Default: STRING_AGG(value, delimiter) (no ORDER BY support).
+    Dialects may override to support ORDER BY.
+    """
+    if len(args) < 2:
+      raise ValueError("STRING_AGG requires at least 2 arguments: value, delimiter.")
+    value_sql = self.render_expr(args[0])
+    delim_sql = self.render_expr(args[1])
+    # optional order_by expr
+    if len(args) >= 3 and args[2] is not None:
+      # Base dialect does not implement order-by inside aggregation
+      order_by_sql = self.render_expr(args[2])
+      raise ValueError("STRING_AGG with ORDER BY is not supported by this dialect.")
+    return f"STRING_AGG({value_sql}, {delim_sql})"
+
 
   def render_select(self, select: LogicalSelect) -> str:
     items_sql: list[str] = []
@@ -776,6 +842,21 @@ class SqlDialect(ABC):
 
     return "\n".join(sql)
 
+
+  def render_plan(self, plan) -> str:
+    """
+    Render a logical plan into SQL.
+    Needed for subqueries that may contain a LogicalUnion.
+    """
+    if isinstance(plan, LogicalSelect):
+      return self.render_select(plan)
+    if isinstance(plan, LogicalUnion):
+      rendered_parts = [self.render_select(sel) for sel in plan.selects]
+      separator = f"\nUNION {plan.union_type}\n"
+      return separator.join(rendered_parts)
+    raise TypeError(f"Unsupported logical plan type: {type(plan).__name__}")
+
+
   def _render_from_item(self, item: SourceTable | SubquerySource) -> str:
     if isinstance(item, SourceTable):
       schema = getattr(item, "schema_name", None)
@@ -789,7 +870,7 @@ class SqlDialect(ABC):
         return f"{tbl} AS {self.render_identifier(item.alias)}"
       return tbl
     if isinstance(item, SubquerySource):
-      inner = self.render_select(item.select)
+      inner = self.render_plan(item.select)
       if item.alias:
         alias = self.render_identifier(item.alias)
         return f"(\n{inner}\n) AS {alias}"

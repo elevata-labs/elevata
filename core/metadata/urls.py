@@ -41,6 +41,23 @@ from .views_scoped import (
   TargetDatasetReferenceComponentScopedView,
   TargetDatasetJoinScopedView,
   TargetDatasetJoinPredicateScopedView,
+  # Query models
+  QueryNodeScopedView,
+  QuerySelectNodeScopedView,
+  QueryAggregateNodeScopedView,
+  QueryAggregateGroupKeyScopedView,
+  QueryAggregateMeasureScopedView,
+  OrderByExpressionScopedView,
+  OrderByItemScopedView,
+  QueryUnionNodeScopedView,
+  QueryUnionOutputColumnScopedView,
+  QueryUnionBranchScopedView,
+  QueryUnionBranchMappingScopedView,
+  QueryWindowNodeScopedView,
+  QueryWindowColumnScopedView,
+  QueryWindowColumnArgScopedView,
+  PartitionByExpressionScopedView,
+  PartitionByItemScopedView,
   # Source side
   SourceSystemDatasetScopedView,
   SourceDatasetColumnScopedView,
@@ -160,58 +177,36 @@ urlpatterns += [
 # --------------------------------------------------------------------
 
 scoped_views = {
-  "targetdataset/<int:parent_pk>/inputs/": (
-    TargetDatasetInputScopedView,
-    "targetdatasetinput",
-  ),
-  "targetdataset/<int:parent_pk>/columns/": (
-    TargetColumnScopedView,
-    "targetcolumn",
-  ),
-  "targetdataset/<int:parent_pk>/references/": (
-    TargetDatasetReferenceScopedView,
-    "targetdatasetreference",
-  ),
-  "targetdatasetreference/<int:parent_pk>/components/": (
-    TargetDatasetReferenceComponentScopedView,
-    "targetdatasetreferencecomponent",
-  ),
-  "targetcolumn/<int:parent_pk>/inputs/": (
-    TargetColumnInputScopedView,
-    "targetcolumninput",
-  ),
-  "targetdataset/<int:parent_pk>/ownerships/": (
-    TargetDatasetOwnershipScopedView,
-    "targetdatasetownership",
-  ),
-  "sourcesystem/<int:parent_pk>/datasets/": (
-    SourceSystemDatasetScopedView,
-    "sourcedataset",
-  ),
-  "sourcedataset/<int:parent_pk>/columns/": (
-    SourceDatasetColumnScopedView,
-    "sourcecolumn",
-  ),
-  "sourcedatasetgroup/<int:parent_pk>/memberships/": (
-    SourceDatasetGroupMembershipScopedView,
-    "sourcedatasetgroupmembership",
-  ),
-  "sourcedataset/<int:parent_pk>/ownerships/": (
-    SourceDatasetOwnershipScopedView,
-    "sourcedatasetownership",
-  ),
-  "sourcedataset/<int:parent_pk>/increment-policies/": (
-    SourceDatasetIncrementPolicyScopedView,
-    "sourcedatasetincrementpolicy",
-  ),
-  "targetdataset/<int:parent_pk>/joins/": (
-    TargetDatasetJoinScopedView,
-    "targetdatasetjoin",
-  ),
-  "targetdatasetjoin/<int:parent_pk>/predicates/": (
-    TargetDatasetJoinPredicateScopedView,
-    "targetdatasetjoinpredicate",
-  ),
+  "targetdataset/<int:parent_pk>/inputs/": (TargetDatasetInputScopedView, "targetdatasetinput"),
+  "targetdataset/<int:parent_pk>/columns/": (TargetColumnScopedView, "targetcolumn"),
+  "targetdataset/<int:parent_pk>/references/": (TargetDatasetReferenceScopedView, "targetdatasetreference"),
+  "targetdatasetreference/<int:parent_pk>/components/": (TargetDatasetReferenceComponentScopedView, "targetdatasetreferencecomponent"),
+  "targetcolumn/<int:parent_pk>/inputs/": (TargetColumnInputScopedView, "targetcolumninput"),
+  "targetdataset/<int:parent_pk>/ownerships/": (TargetDatasetOwnershipScopedView, "targetdatasetownership"),
+  "sourcesystem/<int:parent_pk>/datasets/": (SourceSystemDatasetScopedView, "sourcedataset"),
+  "sourcedataset/<int:parent_pk>/columns/": (SourceDatasetColumnScopedView, "sourcecolumn"),
+  "sourcedatasetgroup/<int:parent_pk>/memberships/": (SourceDatasetGroupMembershipScopedView, "sourcedatasetgroupmembership"),
+  "sourcedataset/<int:parent_pk>/ownerships/": (SourceDatasetOwnershipScopedView, "sourcedatasetownership"),
+  "sourcedataset/<int:parent_pk>/increment-policies/": (SourceDatasetIncrementPolicyScopedView, "sourcedatasetincrementpolicy"),
+  "targetdataset/<int:parent_pk>/joins/": (TargetDatasetJoinScopedView, "targetdatasetjoin"),
+  "targetdatasetjoin/<int:parent_pk>/predicates/": (TargetDatasetJoinPredicateScopedView, "targetdatasetjoinpredicate"),
+  # Query models (scoped CRUD)
+  "targetdataset/<int:parent_pk>/query/nodes/": (QueryNodeScopedView, "querynode"),
+  "querynode/<int:parent_pk>/select/": (QuerySelectNodeScopedView, "queryselectnode"),
+  "querynode/<int:parent_pk>/aggregate/": (QueryAggregateNodeScopedView, "queryaggregatenode"),
+  "queryaggregatenode/<int:parent_pk>/group-keys/": (QueryAggregateGroupKeyScopedView, "queryaggregategroupkey"),
+  "queryaggregatenode/<int:parent_pk>/measures/": (QueryAggregateMeasureScopedView, "queryaggregatemeasure"),
+  "targetdataset/<int:parent_pk>/query/order-bys/": (OrderByExpressionScopedView, "orderbyexpression"),
+  "orderbyexpression/<int:parent_pk>/items/": (OrderByItemScopedView, "orderbyitem"),
+  "querynode/<int:parent_pk>/union/": (QueryUnionNodeScopedView, "queryunionnode"),
+  "queryunionnode/<int:parent_pk>/output-columns/": (QueryUnionOutputColumnScopedView, "queryunionoutputcolumn"),
+  "queryunionnode/<int:parent_pk>/branches/": (QueryUnionBranchScopedView, "queryunionbranch"),
+  "queryunionbranch/<int:parent_pk>/mappings/": (QueryUnionBranchMappingScopedView, "queryunionbranchmapping"),
+  "querynode/<int:parent_pk>/window/": (QueryWindowNodeScopedView, "querywindownode"),
+  "querywindownode/<int:parent_pk>/columns/": (QueryWindowColumnScopedView, "querywindowcolumn"),
+  "querywindowcolumn/<int:parent_pk>/args/": (QueryWindowColumnArgScopedView, "querywindowcolumnarg"),
+  "targetdataset/<int:parent_pk>/query/partition-bys/": (PartitionByExpressionScopedView, "partitionbyexpression"),
+  "partitionbyexpression/<int:parent_pk>/items/": (PartitionByItemScopedView, "partitionbyitem"),
 }
 
 for base_path, (view, prefix) in scoped_views.items():
@@ -237,6 +232,15 @@ urlpatterns += [
   path("target-datasets/<int:pk>/sql/merge/", views.targetdataset_merge_sql_preview, name="targetdataset_merge_sql_preview"),
   path("target-datasets/<int:pk>/sql/delete/", views.targetdataset_delete_sql_preview, name="targetdataset_delete_sql_preview"),
   path("target-datasets/<int:pk>/lineage/", views.targetdataset_lineage, name="targetdataset_lineage"),
+  path("target-datasets/<int:pk>/query-builder/", views.targetdataset_query_builder, name="targetdataset_query_builder"),
+  path("target-datasets/<int:pk>/query-builder/create-root/", views.targetdataset_create_query_root, name="targetdataset_create_query_root"),
+  path("metadata/target-datasets/<int:pk>/query/reset-root/", views.targetdataset_reset_query_root, name="targetdataset_reset_query_root"),
+  path("metadata/target-datasets/<int:pk>/query/add-window/", views.targetdataset_add_window_node, name="targetdataset_add_window_node"),
+  path("metadata/target-datasets/<int:pk>/query/add-aggregate/", views.targetdataset_add_aggregate_node, name="targetdataset_add_aggregate_node"),
+  path("metadata/target-datasets/<int:pk>/query/add-union/", views.targetdataset_add_union_node, name="targetdataset_add_union_node"),
+  path("target-datasets/<int:pk>/query-contract/", views.targetdataset_query_contract_view, name="targetdataset_query_contract"),
+  path("target-datasets/<int:pk>/query-tree/", views.targetdataset_query_tree_view, name="targetdataset_query_tree"),
+  path("api/target-datasets/<int:pk>/query-contract/", views.targetdataset_query_contract_json, name="api_targetdataset_query_contract"),
   path("api/target-datasets/<int:pk>/rename/", views_inline_api.targetdataset_rename, name="api_targetdataset_rename"),
   path("api/target-columns/<int:pk>/rename/", views_inline_api.targetcolumn_rename, name="api_targetcolumn_rename"),
   path("targetdataset/<int:parent_pk>/references/<int:pk>/detail/", TargetDatasetReferenceScopedView.as_view(action="detail"), name="targetdatasetreference_detail_scoped"),

@@ -74,7 +74,20 @@ because there is no *_detail route under a parent. -->
         <td class="align-middle">
           <!-- Only link to detail in global mode, not in scoped mode -->
           {% if parent_pk %}
-            {{ object|attr:f.name }}
+            {% with v=object|attr:f.name %}
+              {% if model_name == "querynode" and not v %}
+                <span class="text-muted">{{ object.node_type|title }}</span>
+              {% else %}
+                {{ v }}
+              {% endif %}
+            {% endwith %}
+            {% if model_name == "querynode" and node_summaries %}
+              {% with s=node_summaries|get:object.pk %}
+                {% if s %}
+                  <div class="small text-muted mt-1">{{ s }}</div>
+                {% endif %}
+              {% endwith %}
+            {% endif %}
           {% else %}
             <a href="{{ detail_url }}" class="text-decoration-none">
               {{ object|attr:f.name }}
@@ -189,6 +202,112 @@ because there is no *_detail route under a parent. -->
         >
           Key Components
         </a>
+      {% elif model_name == 'querynode' %}
+        <!-- QueryNode: inline Edit only edits the row. "Details" must jump into the next actionable editor. -->
+
+        {% if object.node_type == 'window' and object.window %}
+          <a
+            href="{% url 'querywindowcolumn_list' object.window.pk %}"
+            class="btn btn-outline-primary"
+            title="Configure window columns"
+          >
+            Items
+          </a>
+
+        {% elif object.node_type == 'aggregate' and object.aggregate %}
+          <a
+            href="{% url 'queryaggregategroupkey_list' object.aggregate.pk %}"
+            class="btn btn-outline-primary"
+            title="Define group keys (required for grouped aggregates)"
+          >
+            Group keys
+          </a>
+          <a
+            href="{% url 'queryaggregatemeasure_list' object.aggregate.pk %}"
+            class="btn btn-outline-primary"
+            title="Configure aggregate measures"
+          >
+            Measures
+          </a>
+
+        {% elif object.node_type == 'union' and object.union %}
+          <a
+            href="{% url 'queryunionbranch_list' object.union.pk %}"
+            class="btn btn-outline-primary"
+            title="Configure UNION branches (inputs)"
+          >
+            Branches
+          </a>
+          <a
+            href="{% url 'queryunionoutputcolumn_list' object.union.pk %}"
+            class="btn btn-outline-primary"
+            title="Configure UNION output columns"
+          >
+            Output columns
+          </a>
+
+        {% elif object.node_type == 'select' %}
+          <a
+            href="{% url 'queryselectnode_list' object.pk %}"
+            class="btn btn-outline-primary"
+            title="Configure SELECT node"
+          >
+            Items
+          </a>
+        {% endif %}
+
+      {% elif model_name == 'querywindownode' %}
+        <!-- QueryWindowNode list is meta; jump to columns. -->
+        <a
+          href="{% url 'querywindowcolumn_list' object.pk %}"
+          class="btn btn-outline-primary"
+          title="Configure window columns"
+        >
+          Columns
+        </a>
+
+      {% elif model_name == 'queryaggregatenode' %}
+        <!-- Meta list; jump to measures (most common next step). -->
+        <a
+          href="{% url 'queryaggregategroupkey_list' object.pk %}"
+          class="btn btn-outline-primary"
+          title="Define group keys (required for grouped aggregates)"
+        >
+          Group keys
+        </a>
+        <a
+          href="{% url 'queryaggregatemeasure_list' object.pk %}"
+          class="btn btn-outline-primary"
+          title="Configure aggregate measures"
+        >
+          Measures
+        </a>
+      {% elif model_name == 'queryunionnode' %}
+        <!-- Meta list; jump to output columns (and branches; both are usually needed). -->
+        <a
+          href="{% url 'queryunionbranch_list' object.pk %}"
+          class="btn btn-outline-primary"
+          title="Configure UNION branches (inputs)"
+        >
+          Branches
+        </a>
+        <a
+          href="{% url 'queryunionoutputcolumn_list' object.pk %}"
+          class="btn btn-outline-primary"
+          title="Configure UNION output columns"
+        >
+          Output columns
+        </a>
+
+      {% elif model_name == 'queryunionbranch' %}
+        <a
+          href="{% url 'queryunionbranchmapping_list' object.pk %}"
+          class="btn btn-outline-primary"
+          title="Map branch columns to UNION output columns"
+        >
+          Mappings
+        </a>
+
       {% elif model_name == 'targetdatasetjoin' %}
         <a
           href="{% url 'targetdatasetjoinpredicate_list' object.pk %}"
@@ -196,13 +315,26 @@ because there is no *_detail route under a parent. -->
         >
           Predicates
         </a>
-        {% elif detail_url %}
-        {# Standard-Detail-Button für alle anderen Modelle #}
+      {% elif model_name == 'orderbyexpression' %}
+        <a
+          href="{% url 'orderbyitem_list' object.pk %}"
+          class="btn btn-outline-secondary"
+        >
+          Items
+        </a>
+      {% elif model_name == 'partitionbyexpression' %}
+        <a
+          href="{% url 'partitionbyitem_list' object.pk %}"
+          class="btn btn-outline-secondary"
+        >
+          Items
+        </a>
+      {% elif detail_url %}
         <a
           href="{{ detail_url }}"
           class="btn btn-outline-secondary"
         >
-          Detail
+          Details
         </a>
       {% endif %}
 

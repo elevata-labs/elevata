@@ -1,0 +1,157 @@
+<!--
+elevata - Metadata-driven Data Platform Framework
+Copyright © 2025-2026 Ilona Tag
+
+This file is part of elevata.
+
+elevata is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of
+the License, or (at your option) any later version.
+
+elevata is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with elevata. If not, see <https://www.gnu.org/licenses/>.
+
+Contact: <https://github.com/elevata-labs/elevata>.
+-->
+
+{% extends "base.html" %}
+
+{% block title %}{{ title }} · elevata{% endblock %}
+
+{% block content %}
+<h1 class="h4 mb-3 d-flex align-items-center justify-content-between">
+  <span>
+    Query contract
+    <span class="badge badge-lineage-layer ms-2">{{ object.target_schema.short_name }}</span>
+  </span>
+  <div class="page-actions">
+    <a href="{% url 'targetdataset_query_tree' object.pk %}" class="btn btn-sm btn-outline-secondary">
+      <i class="bi bi-diagram-3"></i> Query tree
+    </a>
+    <a href="{% url 'targetdataset_query_builder' object.pk %}" class="btn btn-sm btn-outline-primary">
+      <i class="bi bi-compass"></i> Query builder
+    </a>
+    <a href="{% url 'targetdataset_detail' object.pk %}" class="btn btn-sm btn-outline-primary">
+      <i class="bi bi-notepad-text"></i> Details
+    </a>
+  </div>
+</h1>
+
+<div class="small text-muted mb-3">
+  This contract describes the dataset’s output columns
+  as derived from automatic generation or custom query logic.
+</div>
+
+<div class="badge-row mb-3">
+  {% if has_query_root %}
+    <span class="badge badge-lineage-ref">Query: enabled</span>
+  {% else %}
+    <span class="badge badge-lineage-inactive">Query: standard</span>    
+  {% endif %}
+
+  {% if has_query_root and query_head and query_root and query_head.id != query_root.id %}
+    <span class="badge badge-lineage-ref">Head: {{ query_head.node_type }}</span>
+  {% endif %}  
+
+  {% if governance.uses_aggregate %}<span class="badge badge-lineage-ref">Aggregate</span>{% endif %}
+  {% if governance.uses_union %}<span class="badge badge-lineage-ref">UNION</span>{% endif %}
+  {% if governance.uses_window %}<span class="badge badge-lineage-ref">Window</span>{% endif %}
+
+  {% if governance.deterministic %}
+    <span class="badge badge-health-ok">Deterministic</span>
+  {% else %}
+    <span class="badge badge-health-warning">Needs ordering</span>
+  {% endif %}
+
+  {% if governance.issue_counts.errors %}
+    <span class="badge badge-health-error">Errors: {{ governance.issue_counts.errors }}</span>
+  {% endif %}
+  {% if governance.issue_counts.warnings %}
+    <span class="badge badge-health-warning">Warnings: {{ governance.issue_counts.warnings }}</span>
+  {% endif %}
+</div>
+
+{% if governance.non_deterministic_reasons %}
+  <div class="text-muted small mb-4">
+    Non-deterministic patterns:
+    {{ governance.non_deterministic_reasons|join:", " }}
+  </div>
+{% endif %}
+
+{% if governance.explanations %}
+  <div class="mb-4">
+    <div class="fw-semibold mb-1">Policy explanations</div>
+    <ul class="small mb-0">
+      {% for e in governance.explanations %}
+        <li>{{ e.message }}</li>
+      {% endfor %}
+    </ul>
+  </div>
+{% endif %}
+
+{% if not has_query_root %}
+  <p class="text-muted">No query root configured for this dataset.</p>
+{% else %}
+
+  {% if contract_diff.note %}
+    <div class="text-muted small mb-3">{{ contract_diff.note }}</div>
+  {% else %}
+    <div class="mb-4">
+      <div class="fw-semibold mb-1">Contract diff</div>
+      <div class="row g-3">
+        <div class="col-md-4">
+          <div class="text-muted small mb-1">Added</div>
+          {% if contract_diff.added %}
+            <ul class="mb-0">{% for c in contract_diff.added %}<li><code>{{ c }}</code></li>{% endfor %}</ul>
+          {% else %}<div class="text-muted small">—</div>{% endif %}
+        </div>
+        <div class="col-md-4">
+          <div class="text-muted small mb-1">Removed</div>
+          {% if contract_diff.removed %}
+            <ul class="mb-0">{% for c in contract_diff.removed %}<li><code>{{ c }}</code></li>{% endfor %}</ul>
+          {% else %}<div class="text-muted small">—</div>{% endif %}
+        </div>
+        <div class="col-md-4">
+          <div class="text-muted small mb-1">Unchanged</div>
+          {% if contract_diff.unchanged %}
+            <ul class="mb-0">{% for c in contract_diff.unchanged %}<li><code>{{ c }}</code></li>{% endfor %}</ul>
+          {% else %}<div class="text-muted small">—</div>{% endif %}
+        </div>
+      </div>
+    </div>
+  {% endif %}
+
+  <div class="mb-4">
+    <div class="fw-semibold mb-1">Output columns</div>
+    {% if contract_columns %}
+      <ul class="mb-0">
+        {% for c in contract_columns %}
+          <li><code>{{ c }}</code></li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="text-muted mb-0">No output columns inferred.</p>
+    {% endif %}
+  </div>
+
+  <div class="mb-4">
+    <div class="fw-semibold mb-1">Issues</div>
+    {% if contract_issues %}
+      <ul class="mb-0">
+        {% for m in contract_issues %}
+          <li>{{ m }}</li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="text-muted mb-0">No issues detected.</p>
+    {% endif %}
+  </div>
+
+{% endif %}
+{% endblock %}

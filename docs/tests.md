@@ -7,6 +7,7 @@ The goal is to keep the test environment pragmatic yet powerful:
 - **Realistic database tests** verify dataset and lineage creation using Django’s ORM.  
 - **Pure logic tests** ensure correctness of naming, hashing, and SQL generation — without any database dependency.  
 - **Template tests** define the expected behavior of the upcoming SQL Preview pipeline.  
+- **SQL preview tests** also validate error surfacing and policy violations
 
 Together, these tests form the foundation for confident releases and safe refactoring across the platform.
 
@@ -73,7 +74,7 @@ To activate them later:
 
 1. Implement your SQL preview renderer (e.g. `build_preview_sql()` in `preview.py`).  
 2. Update the import paths in the test files.  
-3. Remove the `@pytest.mark.skip` decorators.  
+3. Remove the `@pytest.mark.skip` decorators.
 
 Example command once wired:
 
@@ -97,6 +98,7 @@ Run only tests matching a keyword:
 ```bash
 python runtests.py -k "hashing"
 ```
+
 ## 🔧 7. CI Integration
 
 If you use GitHub Actions or GitLab CI, your step can simply call the same command:

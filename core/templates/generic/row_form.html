@@ -28,7 +28,7 @@ Contact: <https://github.com/elevata-labs/elevata>.
 In scoped mode (parent_pk set) we include parent_pk in the URL. -->
 
 {% if is_new %}
-  {# creating a new row #}
+  <!-- creating a new row -->
   {% if parent_pk %}
     {% url model_name|add:'_row_create' parent_pk as form_post_url %}
     {% url model_name|add:'_row_new' parent_pk as refresh_url %}
@@ -37,7 +37,7 @@ In scoped mode (parent_pk set) we include parent_pk in the URL. -->
     {% url model_name|add:'_row_new' as refresh_url %}
   {% endif %}
 {% else %}
-  {# editing an existing row #}
+  <!-- editing an existing row -->
   {% if parent_pk %}
     {% url model_name|add:'_row_edit' parent_pk object.pk as form_post_url %}
     {% url model_name|add:'_row_edit' parent_pk object.pk as refresh_url %}
@@ -78,7 +78,7 @@ temporary <tr> in JS. -->
     >
       {% csrf_token %}
 
-      {# Render the fields in a compact inline layout #}
+      <!-- Render the fields in a compact inline layout -->
       {% include "generic/_form_fields.html" %}
 
       <div class="mt-2 d-flex gap-2">

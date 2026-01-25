@@ -171,6 +171,37 @@ MATERIALIZATION_CHOICES=[
   ("external_passthrough", "external_passthrough"),
 ]
 
+AGGREGATE_MODE_CHOICES = [
+  ("grouped", "Grouped"), 
+  ("global", "Global"),
+]
+
+ORDER_BY_DIR_CHOICES = [
+  ("ASC", "ASC"),
+  ("DESC", "DESC"),
+]
+
+NULLS_PLACEMENT_CHOICES = [
+  ("", "Dialect default"),
+  ("FIRST", "NULLS FIRST"),
+  ("LAST", "NULLS LAST"),
+]
+
+WINDOW_FUNCTION_CHOICES = [
+  ("ROW_NUMBER", "ROW_NUMBER"),
+  ("RANK", "RANK"),
+  ("DENSE_RANK", "DENSE_RANK"),
+  ("NTILE", "NTILE"),
+  ("LAG", "LAG"),
+  ("LEAD", "LEAD"),
+]
+
+WINDOW_ARG_TYPE_CHOICES = [
+  ("column", "Column"),
+  ("int", "Integer literal"),
+  ("str", "String literal"),
+]
+
 JOIN_TYPE_CHOICES = [
   ("inner", "INNER"),
   ("left", "LEFT"),

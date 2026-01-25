@@ -1,0 +1,143 @@
+<!--
+elevata - Metadata-driven Data Platform Framework
+Copyright © 2025-2026 Ilona Tag
+
+This file is part of elevata.
+
+elevata is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of
+the License, or (at your option) any later version.
+
+elevata is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with elevata. If not, see <https://www.gnu.org/licenses/>.
+
+Contact: <https://github.com/elevata-labs/elevata>.
+-->
+
+{% extends "base.html" %}
+
+{% block title %}{{ title }} · elevata{% endblock %}
+
+{% block content %}
+<h1 class="h4 mb-3 d-flex align-items-center justify-content-between">
+  <span>
+    Query tree
+    <span class="badge badge-lineage-layer ms-2">{{ object.target_schema.short_name }}</span>
+  </span>
+  <div class="page-actions">
+    <a href="{% url 'targetdataset_query_contract' object.pk %}" class="btn btn-sm btn-outline-secondary">
+      <i class="bi bi-clipboard-check"></i> Query contract
+    </a>
+    <a href="{% url 'targetdataset_query_builder' object.pk %}" class="btn btn-sm btn-outline-primary">
+      <i class="bi bi-compass"></i> Query builder
+    </a>
+    <a href="{% url 'targetdataset_detail' object.pk %}" class="btn btn-sm btn-outline-primary">
+      <i class="bi bi-notepad-text"></i> Details
+    </a>
+  </div>
+</h1>
+
+<div class="badge-row mb-3">
+  {% if has_query_root %}
+    <span class="badge badge-lineage-ref">Query: enabled</span>
+  {% else %}
+    <span class="badge badge-lineage-inactive">Query: standard</span>
+  {% endif %}
+  {% if governance.uses_aggregate %}<span class="badge badge-lineage-ref">Aggregate</span>{% endif %}
+  {% if governance.uses_union %}<span class="badge badge-lineage-ref">UNION</span>{% endif %}
+  {% if governance.uses_window %}<span class="badge badge-lineage-ref">Window</span>{% endif %}
+  {% if governance.deterministic %}
+    <span class="badge badge-health-ok">Deterministic</span>
+  {% else %}
+    <span class="badge badge-health-warning">Needs ordering</span>
+  {% endif %}
+</div>
+
+<!-- Badge semantics (mirrors Query Builder; details live in Query contract) -->
+<div class="small text-muted mb-3">
+  {% if governance.deterministic %}
+    <span class="fw-semibold">Deterministic</span>:
+    ordering requirements are satisfied for aggregates and window functions.
+  {% else %}
+    <span class="fw-semibold">Needs ordering</span>:
+    add ORDER BY to non-deterministic aggregates or window functions.
+  {% endif %}
+</div>
+
+{% if not has_query_root %}
+  <p class="text-muted">No query root configured for this dataset.</p>
+{% else %}
+
+  <div class="mb-4">
+    <div class="fw-semibold mb-1">Head output contract</div>
+    {% if has_query_root and query_head and query_root and query_head.id != query_root.id %}
+      <div class="small text-muted mb-2">
+        Current head: <code>{{ query_head.node_type }}</code>
+      </div>
+    {% endif %}
+
+    <div class="small text-muted mb-2">
+      This contract is inferred from the query tree and defines the dataset’s output columns.
+    </div>
+    {% if contract_columns %}
+      <div class="small text-muted mb-2">Columns: {{ contract_columns|length }}</div>
+      <div class="badge-row">
+        {% for c in contract_columns %}
+          <span class="badge badge-lineage-ref"><code>{{ c }}</code></span>
+        {% endfor %}
+      </div>
+    {% else %}
+      <p class="text-muted mb-0">No output columns inferred yet.</p>      
+    {% endif %}
+  </div>
+
+  <hr class="my-4">
+
+  <div class="mb-3 fw-semibold">Nodes</div>
+
+  {% for n in nodes %}
+    <div class="card mb-2">
+      <div class="card-body py-2">
+        <div class="d-flex justify-content-between align-items-center">
+          <div>
+            <span class="badge badge-lineage-ref me-2">{{ n.type }}</span>
+            <span class="fw-semibold">{{ n.label }}</span>
+            <span class="text-muted small ms-2">#{{ n.id }}</span>
+          </div>
+          <div class="text-muted small">
+            level {{ n.level }}
+          </div>
+        </div>
+        {% if n.summary %}
+          <div class="text-muted small mt-1">{{ n.summary }}</div>
+        {% endif %}
+        {% if n.children %}
+          <div class="text-muted small mt-1">
+            inputs:
+            {% for cid in n.children %}
+              <span class="badge badge-lineage-incremental">{{ cid }}</span>
+            {% endfor %}
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  {% endfor %}
+
+  {% if contract_issues %}
+    <hr class="my-4">
+    <div class="fw-semibold mb-1">Issues</div>
+    <ul class="mb-0">
+      {% for m in contract_issues %}
+        <li>{{ m }}</li>
+      {% endfor %}
+    </ul>
+  {% endif %}
+
+{% endif %}
+{% endblock %}

@@ -1,0 +1,350 @@
+<!--
+elevata - Metadata-driven Data Platform Framework
+Copyright © 2025-2026 Ilona Tag
+
+This file is part of elevata.
+
+elevata is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of
+the License, or (at your option) any later version.
+
+elevata is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with elevata. If not, see <https://www.gnu.org/licenses/>.
+
+Contact: <https://github.com/elevata-labs/elevata>.
+-->
+
+{% extends "base.html" %}
+
+{% block title %}{{ title }} · elevata{% endblock %}
+
+{% block content %}
+<h1 class="h4 mb-3 d-flex align-items-center justify-content-between">
+  <span>
+    Query builder
+    <span class="badge badge-lineage-layer ms-2">{{ object.target_schema.short_name }}</span>
+  </span>
+  <div class="page-actions">
+    <a href="{% url 'targetdataset_detail' object.pk %}" class="btn btn-sm btn-outline-primary">
+      <i class="bi bi-arrow-left"></i> Back to details
+    </a>
+  </div>
+</h1>
+
+{% if not is_query_schema %}
+  <div class="alert alert-warning">
+    <strong>Query logic is disabled for this layer.</strong>
+    <div class="small mt-1">
+      Custom query operators (aggregate/union/window) are only allowed in <code>bizcore</code> and <code>serving</code>.
+    </div>
+  </div>
+{% endif %}
+
+<div class="badge-row mb-3">
+  {% if has_query_root %}
+    <span class="badge badge-lineage-ref">Query: enabled</span>
+    <span class="badge badge-health-ok ms-1">Advanced mode</span>
+  {% else %}
+    <span class="badge badge-lineage-inactive">Query: standard</span>
+  {% endif %}
+
+  {% if governance.uses_aggregate %}<span class="badge badge-lineage-ref">Aggregate</span>{% endif %}
+  {% if governance.uses_union %}<span class="badge badge-lineage-ref">UNION</span>{% endif %}
+  {% if governance.uses_window %}<span class="badge badge-lineage-ref">Window</span>{% endif %}
+
+  {% if has_query_root %}
+    {% if governance.deterministic %}
+      <span class="badge badge-health-ok">Deterministic</span>
+    {% else %}
+      <span class="badge badge-health-warning">Needs ordering</span>
+    {% endif %}
+  {% else %}
+    <span class="badge badge-lineage-inactive">No custom query</span>
+  {% endif %}
+
+
+  {% if governance.issue_counts.errors %}
+    <span class="badge badge-health-error">Errors: {{ governance.issue_counts.errors }}</span>
+  {% endif %}
+  {% if governance.issue_counts.warnings %}
+    <span class="badge badge-health-warning">Warnings: {{ governance.issue_counts.warnings }}</span>
+  {% endif %}
+</div>
+
+<!-- Badge semantics (short + user-facing; detailed explanations live in Query contract) -->
+<div class="small text-muted mb-3">
+  {% if has_query_root %}
+    {% if governance.deterministic %}
+      <span class="fw-semibold">Deterministic</span>: ordering requirements are satisfied for aggregates and window functions.
+    {% else %}
+      <span class="fw-semibold">Needs ordering</span>: add ORDER BY to non-deterministic aggregates or window functions (see Query contract).
+    {% endif %}
+  {% else %}
+    <span class="fw-semibold">Standard query</span>: no explicit query plan configured.
+  {% endif %}
+  {% if governance.issue_counts.errors or governance.issue_counts.warnings %}
+    <span class="ms-2">
+      <span class="fw-semibold">Errors</span> block execution; <span class="fw-semibold">Warnings</span> are advisory.
+    </span>
+  {% endif %}
+</div>
+
+<div class="row g-4">
+  <div class="col-lg-6">
+    <div class="card">
+      <div class="card-body">
+        <div class="fw-semibold mb-2">Guided workflow</div>
+
+        <div class="small text-muted mb-3">
+          Use this page as a guided entry point. Detailed editing happens in scoped views,
+          but you should not have to hunt for them.
+        </div>
+
+        <div class="d-flex flex-column gap-3">
+
+          {% if is_query_schema and not has_query_root %}
+            <div class="w-100">
+              <div class="fw-semibold mb-1">Step 1 — Choose generation mode</div>
+              <div class="small text-muted mb-2">
+                By default, SQL is generated automatically from the dataset definition (joins, columns, expressions).
+                <br>
+                Enable custom query logic only if you need explicit query steps
+                such as aggregates, UNIONs, or window functions.
+              </div>
+              <details>
+                <summary class="btn btn-sm btn-primary d-inline-flex align-items-center">
+                  <i class="bi bi-magic me-1"></i> Enable custom query logic
+                </summary>
+                <div class="mt-2 small text-muted">
+                  This creates an explicit query plan on top of the existing dataset definition.
+                  You can disable/reset it later.
+                </div>
+                <form method="post"
+                      action="{% url 'targetdataset_create_query_root' object.pk %}"
+                      class="mt-2">
+                  {% csrf_token %}
+                  <button type="submit" class="btn btn-sm btn-primary">
+                    <i class="bi bi-check2"></i> Enable
+                  </button>
+                </form>
+              </details>
+            </div>
+
+          {% endif %}
+
+          {% if is_query_schema and has_query_root %}
+            <div class="w-100">
+              <details>
+              <summary class="btn btn-sm btn-outline-danger d-inline-flex align-items-center">
+                <i class="bi bi-arrow-counterclockwise me-1"></i> Disable / reset
+              </summary>
+              <div class="mt-2 small text-muted">
+                Disables custom query logic and deletes the query plan nodes for this dataset.
+              </div>
+              <form method="post" action="{% url 'targetdataset_reset_query_root' object.pk %}" class="mt-2">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-sm btn-danger">
+                  <i class="bi bi-trash3"></i> Disable & reset
+                </button>
+              </form>
+              </details>
+            </div>            
+          {% endif %}
+
+          <!-- --- Guided steps (keep buttons, add structure + guidance) --- -->
+
+          {% if is_query_schema and has_query_root %}
+            <div class="mb-3">
+              <div class="fw-semibold mb-1">Step 2 — Define the query structure</div>
+              <div class="small text-muted mb-2">
+                Create and connect query nodes (SELECT, AGGREGATE, UNION, WINDOW). Start here to change how the dataset is computed.
+              </div>
+              <div class="badge-row">
+                <a href="{% url 'querynode_list' object.pk %}" class="btn btn-sm btn-primary">
+                  <i class="bi bi-sliders"></i> Configure query nodes
+                </a>
+
+                <form method="post" action="{% url 'targetdataset_add_aggregate_node' object.pk %}" class="d-inline">
+                  {% csrf_token %}
+                  <button type="submit" class="btn btn-sm btn-primary">
+                    <i class="bi bi-calculator"></i> Add aggregate node
+                  </button>
+                </form>
+
+                <form method="post" action="{% url 'targetdataset_add_union_node' object.pk %}" class="d-inline">
+                  {% csrf_token %}
+                  <button type="submit" class="btn btn-sm btn-primary">
+                    <i class="bi bi-intersect"></i> Add UNION node
+                  </button>
+                </form>
+
+                <form method="post" action="{% url 'targetdataset_add_window_node' object.pk %}" class="d-inline">
+                  {% csrf_token %}
+                  <button type="submit" class="btn btn-sm btn-primary">
+                    <i class="bi bi-layers"></i> Add window node
+                  </button>
+                </form>
+              </div>
+              <div class="small text-muted mt-2">
+                Tip: In the node list, use <strong>Details</strong> to configure operator-specific settings.
+              </div>
+            </div>
+
+            <div class="mb-3">
+              <details {% if not governance.deterministic or order_by_def_count == 0 or partition_by_def_count == 0 %}open{% endif %}>
+                <summary class="fw-semibold mb-1 d-flex align-items-center gap-2">
+                  {% if governance.deterministic %}
+                    <i class="bi bi-check-circle-fill text-success"></i>
+                  {% else %}
+                    <i class="bi bi-exclamation-triangle-fill text-warning"></i>
+                  {% endif %}
+                  <span>Step 3 — Ensure determinism (ordering)</span>
+                </summary>
+                <div class="small text-muted mb-2 mt-1">
+                  Some aggregates and window functions require ORDER BY for deterministic results.
+                  Define reusable ORDER BY / PARTITION BY expressions here.
+                </div>
+                {% if order_by_def_count == 0 or partition_by_def_count == 0 %}
+                  <div class="small text-muted mb-2">
+                    Tip: If the dropdowns are empty, create an ORDER BY / PARTITION BY definition first.
+                  </div>
+                {% endif %}
+                <div class="badge-row">
+                  <a href="{% url 'orderbyexpression_list' object.pk %}" class="btn btn-sm {% if not governance.deterministic or order_by_def_count == 0 %}btn-primary{% else %}btn-outline-secondary{% endif %}">
+                    <i class="bi bi-sort-down"></i> Create order by
+                  </a>
+                  <a href="{% url 'partitionbyexpression_list' object.pk %}" class="btn btn-sm {% if not governance.deterministic or partition_by_def_count == 0 %}btn-primary{% else %}btn-outline-secondary{% endif %}">
+                    <i class="bi bi-layout-three-columns"></i> Create partition by                    
+                  </a>
+                  <a href="{% url 'targetdataset_query_contract' object.pk %}" class="btn btn-sm btn-outline-secondary">
+                    <i class="bi bi-clipboard-check"></i> Review issues in Query contract
+                  </a>
+                </div>
+              </details>
+            </div>
+          {% endif %}
+
+          <div class="mb-2">
+            <div class="fw-semibold mb-1">Review and iterate</div>
+            <div class="small text-muted mb-2">
+              Use contract, query tree, lineage and SQL preview to validate the result.
+            </div>
+            <div class="badge-row">
+              <a href="{% url 'targetdataset_query_contract' object.pk %}" class="btn btn-sm btn-outline-secondary">
+                <i class="bi bi-clipboard-check"></i> Query contract
+              </a>
+              <a href="{% url 'targetdataset_query_tree' object.pk %}" class="btn btn-sm btn-outline-secondary">
+                <i class="bi bi-diagram-3"></i> Query tree
+              </a>
+              <a href="{% url 'targetdataset_lineage' object.pk %}" class="btn btn-sm btn-outline-secondary">
+                <i class="bi bi-share"></i> Lineage
+              </a>
+            </div>
+          </div>
+        </div>
+
+        <hr class="my-3">
+
+        <div class="fw-semibold mb-1">Next steps</div>
+        {% if not is_query_schema %}
+          <div class="text-muted small">
+            Switch to <code>bizcore</code> or <code>serving</code> to enable query operators.
+          </div>
+        {% elif not has_query_root %}
+          <div class="text-muted small">
+            No query root configured yet.
+            <br>
+            Enable custom query logic to start defining an explicit query structure.
+          </div>
+        {% else %}
+          {% if governance.issue_counts.errors %}
+            <div class="text-muted small">
+              Fix blocking errors first (see Query contract).
+            </div>
+          {% elif not governance.deterministic %}
+            <div class="text-muted small">
+              Add ORDER BY to non-deterministic aggregates/window functions (see Policy explanations in Query contract).
+            </div>
+          {% else %}
+            <div class="text-muted small">
+              Query looks healthy. You can now refine presentation logic (serving) or business logic (bizcore).
+            </div>
+          {% endif %}
+        {% endif %}
+      </div>
+    </div>
+      <div class="card mt-3">
+        <div class="card-body">
+          <div class="fw-semibold mb-2">SQL preview</div>
+          <!-- Reuse the exact same HTMX panel as on TargetDataset detail -->
+          {% include "metadata/partials/_targetdataset_sql_preview_panel.html" with show_hr=False %}
+        </div>
+      </div>
+  </div>
+  <div class="col-lg-6">
+    <div class="card">
+      <div class="card-body">
+        <div class="fw-semibold mb-2">Contract snapshot</div>
+        {% if has_query_root and query_head and query_root and query_head.id != query_root.id %}
+          <div class="small text-muted mb-2">
+            Current head: <code>{{ query_head.node_type }}</code>
+          </div>
+        {% endif %}
+
+        {% if contract_columns %}
+          <div class="small text-muted mb-2">Output columns: {{ contract_columns|length }}</div>
+          <div class="badge-row">
+            {% for c in contract_columns %}
+              <span class="badge badge-lineage-ref"><code>{{ c }}</code></span>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="text-muted small">No output columns inferred yet.</div>
+        {% endif %}
+
+        {% if contract_diff and not contract_diff.note %}
+          <hr class="my-3">
+          <div class="fw-semibold mb-1">Diff (input → output)</div>
+          <div class="row g-3 small">
+            <div class="col-4">
+              <div class="text-muted">Added</div>
+              {% if contract_diff.added %}
+                <ul class="mb-0">{% for c in contract_diff.added %}<li><code>{{ c }}</code></li>{% endfor %}</ul>
+              {% else %}—{% endif %}
+            </div>
+            <div class="col-4">
+              <div class="text-muted">Removed</div>
+              {% if contract_diff.removed %}
+                <ul class="mb-0">{% for c in contract_diff.removed %}<li><code>{{ c }}</code></li>{% endfor %}</ul>
+              {% else %}—{% endif %}
+            </div>
+            <div class="col-4">
+              <div class="text-muted">Unchanged</div>
+              {% if contract_diff.unchanged %}
+                <ul class="mb-0">{% for c in contract_diff.unchanged %}<li><code>{{ c }}</code></li>{% endfor %}</ul>
+              {% else %}—{% endif %}
+            </div>
+          </div>
+        {% endif %}
+
+        {% if contract_issues %}
+          <hr class="my-3">
+          <div class="fw-semibold mb-1">Top issues</div>
+          <ul class="small mb-0">
+            {% for m in contract_issues|slice:":8" %}
+              <li>{{ m }}</li>
+            {% endfor %}
+          </ul>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}

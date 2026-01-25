@@ -287,4 +287,34 @@ This architecture supports multiple SQL backends without changing metadata or Lo
 
 ---
 
+## 🔧 12. Default Generation vs Custom Query Logic
+
+elevata distinguishes between two generation modes:
+
+### 🧩 Default Generation
+SQL is derived automatically from:
+
+- dataset inputs and joins  
+- column definitions and expressions  
+- lineage and metadata rules
+
+This mode requires no explicit query definition and is the default.
+
+### 🧩 Custom Query Logic (Query Tree)
+In semantic layers (`bizcore`, `serving`), a dataset may define an explicit
+Query Tree.
+
+If a Query Tree is present:
+
+- it defines the query structure  
+- output columns are inferred from the tree  
+- the resulting plan is rendered via the same Logical Plan and dialect system
+
+If no Query Tree is present, elevata always falls back to default generation.
+
+This opt-in model prevents accidental complexity while enabling
+advanced, deterministic transformations where needed.
+
+---
+
 © 2025-2026 elevata Labs — Internal Technical Documentation

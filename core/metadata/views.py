@@ -24,27 +24,36 @@ import re
 import traceback
 from io import StringIO
 
+from collections import deque
 from django.core.management import call_command
 from django.apps import apps
 from django.conf import settings
-from django.http import JsonResponse, HttpResponse, HttpResponseBadRequest, Http404
+from django.contrib import messages
 from django.contrib.auth.decorators import login_required, permission_required
 from django.core.management import call_command
-from django.utils.html import escape
+from django.db import transaction
+from django.http import JsonResponse, HttpResponse, HttpResponseBadRequest, Http404
+from django.shortcuts import get_object_or_404, render, redirect
+from django.template.loader import render_to_string
 from django.views.decorators.http import require_POST, require_GET
-from django.shortcuts import get_object_or_404, render
 from sqlalchemy.exc import SQLAlchemyError
 
 from generic import GenericCRUDView
 
 from metadata.constants import DIALECT_HINTS
 from metadata.forms import TargetColumnForm, TargetDatasetForm
+from metadata.generation.policies import (
+  query_tree_allowed_for_dataset,
+  query_tree_mutations_allowed_for_dataset,
+  query_tree_mutation_block_reason,
+)
+from metadata.generation.query_contract import infer_query_node_contract
+from metadata.generation.query_contract_diff import compute_contract_diff
+from metadata.generation.query_governance import analyze_query_governance
 from metadata.generation.validators import summarize_targetdataset_health
 from metadata.ingestion.import_service import import_metadata_for_datasets
 from metadata.models import (
-  SourceDataset, System, TargetDataset, TargetDatasetInput, TargetColumn,
-  TargetDatasetJoin, TargetDatasetJoinPredicate,
-)
+  SourceDataset, System, TargetDataset, TargetDatasetInput, TargetColumn,)
 from metadata.rendering.dialects import get_active_dialect
 from metadata.rendering.sql_service import (
   render_preview_sql,
@@ -53,27 +62,26 @@ from metadata.rendering.sql_service import (
 )
 from metadata.services.lineage_analysis import collect_upstream_targets_extra, collect_downstream_targets_extra
 
-
-def _render_sql_ok(sql: str) -> HttpResponse:
-  return HttpResponse(
-    '<div class="alert alert-sql py-1 px-2 mb-0 small">'
-    '<pre class="mb-0" style="white-space: pre-wrap;">'
-    f'{sql}'
-    '</pre>'
-    '</div>'
-  )
-
 import logging
 logger = logging.getLogger(__name__)
 
+
+def _render_sql_ok(sql: str) -> HttpResponse:
+  html = render_to_string(
+    "metadata/partials/_sql_preview_block.html",
+    {"ok": True, "sql": sql},
+  )
+  return HttpResponse(html)
+
+
 def _render_sql_error(prefix: str, exc: Exception) -> HttpResponse:
   logger.exception("%s: %s", prefix, exc)
-  return HttpResponse(
-    f'<div class="alert alert-danger py-1 px-2 mb-0 small">'
-    f'{prefix}: {escape(str(exc))}'
-    f'</div>',
-    status=500,
+  html = render_to_string(
+    "metadata/partials/_sql_preview_block.html",
+    {"ok": False, "prefix": prefix, "message": str(exc)},
   )
+  # SQL preview is a best-effort panel; errors are shown inline without failing the page.
+  return HttpResponse(html, status=200)
 
 
 def make_crud_view(model):
@@ -88,6 +96,7 @@ def make_crud_view(model):
       "template_confirm_delete": "generic/confirm_delete.html",
     },
   )
+
 
 # Dynamically make all models in metadata App CRUD views
 metadata_models = apps.get_app_config("metadata").get_models()
@@ -442,3 +451,479 @@ def targetcolumn_upstream_meta(request):
     "decimal_scale": col.decimal_scale,
     "nullable": col.nullable,
   })
+
+
+@login_required
+@permission_required("metadata.view_targetdataset", raise_exception=True)
+def targetdataset_query_contract_view(request, pk: int):
+  td = get_object_or_404(TargetDataset, pk=pk)
+  query_root = getattr(td, "query_root", None)
+  query_head = getattr(td, "query_head", None) or query_root
+  cr = infer_query_node_contract(query_head) if query_head else None
+  gov = analyze_query_governance(query_head) if query_head else None
+  diff = compute_contract_diff(query_head) if query_head else None
+
+  ctx = {
+    "title": "Query contract",
+    "object": td,
+    "has_query_root": bool(query_root),
+    "query_root": query_root,
+    "query_head": query_head,
+    "contract_columns": (cr.columns if cr else []),
+    "contract_issues": (cr.issues if cr else []),
+    "governance": gov,
+    "contract_diff": diff,
+  }
+  return render(request, "metadata/query/targetdataset_query_contract.html", ctx)
+
+
+@login_required
+@permission_required("metadata.view_targetdataset", raise_exception=True)
+def targetdataset_query_contract_json(request, pk: int):
+  td = get_object_or_404(TargetDataset, pk=pk)
+  query_root = getattr(td, "query_root", None)
+  query_head = getattr(td, "query_head", None) or query_root
+  if not query_head:
+    return JsonResponse({
+      "ok": True,
+      "has_query_root": False,
+      "columns": [],
+      "issues": [],
+      "governance": analyze_query_governance(None),
+    })  
+
+  cr = infer_query_node_contract(query_head)
+  return JsonResponse({
+    "ok": True,
+    "has_query_root": True,
+    "query_root_id": query_root.id if query_root else None,
+    "query_head_id": query_head.id if query_head else None,
+    "columns": cr.columns,
+    "issues": cr.issues,
+    "governance": analyze_query_governance(query_head),    
+  })
+
+
+def targetdataset_query_tree_view(request, pk: int):
+  td = get_object_or_404(TargetDataset, pk=pk)
+  query_root = getattr(td, "query_root", None)
+  query_head = getattr(td, "query_head", None) or query_root
+  gov = analyze_query_governance(query_head)
+  cr = infer_query_node_contract(query_head) if query_head else None  
+
+  nodes = []
+  edges = []
+
+  if query_head:
+    q = deque([(query_head, 0)])
+    seen = set()
+
+    while q:
+      n, lvl = q.popleft()
+      nid = int(getattr(n, "id", 0) or 0)
+      if not nid or nid in seen:
+        continue
+      seen.add(nid)
+
+      ntype = (getattr(n, "node_type", "") or "").strip().lower()
+      name = (getattr(n, "name", "") or "").strip()
+      label = name or f"node:{nid}"
+
+      child_ids = []
+      summary = ""
+
+      if ntype == "select":
+        summary = "Base select"
+
+      elif ntype == "aggregate":
+        agg = getattr(n, "aggregate", None)
+        if agg and getattr(agg, "input_node", None):
+          inp = agg.input_node
+          cid = int(getattr(inp, "id", 0) or 0)
+          if cid:
+            child_ids.append(cid)
+            edges.append((nid, cid))
+            q.append((inp, lvl + 1))
+        gk = agg.group_keys.count() if agg else 0
+        ms = agg.measures.count() if agg else 0
+        summary = f"group_keys={gk}, measures={ms}"
+
+      elif ntype == "union":
+        un = getattr(n, "union", None)
+        branch_cnt = un.branches.count() if un else 0
+        out_cnt = un.output_columns.count() if un else 0
+        summary = f"branches={branch_cnt}, output_cols={out_cnt}"
+        if un:
+          for b in un.branches.all().order_by("ordinal_position", "id"):
+            inp = getattr(b, "input_node", None)
+            cid = int(getattr(inp, "id", 0) or 0) if inp else 0
+            if cid:
+              child_ids.append(cid)
+              edges.append((nid, cid))
+              q.append((inp, lvl + 1))
+
+      elif ntype == "window":
+        w = getattr(n, "window", None)
+        col_cnt = w.columns.count() if w else 0
+        summary = f"window_cols={col_cnt}"
+        if w and getattr(w, "input_node", None):
+          inp = w.input_node
+          cid = int(getattr(inp, "id", 0) or 0)
+          if cid:
+            child_ids.append(cid)
+            edges.append((nid, cid))
+            q.append((inp, lvl + 1))
+
+      nodes.append({
+        "id": nid,
+        "level": lvl,
+        "type": ntype,
+        "label": label,
+        "summary": summary,
+        "children": child_ids,
+      })
+
+  ctx = {
+    "title": "Query tree",
+    "object": td,
+    "has_query_root": bool(query_root),
+    "query_root": query_root,
+    "query_head": query_head,
+    "has_query_head": bool(query_head),
+    "nodes": sorted(nodes, key=lambda x: (x["level"], x["id"])),
+    "edges": edges,
+    "contract_columns": (cr.columns if cr else []),
+    "contract_issues": (cr.issues if cr else []),
+    "governance": gov,
+  }
+  return render(request, "metadata/query/targetdataset_query_tree.html", ctx)
+
+@login_required
+@permission_required("metadata.view_targetdataset", raise_exception=True)
+def targetdataset_query_builder(request, pk: int):
+  """
+  Guided hub for query-related configuration.
+  Read-only for now: shows status, governance, contract, and next steps.
+  """
+  td = get_object_or_404(TargetDataset, pk=pk)
+
+  schema_short = getattr(getattr(td, "target_schema", None), "short_name", "") or ""
+  is_query_schema = schema_short in ("bizcore", "serving")
+
+  query_root = getattr(td, "query_root", None)
+  query_head = getattr(td, "query_head", None) or query_root
+  gov = analyze_query_governance(query_head) if query_head else None
+  cr = infer_query_node_contract(query_head) if query_head else None
+  diff = compute_contract_diff(query_head) if query_head else None
+
+  OrderByExpression = apps.get_model("metadata", "OrderByExpression")
+  PartitionByExpression = apps.get_model("metadata", "PartitionByExpression")
+
+  ctx = {
+    "title": "Query builder",
+    "object": td,
+    "schema_short": schema_short,
+    "is_query_schema": is_query_schema,
+    "has_query_root": bool(query_root),
+    "query_root": query_root,
+    "query_head": query_head,
+    "has_query_head": bool(query_head),
+    "governance": gov,
+    "contract_columns": (cr.columns if cr else []),
+    "contract_issues": (cr.issues if cr else []),
+    "contract_diff": diff,
+    "order_by_def_count": OrderByExpression.objects.filter(target_dataset=td).count(),
+    "partition_by_def_count": PartitionByExpression.objects.filter(target_dataset=td).count(),
+  }
+  return render(request, "metadata/query/targetdataset_query_builder.html", ctx)
+
+@login_required
+@permission_required("metadata.change_targetdataset", raise_exception=True)
+@require_POST
+def targetdataset_create_query_root(request, pk: int):
+  td = get_object_or_404(TargetDataset, pk=pk)
+
+  # Only bizcore/serving may define custom query logic
+  if not query_tree_allowed_for_dataset(td):
+    messages.error(request, "Custom query logic is only allowed in bizcore/serving.")
+    return redirect("targetdataset_query_builder", td.pk)
+
+  # Block contract-changing actions if downstream depends on this dataset
+  if not query_tree_mutations_allowed_for_dataset(td):
+    messages.error(request, query_tree_mutation_block_reason(td))
+    return redirect("targetdataset_query_builder", pk=td.pk)
+
+  if getattr(td, "query_root", None):
+    return redirect("targetdataset_query_builder", pk=td.pk)
+
+  QueryNode = apps.get_model("metadata", "QueryNode")
+  QuerySelectNode = apps.get_model("metadata", "QuerySelectNode")
+
+  with transaction.atomic():
+    root = QueryNode.objects.create(
+      target_dataset=td,
+      node_type="select",
+      name="Base select",
+      active=True,
+    )
+    QuerySelectNode.objects.create(
+      node=root,
+      use_dataset_definition=True,
+    )
+    td.query_root = root
+    td.query_head = root
+    td.save(update_fields=["query_root", "query_head"])
+
+  return redirect("targetdataset_query_builder", pk=td.pk)
+
+@login_required
+@require_POST
+def targetdataset_reset_query_root(request, pk: int):
+  """
+  Disable custom query logic for a dataset:
+  - sets query_root to NULL
+  - deletes all query nodes/operators owned by this dataset
+  """
+  td = get_object_or_404(TargetDataset, pk=pk)
+
+  if not query_tree_allowed_for_dataset(td):
+    messages.error(request, "Custom query logic is only allowed in bizcore/serving.")
+    return redirect("targetdataset_query_builder", td.pk)
+  
+  if not query_tree_mutations_allowed_for_dataset(td):
+    messages.error(request, query_tree_mutation_block_reason(td))
+    return redirect("targetdataset_query_builder", pk=td.pk)
+
+  root = getattr(td, "query_root", None)
+  if not root:
+    messages.info(request, "No custom query logic configured.")
+    return redirect("targetdataset_query_builder", pk=td.pk)
+
+  QueryNode = apps.get_model("metadata", "QueryNode")
+  QueryAggregateNode = apps.get_model("metadata", "QueryAggregateNode")
+  QueryUnionBranch = apps.get_model("metadata", "QueryUnionBranch")
+  QueryWindowNode = apps.get_model("metadata", "QueryWindowNode")
+
+  with transaction.atomic():
+    # 1) detach root first (so builder switches back immediately)
+    td.query_root = None
+    td.query_head = None
+    td.save(update_fields=["query_root", "query_head"])
+
+    # 2) delete query graph owned by this dataset
+    # PROTECT FKs between nodes mean we must delete "consumers" first.
+    # We do a simple leaf-stripping loop: delete nodes that are not referenced as an input.
+    remaining = QueryNode.objects.filter(target_dataset=td)
+
+    # safety valve to avoid infinite loops
+    max_iters = 1000
+    iters = 0
+    while remaining.exists():
+      iters += 1
+      if iters > max_iters:
+        raise RuntimeError("Reset failed: exceeded iteration limit while deleting query graph.")
+
+      referenced_ids = set()
+      referenced_ids.update(
+        QueryAggregateNode.objects.filter(node__target_dataset=td)
+        .exclude(input_node_id__isnull=True)
+        .values_list("input_node_id", flat=True)
+      )
+      referenced_ids.update(
+        QueryUnionBranch.objects.filter(union_node__node__target_dataset=td)
+        .exclude(input_node_id__isnull=True)
+        .values_list("input_node_id", flat=True)
+      )
+      referenced_ids.update(
+        QueryWindowNode.objects.filter(node__target_dataset=td)
+        .exclude(input_node_id__isnull=True)
+        .values_list("input_node_id", flat=True)
+      )
+
+      deletable = remaining.exclude(id__in=referenced_ids)
+      if not deletable.exists():
+        # This should not happen if validators prevent cycles/shared refs.
+        raise RuntimeError(
+          "Reset failed: query graph contains a cycle or shared references that prevent safe deletion."
+        )
+      deletable.delete()
+      remaining = QueryNode.objects.filter(target_dataset=td)
+
+  messages.success(request, "Custom query logic has been disabled and reset.")
+  return redirect("targetdataset_query_builder", pk=td.pk)
+
+@login_required
+@permission_required("metadata.change_targetdataset", raise_exception=True)
+@require_POST
+def targetdataset_add_window_node(request, pk: int) -> HttpResponse:
+  td = get_object_or_404(TargetDataset, pk=pk)
+
+  # Only bizcore/serving may define custom query logic
+  if not query_tree_allowed_for_dataset(td):
+    messages.error(request, "Custom query logic is only allowed in bizcore/serving.")
+    return redirect("targetdataset_query_builder", td.pk)
+
+  # Block contract-changing actions if downstream depends on this dataset
+  if not query_tree_mutations_allowed_for_dataset(td):
+    messages.error(request, query_tree_mutation_block_reason(td))
+    return redirect("targetdataset_query_builder", pk=td.pk)
+
+  query_root = getattr(td, "query_root", None)
+  query_head = getattr(td, "query_head", None) or query_root
+  if not query_root:
+    return HttpResponseBadRequest("No query root configured. Enable custom query logic first.")
+
+  # Resolve models lazily (avoids import tangles)
+  QueryNode = apps.get_model("metadata", "QueryNode")
+  QueryWindowNode = apps.get_model("metadata", "QueryWindowNode")
+  QueryWindowColumn = apps.get_model("metadata", "QueryWindowColumn")
+
+  # Wrap existing root: new window node becomes the new root
+  new_node = QueryNode.objects.create(
+    target_dataset=td,
+    node_type="window",
+    name="Window",
+    active=True,
+  )
+
+  w = QueryWindowNode.objects.create(
+    node=new_node,
+    input_node=query_head,
+  )
+
+  # Create one default output column so the tree is immediately "valid-ish"
+  # (validator will only WARN about missing ORDER BY, not ERROR about missing columns)
+  QueryWindowColumn.objects.create(
+    window_node=w,
+    output_name="row_number",
+    function="ROW_NUMBER",
+    ordinal_position=1,
+    active=True,
+  )
+
+  td.query_head = new_node
+  td.save(update_fields=["query_head"])
+
+  # After creating the node, jump straight into the operator-specific editor.
+  # For window nodes, the best next step is configuring window columns.
+  try:
+    messages.success(
+      request,
+      "Window node created with a default row_number column. Next, configure window columns and ordering "
+      "(or delete row_number if you don’t need it)."
+    )
+  except Exception:
+    pass
+
+  return redirect("querywindowcolumn_list", parent_pk=w.pk)
+
+
+@login_required
+@permission_required("metadata.change_targetdataset", raise_exception=True)
+@require_POST
+def targetdataset_add_aggregate_node(request, pk: int) -> HttpResponse:
+  td = get_object_or_404(TargetDataset, pk=pk)
+
+  # Only bizcore/serving may define custom query logic
+  if not query_tree_allowed_for_dataset(td):
+    messages.error(request, "Custom query logic is only allowed in bizcore/serving.")
+    return redirect("targetdataset_query_builder", td.pk)
+
+  if not query_tree_mutations_allowed_for_dataset(td):
+    messages.error(request, query_tree_mutation_block_reason(td))
+    return redirect("targetdataset_query_builder", pk=td.pk)
+
+  query_root = getattr(td, "query_root", None)
+  query_head = getattr(td, "query_head", None) or query_root
+  if not query_root:
+    return HttpResponseBadRequest("No query root configured. Enable custom query logic first.")
+  
+  # Resolve models lazily (avoids import tangles)
+  QueryNode = apps.get_model("metadata", "QueryNode")
+  QueryAggregateNode = apps.get_model("metadata", "QueryAggregateNode")
+
+  # Wrap existing root: new aggregate node becomes the new root
+  new_node = QueryNode.objects.create(
+    target_dataset=td,
+    node_type="aggregate",
+    name="Aggregate",
+    active=True,
+  )
+
+  agg = QueryAggregateNode.objects.create(node=new_node, input_node=query_head)
+
+  # IMPORTANT: root stays stable; head moves.
+  td.query_head = new_node
+  td.save(update_fields=["query_head"])
+
+  try:
+    messages.success(
+      request,
+      "Aggregate node created. Next, add measures (and optional group keys) in the scoped editor."
+    )
+  except Exception:
+    pass
+
+  # Jump to measures (most common next step)
+  return redirect("queryaggregatemeasure_list", parent_pk=agg.pk)
+
+
+@login_required
+@permission_required("metadata.change_targetdataset", raise_exception=True)
+@require_POST
+def targetdataset_add_union_node(request, pk: int) -> HttpResponse:
+  td = get_object_or_404(TargetDataset, pk=pk)
+
+  # Only bizcore/serving may define custom query logic
+  if not query_tree_allowed_for_dataset(td):
+    messages.error(request, "Custom query logic is only allowed in bizcore/serving.")
+    return redirect("targetdataset_query_builder", td.pk)
+
+  if not query_tree_mutations_allowed_for_dataset(td):
+    messages.error(request, query_tree_mutation_block_reason(td))
+    return redirect("targetdataset_query_builder", pk=td.pk)
+
+  query_root = getattr(td, "query_root", None)
+  query_head = getattr(td, "query_head", None) or query_root
+  if not query_root:
+    return HttpResponseBadRequest("No query root configured. Enable custom query logic first.")
+
+  # Resolve models lazily (avoids import tangles)
+  QueryNode = apps.get_model("metadata", "QueryNode")
+  QueryUnionNode = apps.get_model("metadata", "QueryUnionNode")
+  QueryUnionBranch = apps.get_model("metadata", "QueryUnionBranch")
+
+  # Wrap existing root: new union node becomes the new root
+  new_node = QueryNode.objects.create(
+    target_dataset=td,
+    node_type="union",
+    name="UNION",
+    active=True,
+  )
+
+  # Default to UNION ALL (explicitly)
+  un = QueryUnionNode.objects.create(
+    node=new_node,
+    mode="union_all",
+  )
+
+  # Create a first branch pointing to the previous root so the union is not empty.
+  QueryUnionBranch.objects.create(
+    union_node=un,
+    input_node=query_head,
+    ordinal_position=1,
+  )
+
+  td.query_head = new_node
+  td.save(update_fields=["query_head"])
+
+  try:
+    messages.success(
+      request,
+      "UNION node created (UNION ALL). Next, define output columns and add additional branches."
+    )
+  except Exception:
+    pass
+
+  # Jump to output columns (users need this early)
+  return redirect("queryunionoutputcolumn_list", parent_pk=un.pk)

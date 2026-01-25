@@ -1,6 +1,6 @@
 """
 elevata - Metadata-driven Data Platform Framework
-Copyright © 2025 Ilona Tag
+Copyright © 2025-2026 Ilona Tag
 
 This file is part of elevata.
 
@@ -55,6 +55,25 @@ class ColumnRef(Expr):
 class Concat(Expr):
   """Vendor-neutral representation for string concatenation of multiple parts."""
   parts: List[Expr]
+
+
+@dataclass(frozen=True)
+class OrderByExpr(Expr):
+  """
+  An ORDER BY expression used inside functions (e.g. STRING_AGG(... ORDER BY ...)).
+  This allows dialects to render quoted identifiers correctly.
+  """
+  expr: Expr
+  direction: str = "ASC"  # "ASC" | "DESC"
+
+
+@dataclass(frozen=True)
+class OrderByClause:
+  """
+  Multi-key ORDER BY clause used inside functions.
+  Rendered as: "<item1>, <item2>, ..."
+  """
+  items: List[OrderByExpr]
 
 
 @dataclass

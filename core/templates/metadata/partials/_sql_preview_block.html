@@ -1,6 +1,6 @@
 <!--
 elevata - Metadata-driven Data Platform Framework
-Copyright © 2025 Ilona Tag
+Copyright © 2025-2026 Ilona Tag
 
 This file is part of elevata.
 
@@ -20,22 +20,12 @@ along with elevata. If not, see <https://www.gnu.org/licenses/>.
 Contact: <https://github.com/elevata-labs/elevata>.
 -->
 
-{% extends "base.html" %}
-
-{% block title %}{{ title }} · elevata{% endblock %}
-
-{% block content %}
-<h1 class="h4 mb-3">{{ title }}</h1>
-
-<div class="alert alert-warning">
-  Do you really want to delete „<strong>{{ object }}</strong>“? This action cannot be undone.
-</div>
-
-<form method="post">
-  {% csrf_token %}
-  <div class="page-actions">
-    <button class="btn btn-danger" type="submit">Yes, delete</button>
-    <a class="btn btn-secondary" href="{{ cancel_url|default:'javascript:history.back()' }}">Cancel</a>
+{% if ok %}
+  <div class="alert alert-sql py-1 px-2 mb-0 small">
+    <pre class="mb-0" style="white-space: pre-wrap;">{{ sql }}</pre>
   </div>
-</form>
-{% endblock %}
+{% else %}
+  <div class="alert alert-danger py-1 px-2 mb-0 small">
+    {{ prefix|default:"SQL preview"|escape }}: {{ message|escape }}
+  </div>
+{% endif %}

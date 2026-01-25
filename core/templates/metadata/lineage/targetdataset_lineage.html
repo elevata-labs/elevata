@@ -43,9 +43,19 @@ Contact: <https://github.com/elevata-labs/elevata>.
     {% endif %}
     </span>
 
-  <a href="{% url 'targetdataset_detail' object.pk %}" class="btn btn-sm btn-outline-primary">
-    <i class="bi bi-arrow-left"></i> Back to details
-  </a>
+  <div class="page-actions">
+    {% if object.target_schema.short_name == "bizcore" or object.target_schema.short_name == "serving" %}
+      <a href="{% url 'targetdataset_query_contract' object.pk %}" class="btn btn-sm btn-outline-secondary">
+        <i class="bi bi-clipboard-check"></i> Query contract
+      </a>
+      <a href="{% url 'targetdataset_query_builder' object.pk %}" class="btn btn-sm btn-outline-primary">
+        <i class="bi bi-compass"></i> Query builder
+      </a>
+    {% endif %}
+    <a href="{% url 'targetdataset_detail' object.pk %}" class="btn btn-sm btn-outline-primary">
+      <i class="bi bi-arrow-left"></i> Back to details
+    </a>
+  </div>
 </h1>
 
   <div class="mb-3">

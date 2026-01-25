@@ -34,7 +34,9 @@ from django.db import models
 from django import forms as djforms
 from django.apps import apps
 from django.core.exceptions import FieldDoesNotExist
-from django.db.models import ManyToManyField, Q
+from django.db.models import ManyToManyField
+from django.db.models.deletion import ProtectedError
+
 
 # ------------------------------------------------------------
 # Utility helper
@@ -49,6 +51,116 @@ def display_key(*parts):
     if s:
       cleaned.append(s)
   return " · ".join(cleaned)
+
+
+def _htmx_oob_warning(message: str) -> HttpResponse:
+  html = (
+    '<div id="grid-feedback" hx-swap-oob="innerHTML">'
+    '<div class="alert alert-warning py-2 mb-2">'
+    f'{message}'
+    "</div></div>"
+  )
+  return HttpResponse(html, status=409)
+
+
+def _get_owning_targetdataset(obj):
+  """
+  Best-effort: resolve the owning TargetDataset for query-related objects.
+  """
+  if obj is None:
+    return None
+
+  if obj.__class__.__name__ == "TargetDataset":
+    return obj
+
+  td = getattr(obj, "target_dataset", None)
+  if td is not None:
+    return td
+
+  node = getattr(obj, "node", None)
+  if node is not None:
+    return getattr(node, "target_dataset", None)
+
+  for parent_attr in ("window_node", "aggregate_node", "union_node", "branch"):
+    parent = getattr(obj, parent_attr, None)
+    if parent is None:
+      continue
+    td = getattr(parent, "target_dataset", None)
+    if td is not None:
+      return td
+    node = getattr(parent, "node", None)
+    if node is not None:
+      return getattr(node, "target_dataset", None)
+
+  return None
+
+
+def _has_downstream_dependents(obj) -> bool:
+  """
+  Mirrors targetdataset_lineage(): downstream exists if any TargetDatasetInput uses this dataset as upstream_target_dataset.
+  Only active links count (consistent with UI default).
+  """
+  try:
+    td = _get_owning_targetdataset(obj)
+    if td is None:
+      return False
+
+    TargetDatasetInput = apps.get_model("metadata", "TargetDatasetInput")
+    qs = TargetDatasetInput.objects.filter(upstream_target_dataset=td)
+    # Match lineage UX: default is "show_inactive=0"
+    if hasattr(TargetDatasetInput, "active"):
+      qs = qs.filter(active=True)
+    return qs.exists()
+  except Exception:
+    return False
+
+
+def _is_query_relevant_model(model_or_obj) -> bool:
+  """
+  Only block contract-changing CRUD for query-related models (v1.0).
+  """
+  try:
+    name = model_or_obj.__name__ if hasattr(model_or_obj, "__name__") else model_or_obj.__class__.__name__
+  except Exception:
+    return False
+
+  # Query tree + supporting reusable expressions
+  if name.startswith("Query"):
+    return True
+  if name.startswith("OrderBy") or name.startswith("PartitionBy"):
+    return True
+  return False
+
+
+def _is_deactivation_blocked(obj) -> bool:
+  """
+  Block active=False when the object is still referenced.
+  """
+  try:
+    cls = obj.__class__.__name__
+
+    if cls == "OrderByExpression":
+      QueryWindowColumn = apps.get_model("metadata", "QueryWindowColumn")
+      return QueryWindowColumn.objects.filter(order_by=obj).exists()
+
+    if cls == "PartitionByExpression":
+      QueryWindowColumn = apps.get_model("metadata", "QueryWindowColumn")
+      return QueryWindowColumn.objects.filter(partition_by=obj).exists()
+
+    if cls == "QueryNode":
+      QueryWindowNode = apps.get_model("metadata", "QueryWindowNode")
+      QueryAggregateNode = apps.get_model("metadata", "QueryAggregateNode")
+      QueryUnionBranch = apps.get_model("metadata", "QueryUnionBranch")
+      if QueryWindowNode.objects.filter(input_node=obj).exists():
+        return True
+      if QueryAggregateNode.objects.filter(input_node=obj).exists():
+        return True
+      if QueryUnionBranch.objects.filter(input_node=obj).exists():
+        return True
+  except Exception:
+    return False
+  return False
+
 
 # ------------------------------------------------------------
 # Generic CRUD base view
@@ -1238,15 +1350,44 @@ class GenericCRUDView(LoginRequiredMixin, View):
       "is_new": True,
     }
     return render(request, "generic/row_form.html", context, status=200)
-  
+
+
   def row_delete(self, request, pk):
     obj = get_object_or_404(self.model, pk=pk)
     if request.method not in ("DELETE", "POST"):
       return HttpResponse(status=405)
     obj_id = obj.pk
-    obj.delete()
-    html = f'<tr id="row-{obj_id}" hx-swap-oob="delete"></tr>'
-    return HttpResponse(html, status=200)
+
+    # safety: block destructive changes if downstream depends on owning dataset
+    if _is_query_relevant_model(obj) and _has_downstream_dependents(obj):
+      return _htmx_oob_warning(
+        "Cannot delete: downstream datasets depend on this (see Lineage). Remove downstream dependencies first."
+      )
+
+    try:
+      obj.delete()
+      html = f'<tr id="row-{obj_id}" hx-swap-oob="delete"></tr>'
+      return HttpResponse(html, status=200)
+    except ProtectedError as e:
+      # HTMX: show a helpful feedback instead of silently failing
+      msg = "Cannot delete: this record is still referenced."
+      try:
+        protected = list(getattr(e, "protected_objects", []) or [])
+        if protected:
+          counts = {}
+          examples = []
+          for o in protected[:3]:
+            label = getattr(getattr(o, "_meta", None), "verbose_name", None) or o.__class__.__name__
+            counts[label] = counts.get(label, 0) + 1
+            examples.append(str(o))
+          parts = [f"{k}×{v}" for k, v in sorted(counts.items(), key=lambda x: (-x[1], x[0]))]
+          msg = "Cannot delete because it is used by: " + ", ".join(parts)
+          if examples:
+            msg += " (e.g. " + "; ".join(examples) + ")"
+      except Exception:
+        pass
+      return _htmx_oob_warning(msg)
+    
 
   def row_toggle(self, request, pk):
     """
@@ -1270,6 +1411,19 @@ class GenericCRUDView(LoginRequiredMixin, View):
     current_val = getattr(obj, field_name)
     if not isinstance(current_val, bool):
       return HttpResponse("Field not toggleable", status=400)
+
+    # v1.0 safety for query-relevant models: block contract-changing toggles when impacted
+    if _is_query_relevant_model(obj):
+      # Block disabling active=True -> False when referenced OR downstream exists
+      if field_name == "active" and current_val is True:
+        if _is_deactivation_blocked(obj):
+          return _htmx_oob_warning(
+            "Cannot disable: this record is still referenced. Remove references first."
+          )
+        if _has_downstream_dependents(obj):
+          return _htmx_oob_warning(
+            "Cannot disable: downstream datasets depend on this (see Lineage). Remove downstream dependencies first."
+          )
 
     # Flip it
     setattr(obj, field_name, not current_val)

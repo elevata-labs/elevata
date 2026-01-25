@@ -1,6 +1,6 @@
 /*
 elevata – Metadata-driven Data Platform Framework
-Copyright © 2025 Ilona Tag
+Copyright © 2025-2026 Ilona Tag
 SPDX-License-Identifier: AGPL-3.0-only
 */
 
@@ -617,7 +617,47 @@ footer:hover {
   transition: opacity 0.3s ease-in-out;
 }
 
-.subnav .btn { margin-right: 0.25rem; }
+/* Sub-navigation used on detail pages (Inputs / Columns / Query Builder / etc.) */
+.subnav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;           /* consistent spacing between buttons */
+  align-items: center;
+}
+
+.subnav .btn {
+  white-space: nowrap;   /* prevent awkward line breaks */
+}
+
+/* Header action buttons (top right on pages like lineage / query builder / contract / tree) */
+.page-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.page-actions .btn {
+  white-space: nowrap;
+}
+
+/* Badge rows (status badges, governance badges, etc.) */
+.badge-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  padding: 0.25rem 0;
+}
+
+.badge-row .badge {
+  white-space: nowrap;
+}
+
+.badge-row--tight {
+  gap: 0.25rem;
+}
 
 /* elevata: grey background for non-editable fields (global + scoped forms) */
 .elevata-form input[readonly],

@@ -43,7 +43,7 @@ from utils.db import build_metadata_database_url
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(find_dotenv(filename=".env", raise_error_if_not_found=False))
 
-ELEVATA_VERSION = "0.9.1"
+ELEVATA_VERSION = "1.0.0"
 
 ELEVATA_PROFILES_PATH = os.getenv("ELEVATA_PROFILES_PATH", str((BASE_DIR.parent / "config" / "elevata_profiles.yaml")))
 
@@ -219,6 +219,22 @@ ELEVATA_CRUD = {
       "TargetDatasetOwnership", 
       "SourceDatasetIncrementPolicy",
       "SourceDatasetGroupMembership",
+      "QueryNode",
+      "QuerySelectNode",
+      "QueryAggregateNode",
+      "QueryAggregateGroupKey",
+      "QueryAggregateMeasure",
+      "OrderByExpression",
+      "OrderByItem",
+      "QueryUnionNode",
+      "QueryUnionOutputColumn",
+      "QueryUnionBranch",
+      "QueryUnionBranchMapping",
+      "QueryWindowNode",
+      "QueryWindowColumnArg",
+      "PartitionByExpression",
+      "PartitionByItem",
+      "QueryWindowColumn",
       "TargetDatasetInput",
       "TargetColumnInput",
       "TargetDatasetJoin",
@@ -261,6 +277,8 @@ ELEVATA_CRUD = {
         "manual_model",
         "distinct_select",
         "static_filter",
+        "query_root",
+        "query_head",
         "active",
         "retired_at",
       ],
@@ -643,6 +661,36 @@ ELEVATA_CRUD = {
             "confidential": "Confidential",
             "internal": "Internal",
             "public": "",
+          },
+        },
+      ],
+      "TargetDataset": [
+        {
+          "field": "has_incomplete_joins",
+          "class_map": {
+            "True": "badge bg-danger",
+            "False": "",
+            "default": "",
+          },
+          "label_map": {
+            "True": "Missing joins",
+            "False": "",
+            "default": "",
+          },
+        },
+      ],
+      "TargetDatasetJoin": [
+        {
+          "field": "has_missing_predicates",
+          "class_map": {
+            "True": "badge bg-danger",
+            "False": "",
+            "default": "",
+          },
+          "label_map": {
+            "True": "Missing predicates",
+            "False": "",
+            "default": "",
           },
         },
       ],

@@ -1,6 +1,6 @@
 <!--
 elevata - Metadata-driven Data Platform Framework
-Copyright © 2025 Ilona Tag
+Copyright © 2025-2026 Ilona Tag
 
 This file is part of elevata.
 
@@ -20,10 +20,10 @@ along with elevata. If not, see <https://www.gnu.org/licenses/>.
 Contact: <https://github.com/elevata-labs/elevata>.
 -->
 
-{# First: normal cell for the renamed dataset (HTMX target) #}
+<!-- First: normal cell for the renamed dataset (HTMX target) -->
 {% include "metadata/partials/_targetdataset_inline_cell.html" with ds=ds only %}
 
-{# Additionally update the corresponding *_hist cell out-of-band, if present #}
+<!-- Additionally update the corresponding *_hist cell out-of-band, if present -->
 {% if hist_ds %}
   <div id="tds-cell-{{ hist_ds.id }}" hx-swap-oob="true">
     {% include "metadata/partials/_targetdataset_inline_cell.html" with ds=hist_ds only %}
