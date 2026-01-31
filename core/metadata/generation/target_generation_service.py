@@ -22,6 +22,7 @@ Contact: <https://github.com/elevata-labs/elevata>.
 
 from django.db import transaction
 from django.db.models import Max
+from django.utils import timezone
 from typing import Dict, List
 from copy import deepcopy
 
@@ -233,46 +234,46 @@ class TargetGenerationService:
         continue
 
       col = existing
-      changed = False
+      update_fields = []
 
       # Always keep system-managed tech columns active and tagged.
       if not col.active:
         col.active = True
-        changed = True
+        update_fields.append("active")
 
       if not col.is_system_managed:
         col.is_system_managed = True
-        changed = True
+        update_fields.append("is_system_managed")
 
       if col.system_role != spec["system_role"]:
         col.system_role = spec["system_role"]
-        changed = True
+        update_fields.append("system_role")
 
       # Keep type / constraints consistent
       if col.datatype != spec["datatype"]:
         col.datatype = spec["datatype"]
-        changed = True
+        update_fields.append("datatype")
 
       if col.max_length != spec.get("max_length"):
         col.max_length = spec.get("max_length")
-        changed = True
+        update_fields.append("max_length")
 
       if col.nullable != spec["nullable"]:
         col.nullable = spec["nullable"]
-        changed = True
+        update_fields.append("nullable")
 
       # Unify UI documentation
       if col.description != spec.get("description"):
         col.description = spec.get("description")
-        changed = True
+        update_fields.append("description")
 
       # Remove legacy remark like "elevata system column" / "system column"
       if col.remark:
         col.remark = None
-        changed = True
+        update_fields.append("remark")
 
-      if changed:
-        col.save()
+      if update_fields:
+        col.save(update_fields=update_fields)
 
 
   def _build_row_hash_expression(self, all_columns, target_schema) -> str:
@@ -893,6 +894,81 @@ class TargetGenerationService:
       referenced_dataset=hist_td,
     ).delete()
 
+    # ------------------------------------------------------------------
+    # POLICY EXTENSION: Preserve orphan BUSINESS columns in _hist
+    # (never drop analyzable history), but do NOT preserve columns that are
+    # now covered by a rawcore rename (i.e. appear in rawcore former_names).
+    # ------------------------------------------------------------------
+    rawcore_td_id = rawcore_td.id
+    rawcore_cols = list(
+      TargetColumn.objects.filter(target_dataset_id=rawcore_td_id).order_by("ordinal_position")
+    )
+    rawcore_names = {
+      (c.target_column_name or "").strip()
+      for c in rawcore_cols
+      if (c.target_column_name or "").strip()
+    }
+    rawcore_former_names = set()
+    for c in rawcore_cols:
+      for n in (getattr(c, "former_names", None) or []):
+        n = (n or "").strip()
+        if n:
+          rawcore_former_names.add(n)
+
+    hist_sk_name = f"{hist_name}_key"
+    hist_tail_roles = {
+      "version_started_at",
+      "version_ended_at",
+      "version_state",
+      "load_run_id",
+      "loaded_at",
+    }
+
+    preserve_orphans = []
+
+    # Performance: avoid N+1 queries in the loop below.
+    # A hist column is NOT an orphan if it still has a TargetColumnInput link
+    # to any rawcore column.
+    linked_hist_ids = set(
+      TargetColumnInput.objects
+      .filter(upstream_target_column__target_dataset=rawcore_td)
+      .values_list("target_column_id", flat=True)
+    )
+
+    for hc in TargetColumn.objects.filter(target_dataset=hist_td).order_by("ordinal_position", "id"):
+      name = (hc.target_column_name or "").strip()
+      if not name:
+        continue
+      if name == hist_sk_name:
+        continue
+      role = (getattr(hc, "system_role", "") or "").strip()
+      if role in hist_tail_roles or role == "surrogate_key":
+        continue
+      if name in rawcore_names:
+        continue
+
+      # IMPORTANT:
+      # If this hist column is still linked to a rawcore column via TargetColumnInput,
+      # then it's NOT an orphan (it's a rename/update case). Do not preserve the old name.
+      if hc.id in linked_hist_ids:        
+        continue
+
+      # If rawcore renamed away from this name, do NOT keep the old name.
+      if name in rawcore_former_names:
+        continue
+      preserve_orphans.append({
+        "target_column_name": name,
+        "ordinal_position": hc.ordinal_position,
+        "datatype": hc.datatype,
+        "max_length": getattr(hc, "max_length", None),
+        "decimal_precision": getattr(hc, "decimal_precision", None),
+        "decimal_scale": getattr(hc, "decimal_scale", None),
+        "description": getattr(hc, "description", None),
+        "system_role": role,
+        "former_names": list(getattr(hc, "former_names", None) or []),
+      })
+
+    # Now it's safe to remove inputs referencing hist (PROTECT / rebuild hygiene)
     TargetColumnInput.objects.filter(
       upstream_target_column__target_dataset=hist_td,
     ).delete()
@@ -964,17 +1040,13 @@ class TargetGenerationService:
       return col
 
     # Copy all rawcore columns (including entity SK) with lineage links
+    # rawcore_td_id / rawcore_cols already computed above (preserve-orphans block)
     rawcore_td_id = rawcore_td.id  # keep it stable
 
     rc_sk_col = TargetColumn.objects.filter(
       target_dataset_id=rawcore_td_id,
       system_role="surrogate_key",
     ).first()
-
-    rawcore_cols = list(
-      TargetColumn.objects.filter(target_dataset_id=rawcore_td_id)
-      .order_by("ordinal_position")
-    )
 
     hist_sk_expression = None
     # Hist "business key" intentionally uses the Rawcore surrogate key as the entity identifier.
@@ -1042,16 +1114,49 @@ class TargetGenerationService:
         upstream_target_column=rc_col,
       )
 
-    # Technical versioning columns (append after copying rawcore columns)
-    # NOTE: row_hash is already copied from rawcore, so we must NOT create it here.
-    hist_tail_roles = {
-      "version_started_at",
-      "version_ended_at",
-      "version_state",
-      "load_run_id",
-      "loaded_at",
-    }
+    # ------------------------------------------------------------------
+    # Re-create preserved orphan BUSINESS columns (inactive) after rebuild.
+    # - Create appended (safe), then try to restore old ordinal_position if free.
+    # ------------------------------------------------------------------
+    if preserve_orphans:
+      used = set(
+        TargetColumn.objects.filter(target_dataset=hist_td)
+        .values_list("ordinal_position", flat=True)
+      )
+      max_used = max(used) if used else 0
+      created = []
+      for o in preserve_orphans:
+        max_used += 1
+        col = TargetColumn.objects.create(
+          target_dataset=hist_td,
+          target_column_name=o["target_column_name"],
+          ordinal_position=max_used,
+          datatype=o["datatype"],
+          nullable=True,
+          is_system_managed=True,
+          active=False,
+          system_role=o.get("system_role") or "",
+          max_length=o.get("max_length"),
+          decimal_precision=o.get("decimal_precision"),
+          decimal_scale=o.get("decimal_scale"),
+          description=o.get("description"),
+          former_names=deepcopy([n for n in (o.get("former_names") or []) if isinstance(n, str) and n.strip()]),
+        )
+        created.append((col, o.get("ordinal_position")))
 
+      used = set(
+        TargetColumn.objects.filter(target_dataset=hist_td)
+        .values_list("ordinal_position", flat=True)
+      )
+      for col, old_pos in created:
+        if isinstance(old_pos, int) and old_pos > 0 and old_pos not in used:
+          used.discard(col.ordinal_position)
+          # Reposition only (do not touch active/retired state)
+          TargetColumn.objects.filter(pk=col.pk).update(ordinal_position=old_pos)
+          used.add(old_pos)
+
+    # Technical versioning columns (append at the very end)
+    # NOTE: row_hash is already copied from rawcore, so we must NOT create it here.
     for spec in self._tech_specs_for_layer("hist"):
       role = (spec.get("system_role") or "").strip()
       if role not in hist_tail_roles:
@@ -1357,37 +1462,45 @@ class TargetGenerationService:
       # Upsert column itself
       if existing_col is not None:
         target_col_obj = existing_col
-        changed = False
+        update_fields = []
 
         if target_col_obj.datatype != col_draft.datatype:
           target_col_obj.datatype = col_draft.datatype
-          changed = True
+          update_fields.append("datatype")
+
         if target_col_obj.max_length != col_draft.max_length:
           target_col_obj.max_length = col_draft.max_length
-          changed = True
+          update_fields.append("max_length")
+
         if target_col_obj.decimal_precision != col_draft.decimal_precision:
           target_col_obj.decimal_precision = col_draft.decimal_precision
-          changed = True
+          update_fields.append("decimal_precision")
+
         if target_col_obj.decimal_scale != col_draft.decimal_scale:
           target_col_obj.decimal_scale = col_draft.decimal_scale
-          changed = True
+          update_fields.append("decimal_scale")
+
         if target_col_obj.nullable != col_draft.nullable:
           target_col_obj.nullable = col_draft.nullable
-          changed = True
+          update_fields.append("nullable")
+
         draft_role = (getattr(col_draft, "system_role", "") or "").strip()
         if draft_role and target_col_obj.system_role != draft_role:
           target_col_obj.system_role = draft_role
-          changed = True
+          update_fields.append("system_role")
+
         draft_origin = (getattr(col_draft, "lineage_origin", "") or "").strip()
         if draft_origin and target_col_obj.lineage_origin != draft_origin:
           target_col_obj.lineage_origin = draft_origin
-          changed = True
+          update_fields.append("lineage_origin")
+
         if target_col_obj.surrogate_expression != col_draft.surrogate_expression:
           target_col_obj.surrogate_expression = col_draft.surrogate_expression
-          changed = True
+          update_fields.append("surrogate_expression")
+
         if not target_col_obj.is_system_managed:
           target_col_obj.is_system_managed = True
-          changed = True
+          update_fields.append("is_system_managed")          
 
         # For surrogate key columns we also keep the name in sync with the draft
         if (
@@ -1396,10 +1509,10 @@ class TargetGenerationService:
           and target_col_obj.target_column_name != col_draft.target_column_name
         ):
           target_col_obj.target_column_name = col_draft.target_column_name
-          changed = True
+          update_fields.append("target_column_name")
 
-        if changed:
-          target_col_obj.save()
+        if update_fields:
+          target_col_obj.save(update_fields=update_fields)
 
       else:
         # New column
@@ -1515,7 +1628,6 @@ class TargetGenerationService:
       all_cols = list(
         TargetColumn.objects.filter(target_dataset=target_dataset_obj)
       )
-      total_final = len(all_cols)
 
       generator_ids = [c.id for c in generator_columns]
       extra_cols = [c for c in all_cols if c.id not in generator_ids]

@@ -27,11 +27,9 @@ Contact: <https://github.com/elevata-labs/elevata>.
 {% block content %}
 <h1 class="h4 mb-3 d-flex align-items-center justify-content-between">
   <span>
-    <span class="lineage-title-box">
-      {{ object.target_dataset_name }}
-      <span class="badge badge-lineage-layer ms-2">
-        {{ object.target_schema.short_name }}
-      </span>
+    {{ object.target_dataset_name }}
+    <span class="badge badge-lineage-layer ms-2">
+      {{ object.target_schema.short_name }}
     </span>
 
     {% if health_level == "ok" %}

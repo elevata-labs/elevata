@@ -1,6 +1,6 @@
 """
 elevata - Metadata-driven Data Platform Framework
-Copyright © 2025 Ilona Tag
+Copyright © 2025-2026 Ilona Tag
 
 This file is part of elevata.
 
@@ -23,11 +23,11 @@ Contact: <https://github.com/elevata-labs/elevata>.
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 from django.db import transaction
-from django.db.models import Q
+from typing import Iterable
 
 from metadata.models import TargetDataset, TargetColumn
 from metadata.generation.target_generation_service import TargetGenerationService
-from metadata.services.rename_common import sync_key_former_names_for_rawcore_dataset
+
 
 def _merge_former_names(a, b):
   # union, case-insensitive; preserve original casing as inserted first
@@ -44,23 +44,18 @@ def _merge_former_names(a, b):
   return out
 
 
-def _sanitize_hist_dataset_former_names(names: list[str] | None) -> list[str]:
+def _update_fields_intersect(update_fields: Iterable[str] | None, interesting: set[str]) -> bool:
   """
-  Hist TargetDataset former_names must never contain base dataset names.
-  Keep only values that look like hist dataset names (end with '_hist'), case-insensitive de-duped.
+  Return True if update_fields intersects with the interesting set.
+  If update_fields is None, we treat it as 'unknown' -> True (do not skip).
   """
-  cur = [n for n in (names or []) if isinstance(n, str) and n.strip()]
-  out: list[str] = []
-  seen = set()
-  for n in cur:
-    n2 = n.strip()
-    if not n2.lower().endswith("_hist"):
-      continue
-    k = n2.lower()
-    if k not in seen:
-      seen.add(k)
-      out.append(n2)
-  return out
+  if update_fields is None:
+    return True
+  try:
+    uf = {str(f) for f in update_fields}
+  except Exception:
+    return True
+  return bool(uf & interesting)
 
 
 @receiver(post_save, sender=TargetColumn)
@@ -73,6 +68,27 @@ def sync_hist_on_rawcore_column_change(sender, instance: TargetColumn, **kwargs)
   rawcore is generator-managed, but some fields (like name and datatype)
   may be unlocked and edited and must be reflected in *_hist.
   """
+  # PERF: If caller specified update_fields and none of the relevant fields changed,
+  # skip the expensive hist sync.
+  interesting_fields = {
+    # Rename/identity
+    "target_column_name",
+    "former_names",
+    "lineage_key",
+    "system_role",
+    # Type/shape
+    "datatype",
+    "max_length",
+    "decimal_precision",
+    "decimal_scale",
+    "nullable",
+    # Safety: these are sometimes toggled for system-managed behavior
+    "active",
+    "is_system_managed",
+  }
+  if not _update_fields_intersect(kwargs.get("update_fields"), interesting_fields):
+    return
+
   td = instance.target_dataset
   schema = td.target_schema
 
@@ -108,17 +124,6 @@ def sync_hist_on_rawcore_column_change(sender, instance: TargetColumn, **kwargs)
     ).first()
     if not hist_td:
       return
-
-    # Guardrail: hist TargetDataset former_names must never contain base names.
-    fn = list(getattr(hist_td, "former_names", None) or [])
-    fn_clean = _sanitize_hist_dataset_former_names(fn)
-    if fn_clean != fn:
-      hist_td.former_names = fn_clean
-
-      hist_td.save(update_fields=["former_names"])
-
-    # Ensure former_names for key columns are synced as well (base SK + hist SK + hist entity key)
-    sync_key_former_names_for_rawcore_dataset(base_td=td, hist_td=hist_td)
 
     old_name = None
     inst_former = list(getattr(instance, "former_names", None) or [])

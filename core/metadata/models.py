@@ -1073,11 +1073,27 @@ class QueryNode(AuditFields):
       models.Index(fields=["target_dataset", "node_type"]),
     ]
 
-  def __str__(self):
-    lbl = (self.name or self.node_type or "").strip()
-    lbl = lbl or (getattr(self, "node_type", "") or "").strip() or "node"
-    # Use QueryNode.pk (not target_dataset_id) to avoid confusing labels.
-    return f"node#{self.pk}: {lbl}"
+  def __str__(self) -> str:
+    """
+    Human-friendly label for dropdowns/UI:
+    include target dataset name so users don't have to know node IDs.
+    """
+    try:
+      td = getattr(self, "target_dataset", None)
+      td_name = getattr(td, "target_dataset_name", None) or "?"
+    except Exception:
+      td_name = "?"
+
+    nt = (getattr(self, "node_type", "") or "").strip() or "node"
+    nm = (getattr(self, "name", "") or "").strip()
+
+    # Example: "bc_dim_customer_other · union · UNION (node#25)"
+    label = f"{td_name} · {nt}"
+    if nm:
+      label += f" · {nm}"
+    label += f" (node#{self.pk})"
+    return label
+
 
 # -------------------------------------------------------------------
 # QuerySelectNode
@@ -1328,7 +1344,7 @@ class QueryUnionOutputColumn(AuditFields):
   union_node = models.ForeignKey(QueryUnionNode, on_delete=models.CASCADE, related_name="output_columns",
     help_text="Union operator this output column belongs to (schema contract).",
   )
-  name = models.CharField(max_length=255,
+  output_name = models.CharField(max_length=255,
     help_text="Output column name of the UNION schema contract.",
   )
   ordinal_position = models.PositiveIntegerField(default=0,
@@ -1336,6 +1352,15 @@ class QueryUnionOutputColumn(AuditFields):
   )
   datatype = models.CharField(max_length=20, choices=DATATYPE_CHOICES, blank=True, null=True,
     help_text="Optional logical datatype of the UNION output column.",
+  )
+  max_length = models.IntegerField(blank=True, null=True,
+    help_text="Optional length parameter (e.g., VARCHAR(100))."
+  )
+  decimal_precision = models.IntegerField(blank=True, null=True,
+    help_text="Optional precision for DECIMAL/NUMERIC (e.g., DECIMAL(18,2))."
+  )
+  decimal_scale = models.IntegerField(blank=True, null=True,
+    help_text="Optional scale for DECIMAL/NUMERIC (e.g., DECIMAL(18,2))."
   )
 
   class Meta:
@@ -1354,6 +1379,39 @@ class QueryUnionOutputColumn(AuditFields):
     if dt:
       bits.append(f": {dt}")
     return " ".join(bits) if bits else f"union_col#{self.pk}"
+
+  def clean(self):
+    super().clean()
+
+    # If datatype is set, validate required parameters for common types.
+    dt = (self.datatype or "").strip().lower()
+    if not dt:
+      return
+
+    # Very lightweight normalization (avoid dialect-specific overreach).
+    is_decimal = dt.startswith("decimal") or dt.startswith("numeric")
+    is_varchar = dt.startswith("varchar") or dt.startswith("char") or dt.startswith("nvarchar") or dt.startswith("nchar")
+
+    if is_decimal:
+      if self.decimal_precision is None or self.decimal_scale is None:
+        raise ValidationError({
+          "decimal_precision": "Required when datatype is DECIMAL/NUMERIC.",
+          "decimal_scale": "Required when datatype is DECIMAL/NUMERIC.",
+        })
+      if self.decimal_precision is not None and self.decimal_precision <= 0:
+        raise ValidationError({"decimal_precision": "Must be > 0."})
+      if self.decimal_scale is not None and self.decimal_scale < 0:
+        raise ValidationError({"decimal_scale": "Must be >= 0."})
+      if (self.decimal_precision is not None and self.decimal_scale is not None
+          and self.decimal_scale > self.decimal_precision):
+        raise ValidationError({"decimal_scale": "Scale must be <= precision."})
+
+    if is_varchar:
+      if self.max_length is None:
+        raise ValidationError({"max_length": "Required when datatype is a character type (VARCHAR/CHAR/...)." })
+      if self.max_length is not None and self.max_length <= 0:
+        raise ValidationError({"max_length": "Must be > 0."})
+
 
 
 # -------------------------------------------------------------------
@@ -1375,16 +1433,16 @@ class QueryUnionBranch(AuditFields):
     unique_together = [("union_node", "ordinal_position")]
 
   def __str__(self) -> str:
-    ordpos = getattr(self, "ordinal_position", None)
-    input_node = getattr(self, "input_node", None)
-    input_label = ""
-    if input_node is not None:
-      input_label = (getattr(input_node, "name", "") or "").strip() or f"node#{getattr(input_node, 'pk', '')}"
-    if ordpos is not None and input_label:
-      return f"Branch #{ordpos}: {input_label}"
-    if ordpos is not None:
-      return f"Branch #{ordpos}"
-    return input_label or f"union_branch#{self.pk}"
+    # Human-friendly label used in dropdowns and lists.
+    node = getattr(self, "input_node", None)
+    node_name = getattr(node, "name", None) or getattr(node, "node_type", None) or "node"
+    td = getattr(node, "target_dataset", None)
+    td_name = getattr(td, "target_dataset_name", None) or ""
+    ord_pos = getattr(self, "ordinal_position", None)
+    prefix = f"Branch #{ord_pos}" if ord_pos is not None else "Branch"
+    if td_name:
+      return f"{prefix}: {node_name} · {td_name}"
+    return f"{prefix}: {node_name}"
 
 
 # -------------------------------------------------------------------
@@ -1409,7 +1467,7 @@ class QueryUnionBranchMapping(AuditFields):
 
   def __str__(self) -> str:
     out = getattr(self, "output_column", None)
-    out_name = (getattr(out, "name", "") or "").strip() if out is not None else ""
+    out_name = (getattr(out, "output_name", "") or "").strip() if out is not None else ""
     inp = (getattr(self, "input_column_name", "") or "").strip()
     if out_name and inp:
       return f"{out_name} ← {inp}"
@@ -2380,7 +2438,7 @@ class TargetDatasetReference(AuditFields):
     # ----------------------------------------------------------------------
     # 4) Update existing FK column
     # ----------------------------------------------------------------------
-    fk_col.datatype = "string"
+    fk_col.datatype = "STRING"
     fk_col.max_length = 64
     fk_col.nullable = True
     fk_col.is_system_managed = True
@@ -2409,6 +2467,117 @@ class TargetDatasetReference(AuditFields):
       # defensive: FK-Sync should not force errors in normal save
       pass
 
+
+  def delete(self, *args, **kwargs):
+    """
+    When deleting a reference, also remove the system-managed FK column on the child.
+    Additionally, remove dependent historization columns/inputs (e.g. *_hist) that may
+    PROTECT the FK via upstream references.
+    """
+    try:
+      child = getattr(self, "referencing_dataset", None)
+
+      # Ultra-safe guard:
+      # Only do hist/downstream cleanup for Rawcore datasets that are actually historized.
+      do_hist_cleanup = False
+      try:
+        if child is not None and child.target_schema.short_name == "rawcore" and bool(child.historize):
+          do_hist_cleanup = True
+      except Exception:
+        do_hist_cleanup = False
+
+      fk_lineage_key = f"fk:{self.id}"
+      fk_col = None
+      if child is not None:
+        fk_col = TargetColumn.objects.filter(
+          target_dataset=child,
+          lineage_key=fk_lineage_key,
+        ).first()
+
+      # Delete the reference row first (so UI state is consistent),
+      # but keep cleanup in the same outer transaction if the caller uses one.
+      super().delete(*args, **kwargs)
+
+      if fk_col is None:
+        return
+
+      # If not historized rawcore, we still delete the FK column itself, but skip hist/downstream handling.
+      # (Keeps behavior conservative outside historization.)
+
+      # 1) Find downstream columns that depend on this FK as an upstream input
+      # (most commonly: historization datasets like "<child>_hist").
+      downstream_cols = list(
+        TargetColumn.objects.filter(
+          input_links__upstream_target_column=fk_col,
+        ).select_related("target_dataset").distinct()
+      )
+
+      # 2) POLICY: Never drop columns in *_hist.
+      # Detach inputs so FK is not protected anymore.
+      # Additionally, if this is a historized rawcore dataset, HARD-deactivate downstream hist/FK columns.
+      for c in downstream_cols:
+        # Always detach the FK-upstream link on downstream columns
+        try:
+          TargetColumnInput.objects.filter(
+            target_column=c,
+            upstream_target_column=fk_col,
+          ).delete()
+        except Exception:
+          pass
+
+        if not do_hist_cleanup:
+          continue
+
+        ds = getattr(c, "target_dataset", None)
+        ds_name = getattr(ds, "target_dataset_name", "") or ""
+        role = (getattr(c, "system_role", "") or "").strip()
+        is_hist_ds = ds_name.endswith("_hist")
+        is_fk_role = (role == "foreign_key")
+
+        if not (is_hist_ds or is_fk_role):
+          continue
+
+        # Hard deactivate (avoid any model save / signals reactivating)
+        try:
+          TargetColumn.objects.filter(pk=c.pk).update(
+            active=False,
+            retired_at=timezone.now(),
+          )
+        except Exception:
+          pass
+
+      # 3) As a last resort, delete any remaining inputs that reference the FK
+      try:
+        TargetColumnInput.objects.filter(upstream_target_column=fk_col).delete()
+      except Exception:
+        pass
+
+      # 4) Now delete the FK column itself
+      try:
+        fk_col.delete()
+      except Exception:
+        pass
+
+      # 5) Best-effort: re-sync hist metadata so orphan preservation can take effect
+      try:
+        if (
+          child is not None
+          and getattr(getattr(child, "target_schema", None), "short_name", None) == "rawcore"
+          and bool(getattr(child, "historize", False))
+        ):
+          from metadata.generation.target_generation_service import TargetGenerationService
+          svc = TargetGenerationService()
+          svc.ensure_hist_dataset_for_rawcore(child)
+
+      except Exception:
+        pass
+
+    except Exception:
+      # Never block reference deletion due to cleanup issues
+      try:
+        super().delete(*args, **kwargs)
+      except Exception:
+        pass
 
 # -------------------------------------------------------------------
 # TargetDatasetReferenceComponent

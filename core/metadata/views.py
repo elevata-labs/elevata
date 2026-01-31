@@ -23,6 +23,7 @@ Contact: <https://github.com/elevata-labs/elevata>.
 import re
 import traceback
 from io import StringIO
+from typing import Any
 
 from collections import deque
 from django.core.management import call_command
@@ -32,6 +33,7 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required, permission_required
 from django.core.management import call_command
 from django.db import transaction
+from django.db.models import Count
 from django.http import JsonResponse, HttpResponse, HttpResponseBadRequest, Http404
 from django.shortcuts import get_object_or_404, render, redirect
 from django.template.loader import render_to_string
@@ -50,9 +52,10 @@ from metadata.generation.policies import (
 from metadata.generation.query_contract import infer_query_node_contract
 from metadata.generation.query_contract_diff import compute_contract_diff
 from metadata.generation.query_governance import analyze_query_governance
-from metadata.generation.validators import summarize_targetdataset_health
+from metadata.generation.validators import summarize_targetdataset_health, validate_query_tree_integrity
 from metadata.ingestion.import_service import import_metadata_for_datasets
 from metadata.models import (
+  QueryUnionNode, QueryUnionBranch, QueryUnionOutputColumn, QueryUnionBranchMapping,
   SourceDataset, System, TargetDataset, TargetDatasetInput, TargetColumn,)
 from metadata.rendering.dialects import get_active_dialect
 from metadata.rendering.sql_service import (
@@ -64,6 +67,10 @@ from metadata.services.lineage_analysis import collect_upstream_targets_extra, c
 
 import logging
 logger = logging.getLogger(__name__)
+
+
+def _normalize_colname(name: str) -> str:
+  return (name or "").strip().lower()
 
 
 def _render_sql_ok(sql: str) -> HttpResponse:
@@ -927,3 +934,335 @@ def targetdataset_add_union_node(request, pk: int) -> HttpResponse:
 
   # Jump to output columns (users need this early)
   return redirect("queryunionoutputcolumn_list", parent_pk=un.pk)
+
+
+@login_required
+@permission_required("metadata.change_targetdataset", raise_exception=True)
+@require_POST
+def queryunion_copy_output_schema_from_branch(request, parent_pk: int) -> HttpResponse:
+  """
+  Copy (infer) the output schema from a UNION branch input into the UNION output columns.
+  Safe default:
+    - if output cols exist: only add missing columns (by name), keep existing order
+    - if none exist: create full output schema in contract order
+  POST params:
+    - branch_id
+  """
+  union_node = get_object_or_404(QueryUnionNode, pk=parent_pk)
+  branch_id = request.POST.get("branch_id")
+  if not branch_id:
+    messages.error(request, "Missing branch_id.")
+    return redirect("queryunionoutputcolumn_list", parent_pk=union_node.pk)
+
+  branch = get_object_or_404(QueryUnionBranch, pk=int(branch_id), union_node=union_node)
+  input_node = getattr(branch, "input_node", None)
+  if not input_node:
+    messages.error(request, "Branch has no input node.")
+    return redirect("queryunionoutputcolumn_list", parent_pk=union_node.pk)
+
+  # infer contract columns from branch input
+  try:
+    from metadata.generation.query_contract import infer_query_node_contract
+    contract = infer_query_node_contract(input_node)
+    cols = getattr(contract, "columns", None) or getattr(contract, "output_columns", None) or []
+    cols = [str(c) for c in cols if str(c).strip()]
+  except Exception as e:
+    messages.error(request, f"Could not infer branch contract: {e}")
+    return redirect("queryunionoutputcolumn_list", parent_pk=union_node.pk)
+
+  if not cols:
+    messages.warning(request, "No columns inferred from branch input.")
+    return redirect("queryunionoutputcolumn_list", parent_pk=union_node.pk)
+
+  existing = list(union_node.output_columns.all().order_by("ordinal_position", "id"))
+  existing_by_norm = {_normalize_colname(getattr(o, "output_name", "")): o for o in existing}
+  next_ord = (max([getattr(o, "ordinal_position", 0) or 0 for o in existing]) + 1) if existing else 1
+
+  created = 0
+  with transaction.atomic():
+    for c in cols:
+      key = _normalize_colname(c)
+      if not key:
+        continue
+      if key in existing_by_norm:
+        continue
+      QueryUnionOutputColumn.objects.create(
+        union_node=union_node,
+        output_name=c,
+        ordinal_position=next_ord,
+      )
+      next_ord += 1
+      created += 1
+
+  if existing and created:
+    messages.success(request, f"Added {created} missing output columns from branch.")
+  elif created:
+    messages.success(request, f"Copied output schema from branch ({created} columns).")
+  else:
+    messages.info(request, "Output schema already matches (no missing columns to add).")
+
+  return redirect("queryunionoutputcolumn_list", parent_pk=union_node.pk)
+
+
+@login_required
+@permission_required("metadata.change_targetdataset", raise_exception=True)
+@require_POST
+def queryunionbranch_automap_by_name(request, parent_pk: int) -> HttpResponse:
+  """
+  Auto-map UNION branch mappings by column name.
+  For each UNION output column, tries to find a same-named column in the branch input contract.
+  Creates/updates QueryUnionBranchMapping rows.
+  """
+  branch = get_object_or_404(QueryUnionBranch, pk=parent_pk)
+  union_node = getattr(branch, "union_node", None)
+  if not union_node:
+    messages.error(request, "Branch has no union_node.")
+    return redirect("queryunionbranchmapping_list", parent_pk=branch.pk)
+
+  input_node = getattr(branch, "input_node", None)
+  if not input_node:
+    messages.error(request, "Branch has no input node.")
+    return redirect("queryunionbranchmapping_list", parent_pk=branch.pk)
+
+  # Infer branch input contract
+  try:
+    from metadata.generation.query_contract import infer_query_node_contract
+    contract = infer_query_node_contract(input_node)
+    in_cols = getattr(contract, "columns", None) or getattr(contract, "output_columns", None) or []
+    in_cols = [str(c) for c in in_cols if str(c).strip()]
+  except Exception as e:
+    messages.error(request, f"Could not infer branch contract: {e}")
+    return redirect("queryunionbranchmapping_list", parent_pk=branch.pk)
+
+  if not in_cols:
+    messages.warning(request, "No columns inferred from branch input.")
+    return redirect("queryunionbranchmapping_list", parent_pk=branch.pk)
+
+  in_by_norm = {_normalize_colname(c): c for c in in_cols}
+
+  out_cols = list(union_node.output_columns.all().order_by("ordinal_position", "id"))
+  if not out_cols:
+    messages.warning(request, "UNION has no output columns yet. Create output schema first.")
+    return redirect("queryunionbranchmapping_list", parent_pk=branch.pk)
+
+  updated = 0
+  created = 0
+  skipped = 0
+
+  with transaction.atomic():
+    for outc in out_cols:
+      out_name = getattr(outc, "output_name", "") or ""
+      key = _normalize_colname(out_name)
+      if not key:
+        skipped += 1
+        continue
+
+      match = in_by_norm.get(key)
+      if not match:
+        skipped += 1
+        continue
+
+      obj, is_new = QueryUnionBranchMapping.objects.get_or_create(
+        branch=branch,
+        output_column=outc,
+        defaults={"input_column_name": match},        
+      )
+      if is_new:
+        created += 1
+      else:
+        # Only overwrite if empty or different (safe default: overwrite to match)
+        if (getattr(obj, "input_column_name", "") or "").strip() != match:
+          obj.input_column_name = match
+          obj.save(update_fields=["input_column_name"])
+          updated += 1
+
+  messages.success(
+    request,
+    f"Auto-map done. created={created}, updated={updated}, skipped={skipped}."
+  )
+  return redirect("queryunionbranchmapping_list", parent_pk=branch.pk)
+
+def _normalize_issues(raw: Any) -> list[tuple[str, str]]:
+  """
+  validate_query_tree_integrity(td) is treated as best-effort.
+  We normalize to: [("error"|"warning"|"info", "message"), ...]
+  """
+  out: list[tuple[str, str]] = []
+  if not raw:
+    return out
+
+  # expected: list[(lvl, msg)] OR list[str]
+  try:
+    for item in raw:
+      if isinstance(item, (tuple, list)) and len(item) >= 2:
+        lvl = str(item[0] or "").strip().lower()
+        msg = str(item[1] or "").strip()
+      else:
+        lvl = "info"
+        msg = str(item or "").strip()
+
+      if not msg:
+        continue
+
+      # allow various lvl encodings
+      if lvl in ("err", "error", "errors"):
+        lvl = "error"
+      elif lvl in ("warn", "warning", "warnings"):
+        lvl = "warning"
+      elif lvl in ("info", "hint", "note"):
+        lvl = "info"
+      else:
+        # heuristic: message prefixes
+        if msg.lower().startswith("error"):
+          lvl = "error"
+        elif msg.lower().startswith("warning"):
+          lvl = "warning"
+        else:
+          lvl = "info"
+
+      out.append((lvl, msg))
+  except Exception:
+    # if it’s something unexpected, stringify once
+    out.append(("info", str(raw)))
+  return out
+
+
+def _union_mismatch_summary(union: QueryUnionNode) -> dict[str, Any]:
+  """
+  Extra UNION-only comfort: show coverage per branch and obvious mapping gaps.
+  This is intentionally *not* a full semantic validator – it’s UI guidance.
+  """
+  out_cols = list(union.output_columns.all().order_by("ordinal_position", "id"))
+  branches = list(union.branches.all().order_by("ordinal_position", "id"))
+
+  out_names = [str(getattr(c, "output_name", "") or "").strip() for c in out_cols]
+  out_norm = [_normalize_colname(n) for n in out_names]
+
+  branch_rows: list[dict[str, Any]] = []
+  for b in branches:
+    input_node = getattr(b, "input_node", None)
+    try:
+      contract = infer_query_node_contract(input_node) if input_node else None
+      in_cols = getattr(contract, "columns", None) or getattr(contract, "output_columns", None) or []
+      in_cols = [str(c) for c in in_cols if str(c).strip()]
+    except Exception:
+      in_cols = []
+
+    in_norm = {_normalize_colname(c) for c in in_cols}
+
+    # mappings present?
+    maps = (
+      QueryUnionBranchMapping.objects
+      .filter(branch=b, active=True)
+      .select_related("output_column")
+    )
+    mapped_out_norm = set()
+    mapped_in_norm = set()
+    for m in maps:
+      oc = getattr(m, "output_column", None)
+      on = _normalize_colname(getattr(oc, "output_name", "") if oc else "")
+      ic = _normalize_colname(getattr(m, "input_column_name", "") or "")
+      if on:
+        mapped_out_norm.add(on)
+      if ic:
+        mapped_in_norm.add(ic)
+
+    missing_out = [out_names[i] for i, k in enumerate(out_norm) if k and k not in mapped_out_norm]
+    unknown_inputs = sorted([c for c in mapped_in_norm if c and (c not in in_norm)])
+
+    branch_rows.append({
+      "branch": b,
+      "input_node": input_node,
+      "input_contract_count": len(in_cols),
+      "mapped_count": len(mapped_out_norm),
+      "missing_output_columns": missing_out,
+      "unknown_input_columns": unknown_inputs,
+    })
+
+  return {
+    "output_count": len(out_cols),
+    "branch_count": len(branches),
+    "branches": branch_rows,
+  }
+
+
+@login_required
+@permission_required("metadata.change_targetdataset", raise_exception=True)
+@require_GET
+def queryunion_validate(request, parent_pk: int) -> HttpResponse:
+  """
+  HTMX panel: validate UNION-related issues + show mapping coverage.
+  """
+  union = get_object_or_404(QueryUnionNode, pk=parent_pk)
+  td = union.node.target_dataset
+
+  issues_raw = validate_query_tree_integrity(td)
+  issues = _normalize_issues(issues_raw)
+
+  # Filter: only union-relevant messages (keep it strict; avoid noise)
+  union_issues = []
+  for lvl, msg in issues:
+    m = msg.lower()
+    if "union" in m:
+      union_issues.append((lvl, msg))
+
+  summary = _union_mismatch_summary(union)
+  has_errors = any(lvl == "error" for (lvl, _) in union_issues)
+
+  # Auto-scroll target: pick the first branch with a visible issue
+  first_branch_pk = None
+  try:
+    for row in (summary.get("branches") or []):
+      b = row.get("branch")
+      if not b:
+        continue
+      # Prefer real mismatches first (actionable)
+      if row.get("unknown_input_columns"):
+        first_branch_pk = b.pk
+        break
+      if row.get("missing_output_columns"):
+        first_branch_pk = b.pk
+        break
+      # Fallback: branch has no input node
+      if not row.get("input_node"):
+        first_branch_pk = b.pk
+        break
+  except Exception:
+    first_branch_pk = None
+
+  html = render_to_string(
+    "metadata/partials/_queryunion_validation.html",
+    {
+      "union": union,
+      "td": td,
+      "issues": union_issues,
+      "has_errors": has_errors,
+      "summary": summary,
+      "first_branch_pk": first_branch_pk,
+    },
+    request=request,
+  )
+  return HttpResponse(html)
+
+
+@login_required
+@permission_required("metadata.change_targetdataset", raise_exception=True)
+@require_POST
+def queryunion_set_as_head(request, parent_pk: int) -> HttpResponse:
+  """
+  Stage B: explicit action to set UNION node as query_head.
+  Guardrail: blocked when validation has UNION errors.
+  """
+  union = get_object_or_404(QueryUnionNode, pk=parent_pk)
+  td = union.node.target_dataset
+
+  issues = _normalize_issues(validate_query_tree_integrity(td))
+  union_issues = [(lvl, msg) for (lvl, msg) in issues if "union" in (msg or "").lower()]
+  if any(lvl == "error" for (lvl, _) in union_issues):
+    messages.error(request, "Cannot set UNION as head: fix UNION errors first (Validate UNION).")
+    return redirect("queryunionbranch_list", parent_pk=union.pk)
+
+  td.query_head = union.node
+  td.save(update_fields=["query_head"])
+  messages.success(request, "UNION is now the query head (dataset output is defined by this UNION).")
+  return redirect("targetdataset_query_builder", pk=td.pk)

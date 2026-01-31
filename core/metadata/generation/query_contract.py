@@ -110,7 +110,7 @@ def _infer_node(node, cache: Dict[int, ContractResult], visiting: Set[int]) -> C
       cols = []
     else:
       out_cols = list(un.output_columns.all().order_by("ordinal_position", "id"))
-      cols = [(c.name or "").strip() for c in out_cols if (c.name or "").strip()]
+      cols = [(c.output_name or "").strip() for c in out_cols if (c.output_name or "").strip()]
       if len(cols) != len(out_cols):
         issues.append("ERROR: Union output columns contain empty names.")
 
@@ -131,13 +131,13 @@ def _infer_node(node, cache: Dict[int, ContractResult], visiting: Set[int]) -> C
           in_name = (mp.input_column_name or "").strip()
           if in_name and inp_set and in_name.lower() not in inp_set:
             issues.append(
-              f"ERROR: Union branch references missing input column '{in_name}' for output '{mp.output_column.name}'."
+              f"ERROR: Union branch references missing input column '{in_name}' for output '{mp.output_column.output_name}'."
             )
 
         missing = expected - seen_out
         extra = seen_out - expected
         if missing:
-          miss_names = [c.name for c in out_cols if c.id in missing]
+          miss_names = [c.output_name for c in out_cols if c.id in missing]
           issues.append(f"ERROR: Union branch {b.id} missing mappings for: {', '.join(miss_names)}.")
         if extra:
           issues.append(f"ERROR: Union branch {b.id} has mappings to unknown output columns.")

@@ -198,15 +198,25 @@ def commit_rename(instance, new_name: str, spec: RenameSpec, user=None) -> dict:
   
   old = (getattr(instance, spec.name_attr) or "").strip()
   new = (new_name or "").strip()
+  former_names_changed = False
 
   # Maintain former_names automatically when present on the instance and enabled by spec.
   # We only touch it if the name actually changes.
   if old and new and old != new and hasattr(instance, "former_names"):
     current = getattr(instance, "former_names", None)
     updated = _append_former_name_any(current, old)
+    # Only flag a change if the persisted value would actually differ.
+    try:
+      if updated != current:
+        former_names_changed = True
+    except Exception:
+      # Be conservative: if comparison fails, assume it changed.
+      former_names_changed = True
     setattr(instance, "former_names", updated)
 
   setattr(instance, spec.name_attr, new)
+  if former_names_changed and hasattr(instance, "former_names"):
+    update_fields.append("former_names")
 
   # Optional audit fields
   if hasattr(instance, "updated_by") and getattr(user, "pk", None):

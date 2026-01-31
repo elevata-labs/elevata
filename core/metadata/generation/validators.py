@@ -793,9 +793,9 @@ def validate_query_tree_integrity(td: "TargetDataset") -> List[str]:
       for oc in out_cols:
         hits = by_out.get(int(oc.id), [])
         if not hits:
-          issues.append(("error", f"Union branch {getattr(b,'id','?')} has no mapping for output column '{oc.name}'."))
+          issues.append(("error", f"Union branch {getattr(b,'id','?')} has no mapping for output column '{oc.output_name}'."))
         elif len(hits) > 1:
-          issues.append(("error", f"Union branch {getattr(b,'id','?')} has multiple mappings for output column '{oc.name}'."))
+          issues.append(("error", f"Union branch {getattr(b,'id','?')} has multiple mappings for output column '{oc.output_name}'."))
 
   def _walk(n) -> None:
     nid = int(getattr(n, "id", 0) or 0)

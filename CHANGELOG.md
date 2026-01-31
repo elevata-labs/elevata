@@ -22,6 +22,59 @@ This project adheres to [Semantic Versioning](https://semver.org/) and [Keep a C
 
 ---
 
+## [1.1.0] - 2026-01-31
+
+This release introduces a major upgrade to the Query Builder and UNION workflow,  
+together with critical stability and governance improvements across metadata,  
+schema sync, and historization.
+
+### ✨ Added
+
+#### Query Builder & UNION workflow
+- Full UNION operator support with:  
+  - Branch management  
+  - Output schema contracts  
+  - Column mappings per branch  
+- Guided UNION toolbar with:  
+  - Output / Branch navigation  
+  - Schema copy from branch  
+  - Auto-map by name  
+  - Validation and “Set as head”  
+- Contract snapshot with input → output diff  
+- Determinism and governance indicators (ordering, window/aggregate checks)  
+- Contextual node summaries (SELECT, AGGREGATE, WINDOW, UNION)
+
+#### Metadata-driven governance
+- Clear separation of **query_root** (anchor) and **query_head** (current output)  
+- Head-based validation, SQL preview and contract inference  
+- Guardrails for destructive operations with downstream dependents
+
+#### Schema sync & historization
+- Robust metadata-driven rename propagation via `former_names`  
+- Orphan preservation in `_hist` (inactive, detached, not dropped)  
+- Safe FK reference deletion that never removes hist columns  
+- Technical tail columns always appended last  
+- Deterministic ordinal normalization for system-managed schemas
+
+### 🛠 Fixed
+
+- UNIQUE constraint violations in hist regeneration  
+- Broken rename propagation across rawcore → hist  
+- False-positive orphan deletions  
+- Inconsistent candidate column inference in query builder  
+- UNION validation / navigation not triggering correctly  
+- Output schema copy errors due to field mismatches  
+- Multiple signal / sync race conditions
+
+### 🔒 Governance & Safety
+
+- UNION validation enforces compatible schemas  
+- Set-as-head explicitly marks final dataset output  
+- Defensive rebuild of hist metadata with key lineage preservation  
+- Deterministic ordering guarantees for window and aggregate functions
+
+---
+
 ## [1.0.0] - 2026-01-25 — First stable release
 
 This release marks the **first stable, backwards-compatible version** of elevata.

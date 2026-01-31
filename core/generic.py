@@ -53,7 +53,7 @@ def display_key(*parts):
   return " · ".join(cleaned)
 
 
-def _htmx_oob_warning(message: str) -> HttpResponse:
+def htmx_oob_warning(message: str) -> HttpResponse:
   html = (
     '<div id="grid-feedback" hx-swap-oob="innerHTML">'
     '<div class="alert alert-warning py-2 mb-2">'
@@ -1360,7 +1360,7 @@ class GenericCRUDView(LoginRequiredMixin, View):
 
     # safety: block destructive changes if downstream depends on owning dataset
     if _is_query_relevant_model(obj) and _has_downstream_dependents(obj):
-      return _htmx_oob_warning(
+      return htmx_oob_warning(
         "Cannot delete: downstream datasets depend on this (see Lineage). Remove downstream dependencies first."
       )
 
@@ -1386,7 +1386,7 @@ class GenericCRUDView(LoginRequiredMixin, View):
             msg += " (e.g. " + "; ".join(examples) + ")"
       except Exception:
         pass
-      return _htmx_oob_warning(msg)
+      return htmx_oob_warning(msg)
     
 
   def row_toggle(self, request, pk):
@@ -1417,11 +1417,11 @@ class GenericCRUDView(LoginRequiredMixin, View):
       # Block disabling active=True -> False when referenced OR downstream exists
       if field_name == "active" and current_val is True:
         if _is_deactivation_blocked(obj):
-          return _htmx_oob_warning(
+          return htmx_oob_warning(
             "Cannot disable: this record is still referenced. Remove references first."
           )
         if _has_downstream_dependents(obj):
-          return _htmx_oob_warning(
+          return htmx_oob_warning(
             "Cannot disable: downstream datasets depend on this (see Lineage). Remove downstream dependencies first."
           )
 

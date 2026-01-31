@@ -1,0 +1,223 @@
+<!--
+elevata - Metadata-driven Data Platform Framework
+Copyright © 2025-2026 Ilona Tag
+
+This file is part of elevata.
+
+elevata is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of
+the License, or (at your option) any later version.
+
+elevata is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with elevata. If not, see <https://www.gnu.org/licenses/>.
+
+Contact: <https://github.com/elevata-labs/elevata>.
+-->
+
+<!-- UNION toolbar controls extracted from generic/list.html
+Keep list.html readable; keep UNION logic in one place. -->
+
+<!-- UNION guardrail badges -->
+{% if model_name == "queryunionoutputcolumn" %}
+  {% if union_output_count == 0 %}
+    <span class="badge text-bg-warning" title="UNION has no output schema yet">
+      Output schema: empty
+    </span>
+  {% else %}
+    <span class="badge text-bg-secondary" title="Number of UNION output columns">
+      Output columns: {{ union_output_count }}
+    </span>
+  {% endif %}
+{% endif %}
+
+{% if model_name == "queryunionbranch" %}
+  <span class="badge text-bg-secondary" title="Number of UNION output columns">
+    Output columns: {{ union_output_count|default:0 }}
+  </span>
+{% endif %}
+
+<!-- UNION: Branches list -> Output columns + quick jump to mappings -->
+{% if model_name == "queryunionbranch" and union_parent_pk %}
+  <a
+    href="{% url 'queryunionoutputcolumn_list' union_parent_pk %}"
+    class="btn btn-outline-primary btn-sm d-inline-flex align-items-center gap-1"
+    title="Go to UNION output schema"
+  >
+    <i class="bi bi-layout-three-columns"></i>
+    Output columns
+  </a>
+
+  <button
+    type="button"
+    class="btn btn-outline-secondary btn-sm d-inline-flex align-items-center gap-1"
+    hx-get="{% url 'queryunion_validate' union_parent_pk %}"
+    hx-target="#union-validation-panel"
+    hx-swap="innerHTML"
+    title="Validate UNION mappings and contracts"
+  >
+    <i class="bi bi-clipboard-check"></i>
+    Validate UNION
+  </button>
+
+  <form method="post"
+        action="{% url 'queryunion_set_as_head' union_parent_pk %}"
+        class="d-inline">
+    {% csrf_token %}
+    <button type="submit"
+            class="btn btn-outline-primary btn-sm d-inline-flex align-items-center gap-1"
+            title="Set UNION node as query head (final dataset output)">
+      <i class="bi bi-bullseye"></i>
+      Set as head
+    </button>
+  </form>
+
+  {% if union_branches %}
+    <form method="get"
+          onsubmit="return false;"
+          class="d-inline-flex align-items-center gap-2">
+      <select id="union-branch-selector-branches"
+              class="form-select form-select-sm"
+              style="max-width: 260px;"
+              aria-label="Select branch for mappings">
+        {% for b in union_branches %}
+          <option value="{{ b.pk }}">
+            Branch {{ b.ordinal_position }}{% if b.input_node %} · {{ b.input_node.name }}{% endif %}
+          </option>
+        {% endfor %}
+      </select>
+      <a id="union-branch-mappings-link-branches"
+         href="{% url 'queryunionbranchmapping_list' union_branches.0.pk %}"
+         class="btn btn-outline-primary btn-sm d-inline-flex align-items-center gap-1"
+         title="Open mappings for selected branch">
+        <i class="bi bi-diagram-3"></i>
+        Mappings
+      </a>
+    </form>
+    <script>
+      (function() {
+        const sel = document.getElementById("union-branch-selector-branches");
+        const link = document.getElementById("union-branch-mappings-link-branches");
+        if (!sel || !link) return;
+        const base = link.getAttribute("href").replace(/\/\d+\/mappings\/?$/, "/{BRANCH}/mappings/");
+        function upd() {
+          const pk = sel.value;
+          link.setAttribute("href", base.replace("{BRANCH}", pk));
+        }
+        sel.addEventListener("change", upd);
+        upd();
+      })();
+    </script>
+  {% endif %}
+{% endif %}
+
+<!-- UNION: Output columns list -> Branches + quick jump to mappings -->
+{% if model_name == "queryunionoutputcolumn" and union_parent_pk %}
+  <a
+    href="{% url 'queryunionbranch_list' union_parent_pk %}"
+    class="btn btn-outline-primary btn-sm d-inline-flex align-items-center gap-1"
+    title="Go to UNION branches"
+  >
+    <i class="bi bi-diagram-2"></i>
+    Branches
+  </a>
+
+  {% if union_branches %}
+    <form method="get"
+          onsubmit="return false;"
+          class="d-inline-flex align-items-center gap-2">
+      <select id="union-branch-selector-output"
+              class="form-select form-select-sm"
+              style="max-width: 260px;"
+              aria-label="Select branch for mappings">
+        {% for b in union_branches %}
+          <option value="{{ b.pk }}">
+            Branch {{ b.ordinal_position }}{% if b.input_node %} · {{ b.input_node.name }}{% endif %}
+          </option>
+        {% endfor %}
+      </select>
+      <a id="union-branch-mappings-link-output"
+         href="{% url 'queryunionbranchmapping_list' union_branches.0.pk %}"
+         class="btn btn-outline-primary btn-sm d-inline-flex align-items-center gap-1"
+         title="Open mappings for selected branch">
+        <i class="bi bi-diagram-3"></i>
+        Mappings
+      </a>
+    </form>
+    <script>
+      (function() {
+        const sel = document.getElementById("union-branch-selector-output");
+        const link = document.getElementById("union-branch-mappings-link-output");
+        if (!sel || !link) return;
+        const base = link.getAttribute("href").replace(/\/\d+\/mappings\/?$/, "/{BRANCH}/mappings/");
+        function upd() {
+          const pk = sel.value;
+          link.setAttribute("href", base.replace("{BRANCH}", pk));
+        }
+        sel.addEventListener("change", upd);
+        upd();
+      })();
+    </script>
+  {% endif %}
+{% endif %}
+
+<!-- UNION: from mappings navigate back to union branches / output schema -->
+{% if model_name == "queryunionbranchmapping" and union_parent_pk %}
+  <a
+    href="{% url 'queryunionbranch_list' union_parent_pk %}"
+    class="btn btn-outline-primary btn-sm d-inline-flex align-items-center gap-1"
+    title="Back to UNION branches"
+  >
+    <i class="bi bi-diagram-2"></i>
+    Branches
+  </a>
+  <a
+    href="{% url 'queryunionoutputcolumn_list' union_parent_pk %}"
+    class="btn btn-outline-primary btn-sm d-inline-flex align-items-center gap-1"
+    title="Back to UNION output schema"
+  >
+    <i class="bi bi-layout-three-columns"></i>
+    Output columns
+  </a>
+{% endif %}
+
+<!-- UNION comfort actions -->
+{% if model_name == "queryunionoutputcolumn" and union_parent_pk and union_branches %}
+  <form method="post"
+        action="{% url 'queryunionoutputcolumn_copy_schema' union_parent_pk %}"
+        class="d-inline-flex align-items-center gap-2">
+    {% csrf_token %}
+    <select name="branch_id" class="form-select form-select-sm" style="max-width: 320px;">
+      {% for b in union_branches %}
+        <option value="{{ b.pk }}">
+          Branch {{ b.ordinal_position }}{% if b.input_node %} · {{ b.input_node.name }}{% endif %}
+        </option>
+      {% endfor %}
+    </select>
+    <button type="submit"
+            class="btn btn-primary btn-sm d-inline-flex align-items-center gap-1 text-nowrap"
+            title="Create missing output columns by inferring the selected branch contract">
+      <i class="bi bi-clipboard-plus"></i>
+      Copy output schema from branch
+    </button>
+  </form>
+{% endif %}
+
+{% if model_name == "queryunionbranchmapping" and parent_pk %}
+  <form method="post"
+        action="{% url 'queryunionbranch_automap_by_name' parent_pk %}"
+        class="d-inline">
+    {% csrf_token %}
+    <button type="submit"
+            class="btn btn-primary btn-sm d-inline-flex align-items-center gap-1"
+            title="Auto-fill mappings by matching output column names to branch input contract columns">
+      <i class="bi bi-magic"></i>
+      Auto-map by name
+    </button>
+  </form>
+{% endif %}

@@ -29,6 +29,9 @@ Contact: <https://github.com/elevata-labs/elevata>.
   <span>
     Query builder
     <span class="badge badge-lineage-layer ms-2">{{ object.target_schema.short_name }}</span>
+    {% if object.target_dataset_name %}
+      <span class="badge text-bg-secondary ms-2">{{ object.target_dataset_name }}</span>
+    {% endif %}
   </span>
   <div class="page-actions">
     <a href="{% url 'targetdataset_detail' object.pk %}" class="btn btn-sm btn-outline-primary">
@@ -293,7 +296,10 @@ Contact: <https://github.com/elevata-labs/elevata>.
         <div class="fw-semibold mb-2">Contract snapshot</div>
         {% if has_query_root and query_head and query_root and query_head.id != query_root.id %}
           <div class="small text-muted mb-2">
-            Current head: <code>{{ query_head.node_type }}</code>
+            Current head: <code>{{ query_head.node_type }}</code><br>
+            <span class="text-muted">
+              Head defines the dataset output: SQL preview and contract inference are based on the head node.
+            </span>
           </div>
         {% endif %}
 

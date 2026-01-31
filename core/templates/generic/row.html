@@ -308,6 +308,28 @@ because there is no *_detail route under a parent. -->
           Mappings
         </a>
 
+        <!-- UNION guardrail: mapping completeness -->
+        {% with c=branch_mapping_counts|get:object.pk %}
+          {% if c %}
+            {% if c.total == 0 %}
+              <span class="badge text-bg-warning ms-2"
+                    title="Define UNION output schema first">
+                No output schema
+              </span>
+            {% elif c.missing > 0 %}
+              <span class="badge text-bg-warning ms-2"
+                    title="Missing mappings: {{ c.missing }} of {{ c.total }}">
+                Missing {{ c.missing }}/{{ c.total }}
+              </span>
+            {% else %}
+              <span class="badge text-bg-success ms-2"
+                    title="All mappings defined">
+                OK
+              </span>
+            {% endif %}
+          {% endif %}
+        {% endwith %}
+
       {% elif model_name == 'targetdatasetjoin' %}
         <a
           href="{% url 'targetdatasetjoinpredicate_list' object.pk %}"

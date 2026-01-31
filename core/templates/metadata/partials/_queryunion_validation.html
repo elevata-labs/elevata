@@ -1,0 +1,135 @@
+<!--
+elevata - Metadata-driven Data Platform Framework
+Copyright © 2025-2026 Ilona Tag
+
+This file is part of elevata.
+
+elevata is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of
+the License, or (at your option) any later version.
+
+elevata is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with elevata. If not, see <https://www.gnu.org/licenses/>.
+
+Contact: <https://github.com/elevata-labs/elevata>.
+-->
+
+<!-- HTMX panel: UNION validation summary + optional auto-scroll -->
+
+<div class="alert {% if has_errors %}alert-danger{% else %}alert-success{% endif %} mb-3">
+  <div class="d-flex justify-content-between align-items-start gap-3">
+    <div>
+      <div class="fw-semibold">
+        {% if has_errors %}
+          UNION validation: errors found
+        {% else %}
+          UNION validation: OK
+        {% endif %}
+      </div>
+      <div class="small text-muted">
+        Output columns: {{ summary.output_count }} · Branches: {{ summary.branch_count }}
+      </div>
+    </div>
+    <div class="d-flex gap-2">
+      <button
+        type="button"
+        class="btn btn-sm btn-outline-secondary"
+        hx-get="{% url 'queryunion_validate' union.pk %}"
+        hx-target="#union-validation-panel"
+        hx-swap="innerHTML"
+        title="Re-run validation"
+      >
+        <i class="bi bi-arrow-repeat"></i> Re-validate
+      </button>
+    </div>
+  </div>
+
+  {% if issues %}
+    <hr class="my-2">
+    <ul class="mb-0 small">
+      {% for lvl, msg in issues %}
+        <li>
+          <span class="fw-semibold text-uppercase">{{ lvl }}</span> — {{ msg }}
+        </li>
+      {% endfor %}
+    </ul>
+  {% endif %}
+</div>
+
+{% if summary.branches %}
+  <div class="card mb-3">
+    <div class="card-body py-2">
+      <div class="fw-semibold mb-2">Branch coverage</div>
+      <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0">
+          <thead>
+            <tr>
+              <th>Branch</th>
+              <th>Input</th>
+              <th class="text-end">Mapped</th>
+              <th>Gaps</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in summary.branches %}
+              <tr>
+                <td>#{{ row.branch.ordinal_position }}</td>
+                <td class="text-muted small">
+                  {% if row.input_node %}{{ row.input_node.name }}{% else %}—{% endif %}
+                </td>
+                <td class="text-end">
+                  {{ row.mapped_count }}/{{ summary.output_count }}
+                </td>
+                <td class="small">
+                  {% if row.missing_output_columns %}
+                    <span class="badge text-bg-warning">Missing mappings: {{ row.missing_output_columns|length }}</span>
+                  {% else %}
+                    <span class="badge text-bg-success">Complete</span>
+                  {% endif %}
+                  {% if row.unknown_input_columns %}
+                    <span class="badge text-bg-danger ms-1">Invalid inputs: {{ row.unknown_input_columns|length }}</span>
+                  {% endif %}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+{% endif %}
+
+{% if first_branch_pk %}
+  <script>
+    (function() {
+      // Branch rows are rendered via generic/row.html with id="row-{{ pk }}"
+      const row = document.getElementById("row-{{ first_branch_pk }}");
+      if (!row) return;
+
+      try {
+        row.scrollIntoView({ behavior: "smooth", block: "center" });
+      } catch (e) {
+        row.scrollIntoView(true);
+      }
+
+      // Temporary highlight (Bootstrap-compatible)
+      row.classList.add("table-warning");
+      row.style.outline = "2px solid rgba(255, 193, 7, 0.9)";
+      row.style.outlineOffset = "-2px";
+
+      window.setTimeout(() => {
+        try {
+          row.classList.remove("table-warning");
+          row.style.outline = "";
+          row.style.outlineOffset = "";
+        } catch (e) {}
+      }, 2500);
+    })();
+  </script>
+{% endif %}

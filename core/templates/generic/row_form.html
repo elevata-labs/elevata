@@ -145,6 +145,16 @@ temporary <tr> in JS. -->
 {% if model_name == "targetcolumn" %}
 <script>
 (function() {
+  function normNameFromLabel(label) {
+    let s = (label || "").trim();
+    if (!s) return "";
+    // display_key format: "dataset · column"
+    if (s.includes("·")) s = s.split("·").pop().trim();
+    // safety: "dataset.column"
+    if (s.includes(".")) s = s.split(".").pop().trim();
+    return s;
+  }
+
   function getSelect() {
     return document.querySelector('[name="upstream_columns"]');
   }
@@ -168,6 +178,17 @@ temporary <tr> in JS. -->
     // MVP: take first selected column
     const upstreamId = opts[0].value;
     if (!upstreamId) return;
+
+    // UX: if target_column_name is empty, auto-fill from upstream label (first selected).
+    // This matches common workflow and avoids re-typing.
+    const nameEl = document.querySelector('[name="target_column_name"]');
+    if (nameEl && !(nameEl.value || "").trim()) {
+      const label = (opts[0].textContent || "");
+      const cand = normNameFromLabel(label);
+      if (cand) {
+        nameEl.value = cand;
+      }
+    }    
 
     const url = "{% url 'targetcolumn_upstream_meta' %}" + "?upstream_column_id=" + encodeURIComponent(upstreamId);
     const resp = await fetch(url, { headers: { "X-Requested-With": "XMLHttpRequest" } });
@@ -198,6 +219,82 @@ temporary <tr> in JS. -->
     if (!sel) return;
     sel.removeEventListener("change", onUpstreamChange);
     sel.addEventListener("change", onUpstreamChange);
+  }
+
+  document.addEventListener("DOMContentLoaded", bind);
+  document.body.addEventListener("htmx:afterSwap", bind);
+})();
+</script>
+{% endif %}
+
+{% if model_name == "queryunionoutputcolumn" %}
+<script>
+(function() {
+  function norm(s) {
+    return (s || "").toString().trim().toLowerCase();
+  }
+
+  function q(name) {
+    return document.querySelector('[name="' + name + '"]');
+  }
+
+  function wrap(el) {
+    // Django forms: field is usually in a .mb-2/.form-group wrapper.
+    // We search upwards to hide the whole row.
+    if (!el) return null;
+    return el.closest(".mb-2") || el.closest(".form-group") || el.closest("div");
+  }
+
+  function setVisible(fieldName, visible) {
+    const el = q(fieldName);
+    const w = wrap(el);
+    if (!w) return;
+    w.style.display = visible ? "" : "none";
+  }
+
+  function apply() {
+    const dtEl = q("datatype");
+    const dt = norm(dtEl ? dtEl.value : "");
+
+    const isDecimal = dt.startsWith("decimal") || dt.startsWith("numeric");
+    const isChar =
+      dt.startsWith("varchar") || dt.startsWith("char") ||
+      dt.startsWith("nvarchar") || dt.startsWith("nchar");
+
+    if (!dt) {
+      // No cast datatype => no parameters needed
+      setVisible("max_length", false);
+      setVisible("decimal_precision", false);
+      setVisible("decimal_scale", false);
+      return;
+    }
+
+    if (isDecimal) {
+      setVisible("max_length", false);
+      setVisible("decimal_precision", true);
+      setVisible("decimal_scale", true);
+      return;
+    }
+
+    if (isChar) {
+      setVisible("max_length", true);
+      setVisible("decimal_precision", false);
+      setVisible("decimal_scale", false);
+      return;
+    }
+
+    // Fallback: datatype set but unknown kind → show all optional params
+    setVisible("max_length", true);
+    setVisible("decimal_precision", true);
+    setVisible("decimal_scale", true);
+  }
+
+  function bind() {
+    const dtEl = q("datatype");
+    if (!dtEl) return;
+    dtEl.removeEventListener("change", apply);
+    dtEl.addEventListener("change", apply);
+    apply();
   }
 
   document.addEventListener("DOMContentLoaded", bind);

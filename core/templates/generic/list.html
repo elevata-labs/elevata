@@ -44,6 +44,8 @@ Contact: <https://github.com/elevata-labs/elevata>.
     <div class="d-flex align-items-center gap-2">
       <h1 class="h4 mb-0">{{ title }}</h1>
 
+      {% include "metadata/partials/_union_toolbar.html" %}
+
       {% if model_name == "querywindowcolumn" and scoped_query_dataset_pk %}
         <a
           href="{% url 'orderbyexpression_list' scoped_query_dataset_pk %}"
@@ -112,6 +114,15 @@ Contact: <https://github.com/elevata-labs/elevata>.
       </button>
     </div>
   </div>
+
+  <!-- UNION validation panel target (used by toolbar HTMX validate button) -->
+  {% if union_parent_pk and model_name == "queryunionbranch" %}
+    <div id="union-validation-panel" class="mb-2"></div>
+  {% elif union_parent_pk and model_name == "queryunionoutputcolumn" %}
+    <div id="union-validation-panel" class="mb-2"></div>
+  {% elif union_parent_pk and model_name == "queryunionbranchmapping" %}
+    <div id="union-validation-panel" class="mb-2"></div>
+  {% endif %}
 
   <div class="d-flex align-items-center justify-content-end gap-2 mb-2">
     <div id="generation-loading"

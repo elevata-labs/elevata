@@ -24,18 +24,20 @@ from django import forms
 from django.apps import apps
 from django.contrib import messages
 from django.db import transaction
+from django.db.models import Count, Prefetch
 from django.forms import widgets as wdg
 from django.http import HttpResponse, HttpResponseNotFound, Http404
 from django.shortcuts import render, get_object_or_404, redirect
 from django.urls import reverse, reverse_lazy
 from django.utils.translation import gettext_lazy as _
 from crum import get_current_user
-from generic import GenericCRUDView
+from generic import GenericCRUDView, htmx_oob_warning
 from metadata.generation.policies import (
   query_tree_allowed_for_dataset,
   query_tree_mutations_allowed_for_dataset,
   query_tree_mutation_block_reason,
 )
+from metadata.generation.query_contract import infer_query_node_contract
 from metadata.forms import TargetColumnForm
 from metadata.models import (
   # Target-side
@@ -103,6 +105,13 @@ def _is_query_scoped_model(model) -> bool:
     return False
 
 
+def _is_htmx(request) -> bool:
+  try:
+    return (request.headers.get("HX-Request") or "").lower() == "true"
+  except Exception:
+    return False
+
+
 def _get_query_builder_dataset(parent_obj):
   """
   Return the owning TargetDataset for query-scoped objects so scoped views can
@@ -162,6 +171,21 @@ def _get_query_builder_dataset(parent_obj):
   return None
 
 
+def _first_attr(obj, names):
+  """
+  Return the first non-None attribute found on obj from the given list of names.
+  Helps when related_name differs (e.g. 'aggregate' vs 'aggregate_node').
+  """
+  for n in names:
+    try:
+      v = getattr(obj, n, None)
+      if v is not None:
+        return v
+    except Exception:
+      continue
+  return None
+
+
 def _candidate_column_names_for_targetdataset(td, query_node=None):  
   """
   Best-effort list of column names to help users pick input_column_name fields.
@@ -170,12 +194,12 @@ def _candidate_column_names_for_targetdataset(td, query_node=None):
   """
   # 1) Try inferred contract (if the helper exists in your codebase)
   try:
-    from metadata.generation.query_contract import infer_query_node_contract
+    import metadata.generation.query_contract as query_contract
     root = query_node or getattr(td, "query_root", None)
-    if root:
-      contract = infer_query_node_contract(root)
+    if root is not None:
+      contract = query_contract.infer_query_node_contract(root)
       cols = getattr(contract, "output_columns", None) or getattr(contract, "columns", None) or []
-      cols = [str(c) for c in cols]
+      cols = [str(c) for c in cols if c is not None]
       if cols:
         return cols
   except Exception:
@@ -250,12 +274,18 @@ class _ScopedChildView(GenericCRUDView):
 
     # Layer restriction (hard rule)
     if not query_tree_allowed_for_dataset(td):
-      messages.error(request, query_tree_mutation_block_reason(td))
+      reason = query_tree_mutation_block_reason(td)
+      if _is_htmx(request):
+        return htmx_oob_warning(reason)
+      messages.error(request, reason)
       return redirect("targetdataset_query_builder", td.pk)
 
     # Downstream restriction (contract safety)
     if not query_tree_mutations_allowed_for_dataset(td):
-      messages.error(request, query_tree_mutation_block_reason(td))
+      reason = query_tree_mutation_block_reason(td)
+      if _is_htmx(request):
+        return htmx_oob_warning(reason)
+      messages.error(request, reason)
       return redirect("targetdataset_query_builder", td.pk)
 
     return None
@@ -278,15 +308,7 @@ class _ScopedChildView(GenericCRUDView):
     ctx["scoped_query_dataset_pk"] = None
 
     if parent_obj is not None:
-      # Special cases where the parent does NOT have a global detail route,
-      # but is managed via a scoped list.
-      try:
-        from metadata.models import TargetDatasetReference, TargetDatasetJoin
-      except Exception:
-        TargetDatasetReference = None
-        TargetDatasetJoin = None
-
-      if TargetDatasetReference is not None and isinstance(parent_obj, TargetDatasetReference):
+      if isinstance(parent_obj, TargetDatasetReference):
         # References are scoped under the referencing dataset
         try:
           ctx["scoped_parent_url"] = reverse(
@@ -296,7 +318,7 @@ class _ScopedChildView(GenericCRUDView):
         except Exception:
           pass
 
-      elif TargetDatasetJoin is not None and isinstance(parent_obj, TargetDatasetJoin):
+      elif isinstance(parent_obj, TargetDatasetJoin):
         # Joins are scoped under the target dataset
         try:
           ctx["scoped_parent_url"] = reverse(
@@ -710,9 +732,11 @@ class _ScopedChildView(GenericCRUDView):
       - returning full row.html context
     """
 
-    blocked = self._guard_query_mutation_or_redirect(request)
-    if blocked is not None:
-      return blocked
+    # IMPORTANT: GET is not a mutation. We only block actual mutations.
+    if request.method in ("POST", "DELETE"):
+      blocked = self._guard_query_mutation_or_redirect(request)
+      if blocked is not None:
+        return blocked
 
     try:
       instance = self.model.objects.get(pk=pk)
@@ -1383,6 +1407,24 @@ class QueryNodeScopedView(_ScopedChildView):
     ctx = super().get_context_base(request)
     # Build lightweight summaries for UX ("what did I configure here?")
     summaries = {}
+
+    def _count_active(qs):
+      """
+      Count active rows if the model supports an `active` field, otherwise count all.
+      """
+      if qs is None:
+        return 0
+      try:
+        # Only filter if the field exists on the model
+        if any(f.name == "active" for f in qs.model._meta.get_fields()):
+          return qs.filter(active=True).count()
+      except Exception:
+        pass
+      try:
+        return qs.count()
+      except Exception:
+        return 0
+
     for n in ctx.get("objects", []):
       parts = []
       try:
@@ -1391,37 +1433,57 @@ class QueryNodeScopedView(_ScopedChildView):
           parts.append("base select")
 
         elif nt == "window":
-          w = getattr(n, "window", None)
+          w = _first_attr(n, ["window", "window_node", "windownode", "querywindownode"])
+
           if w is not None:
             cols_qs = getattr(w, "columns", None)
-            c_cnt = cols_qs.filter(active=True).count() if cols_qs is not None else 0
+            c_cnt = _count_active(cols_qs)
+
             parts.append(f"columns: {c_cnt}")
             if c_cnt:
-              first = cols_qs.filter(active=True).order_by("ordinal_position").first()
+              try:
+                if any(f.name == "active" for f in cols_qs.model._meta.get_fields()):
+                  first = cols_qs.filter(active=True).order_by("ordinal_position").first()
+                else:
+                  first = cols_qs.order_by("ordinal_position").first()
+              except Exception:
+                first = cols_qs.order_by("ordinal_position").first() if cols_qs is not None else None
+
               if first is not None:
                 out = (getattr(first, "output_name", "") or "").strip()
                 if out:
                   parts.append(f"e.g. {out}")
+          if not parts:
+            parts.append("window")
 
         elif nt == "aggregate":
-          a = getattr(n, "aggregate", None)
+          a = _first_attr(n, ["aggregate", "aggregate_node", "aggregatenode", "queryaggregatenode"])
+
           if a is not None:
             gk_qs = getattr(a, "group_keys", None)
             m_qs = getattr(a, "measures", None)
-            gk_cnt = gk_qs.filter(active=True).count() if gk_qs is not None else 0
-            m_cnt = m_qs.filter(active=True).count() if m_qs is not None else 0
+            gk_cnt = _count_active(gk_qs)
+            m_cnt = _count_active(m_qs)
+
             parts.append(f"group keys: {gk_cnt}")
             parts.append(f"measures: {m_cnt}")
+          if not parts:
+            parts.append("aggregate")
 
         elif nt == "union":
-          u = getattr(n, "union", None)
+          u = _first_attr(n, ["union", "union_node", "unionnode", "queryunionnode"])
+
           if u is not None:
             b_qs = getattr(u, "branches", None)
             o_qs = getattr(u, "output_columns", None)
-            b_cnt = b_qs.filter(active=True).count() if b_qs is not None else 0
-            o_cnt = o_qs.filter(active=True).count() if o_qs is not None else 0
+            b_cnt = b_qs.count() if b_qs is not None else 0
+            o_cnt = o_qs.count() if o_qs is not None else 0
+
             parts.append(f"branches: {b_cnt}")
             parts.append(f"outputs: {o_cnt}")
+          if not parts:
+            parts.append("union")
+
       except Exception:
         pass
 
@@ -1623,6 +1685,22 @@ class QueryUnionOutputColumnScopedView(_ScopedChildView):
 
   def get_queryset(self):
     return self.model.objects.filter(union_node_id=self.get_parent_pk()).order_by("ordinal_position", "id")
+  
+  def get_context_base(self, request):
+    ctx = super().get_context_base(request)
+    try:
+      union_node = self.get_parent_object()
+      ctx["union_parent_pk"] = getattr(union_node, "pk", None)
+      ctx["union_branches"] = list(
+        union_node.branches.all().order_by("ordinal_position", "id")
+      ) if union_node is not None else []
+      ctx["union_output_count"] = union_node.output_columns.count() if union_node else 0
+
+    except Exception:
+      ctx["union_parent_pk"] = None
+      ctx["union_branches"] = []
+      ctx["union_output_count"] = 0
+    return ctx
 
 
 class QueryUnionBranchScopedView(_ScopedChildView):
@@ -1634,7 +1712,53 @@ class QueryUnionBranchScopedView(_ScopedChildView):
   page_title_singular = "UNION branch"
 
   def get_queryset(self):
-    return self.model.objects.filter(union_node_id=self.get_parent_pk()).select_related("input_node").order_by("ordinal_position", "id")
+    return (
+      self.model.objects
+      .filter(union_node_id=self.get_parent_pk())
+      .select_related("input_node", "input_node__target_dataset")
+      .order_by("ordinal_position", "id")
+    )
+
+  def get_context_base(self, request):
+    ctx = super().get_context_base(request)
+    try:
+      un = self.get_parent_object()
+      ctx["union_parent_pk"] = getattr(un, "pk", None)
+      branches = list(un.branches.all().order_by("ordinal_position", "id")) if un else []
+      ctx["union_branches"] = branches
+
+      # Guardrail counts: mappings completeness per branch
+      total_out = 0
+      try:
+        total_out = un.output_columns.count() if un else 0        
+      except Exception:
+        total_out = 0
+      ctx["union_output_count"] = total_out
+
+      # mapped count per branch (distinct output_column)
+      mapped_rows = (
+        QueryUnionBranchMapping.objects
+        .filter(branch_id__in=[b.pk for b in branches])
+        .values("branch_id")
+        .annotate(mapped=Count("output_column", distinct=True))
+      ) if branches else []
+      mapped_by_branch = {r["branch_id"]: r["mapped"] for r in mapped_rows}
+
+      counts = {}
+      for b in branches:
+        mapped = int(mapped_by_branch.get(b.pk, 0) or 0)
+        missing = total_out - mapped
+        if missing < 0:
+          missing = 0
+        counts[b.pk] = {"mapped": mapped, "missing": missing, "total": total_out}
+      ctx["branch_mapping_counts"] = counts
+
+    except Exception:
+      ctx["union_parent_pk"] = None
+      ctx["union_branches"] = []
+      ctx["union_output_count"] = 0
+      ctx["branch_mapping_counts"] = {}
+    return ctx
 
 
 class QueryUnionBranchMappingScopedView(_ScopedChildView):
@@ -1646,7 +1770,23 @@ class QueryUnionBranchMappingScopedView(_ScopedChildView):
   page_title_singular = "UNION branch mapping"
 
   def get_queryset(self):
-    return self.model.objects.filter(branch_id=self.get_parent_pk()).select_related("output_column").order_by("id")
+    return (
+      self.model.objects
+      .filter(branch_id=self.get_parent_pk())
+      .select_related("output_column", "branch", "branch__input_node", "branch__input_node__target_dataset")
+      .order_by("output_column__ordinal_position", "id")
+    )
+  
+  def get_context_base(self, request):
+    ctx = super().get_context_base(request)
+    # Provide union_node id for navigation (Mappings -> Branches / Output columns)
+    try:
+      br = self.get_parent_object()
+      un = getattr(br, "union_node", None)
+      ctx["union_parent_pk"] = getattr(un, "pk", None)
+    except Exception:
+      ctx["union_parent_pk"] = None
+    return ctx
   
   def enhance_form(self, form):
     form = super().enhance_form(form)

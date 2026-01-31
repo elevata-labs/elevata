@@ -1,6 +1,6 @@
 """
 elevata - Metadata-driven Data Platform Framework
-Copyright © 2025 Ilona Tag
+Copyright © 2025-2026 Ilona Tag
 
 This file is part of elevata.
 
@@ -61,8 +61,19 @@ def beautify_sql(sql: str) -> str:
   sql = re.sub(r"\s+", " ", sql).strip()
 
   # 2) Add line breaks before main clauses
-  for kw in ["FROM", "WHERE", "GROUP BY", "ORDER BY", "HAVING", "LIMIT"]:
-    sql = re.sub(rf"\s+{kw}\s+", f"\n{kw} ", sql, flags=re.IGNORECASE)
+  # Important: handle UNION variants before plain UNION
+  for kw in [
+    "UNION ALL",
+    "UNION DISTINCT",
+    "UNION",
+    "FROM",
+    "WHERE",
+    "GROUP BY",
+    "ORDER BY",
+    "HAVING",
+    "LIMIT",
+  ]:
+    sql = re.sub(rf"\s+{kw}\s+", f"\n{kw}\n", sql, flags=re.IGNORECASE)
 
   # 3) Put SELECT list on separate lines
   sql = re.sub(r"SELECT\s+", "SELECT\n  ", sql, flags=re.IGNORECASE)

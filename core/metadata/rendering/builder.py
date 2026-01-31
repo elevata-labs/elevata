@@ -1117,12 +1117,12 @@ def _build_union_plan_for_node(node):
       in_name = mappings.get(oc.id, "")
       if not in_name:
         raise ValueError(
-          f"Union branch {b.id} has no mapping for output column '{oc.name}'."
+          f"Union branch {b.id} has no mapping for output column '{oc.output_name}'."
         )
       items.append(
         SelectItem(
           expr=ColumnRef(table_alias="b", column_name=in_name),
-          alias=oc.name,
+          alias=oc.output_name,
         )
       )
 

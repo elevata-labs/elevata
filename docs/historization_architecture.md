@@ -74,13 +74,45 @@ Inherited from Rawcore via lineage:
 ## 🔧 3. Schema Sync, Drift & Renames
 
 History tables are an exact schema mirror of their Rawcore base table (plus SCD technical fields).  
-To avoid accidental duplication when columns are renamed, elevata relies on metadata-driven rename tracking:
+To avoid accidental duplication when columns are renamed, elevata relies on 
+
+### 🧩 Metadata-driven rename tracking:
 
 - Base dataset column rename updates `TargetColumn.former_names`  
 - Hist dataset metadata must retain corresponding former names as well  
   so that materialization planning can emit `RENAME COLUMN` instead of `ADD COLUMN`.
 
-Guardrails:  
+### 🧩 Orphan preservation (schema drift)
+
+If a business column disappears from Rawcore, elevata does not drop it from `_hist`.  
+Instead, it is preserved as an **inactive column without upstream inputs**, so that:
+
+- historical data remains analyzable  
+- old reports continue to work  
+- downstream schemas do not silently change
+
+Rename cases are **not** treated as orphans.  
+They are detected via existing `TargetColumnInput` lineage links and therefore
+migrated as proper renames, not preserved under the old name.
+
+When a FK reference is deleted, elevata detaches dependent `_hist` inputs instead of dropping columns,  
+so historized schemas remain analyzable and stable.
+
+### 🧩 Policy: Never drop business columns in `_hist`
+
+`_hist` tables are treated as long-lived audit/history artifacts.  
+Therefore, elevata applies a strict policy:
+
+- **Business columns in `_hist` are never physically dropped.**  
+- If a business column disappears from Rawcore (e.g., source stopped delivering it, FK reference deleted),  
+  the corresponding `_hist` column is:  
+  - marked **inactive** (`active=false`, `retired_at` set)  
+  - detached from lineage (**all `TargetColumnInput` links removed**)
+
+Technical SCD columns (`version_*`, `load_run_id`, `loaded_at`) remain generator-managed and may be rebuilt,  
+but business-history stays analyzable and stable over time.
+
+### 🧩 Guardrails:
 - Hist datasets must only rename from hist-like former names (`*_hist`)  
   to prevent accidental base → hist table renames.
 
