@@ -184,7 +184,7 @@ No SQL changes required.
 | Data safety | ✅ No data loss |
 | Determinism | ✅ Same metadata → same plan |
 | Incremental safety | ✅ MERGE never breaks |
-| Cross-dialect | ✅ DuckDB, Postgres, MSSQL, BigQuery |
+| Cross-dialect | ✅ BigQuery, Databricks, DuckDB, Fabric Warehouse, MSSQL, Postgres, Snowflake |
 | Historization | ✅ Always consistent |
 
 ---

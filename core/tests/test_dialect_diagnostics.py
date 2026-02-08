@@ -1,6 +1,6 @@
 """
 elevata - Metadata-driven Data Platform Framework
-Copyright © 2025 Ilona Tag
+Copyright © 2025-2026 Ilona Tag
 
 This file is part of elevata.
 
@@ -43,6 +43,9 @@ from metadata.rendering.dialects import dialect_factory
 from metadata.rendering.dialects.duckdb import DuckDBDialect
 from metadata.rendering.dialects.postgres import PostgresDialect
 from metadata.rendering.dialects.mssql import MssqlDialect
+from metadata.rendering.dialects.databricks import DatabricksDialect
+from metadata.rendering.dialects.snowflake import SnowflakeDialect
+from metadata.rendering.dialects.fabric_warehouse import FabricWarehouseDialect
 
 
 def test_collect_dialect_diagnostics_for_each_registered_dialect():
@@ -152,5 +155,30 @@ def test_mssql_capabilities_and_hash_support():
   assert diag.supports_delete_detection is True
   assert diag.supports_hash_expression is True
   # HASHBYTES-based hash
+  assert "HASHBYTES" in diag.sample_hash256.upper()
+  assert "CONVERT" in diag.sample_hash256.upper()
+
+
+def test_databricks_hash_support():
+  dialect = DatabricksDialect()
+  diag = collect_dialect_diagnostics(dialect)
+  assert diag.name == DatabricksDialect.DIALECT_NAME
+  assert diag.supports_hash_expression is True
+  assert "SHA2" in diag.sample_hash256.upper()
+
+
+def test_snowflake_hash_support():
+  dialect = SnowflakeDialect()
+  diag = collect_dialect_diagnostics(dialect)
+  assert diag.name == SnowflakeDialect.DIALECT_NAME
+  assert diag.supports_hash_expression is True
+  assert "SHA2" in diag.sample_hash256.upper()
+
+
+def test_fabric_warehouse_hash_support():
+  dialect = FabricWarehouseDialect()
+  diag = collect_dialect_diagnostics(dialect)
+  assert diag.name == FabricWarehouseDialect.DIALECT_NAME
+  assert diag.supports_hash_expression is True
   assert "HASHBYTES" in diag.sample_hash256.upper()
   assert "CONVERT" in diag.sample_hash256.upper()

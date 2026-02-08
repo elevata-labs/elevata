@@ -35,16 +35,16 @@ SEC_DEV_CONN_MSSQL_SAP=mssql+pyodbc://user:pwd@sql01,1433/SAPDB?driver=ODBC%20Dr
 
 | Type | Label | Driver / Package | Reflection Support | Example URI |
 |------|--------|------------------|--------------------|-------------|
-| `mssql` | Microsoft SQL Server | `pyodbc` | ✅ Full | `mssql+pyodbc://user:pwd@host,1433/db?driver=ODBC%20Driver%2018%20for%20SQL%20Server` |
-| `postgresql` | PostgreSQL | `psycopg2` | ✅ Full | `postgresql+psycopg2://user:pwd@localhost:5432/dbname` |
-| `mysql` | MySQL / MariaDB | `mysqlclient` or `pymysql` | ✅ Full | `mysql+pymysql://user:pwd@localhost:3306/db` |
-| `sqlite` | SQLite | built-in | ✅ Full | `sqlite:///C:/data/dev.db` |
-| `oracle` | Oracle | `python-oracledb` | ✅ Columns & PKs | `oracle+oracledb://user:pwd@host:1521/servicename` |
-| `snowflake` | Snowflake | `snowflake-sqlalchemy` | ✅ Columns only | `snowflake://user:pwd@account/DB/SCHEMA?warehouse=WH` |
-| `redshift` | Amazon Redshift | `sqlalchemy-redshift` | ✅ Columns only | `redshift+psycopg2://user:pwd@redshift:5439/dev` |
 | `bigquery` | Google BigQuery | `pybigquery` | ✅ Columns only | `bigquery://project-id` |
-| `duckdb` | DuckDB | `duckdb-engine` | ✅ Full | `duckdb:///C:/data/local.duckdb` |
 | `databricks` | Databricks SQL (Beta) | `sqlalchemy-databricks` | ⚠️ Columns only | `databricks://token:<TOKEN>@<host>?http_path=/sql/1.0/warehouses/<id>` |
+| `duckdb` | DuckDB | `duckdb-engine` | ✅ Full | `duckdb:///C:/data/local.duckdb` |
+| `mssql` | Microsoft SQL Server | `pyodbc` | ✅ Full | `mssql+pyodbc://user:pwd@host,1433/db?driver=ODBC%20Driver%2018%20for%20SQL%20Server` |
+| `mysql` | MySQL / MariaDB | `mysqlclient` or `pymysql` | ✅ Full | `mysql+pymysql://user:pwd@localhost:3306/db` |
+| `oracle` | Oracle | `python-oracledb` | ✅ Columns & PKs | `oracle+oracledb://user:pwd@host:1521/servicename` |
+| `postgresql` | PostgreSQL | `psycopg2` | ✅ Full | `postgresql+psycopg2://user:pwd@localhost:5432/dbname` |
+| `redshift` | Amazon Redshift | `sqlalchemy-redshift` | ✅ Columns only | `redshift+psycopg2://user:pwd@redshift:5439/dev` |
+| `snowflake` | Snowflake | `snowflake-sqlalchemy` | ✅ Columns only | `snowflake://user:pwd@account/DB/SCHEMA?warehouse=WH` |
+| `sqlite` | SQLite | built-in | ✅ Full | `sqlite:///C:/data/dev.db` |
 
 ---
 

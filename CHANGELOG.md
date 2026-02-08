@@ -22,6 +22,78 @@ This project adheres to [Semantic Versioning](https://semver.org/) and [Keep a C
 
 ---
 
+## [1.2.0] - 2026-02-08
+
+This release introduces a major upgrade to Query Builder contract handling,  
+query-derived schema synchronization, and datatype inference.
+
+It significantly improves determinism, usability, and correctness of  
+metadata-driven query modeling while simplifying internal typing logic.
+
+### ✨ Added
+
+#### Multi-platform execution support
+
+- Added native execution dialects for:  
+  - Snowflake  
+  - Databricks SQL (Unity Catalog)  
+  - Microsoft Fabric Warehouse  
+- Unified execution semantics across platforms using the same metadata model  
+- No platform-specific modeling required  
+- Architecture defined once, executed consistently across engines
+
+This release marks the first version where elevata execution semantics are aligned across  
+multiple modern cloud data warehouse platforms.
+
+#### Query Builder & Contract Handling
+- Query-derived TargetColumns are now fully synchronized with the Query Tree output contract  
+- Automatic creation, rename, update and deletion of query-derived columns  
+- Contract-based schema alignment between:  
+  - SQL preview  
+  - logical plan  
+  - materialized dataset schema  
+- Aggregate nodes now redefine output contracts explicitly as:  
+  - group keys + measures only  
+- Window and Aggregate operators expose correct upstream input columns  
+  without requiring intermediate target column assignment
+
+#### Datatype inference
+- Deterministic datatype inference for:  
+  - window functions (ROW_NUMBER, RANK, DENSE_RANK)  
+  - aggregate measures (COUNT, SUM, MIN, MAX, AVG)  
+- COUNT and ranking functions now default to INTEGER instead of BIGINT  
+- Datatypes inferred from upstream input columns where possible  
+- Canonical datatype resolution aligned with DATATYPE_CHOICES
+
+#### Query Builder UX improvements
+- Aggregate editor now shows input dataset columns directly  
+- Window and Aggregate nodes operate on input contracts instead of
+  materialized target schema  
+- Eliminates unnecessary intermediate column creation
+
+#### Databricks execution improvements
+- Improved raw ingestion performance for Databricks SQL Warehouse by batching multi-row INSERT execution
+- Eliminates per-row execution overhead caused by connector-level executemany behavior
+- No changes required to metadata models or query definitions
+
+### 🛠 Fixed
+
+- Window columns incorrectly defaulting to STRING datatype  
+- Aggregate measures not inheriting input column datatype  
+- Contract sync overriding inferred datatypes  
+- Missing input columns in Aggregate editor selection  
+- Incorrect system-managed flag for query-derived columns  
+- Multiple contract sync race conditions caused by partial state inference
+
+### 🔒 Governance & Determinism
+
+- Query contract inference now consistently evaluates against query_head  
+- Dataset schema always reflects effective query output contract  
+- Deterministic datatype normalization across query-derived columns  
+- Reduced risk of schema drift between metadata and generated SQL
+
+---
+
 ## [1.1.0] - 2026-01-31
 
 This release introduces a major upgrade to the Query Builder and UNION workflow,  

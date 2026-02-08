@@ -393,15 +393,28 @@ def run_single_target_dataset(
     mat_policy = replace(mat_policy, debug_plan=bool(debug_plan))
 
     if AUTO_PROVISION_TABLES and schema_short in mat_policy.sync_schema_shorts:
-      # Introspection via SQLAlchemy
-      target_sa_engine = engine_for_target(
-        target_short_name=target_system.short_name,
-        system_type=target_system.type,
-      )
+      # Introspection: Databricks should prefer exec_engine-based introspection
+      # to respect Unity Catalog session context (USE CATALOG).
+      target_sa_engine = None
+      if (target_system.type or "").lower() != "databricks":
+        target_sa_engine = engine_for_target(
+          target_short_name=target_system.short_name,
+          system_type=target_system.type,
+        )
 
       if debug_materialization and not no_print:
+        # Guard debug output when SQLAlchemy introspection engine is intentionally disabled.
+        db = ""
+        if target_sa_engine is not None and getattr(target_sa_engine, "url", None) is not None:
+          try:
+            db = target_sa_engine.url.database or ""
+          except Exception:
+            db = ""
         stdout.write(style.NOTICE(
-          f"-- Introspection DB absolute: {os.path.abspath(target_sa_engine.url.database or '')}"
+          f"-- Introspection engine: {'sqlalchemy' if target_sa_engine is not None else 'exec_engine_only'}"
+        ))
+        stdout.write(style.NOTICE(
+          f"-- Introspection DB absolute: {os.path.abspath(db)}"
         ))
         stdout.write(style.NOTICE(
           f"-- Execution engine: {target_system.short_name} type={target_system.type}"

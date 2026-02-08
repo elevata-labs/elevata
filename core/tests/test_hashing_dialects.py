@@ -1,6 +1,6 @@
 """
 elevata - Metadata-driven Data Platform Framework
-Copyright © 2025 Ilona Tag
+Copyright © 2025-2026 Ilona Tag
 
 This file is part of elevata.
 
@@ -22,6 +22,7 @@ Contact: <https://github.com/elevata-labs/elevata>.
 
 from metadata.rendering.dsl import parse_surrogate_dsl
 from metadata.rendering.dialects.dialect_factory import get_active_dialect
+import pytest
 
 
 DSL = "HASH256(CONCAT_WS('|', COALESCE({expr:a}, '<NULL>'), 'pepper'))"
@@ -33,20 +34,20 @@ def _render(dialect_name: str) -> str:
   return dialect.render_expr(expr)
 
 
-def test_hash256_duckdb():
-  sql = _render("duckdb")
-  assert "SHA256(" in sql.upper()
-
-
-def test_hash256_postgres():
-  sql = _render("postgres")
+@pytest.mark.parametrize(
+  "dialect_name, must_contain_any",
+  [
+    ("bigquery", ["sha256(", "to_hex("]),
+    ("databricks", ["sha2("]),
+    ("duckdb", ["sha256("]),
+    ("postgres", ["digest(", "'sha256'"]),
+    ("fabric_warehouse", ["hashbytes('sha2_256'", "convert("]),
+    ("mssql", ["hashbytes('sha2_256'", "convert("]),
+    ("snowflake", ["sha2(", "to_varchar("]),
+  ],
+)
+def test_hash256_contains_expected_primitives(dialect_name: str, must_contain_any: list[str]):
+  sql = _render(dialect_name)
   lower = sql.lower()
-  assert "digest(" in lower
-  assert "'sha256'" in lower
-
-
-def test_hash256_mssql():
-  sql = _render("mssql")
-  upper = sql.upper()
-  assert "HASHBYTES('SHA2_256'" in upper
-  assert "CONVERT(" in upper
+  for needle in must_contain_any:
+    assert needle in lower, f"{dialect_name}: expected '{needle}' in SQL:\n{sql}"

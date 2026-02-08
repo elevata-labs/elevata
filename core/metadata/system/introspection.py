@@ -30,6 +30,9 @@ def read_table_metadata(engine, schema: str, table: str) -> Dict[str, Any]:
   """
   if engine.dialect.name == "mssql":
     return _read_table_metadata_mssql(engine, schema, table)
+  
+  if engine.dialect.name == "databricks":
+    return _read_table_metadata_databricks(engine, schema, table)
 
   insp = inspect(engine)
 
@@ -130,3 +133,27 @@ def _read_table_metadata_mssql(engine, schema: str, table: str):
     })
 
   return {"columns": cols, "primary_key_cols": pk_cols, "fk_map": fk_map}
+
+
+def _read_table_metadata_databricks(engine, schema: str, table: str):
+  sql = f"SHOW COLUMNS IN {schema}.{table}"
+
+  with engine.connect() as conn:
+    rows = conn.execute(text(sql)).fetchall()
+
+  cols = []
+  for r in rows:
+    # Databricks returns column name in first field
+    name = r[0]
+    cols.append({
+      "name": name,
+      "type": None,
+      "nullable": None,
+      "comment": None,
+    })
+
+  return {
+    "columns": cols,
+    "primary_key_cols": set(),
+    "fk_map": {},
+  }

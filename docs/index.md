@@ -49,7 +49,7 @@ This index gives you an overview of all major topics and how they fit together.
   General rules for how SQL is formatted and rendered (identifiers, literals, ordering, readability).
 
 - [Dialect System](dialect_system.md)  
-  Overview of the dialect abstraction, the dialect registry, and how DuckDB, Postgres and MSSQL are implemented.
+  Overview of the dialect abstraction, the dialect registry, and how BigQuery, Databricks, DuckDB, Fabric Warehouse, MSSQL, Postgres and Snowflake are implemented.
 
 - [Target Backends](target_backends.md)  
   Which engines are supported and how they fit into a Lakehouse or Warehouse architecture.

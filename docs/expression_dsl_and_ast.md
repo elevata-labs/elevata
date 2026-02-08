@@ -18,7 +18,7 @@ It forms the foundation of the multi-dialect SQL engine and powers:
 - a safe, declarative **Expression DSL** stored in metadata  
 - a **parser** converting DSL → AST  
 - a **vendor-neutral AST** describing expressions  
-- **dialect renderers** (DuckDB, Postgres, MSSQL) that emit actual SQL  
+- **dialect renderers** (BigQuery, Databricks, DuckDB, Fabric Warehouse, MSSQL, Postgres, Snowflake) that emit actual SQL  
 
 This ensures:  
 - deterministic SQL generation  
@@ -59,9 +59,13 @@ Hash256(
 ```
 
 Dialect renderings:  
+- **BigQuery** → `TO_HEX(SHA256(CONCAT_WS('|', ...)))`  
+- **Databricks** → `SHA2(CONCAT_WS('|', ...), 256)`  
 - **DuckDB** → `SHA256(CONCAT_WS('|', ...))`  
-- **Postgres** → `ENCODE(DIGEST(CONCAT_WS('|', ...), 'sha256'), 'hex')`  
+- **Fabric Warehouse** → `CONVERT(VARCHAR(64), HASHBYTES('SHA2_256', CAST(CONCAT_WS('|', ...) AS VARCHAR(4000))), 2)`  
 - **MSSQL** → `CONVERT(VARCHAR(64), HASHBYTES('SHA2_256', CONCAT_WS('|', ...)), 2)`  
+- **Postgres** → `ENCODE(DIGEST(CONCAT_WS('|', ...), 'sha256'), 'hex')`  
+- **Snowflake** → `LOWER(TO_HEX(SHA2(CONCAT_WS('|', ...), 256)))`  
 
 ---
 
@@ -203,9 +207,13 @@ Each SQL dialect must render:
 Consistency across dialects is ensured because all begin from the same AST.
 
 Examples:  
+- **BigQuery**: `TO_HEX(SHA256(...))`  
+- **Databricks**: `SHA2(..., 256)`  
 - **DuckDB**: `SHA256(...)`  
-- **Postgres**: `ENCODE(DIGEST(...), 'hex')`  
+- **Fabric Warehouse**: `CONVERT(VARCHAR(64), HASHBYTES('SHA2_256', ...), 2)`  
 - **MSSQL**: `HASHBYTES('SHA2_256', ...)`  
+- **Postgres**: `ENCODE(DIGEST(...), 'hex')`  
+- **Snowflake**: `LOWER(TO_HEX(SHA2(..., 256)))`  
 
 ---
 

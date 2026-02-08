@@ -1,6 +1,6 @@
 """
 elevata - Metadata-driven Data Platform Framework
-Copyright © 2025 Ilona Tag
+Copyright © 2025-2026 Ilona Tag
 
 This file is part of elevata.
 
@@ -86,10 +86,3 @@ class LogicalUnion:
   def __init__(self, selects: list, union_type: str = "ALL"):
     self.selects = selects
     self.union_type = union_type.upper()
-
-  def to_sql(self, dialect):
-    rendered = []
-    for sel in self.selects:
-      rendered.append(dialect.render_select(sel))
-    sep = f"\nUNION {self.union_type}\n"
-    return sep.join(rendered)

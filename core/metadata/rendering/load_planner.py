@@ -1,6 +1,6 @@
 """
 elevata - Metadata-driven Data Platform Framework
-Copyright © 2025 Ilona Tag
+Copyright © 2025-2026 Ilona Tag
 
 This file is part of elevata.
 
@@ -23,7 +23,7 @@ Contact: <https://github.com/elevata-labs/elevata>.
 from dataclasses import dataclass
 from typing import Literal
 
-from metadata.models import TargetDataset
+from metadata.models import TargetSchema, TargetDataset
 
 LoadMode = Literal[
   "view_only",
@@ -52,6 +52,10 @@ def build_load_plan(target_dataset: TargetDataset) -> LoadPlan:
   """
   Decide how a dataset should be loaded based on its metadata.
 
+  IMPORTANT:
+  - `incremental_strategy` decides the base load mode (full/append/merge/snapshot).
+  - `historize` is an orthogonal flag on the *base* dataset (typically rawcore),
+    and must NOT be forced to False for full refresh datasets.
   This does NOT generate any SQL yet, it only describes the load mode.
   """
   schema = getattr(target_dataset, "target_schema", None)
@@ -60,14 +64,12 @@ def build_load_plan(target_dataset: TargetDataset) -> LoadPlan:
   mat_type = getattr(target_dataset, "materialization_type", "table")
   strategy = getattr(target_dataset, "incremental_strategy", "full")
 
-  # 0) History datasets: no dedicated load strategy yet.
-  # They will eventually get their own history load mode.
-  if schema_short == "rawcore" and dataset_name.endswith("_hist"):
-    return LoadPlan(
-      mode="full",
-      handle_deletes=False,
-      historize=False,
-    )
+  # Historize is a property of the *base* dataset and must come through the plan
+  # even for full refresh. Hist tables themselves are not "historized".
+  schema_default_hist = bool(getattr(schema, "default_historize", False)) if schema is not None else False
+  td_historize = bool(getattr(target_dataset, "historize", False))
+  historize_enabled = bool(td_historize or schema_default_hist)
+  is_hist = bool(schema_short == "rawcore" and isinstance(dataset_name, str) and dataset_name.endswith("_hist"))
 
   # 1) Views / logical models: no separate load step, just SELECT/VIEW
   if mat_type == "view":
@@ -82,7 +84,7 @@ def build_load_plan(target_dataset: TargetDataset) -> LoadPlan:
     return LoadPlan(
       mode="full",
       handle_deletes=False,
-      historize=False,
+      historize=(historize_enabled and not is_hist),      
     )
 
   if strategy == "append":
@@ -90,8 +92,7 @@ def build_load_plan(target_dataset: TargetDataset) -> LoadPlan:
     return LoadPlan(
       mode="append",
       handle_deletes=False,
-      historize=False,
-    )
+      historize=(historize_enabled and not is_hist),    )
 
   if strategy == "merge":
     # Merge is only meaningful for rawcore with keys and incremental_source.
@@ -104,26 +105,26 @@ def build_load_plan(target_dataset: TargetDataset) -> LoadPlan:
       return LoadPlan(
         mode="merge",
         handle_deletes=bool(getattr(target_dataset, "handle_deletes", False)),
-        historize=bool(getattr(target_dataset, "historize", False)),
+        historize=(historize_enabled and not is_hist),
       )
 
     # Fallback if prerequisites for merge are not met
     return LoadPlan(
       mode="full",
       handle_deletes=False,
-      historize=False,
+      historize=(historize_enabled and not is_hist),      
     )
 
   if strategy == "snapshot":
     return LoadPlan(
       mode="snapshot",
       handle_deletes=False,
-      historize=False,
+      historize=(historize_enabled and not is_hist),      
     )
 
   # Fallback: treat unknown strategy as full refresh
   return LoadPlan(
     mode="full",
     handle_deletes=False,
-    historize=False,
+    historize=(historize_enabled and not is_hist),    
   )

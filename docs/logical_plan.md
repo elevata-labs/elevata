@@ -26,7 +26,7 @@ The Logical Plan:
 - has no vendor SQL  
 - is deterministic  
 - is safe for testing  
-- can be rendered to any SQL dialect (DuckDB, Postgres, MSSQL)  
+- can be rendered to any SQL dialect (BigQuery, Databricks, DuckDB, Fabric Warehouse, MSSQL, Postgres, SNowflake)  
 
 ---
 
@@ -204,17 +204,37 @@ Each dialect must render:
 
 Example dialect responsibilities:  
 
+### 🧩 BigQuery
+- window functions: identical to ANSI  
+- hashing: `TO_HEX(SHA256(<expr>))`  
+- table addressing: dataset-qualified identifiers
+
+### 🧩 Databricks
+- window functions: identical to ANSI / Spark SQL  
+- hashing: `SHA2(<expr>, 256)`  
+- execution: runs on Databricks SQL Warehouse (Unity Catalog for catalog/schema)
+
 ### 🧩 DuckDB
 - window functions: identical to ANSI  
 - hashing: SHA256()  
+
+### 🧩 Fabric Warehouse
+- hashing via `HASHBYTES('SHA2_256', <expr>)`  
+- convert binary → hex via `CONVERT(VARCHAR(64), ..., 2)`  
+- DDL idempotency: `IF OBJECT_ID(...) IS NULL` pattern (no `CREATE TABLE IF NOT EXISTS`)
+
+### 🧩 MSSQL
+- hashing via `HASHBYTES('SHA2_256', ...)`  
+- convert binary → hex via `CONVERT(VARCHAR(64), ..., 2)`  
 
 ### 🧩 Postgres
 - subqueries: `(SELECT ...) AS alias`  
 - hashing: `ENCODE(DIGEST(...), 'sha256'), 'hex')`  
 
-### 🧩 MSSQL
-- hashing via `HASHBYTES('SHA2_256', ...)`  
-- convert binary → hex via `CONVERT(VARCHAR(64), ..., 2)`  
+### 🧩 Snowflake
+- window functions: identical to ANSI  
+- hashing: `LOWER(TO_HEX(SHA2(<expr>, 256)))`  
+- identifiers: quoted via `"..."` and database/schema-qualified rendering
 
 ---
 

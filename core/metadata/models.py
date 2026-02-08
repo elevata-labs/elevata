@@ -876,6 +876,14 @@ class TargetDataset(AuditFields):
     Best-effort: if there are multiple active inputs but no active join defined,
     list the non-base inputs that are effectively 'unjoined'.
     """
+    # Joins are only meaningful for custom query logic layers (bizcore/serving).
+    try:
+      layer = getattr(getattr(self, "target_schema", None), "short_name", None)
+      if layer not in ("bizcore", "serving"):
+        return []
+    except Exception:
+      return []
+
     inputs = list(self._active_input_links_qs())
     if len(inputs) <= 1:
       return []
@@ -1368,7 +1376,7 @@ class QueryUnionOutputColumn(AuditFields):
     unique_together = [("union_node", "ordinal_position")]
 
   def __str__(self) -> str:
-    name = (getattr(self, "name", "") or "").strip()
+    name = (getattr(self, "output_name", "") or "").strip()
     dt = getattr(self, "datatype", None)
     ordpos = getattr(self, "ordinal_position", None)
     bits = []

@@ -871,8 +871,9 @@ def targetdataset_add_aggregate_node(request, pk: int) -> HttpResponse:
   except Exception:
     pass
 
-  # Jump to measures (most common next step)
-  return redirect("queryaggregatemeasure_list", parent_pk=agg.pk)
+  # Land in Group Keys first (better UX for schema-changing operator)
+  # Reason: output contract of AGGREGATE = group keys + measures.
+  return redirect("queryaggregategroupkey_list", parent_pk=agg.pk)
 
 
 @login_required
@@ -1153,7 +1154,7 @@ def _union_mismatch_summary(union: QueryUnionNode) -> dict[str, Any]:
     # mappings present?
     maps = (
       QueryUnionBranchMapping.objects
-      .filter(branch=b, active=True)
+      .filter(branch=b)
       .select_related("output_column")
     )
     mapped_out_norm = set()

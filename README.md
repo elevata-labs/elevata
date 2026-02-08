@@ -10,6 +10,29 @@ It’s designed as a **Declarative Data Architecture & Metadata Framework** — 
 Instead of manually crafting endless SQL and pipeline code, elevata lets metadata do the work.  
 By defining datasets, lineage, and transformation logic declaratively, you can generate consistent, auditable, and future-proof data models — including schema evolution and physical execution — ready to run on your preferred platform.
 
+**elevata defines data platform architecture in metadata and executes it deterministically across warehouse engines — allowing architecture to be defined once and executed consistently everywhere.**
+
+---
+
+## ⚡ What elevata enables
+
+With elevata, the same metadata-defined architecture can be executed consistently across modern warehouse engines such as:
+
+- Snowflake  
+- Databricks SQL (Unity Catalog)  
+- Microsoft Fabric Warehouse  
+- PostgreSQL  
+- DuckDB  
+- Google BigQuery
+
+without rewriting models or introducing platform-specific logic.
+
+SQL becomes an execution artifact — not the architectural source of truth.
+
+Unlike many data tools that rely on adapter-specific behavior or runtime SQL rewriting,
+elevata derives execution deterministically from metadata contracts and logical planning.  
+The same metadata definition therefore produces consistent results across platforms.
+
 ## License & Dependencies
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](https://github.com/elevata-labs/elevata/blob/main/LICENSE)
@@ -24,7 +47,7 @@ By defining datasets, lineage, and transformation logic declaratively, you can g
 **elevata** transforms metadata into architecture.  
 It reads source system metadata, derives logical and physical target structures, and enforces consistent, privacy-compliant data models — automatically.  
 
-elevata transforms metadata into architecture — **from raw ingestion to business-ready, metadata-defined data products**.
+From raw ingestion to business-ready data products, elevata derives architecture directly from metadata.
 
 It codifies architectural best practices, generates high-quality SQL, and provides a declarative way to build  
 **RAW → STAGE → CORE → BIZCORE → SERVING** pipelines.
@@ -46,10 +69,41 @@ Unlike transformation-centric tools, elevata treats metadata, lineage, and execu
 
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/elevata-labs/elevata/main/docs/elevata_v1_1_0.png" alt="elevata UI preview" width="700"/>
+  <img src="https://raw.githubusercontent.com/elevata-labs/elevata/main/docs/elevata_v1_2_0.png" alt="elevata UI preview" width="700"/>
   <br/>
   <em>Dataset detail view with lineage, metadata, and dialect-aware SQL previews</em>
 </p>
+
+
+## ✨ Why elevata is different
+
+Most data tools treat SQL as the primary source of truth.
+
+Architecture, execution behaviour and governance often emerge implicitly
+from pipelines, macros or platform-specific implementations.
+
+elevata takes a different approach.
+
+Architecture is defined explicitly through metadata:  
+- datasets describe behaviour  
+- lineage describes dependencies  
+- governance rules are part of the model  
+- SQL is generated deterministically from these definitions
+
+This allows elevata to separate:
+
+- **what** a data platform should do (logical model)  
+- **how** SQL is rendered (dialect)  
+- **where and how** execution happens (execution engine)
+
+As a result, the same architecture can run consistently across different  
+platforms such as Snowflake, Databricks or Microsoft Fabric without rewriting logic.
+
+SQL becomes an artifact — not the architecture itself.
+
+Define architecture once in metadata — elevata generates deterministic SQL and runs it across warehouses consistently.
+
+---
 
 **elevata** uses Django models to define:
 
@@ -75,9 +129,10 @@ multiple SQL dialects with deterministic rendering.
 While SQL previews are an important inspection and debugging tool,  
 elevata is fundamentally designed for **warehouse-native execution**.
 
-All generated SQL can be executed deterministically against the target system,  
-including incremental loads, merges, historization, and schema synchronization.
-
+All generated SQL can be executed deterministically against the configured target system across multiple engines,  
+including incremental loads, merges, historization, and schema synchronization.    
+This allows the same metadata model to be executed on Snowflake, Databricks, Fabric Warehouse,  
+Postgres, or DuckDB without changing any dataset definitions.
 
 > *Modern data platforms often fail not because of missing tools, but because*  
 > *architecture, lineage, and governance are encoded implicitly in SQL and pipeline code.*  
@@ -131,13 +186,21 @@ A unified Abstract Syntax Tree for expressions:
 This ensures consistent semantics across all target systems.
 
 ### 4. SQL Dialects
-Dialect-specific renderers for DuckDB, Postgres, MSSQL, and BigQuery (more to come).
+Dialect-specific renderers and execution adapters for:  
+- BigQuery  
+- Databricks (Unity Catalog + SQL Warehouse)  
+- DuckDB  
+- Microsoft Fabric Warehouse  
+- MSSQL  
+- Postgres  
+- Snowflake
 
 They handle:  
 - SQL syntax differences  
 - hashing and surrogate key generation  
 - quoting and identifier rules  
-- MERGE vs UPDATE/INSERT fallbacks
+- MERGE vs UPDATE/INSERT fallbacks  
+- target-specific execution semantics
 
 ### 5. Materialization & Schema Evolution
 Physical target schemas are synchronized deterministically against metadata definitions.
@@ -184,10 +247,12 @@ elevata is designed for execution — not just preview.
 
 ## 💻 Load Runner CLI
 
-elevata includes a dataset-driven load runner (`elevata_load`) that executes
-pipelines in dependency order.  
+elevata includes a dataset-driven load runner (`elevata_load`) that executes  
+pipelines in dependency order on the configured target system.
 
-Execution semantics depend on the target dataset and its layer:  
+Execution semantics depend on the target dataset, its layer,
+and the configured execution backend:
+
 - SQL execution for Stage, Rawcore and downstream layers  
 - Ingestion logic for Raw datasets  
 
@@ -245,6 +310,7 @@ its core metadata models and execution semantics.
 The roadmap looks ahead, building on the stable 1.0 foundation.
 
 ### Execution & Governance
+- First-class execution targets for Snowflake, Databricks, and Fabric Warehouse  
 - Rule-based validation framework (blocking vs non-blocking)  
 - Policy-aware execution outcomes  
 - Execution lifecycle hooks for orchestration tools  

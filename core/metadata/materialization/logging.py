@@ -32,8 +32,9 @@ Notes:
 - This schema is allowed to change before v1.0 (breaking changes OK)
 """
 
+import re
+
 from metadata.materialization.schema import ensure_target_schema
-from metadata.system.introspection import read_table_metadata
 
 LOAD_RUN_LOG_REGISTRY = {
   # ------------------------------------------------------------------
@@ -206,6 +207,9 @@ LOAD_RUN_SNAPSHOT_REGISTRY = {
 # Stable column order for CREATE/INSERT.
 LOAD_RUN_LOG_COLUMNS = list(LOAD_RUN_LOG_REGISTRY.keys())
 
+_DATABRICKS_DUPLICATE_COL_RE = re.compile(r"(FIELD_ALREADY_EXISTS|SQLSTATE:\s*42710)", re.IGNORECASE)
+
+
 def build_load_run_log_row(
   *,
   batch_run_id: str,
@@ -267,6 +271,40 @@ def _introspect_existing_columns(
   are not necessarily SQLAlchemy engines.
   Fallback to read_table_metadata only if available and needed.
   """
+
+  def _try_show_columns_databricks() -> tuple[bool, set[str]] | None:
+    """
+    Databricks/Unity Catalog: prefer SHOW COLUMNS IN schema.table for stable results.
+    This avoids relying on connector/SQLAlchemy reflection quirks and prevents repeated
+    ALTER TABLE ADD COLUMN attempts for already-existing columns.
+    """
+    try:
+      dialect_name = str(getattr(dialect, "DIALECT_NAME", "") or "").strip().lower()
+      if dialect_name != "databricks":
+        return None
+
+      rows = engine.fetch_all(f"SHOW COLUMNS IN {schema_name}.{table_name}")
+      cols = set()
+      for r in rows or []:
+        if not r:
+          continue
+        # first column is the column name
+        name = str(r[0]).strip().strip("`").strip('"').lower()
+        if name:
+          cols.add(name)
+
+      # If SHOW COLUMNS returns at least one col, table definitely exists.
+      if cols:
+        return True, cols
+      return None
+    except Exception:
+      return None
+
+  # 0) Databricks shortcut: SHOW COLUMNS (exec-engine based, reliable)
+  dbx = _try_show_columns_databricks()
+  if dbx is not None:
+    return dbx
+
   # 1) Preferred path: dialect-driven introspection (exec_engine based)
   try:
     if hasattr(dialect, "introspect_table"):
@@ -365,7 +403,15 @@ def ensure_load_run_log_table(engine, dialect, meta_schema: str, auto_provision:
         columns=columns,
       )
       if ddl:
-        engine.execute(ddl)
+        try:
+          engine.execute(ddl)
+        except Exception as exc:
+          # Databricks UC: adding an already existing column raises FIELD_ALREADY_EXISTS (SQLSTATE 42710).
+          # This must not block a load and prevents repeated ALTER attempts when introspection is imperfect.
+          if _DATABRICKS_DUPLICATE_COL_RE.search(str(exc) or ""):
+            pass
+          else:
+            raise
     except Exception:
       # Never block a load due to logging DDL
       pass
@@ -403,7 +449,16 @@ def ensure_load_run_log_table(engine, dialect, meta_schema: str, auto_provision:
         column_type=physical_type,
       )
       if ddl:
-        engine.execute(ddl)
+        try:
+          engine.execute(ddl)
+        except Exception as exc:
+          # Databricks UC: adding an already existing column raises FIELD_ALREADY_EXISTS (SQLSTATE 42710).
+          # Treat as idempotent no-op to prevent repeated ALTER attempts from blocking/creating noise.
+          if _DATABRICKS_DUPLICATE_COL_RE.search(str(exc) or ""):
+            pass
+          else:
+            raise
+
     except Exception:
       # Best-effort only
       pass

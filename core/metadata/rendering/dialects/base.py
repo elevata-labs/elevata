@@ -852,7 +852,14 @@ class SqlDialect(ABC):
       return self.render_select(plan)
     if isinstance(plan, LogicalUnion):
       rendered_parts = [self.render_select(sel) for sel in plan.selects]
-      separator = f"\nUNION {plan.union_type}\n"
+      ut = (plan.union_type or "").strip().upper()
+      if ut == "ALL":
+        sep = "UNION ALL"
+      elif ut in ("DISTINCT", ""):
+        sep = "UNION"
+      else:
+        raise ValueError(f"Unsupported union_type: {plan.union_type!r}")
+      separator = f"\n{sep}\n"
       return separator.join(rendered_parts)
     raise TypeError(f"Unsupported logical plan type: {type(plan).__name__}")
 

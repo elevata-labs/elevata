@@ -1,6 +1,6 @@
 """
 elevata - Metadata-driven Data Platform Framework
-Copyright © 2025 Ilona Tag
+Copyright © 2025-2026 Ilona Tag
 
 This file is part of elevata.
 
@@ -49,21 +49,9 @@ def render_sql(plan, dialect: SqlDialect) -> str:
   Render a logical plan (LogicalSelect or LogicalUnion) into a SQL string.
   """
 
-  # Support both LogicalSelect and LogicalUnion for stage models combining multiple sources.
-  if isinstance(plan, LogicalSelect):
-    return dialect.render_select(plan)
-
-  elif isinstance(plan, LogicalUnion):
-    # Render each SELECT separately and combine with UNION ALL or UNION DISTINCT.
-    rendered_parts = [dialect.render_select(sel) for sel in plan.selects]
-    separator = f"\nUNION {plan.union_type}\n"
-    return separator.join(rendered_parts)
-
-  else:
-    raise TypeError(
-      f"Unsupported logical plan type: {type(plan).__name__}. "
-      "Expected LogicalSelect or LogicalUnion."
-    )
+  # Single point of truth: dialect.render_plan handles both LogicalSelect and LogicalUnion,
+  # including normalization of UNION DISTINCT -> UNION.
+  return dialect.render_plan(plan)  
   
 
 def render_select_for_target(target_ds, dialect: SqlDialect) -> str:

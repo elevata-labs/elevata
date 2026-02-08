@@ -139,6 +139,9 @@ A key design principle: **the Query Tree defines the dataset contract**.
 
 This avoids the classic drift between “what the SQL does” and “what metadata says the dataset provides”.
 
+Query-derived columns (aggregates, window outputs, union outputs) are automatically synchronized to the dataset schema.  
+The physical schema therefore always reflects the inferred query contract of the current query head.
+
 ---
 
 ## 🔧 7. Determinism and governance

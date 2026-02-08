@@ -58,20 +58,49 @@ class DummyDialect:
     # Delegate back to the DummySelect, which ignores the dialect.
     return sel.to_sql(self)
 
+  def render_plan(self, plan):
+    if isinstance(plan, LogicalSelect):
+      return self.render_select(plan)
 
-def test_logical_union_to_sql_all():
-  """Ensure UNION ALL correctly joins multiple SELECTs."""
+    if isinstance(plan, LogicalUnion):
+      rendered_parts = [self.render_select(sel) for sel in plan.selects]
+
+      ut = (plan.union_type or "").strip().upper()
+      if ut == "ALL":
+        sep = "UNION ALL"
+      else:
+        # DISTINCT and "" normalize to UNION
+        sep = "UNION"
+
+      return f"\n{sep}\n".join(rendered_parts)
+
+    raise TypeError(f"Unsupported logical plan: {type(plan).__name__}")  
+
+
+
+def test_logical_union_render_plan_all():
+  """Ensure UNION ALL correctly joins multiple SELECTs via dialect rendering."""
 
   sel1 = DummySelect("SELECT * FROM t1")
   sel2 = DummySelect("SELECT * FROM t2")
 
   union = LogicalUnion([sel1, sel2], union_type="ALL")
 
-  # Use dummy dialect so both implementations work:
-  # - sel.to_sql(dialect)
-  # - dialect.render_select(sel)
-  sql = union.to_sql(dialect=DummyDialect())
+  sql = DummyDialect().render_plan(union)
 
   assert "SELECT * FROM t1" in sql
   assert "SELECT * FROM t2" in sql
   assert "UNION ALL" in sql
+
+def test_logical_union_render_plan_distinct_normalizes_to_union():
+  """UNION DISTINCT must render as plain UNION."""
+
+  sel1 = DummySelect("SELECT * FROM t1")
+  sel2 = DummySelect("SELECT * FROM t2")
+
+  union = LogicalUnion([sel1, sel2], union_type="DISTINCT")
+
+  sql = DummyDialect().render_plan(union)
+
+  assert "UNION DISTINCT" not in sql
+  assert "\nUNION\n" in sql

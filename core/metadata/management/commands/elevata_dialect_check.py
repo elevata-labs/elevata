@@ -49,7 +49,7 @@ class Command(BaseCommand):
       dest="dialect_name",
       type=str,
       default=None,
-      help="Optional dialect name to restrict diagnostics, e.g. 'duckdb', 'postgres', 'mssql'.",
+      help="Optional dialect name to restrict diagnostics, e.g. 'duckdb', 'postgres', 'mssql', ....",
     )
 
   # ---------------------------------------------------------------------------

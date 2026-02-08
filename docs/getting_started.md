@@ -65,10 +65,34 @@ SEC_DEV_PEPPER=supersecretpeppervalue
 
 Install the target backend you want to execute against:
 
+#### 🔎 BigQuery target:
+
+```bash 
+pip install -r requirements/bigquery.txt
+```
+
+#### 🔎 Databricks target:
+
+```bash 
+pip install -r requirements/databricks.txt
+```
+
 #### 🔎 DuckDB target:
 
 ```bash
 pip install -r requirements/duckdb.txt
+```
+
+#### 🔎 Microsoft Fabric Warehouse target:
+
+```bash 
+pip install -r requirements/fabric_warehouse.txt
+```
+
+#### 🔎 MSSQL target:
+
+```bash
+pip install -r requirements/mssql.txt
 ```
 
 #### 🔎 PostgreSQL target:
@@ -77,11 +101,12 @@ pip install -r requirements/duckdb.txt
 pip install -r requirements/postgres.txt
 ```
 
-#### 🔎 MSSQL target:
+#### 🔎 Snowflake target:
 
-```bash
-pip install -r requirements/mssql.txt
+```bash 
+pip install -r requirements/snowflake.txt
 ```
+
 
 > If you only want SQL preview / SQL generation (no --execute), requirements/base.txt is sufficient.
 

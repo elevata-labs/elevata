@@ -1,6 +1,7 @@
 # ⚙️ Target Backends
 
-This document describes the **supported target systems** for elevata execution (`--execute`) and their prerequisites.  
+This document describes the **supported target systems** for elevata execution (`--execute`) and their prerequisites.
+
 
 Execution means:  
 - SQL is rendered by elevata  
@@ -68,6 +69,140 @@ These require:
 Previously, unqualified table identifiers could lead to sporadic `NotFound` errors during streaming inserts.  
 This has been addressed by enforcing deterministic project qualification at execution time.
 
+---
+
+## 🔧 Databricks
+
+Databricks is supported as an executable target backend via **Databricks SQL Warehouse**  
+(recommended with **Unity Catalog** for catalog/schema organization).
+
+### 🧩 System prerequisites
+- A Databricks workspace with SQL Warehouse access  
+- Permissions to create schemas and tables in the target catalog/schema  
+
+### 🧩 Python dependencies
+
+```bash
+pip install -r requirements/databricks.txt
+```
+
+### 🧩 Target configuration
+
+All elevata target systems use a **generic connection secret structure**.  
+This keeps configuration consistent across databases and avoids system-specific
+naming differences in environment configuration.
+
+The common fields are:
+
+- `dialect` – SQLAlchemy dialect identifier  
+- `host` – server hostname  
+- `database` – database or catalog name  
+- `schema` – optional default schema (not always used by execution engines)  
+- `username`  
+- `password`  
+- `extra` – optional structured configuration for backend-specific parameters
+
+The `extra` field is a JSON object and may contain backend-specific settings.  
+It is normalized internally and passed to the respective execution engine
+or SQLAlchemy connection builder as required.
+
+Example (generic format):
+
+```json
+{
+  "dialect": "databricks+connector",
+  "host": "adb-xxxx.azuredatabricks.net",
+  "database": "dbdwh",
+  "password": "dapiXXXXXXXX",
+  "schema": null,
+  "extra": {
+    "http_path": "/sql/1.0/warehouses/xxxx"
+  }
+}
+```
+
+Databricks execution runs against a **SQL Warehouse** (HTTP endpoint), not a traditional database socket.  
+Authentication uses a **Personal Access Token (PAT)**.
+
+Required security fields:  
+- `server_hostname`  
+- `http_path`  
+- `access_token`
+
+Required field for introspection features:  
+- `dialect` (for SQL Alchemy)
+
+Recommended additional field (Unity Catalog):  
+- `catalog` (default catalog for the session)
+
+Within the generic elevata configuration model, these map to:  
+- `host` → Databricks server hostname  
+- `database` → Unity Catalog catalog  
+- `password` → Personal Access Token  
+- `extra.http_path` → SQL Warehouse HTTP path
+
+If you don't provide the catalog, the default catalog will be used to create your warehouse.
+
+Example (env secret as JSON payload):
+
+```bash
+SEC_DEV_CONN_DATABRICKS_DBDWH={
+  "dialect":"databricks+connector",
+  "host":"adb-xxxx.azuredatabricks.net",
+  "database":"dbdwh",
+  "password":"dapiXXXX",
+  "schema": null,
+  "extra": { "http_path": "/sql/1.0/warehouses/xxxx" }
+}
+```
+
+#### 🔎 Unity Catalog and identifier qualification
+
+elevata typically renders target identifiers as **schema.table** (two-part names), e.g.:
+
+```sql
+CREATE OR REPLACE VIEW stage.my_view AS ...
+```
+
+With Unity Catalog enabled, Databricks resolves such objects inside the **current catalog**  
+of the SQL session. Therefore the execution engine must ensure the correct catalog context,  
+e.g. by running:
+
+```sql
+USE CATALOG dbdwh;
+```
+
+before executing DDL/DML statements.
+
+#### 🔎 SQLAlchemy engine (materialization/introspection)
+
+Some execution paths (e.g. materialization planning / introspection) require a SQLAlchemy  
+engine. In that case the resolved DB secret must also provide a `dialect` identifier that  
+allows building a SQLAlchemy URL (e.g. `databricks+connector`).
+
+#### 🔎 DDL nullability behavior
+
+Databricks SQL accepts `NOT NULL` constraints but does not allow explicitly specifying `NULL`  
+in column definitions.
+
+```sql
+personid INT NULL      -- invalid in Databricks
+personid INT           -- correct (nullable is default)
+personid INT NOT NULL  -- valid
+```
+
+#### 🔎 Load logging (meta.load_run_log)
+
+elevata can auto-provision and evolve the meta.load_run_log table by adding missing columns.  
+On Databricks (Unity Catalog), this requires privileges that allow altering table schemas  
+(typically MODIFY on the table, or ownership depending on governance setup).
+
+If a column already exists, Databricks raises:  
+`FIELD_ALREADY_EXISTS (SQLSTATE 42710)`.  
+To keep logging idempotent across repeated runs, the Databricks backend should:
+
+- determine existing columns via SHOW COLUMNS IN <schema>.load_run_log, and/or  
+- treat duplicate-column errors as a no-op when applying ALTER TABLE ... ADD COLUMN.
 
 ---
 
@@ -112,6 +247,29 @@ Example via env secret:
 ```bash
 SEC_DEV_CONN_DUCKDB_DWH=duckdb:///./dwh.duckdb
 ```
+
+---
+
+## 🔧 Microsoft Fabric Warehouse
+
+Fabric Warehouse is supported as an executable target backend.  
+Note that Warehouse supports schemas; Fabric Lakehouse SQL endpoints do not provide schema isolation in the same way.
+
+### 🧩 System prerequisites
+- A Fabric Workspace with a Warehouse  
+- Permissions to create schemas and tables  
+
+### 🧩 Python dependencies
+
+```bash
+pip install -r requirements/fabric_warehouse.txt
+```
+
+### 🧩 Notes
+- `uniqueidentifier` has limitations across endpoints (see Microsoft documentation).  
+- Microsoft Fabric Warehouse follows SQL Server semantics but currently has limitations  
+  regarding certain `ALTER TABLE` operations (for example datatype changes after column creation).  
+  elevata therefore recommends treating datatype changes as forward schema evolution where possible.
 
 ---
 
@@ -201,6 +359,22 @@ Example via env secret:
 
 ```bash
 SEC_DEV_CONN_POSTGRES_DWH=postgresql://postgres:postgres@localhost:5432/dwh
+```
+
+---
+
+## 🔧 Snowflake
+
+Snowflake is supported as a fully executable target backend.
+
+### 🧩 System prerequisites
+- A Snowflake account with a database and warehouse  
+- Permissions to create schemas and tables  
+
+### 🧩 Python dependencies
+
+```bash
+pip install -r requirements/snowflake.txt
 ```
 
 ---

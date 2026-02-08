@@ -22,12 +22,16 @@ Contact: <https://github.com/elevata-labs/elevata>.
 
 from __future__ import annotations
 
+import re
+
 from metadata.materialization.schema import ensure_target_schema
 from metadata.system.introspection import read_table_metadata
 from metadata.materialization.logging import LOAD_RUN_SNAPSHOT_REGISTRY
 
 
 LOAD_RUN_SNAPSHOT_COLUMNS = list(LOAD_RUN_SNAPSHOT_REGISTRY.keys())
+_DATABRICKS_DUPLICATE_COL_RE = re.compile(r"(FIELD_ALREADY_EXISTS|SQLSTATE:\s*42710)", re.IGNORECASE)
+
 
 def build_load_run_snapshot_row(
   *,
@@ -86,6 +90,25 @@ def ensure_load_run_snapshot_table(engine, dialect, meta_schema: str, auto_provi
     Return (table_exists, existing_columns_norm).
     Prefer dialect.introspect_table(exec_engine=engine). Fallback to SQLAlchemy metadata if available.
     """
+    # Databricks/Unity Catalog: prefer SHOW COLUMNS IN schema.table (stable and simple)
+    try:
+      dialect_name = str(getattr(dialect, "DIALECT_NAME", "") or "").strip().lower()
+      if dialect_name == "databricks":
+        fetch_all = getattr(engine, "fetch_all", None)
+        if callable(fetch_all):
+          rows = fetch_all(f"SHOW COLUMNS IN {meta_schema}.{table_name}")
+          cols = set()
+          for r in rows or []:
+            if not r:
+              continue
+            name = str(r[0]).strip().strip("`").strip('"').lower()
+            if name:
+              cols.add(name)
+          if cols:
+            return True, cols
+    except Exception:
+      pass
+
     # Preferred: dialect-driven introspection
     try:
       if hasattr(dialect, "introspect_table"):
@@ -173,7 +196,15 @@ def ensure_load_run_snapshot_table(engine, dialect, meta_schema: str, auto_provi
           column_type=physical_type,
         )
         if ddl:
-          engine.execute(ddl)
+          try:
+            engine.execute(ddl)
+          except Exception as exc:
+            # Databricks UC: adding an existing column raises FIELD_ALREADY_EXISTS (SQLSTATE 42710).
+            # Treat as idempotent no-op to avoid repeated ALTER attempts and noise.
+            if _DATABRICKS_DUPLICATE_COL_RE.search(str(exc) or ""):
+              pass
+            else:
+              raise
     except Exception:
       # Never block due to meta schema evolution
       pass

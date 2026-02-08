@@ -205,55 +205,64 @@ because there is no *_detail route under a parent. -->
       {% elif model_name == 'querynode' %}
         <!-- QueryNode: inline Edit only edits the row. "Details" must jump into the next actionable editor. -->
 
-        {% if object.node_type == 'window' and object.window %}
+        {% if object.node_type == "select" and object.select %}
+          <a href="{% url 'queryselectnode_list' object.pk %}" 
+            class="btn btn-outline-primary"
+            title="Configure SELECT node settings">
+            Settings
+          </a>
+
+        {% elif object.node_type == 'window' and object.window %}
+          <a href="{% url 'querywindownode_list' object.pk %}"
+            class="btn btn-outline-primary"
+            title="Configure WINDOW node settings">
+            Settings
+          </a>
           <a
             href="{% url 'querywindowcolumn_list' object.window.pk %}"
             class="btn btn-outline-primary"
-            title="Configure window columns"
-          >
+            title="Configure window columns">
             Items
           </a>
 
         {% elif object.node_type == 'aggregate' and object.aggregate %}
+          <a href="{% url 'queryaggregatenode_list' object.pk %}"
+            class="btn btn-outline-primary"
+            title="Configure AGGREGATE node settings">
+            Settings
+          </a>
           <a
             href="{% url 'queryaggregategroupkey_list' object.aggregate.pk %}"
             class="btn btn-outline-primary"
-            title="Define group keys (required for grouped aggregates)"
-          >
+            title="Define group keys (required for grouped aggregates)">
             Group keys
           </a>
           <a
             href="{% url 'queryaggregatemeasure_list' object.aggregate.pk %}"
             class="btn btn-outline-primary"
-            title="Configure aggregate measures"
-          >
+            title="Configure aggregate measures">
             Measures
           </a>
 
         {% elif object.node_type == 'union' and object.union %}
+          <a href="{% url 'queryunionnode_list' object.pk %}"
+            class="btn btn-outline-primary"
+            title="Configure UNION node settings (mode)">
+            Settings
+          </a>
           <a
             href="{% url 'queryunionbranch_list' object.union.pk %}"
             class="btn btn-outline-primary"
-            title="Configure UNION branches (inputs)"
-          >
+            title="Configure UNION branches (inputs)">
             Branches
           </a>
           <a
             href="{% url 'queryunionoutputcolumn_list' object.union.pk %}"
             class="btn btn-outline-primary"
-            title="Configure UNION output columns"
-          >
+            title="Configure UNION output columns">
             Output columns
           </a>
 
-        {% elif object.node_type == 'select' %}
-          <a
-            href="{% url 'queryselectnode_list' object.pk %}"
-            class="btn btn-outline-primary"
-            title="Configure SELECT node"
-          >
-            Items
-          </a>
         {% endif %}
 
       {% elif model_name == 'querywindownode' %}

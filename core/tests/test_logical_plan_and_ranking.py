@@ -76,6 +76,9 @@ class FakeQuerySet(list):
       return True
 
     return FakeQuerySet([obj for obj in self if matches(obj)])
+  
+  def exclude(self, **_kwargs):
+    return self
 
   def order_by(self, *fields):
     def key(obj):

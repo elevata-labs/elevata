@@ -79,6 +79,10 @@ class DummyTargetColumnsQS:
   def filter(self, **_kwargs):
     # For tests we treat all as active.
     return self
+  
+  def exclude(self, **_kwargs):
+    # builder/sql preview may exclude system roles; tests can ignore this.
+    return self
 
   def order_by(self, *_args):
     return self._cols

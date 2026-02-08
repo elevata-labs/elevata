@@ -6,9 +6,10 @@ The hashing engine is:
 - **deterministic** (stable outputs for identical metadata)  
 - **dialect-neutral** (AST → rendered per SQL dialect)  
 - **metadata-safe** (no vendor SQL stored in the database)  
-- **cross-dialect identical** (DuckDB, Postgres, MSSQL produce the same hash)  
+- **cross-dialect identical** (BigQuery, Databricks, DuckDB, Fabric Warehouse, MSSQL, Postgres, Snowflake produce the same hash)  
 - **testable** (AST inspections instead of string asserts)  
 
+Hashing is standardized as **hex-encoded, 64-character, lowercase SHA-256** across all dialects.
 
 ---
 
@@ -158,9 +159,33 @@ The dialect renderer never needs to know whether it’s SK or FK.
 
 The AST-based hash expression is rendered differently per dialect.
 
+### 🧩 BigQuery
+```
+TO_HEX(SHA256(CONCAT_WS('|', ...)))
+```
+
+### 🧩 Databricks
+```
+SHA2(CONCAT_WS('|', ...), 256)
+```
+
 ### 🧩 DuckDB
 ```
 SHA256(CONCAT_WS('|', ...))
+```
+
+### 🧩 Fabric Warehouse
+```
+CONVERT(VARCHAR(64),
+HASHBYTES('SHA2_256', CAST(CONCAT_WS('|', ...) AS VARCHAR(4000))),
+2)
+```
+
+### 🧩 MSSQL
+```
+CONVERT(VARCHAR(64),
+  HASHBYTES('SHA2_256', CONCAT_WS('|', ...)),
+  2)
 ```
 
 ### 🧩 Postgres
@@ -174,11 +199,9 @@ ENCODE(
 )
 ```
 
-### 🧩 MSSQL
+### 🧩 Snowflake
 ```
-CONVERT(VARCHAR(64),
-  HASHBYTES('SHA2_256', CONCAT_WS('|', ...)),
-  2)
+TO_HEX(SHA2(TO_VARCHAR(CONCAT_WS('|', ...)), 256))
 ```
 
 All platforms produce **byte-identical SHA-256 outputs**.
@@ -245,7 +268,7 @@ This guarantees:
 Tests cover:  
 - DSL → AST correctness  
 - dialect rendering for SK & FK  
-- DuckDB/Postgres/MSSQL hash equivalence  
+- BigQuery/Databricks/DuckDB/Fabric Warehouse/MSSQL/Postgres/Snowflake hash equivalence  
 - BK ordering rules  
 - null-coalescing behavior  
 - pepper correctness  

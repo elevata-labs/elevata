@@ -61,6 +61,7 @@ and merging multiple inputs (UNION or single-path).
 # Regex patterns
 # ------------------------------------------------------------------------------
 COL_PATTERN = re.compile(r'col\(["\']([^"\']+)["\']\)')
+EXPR_REF_PATTERN = re.compile(r"\{expr:([^}]+)\}")
 _IDENT_RE = re.compile(r"\b[A-Za-z_][A-Za-z0-9_]*\b")
 
 
@@ -247,37 +248,37 @@ def _rewrite_parent_sk_expr(parent_expr_sql: str, mapping: dict[str, str]) -> st
       2nd occurrence → right side, map to child Stage expression
   """
 
-  # Count how many times each BK name was seen
-  seen_counts = {}
+  # 1) First: rewrite {expr:bk} placeholders (these represent the value side in our DSL).
+  #    For FK generation, we want these to come from the child stage expressions.
+  def _expr_repl(m):
+    name = (m.group(1) or "").strip()
+    if name in mapping:
+      return mapping[name]
+    return m.group(0)  # keep as-is if unknown
 
-  result = []
+  rewritten = EXPR_REF_PATTERN.sub(_expr_repl, parent_expr_sql or "")
+
+  # 2) Then: also support col("bk")-style expressions (older/newer variants).
+  #    Here we keep the existing "count occurrences" logic.
+  seen_counts: dict[str, int] = {}
+  result: list[str] = []
   idx = 0
 
   while True:
-    m = COL_PATTERN.search(parent_expr_sql, idx)
+    m = COL_PATTERN.search(rewritten, idx)
     if not m:
-      result.append(parent_expr_sql[idx:])
+      result.append(rewritten[idx:])
       break
 
-    # text before match
-    result.append(parent_expr_sql[idx:m.start()])
-
+    result.append(rewritten[idx:m.start()])
     colname = m.group(1)
 
     if colname not in mapping:
-      # not a BK component → unchanged
       replacement = f'col("{colname}")'
     else:
-      # count appearances
       count = seen_counts.get(colname, 0) + 1
       seen_counts[colname] = count
-
-      if count == 1:
-        # left side → keep BK name
-        replacement = f'col("{colname}")'
-      else:
-        # right side → mapped Stage expression
-        replacement = mapping[colname]
+      replacement = f'col("{colname}")' if count == 1 else mapping[colname]
 
     result.append(replacement)
     idx = m.end()
@@ -413,8 +414,15 @@ def build_surrogate_fk_expression(reference: "TargetDatasetReference") -> Expr:
 
   mapping: dict[str, str] = {}
   for comp in components:
-    # Parent BK column name as referenced in the parent SK expression
+    # Parent BK name as used in the parent's SK DSL.
+    # The parent's SK expression is built from Stage lineage (e.g. businessentityid),
+    # but the parent RawCore column may have been renamed (e.g. person_id).
     parent_bk_name = comp.to_column.target_column_name
+    parent_stage_expr = _get_stage_expr_for_rawcore_col(comp.to_column)
+    if parent_stage_expr:
+      m = COL_PATTERN.fullmatch(parent_stage_expr.strip())
+      if m:
+        parent_bk_name = m.group(1)
 
     # Child RawCore column -> get Stage-level expression feeding it
     child_stage_expr = _get_stage_expr_for_rawcore_col(comp.from_column)
@@ -624,6 +632,7 @@ def _build_single_select_for_upstream(
   tcols = (
     target_dataset.target_columns
     .filter(active=True)
+    .exclude(lineage_origin="query_derived")
     .order_by("ordinal_position", "id")
   )
 
@@ -708,6 +717,7 @@ def _build_single_select_for_source_stage(
   for tcol in (
     target_dataset.target_columns
     .filter(active=True)
+    .exclude(lineage_origin="query_derived")
     .order_by("ordinal_position", "id")
   ):
     # Special handling for the artificial identity column
@@ -950,10 +960,10 @@ def _build_plan_from_query_root(target_dataset: TargetDataset):
   if query_head is None:
     return None
 
-  return _build_plan_for_query_node(query_head)
+  return _build_plan_for_query_node(query_head, required_input_columns=None)
 
 
-def _build_plan_for_query_node(node):
+def _build_plan_for_query_node(node, required_input_columns: set[str] | None = None):
   """
   Recursively compile a QueryNode into a logical plan.
   """
@@ -966,16 +976,16 @@ def _build_plan_for_query_node(node):
   if node_type == "select":
     # Reuse the dataset definition (joins/columns/manual expressions).
     td = node.target_dataset
-    return _build_plan_from_dataset_definition(td)
+    return _build_plan_from_dataset_definition(td, required_input_columns=required_input_columns)
 
   if node_type == "aggregate":
     return _build_aggregate_plan_for_node(node)
   
   if node_type == "window":
-    return _build_window_plan_for_node(node)
+    return _build_window_plan_for_node(node, required_input_columns=required_input_columns)
 
   if node_type == "union":
-    return _build_union_plan_for_node(node)
+    return _build_union_plan_for_node(node, required_input_columns=required_input_columns)
 
   raise ValueError(f"Unsupported QueryNode type: {node_type}")
 
@@ -989,7 +999,20 @@ def _build_aggregate_plan_for_node(node):
   if agg is None:
     raise ValueError("Aggregate node has no aggregate details (node.aggregate is None)")
 
-  inner_plan = _build_plan_for_query_node(agg.input_node)
+  # Aggregate requires certain input columns to exist in its inner plan:
+  # - group key input columns
+  # - measure input columns (if applicable)
+  required: set[str] = set()
+  for g in agg.group_keys.all().order_by("ordinal_position", "id"):
+    in_name = (g.input_column_name or "").strip()
+    if in_name:
+      required.add(in_name)
+  for m in agg.measures.all().order_by("ordinal_position", "id"):
+    in_name = (m.input_column_name or "").strip()
+    if in_name:
+      required.add(in_name)
+
+  inner_plan = _build_plan_for_query_node(agg.input_node, required_input_columns=required)
 
   # With dialect.render_plan() we can safely embed unions as subqueries.
   if not isinstance(inner_plan, (LogicalSelect, LogicalUnion)):
@@ -1074,7 +1097,7 @@ def _build_aggregate_plan_for_node(node):
   )
 
 
-def _build_union_plan_for_node(node):
+def _build_union_plan_for_node(node, required_input_columns: set[str] | None = None):
   """
   Build a UNION / UNION ALL from fully compiled branch nodes.
   Each branch is aligned to the union output contract using a derived-table select.
@@ -1095,9 +1118,11 @@ def _build_union_plan_for_node(node):
   branches = list(un.branches.all().order_by("ordinal_position", "id"))
   if not branches:
     raise ValueError("Union has no branches.")
+  
+  required_input_columns = required_input_columns or set()
 
   for b in branches:
-    branch_plan = _build_plan_for_query_node(b.input_node)
+    branch_plan = _build_plan_for_query_node(b.input_node, required_input_columns=required_input_columns)
 
     # Nested unions are now supported by embedding the branch plan as a subquery.
     if not isinstance(branch_plan, (LogicalSelect, LogicalUnion)):
@@ -1212,12 +1237,12 @@ def _get_plan_output_column_names(plan) -> list[str]:
   return []
 
 
-def _build_window_plan_for_node(node):
+def _build_window_plan_for_node(node, required_input_columns: set[str] | None = None):
   win = getattr(node, "window", None)
   if win is None:
     raise ValueError("Window node has no window details (node.window is None)")
 
-  inner_plan = _build_plan_for_query_node(win.input_node)
+  inner_plan = _build_plan_for_query_node(win.input_node, required_input_columns=required_input_columns)
 
   # Same safety rule as aggregate/union: only these can be embedded as subqueries.
   if not isinstance(inner_plan, (LogicalSelect, LogicalUnion)):
@@ -1272,10 +1297,13 @@ def build_logical_select_for_target(target_dataset: TargetDataset):
   if query_plan is not None:
     return query_plan
 
-  return _build_plan_from_dataset_definition(target_dataset)
+  return _build_plan_from_dataset_definition(target_dataset, required_input_columns=None)
 
 
-def _build_plan_from_dataset_definition(target_dataset: TargetDataset):
+def _build_plan_from_dataset_definition(
+  target_dataset: TargetDataset,
+  required_input_columns: set[str] | None = None,
+):
   """
   Classic elevata path: build from TargetDataset definition (inputs, joins, columns, manual expressions).
   This function contains the previous body of build_logical_select_for_target().
@@ -1372,11 +1400,20 @@ def _build_plan_from_dataset_definition(target_dataset: TargetDataset):
       #   - if TargetColumn has upstream_columns, pick the upstream alias based on that column's dataset
       # For now: if a column has exactly one upstream_target_column, we qualify against that upstream dataset alias.
 
-      tcols = (
+      required_input_columns = required_input_columns or set()
+      tcols_qs = (
         target_dataset.target_columns
           .filter(active=True)
           .order_by("ordinal_position", "id")
       )
+      # Default: hide query-derived outputs to avoid double projection,
+      # but keep explicitly required inputs (e.g. aggregate measure inputs).
+      tcols = []
+      for c in tcols_qs:
+        name = (getattr(c, "target_column_name", "") or "").strip()
+        if getattr(c, "lineage_origin", "") == "query_derived" and name not in required_input_columns:
+          continue
+        tcols.append(c)
 
       # helper: map upstream dataset id -> alias by inspecting the FROM and joins we built
       # base
@@ -1428,6 +1465,20 @@ def _build_plan_from_dataset_definition(target_dataset: TargetDataset):
           expr = col(tcol.target_column_name, base_alias)
 
         logical.select_list.append(SelectItem(expr=expr, alias=tcol.target_column_name))
+
+      # Ensure required input columns exist in the projection even if they are not
+      # part of the current dataset output schema (e.g. aggregate measure inputs).
+      present = set()
+      for si in (logical.select_list or []):
+        alias = getattr(si, "alias", None)
+        if alias:
+          present.add(alias)
+      for name in sorted(required_input_columns):
+        if not name or name in present:
+          continue
+        # MVP: passthrough from base alias (i1) if available.
+        base_alias = getattr(logical.from_, "alias", "i1")
+        logical.select_list.append(SelectItem(expr=col(name, base_alias), alias=name))
 
       return logical
 
@@ -1537,11 +1588,22 @@ def _build_plan_from_dataset_definition(target_dataset: TargetDataset):
       if where_sql:
         logical.where = raw(where_sql)
 
-  tcols = (
+  required_input_columns = required_input_columns or set()
+  tcols_qs = (
     target_dataset.target_columns
     .filter(active=True)
     .order_by("ordinal_position", "id")
   )
+  # Default: hide query-derived columns in the base dataset-definition SELECT
+  # to avoid double projection (e.g. window outputs).
+  # Exception: if a downstream operator (e.g. AGGREGATE) explicitly requires
+  # an input column, we must keep it even if it is marked query_derived.
+  tcols = []
+  for c in tcols_qs:
+    name = (getattr(c, "target_column_name", "") or "").strip()
+    if getattr(c, "lineage_origin", "") == "query_derived" and name not in required_input_columns:
+      continue
+    tcols.append(c)
 
   for tcol in tcols:
     # 1) Surrogate key column
@@ -1615,6 +1677,17 @@ def _build_plan_from_dataset_definition(target_dataset: TargetDataset):
     logical.select_list.append(
       SelectItem(expr=expr, alias=tcol.target_column_name)
     )
+
+  # Ensure required input columns exist even if they are not part of TargetColumns anymore.
+  present = set()
+  for si in (logical.select_list or []):
+    alias = getattr(si, "alias", None)
+    if alias:
+      present.add(alias)
+  for name in sorted(required_input_columns):
+    if not name or name in present:
+      continue
+    logical.select_list.append(SelectItem(expr=col(name, "s"), alias=name))
 
   return logical
 
@@ -1760,6 +1833,7 @@ def _build_ranked_stage_union(
   tcols = (
     target_dataset.target_columns
     .filter(active=True)
+    .exclude(lineage_origin="query_derived")
     .order_by("ordinal_position", "id")
   )
 

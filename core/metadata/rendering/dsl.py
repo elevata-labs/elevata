@@ -1,6 +1,6 @@
 """
 elevata - Metadata-driven Data Platform Framework
-Copyright © 2025 Ilona Tag
+Copyright © 2025-2026 Ilona Tag
 
 This file is part of elevata.
 
@@ -118,6 +118,7 @@ def hash_expr(expr: Expr) -> Expr:
     DuckDB:   hash(expr)
     Postgres: md5(expr)
     MSSQL:    CONVERT(VARCHAR(64), HASHBYTES('SHA2_256', expr), 2)
+    ...
   """
   return FuncCall(name="HASH", args=[expr])
 

@@ -1,6 +1,6 @@
 """
 elevata - Metadata-driven Data Platform Framework
-Copyright © 2025 Ilona Tag
+Copyright © 2025-2026 Ilona Tag
 
 This file is part of elevata.
 
@@ -30,9 +30,12 @@ from django.conf import settings
 from metadata.config.profiles import load_profile
 from .base import SqlDialect
 from .bigquery import BigQueryDialect
+from .databricks import DatabricksDialect
 from .duckdb import DuckDBDialect
+from .fabric_warehouse import FabricWarehouseDialect
 from .mssql import MssqlDialect
 from .postgres import PostgresDialect
+from .snowflake import SnowflakeDialect
 
 """
 SQL dialect adapters.
@@ -44,11 +47,13 @@ LogicalSelect instances into concrete SQL strings.
 # Registry of known dialects
 _DIALECT_REGISTRY: dict[str, Type[SqlDialect]] = {
   BigQueryDialect.DIALECT_NAME: BigQueryDialect,
+  DatabricksDialect.DIALECT_NAME: DatabricksDialect,
   DuckDBDialect.DIALECT_NAME: DuckDBDialect,
+  FabricWarehouseDialect.DIALECT_NAME: FabricWarehouseDialect,
   PostgresDialect.DIALECT_NAME: PostgresDialect,
   MssqlDialect.DIALECT_NAME: MssqlDialect,
+  SnowflakeDialect.DIALECT_NAME: SnowflakeDialect,
 }
-
 
 def _resolve_dialect_name(explicit: Optional[str] = None) -> str:
   """

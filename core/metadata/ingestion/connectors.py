@@ -1,6 +1,6 @@
 """
 elevata - Metadata-driven Data Platform Framework
-Copyright © 2025 Ilona Tag
+Copyright © 2025-2026 Ilona Tag
 
 This file is part of elevata.
 
@@ -24,8 +24,8 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from typing import Optional, Tuple
-from urllib.parse import quote_plus, urlparse
+from typing import Dict, Optional, Tuple
+from urllib.parse import parse_qsl, quote_plus, urlencode, urlparse
 
 from sqlalchemy import create_engine
 from sqlalchemy.engine import Engine
@@ -46,15 +46,61 @@ class DbSecret:
   host: Optional[str] = None
   port: Optional[int] = None
   database: Optional[str] = None
+  schema: Optional[str] = None
   username: Optional[str] = None
   password: Optional[str] = None
   # driver for ODBC-style (MSSQL)
   driver: Optional[str] = None            # e.g. "ODBC Driver 18 for SQL Server"
-  # extra query/kv-string
-  extra: Optional[str] = None             # e.g. "Encrypt=yes;TrustServerCertificate=no"
+  # extra normalized
+  extra_kv: Optional[Dict[str, str]] = None     # e.g. {"warehouse":"..."} or {"http_path":"..."}
+  extra_raw: Optional[str] = None               # legacy raw string (ODBC extras etc.)
   # raw alternatives
   url: Optional[str] = None               # full SQLAlchemy URL (if provided)
   odbc_connect: Optional[str] = None      # ODBC connect string (Driver=...;Server=...;...)
+
+
+  @staticmethod
+  def _normalize_extra(extra) -> tuple[Optional[Dict[str, str]], Optional[str]]:
+    """
+    Normalize `extra` to a dict when possible.
+    - dict stays dict
+    - JSON object string -> dict
+    - querystring-like "a=b&c=d" (or leading '?') -> dict
+    - otherwise keep as raw string (for ODBC-style extras like "Encrypt=yes;...").
+    """
+    if extra is None:
+      return None, None
+
+    if isinstance(extra, dict):
+      # stringify values
+      return {str(k): str(v) for k, v in extra.items()}, None
+
+    if isinstance(extra, str):
+      s = extra.strip()
+      if not s:
+        return None, None
+      if s.startswith("{"):
+        try:
+          obj = json.loads(s)
+          if isinstance(obj, dict):
+            return {str(k): str(v) for k, v in obj.items()}, None
+        except Exception:
+          # treat as raw
+          return None, s
+      # query string?
+      qs = s[1:] if s.startswith("?") else s
+      if "=" in qs and "&" in qs or "=" in qs:
+        try:
+          pairs = parse_qsl(qs, keep_blank_values=True)
+          if pairs:
+            return {str(k): str(v) for k, v in pairs}, None
+        except Exception:
+          pass
+      return None, s
+
+    # unknown type -> store as raw string
+    return None, str(extra)
+
 
   @staticmethod
   def from_value(value: str) -> "DbSecret":
@@ -73,15 +119,18 @@ class DbSecret:
     # JSON object?
     if val.startswith("{"):
       data = json.loads(val)
+      extra_kv, extra_raw = DbSecret._normalize_extra(data.get("extra"))
       return DbSecret(
         dialect=data.get("dialect"),
         host=data.get("host"),
         port=int(data["port"]) if "port" in data and str(data["port"]).isdigit() else None,
         database=data.get("database"),
+        schema=data.get("schema"),
         username=data.get("username"),
         password=data.get("password"),
         driver=data.get("driver"),
-        extra=data.get("extra"),
+        extra_kv=extra_kv,
+        extra_raw=extra_raw,
         url=data.get("url"),
         odbc_connect=data.get("odbc_connect"),
       )
@@ -116,10 +165,15 @@ def _build_sqlalchemy_url_from_parts(sec: DbSecret) -> str:
     netloc = f"{sec.username}:{quote_plus(sec.password)}@{sec.host}:{sec.port}"
 
   url = f"{sec.dialect}://{netloc}/{sec.database}"
-  if sec.extra:
-    # If extra looks like query string, append with '?'; otherwise append as-is
+
+  if sec.extra_kv:
     sep = "&" if "?" in url else "?"
-    url = f"{url}{sep}{sec.extra}"
+    url = f"{url}{sep}{urlencode(sec.extra_kv)}"
+  elif sec.extra_raw:
+    # legacy: allow passing raw query string
+    sep = "&" if "?" in url else "?"
+    url = f"{url}{sep}{sec.extra_raw.lstrip('?')}"
+
   return url
 
 
@@ -137,9 +191,15 @@ def _build_mssql_odbc_url(sec: DbSecret) -> str:
   else:
     if not (sec.driver and sec.host and sec.database and sec.username and sec.password):
       raise ValueError("Missing fields to build ODBC connect string for MSSQL.")
-    extra = sec.extra or ""
-    if extra and not extra.strip().endswith(";"):
-      extra = extra.strip() + ";"
+    # Prefer legacy raw extras for ODBC semantics; otherwise convert kv -> "k=v;" pairs.
+    extra = sec.extra_raw or ""
+    if not extra and sec.extra_kv:
+      extra = ";".join([f"{k}={v}" for k, v in sec.extra_kv.items()])
+    if extra:
+      extra = extra.strip()
+      if not extra.endswith(";"):
+        extra = extra + ";"
+
     odbc = (
       f"Driver={{{sec.driver}}};"
       f"Server={sec.host};"
@@ -150,6 +210,35 @@ def _build_mssql_odbc_url(sec: DbSecret) -> str:
     )
 
   return f"mssql+pyodbc:///?odbc_connect={quote_plus(odbc)}"
+
+
+def _build_databricks_url(sec: DbSecret) -> str:
+  """
+  Build a SQLAlchemy URL for Databricks from generic secret fields:
+    host      -> server_hostname
+    database  -> catalog
+    password  -> access_token
+    extra_kv  -> must contain http_path
+    schema    -> optional query param
+  """
+  if not sec.dialect:
+    raise ValueError("Missing 'dialect' in DB secret (cannot build URL).")
+
+  http_path = (sec.extra_kv or {}).get("http_path")
+  if not (sec.host and sec.password and http_path):
+    raise ValueError(
+      "Databricks secret requires host, password (token), and extra.http_path."
+    )
+
+  catalog = sec.database or "default"
+  token = quote_plus(sec.password)
+  http_path_q = quote_plus(str(http_path))
+  schema_q = f"&schema={quote_plus(sec.schema)}" if sec.schema else ""
+
+  return (
+    f"{sec.dialect}://token:{token}@{sec.host}:443/{catalog}"
+    f"?http_path={http_path_q}{schema_q}"
+  )
 
 
 def _coerce_secret_to_url(sec: DbSecret) -> str:
@@ -163,7 +252,11 @@ def _coerce_secret_to_url(sec: DbSecret) -> str:
   # pyodbc MSSQL?
   if sec.dialect and sec.dialect.startswith("mssql+pyodbc"):
     return _build_mssql_odbc_url(sec)
-
+  
+  # Databricks (needed for SQLAlchemy-based introspection/materialization)
+  if sec.dialect and sec.dialect.startswith("databricks"):
+    return _build_databricks_url(sec)
+  
   # structured parts?
   return _build_sqlalchemy_url_from_parts(sec)
 

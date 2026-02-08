@@ -24,14 +24,16 @@ import uuid
 import pytest
 
 from metadata.models import TargetDataset, TargetSchema, TargetColumn
+from metadata.rendering.dialects.bigquery import BigQueryDialect
+from metadata.rendering.dialects.databricks import DatabricksDialect
+from metadata.rendering.dialects.duckdb import DuckDBDialect
+from metadata.rendering.dialects.fabric_warehouse import FabricWarehouseDialect
 from metadata.rendering.dialects.mssql import MssqlDialect
 from metadata.rendering.dialects.postgres import PostgresDialect
-from metadata.rendering.dialects.duckdb import DuckDBDialect
-from metadata.rendering.dialects.bigquery import BigQueryDialect
+from metadata.rendering.dialects.snowflake import SnowflakeDialect
 
 from metadata.materialization.planner import build_materialization_plan
 from metadata.materialization.policy import MaterializationPolicy
-from metadata.rendering.dialects.bigquery import BigQueryDialect
 
 @pytest.mark.parametrize(
   "dialect_cls, expected",
@@ -55,6 +57,21 @@ from metadata.rendering.dialects.bigquery import BigQueryDialect
       "load_run_id": "string",
       "version_state": "string",
       "row_hash": "string",
+    }),
+    (DatabricksDialect, {
+      "load_run_id": "string",
+      "version_state": "string",
+      "row_hash": "string",
+    }),
+    (SnowflakeDialect, {
+      "load_run_id": "varchar(64)",
+      "version_state": "varchar(20)",
+      "row_hash": "varchar(64)",
+    }),
+    (FabricWarehouseDialect, {
+      "load_run_id": "varchar(64)",
+      "version_state": "varchar(20)",
+      "row_hash": "varchar(64)",
     }),
   ],
 )
@@ -110,7 +127,14 @@ def test_render_create_table_respects_tech_column_lengths(dialect_cls, expected)
     assert f"{col} {type_snippet}" in ddl
 
 
-@pytest.mark.parametrize("dialect_cls", [MssqlDialect, PostgresDialect, DuckDBDialect])
+@pytest.mark.parametrize(
+  "dialect_cls",
+  [
+    MssqlDialect, PostgresDialect, DuckDBDialect,
+    BigQueryDialect, DatabricksDialect, SnowflakeDialect, FabricWarehouseDialect,
+  ],
+)
+
 @pytest.mark.django_db
 def test_render_create_table_types_match_map_logical_type(dialect_cls):
   schema, _ = TargetSchema.objects.get_or_create(

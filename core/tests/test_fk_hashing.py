@@ -1,6 +1,6 @@
 """
 elevata - Metadata-driven Data Platform Framework
-Copyright © 2025 Ilona Tag
+Copyright © 2025-2026 Ilona Tag
 
 This file is part of elevata.
 
@@ -31,7 +31,7 @@ from metadata.models import (
   TargetDatasetReference,
   TargetDatasetReferenceComponent,
 )
-from metadata.rendering.builder import build_logical_select_for_target
+from metadata.rendering.builder import build_logical_select_for_target, _rewrite_parent_sk_expr
 from metadata.rendering.expr import Concat, ColumnRef, Literal
 
 
@@ -252,3 +252,16 @@ def test_fk_hash_matches_parent_surrogate_key():
 
   assert isinstance(parts[6], ColumnRef)
   assert parts[6].column_name == "child_bk2"
+
+
+def test_rewrite_parent_sk_expr_rewrites_expr_refs():
+  parent = "COALESCE({expr:businessentityid}, 'x') || COALESCE({expr:source_identity_id}, 'y')"
+  mapping = {
+    "businessentityid": 'col("personid")',
+    "source_identity_id": "'aw1'",
+  }
+  out = _rewrite_parent_sk_expr(parent, mapping)
+  assert 'col("personid")' in out
+  assert "'aw1'" in out
+  assert "{expr:businessentityid}" not in out
+  assert "{expr:source_identity_id}" not in out

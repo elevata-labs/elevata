@@ -1,0 +1,12 @@
+# ======================================================
+# elevata - Metadata-driven Data Platform Framework
+# Copyright © 2025-2026 Ilona Tag
+#
+# SPDX-License-Identifier: AGPL-3.0-only
+#
+# This file defines example environment variables for elevata.
+# It is not code, but part of the build and configuration setup.
+# ======================================================
+
+snowflake-sqlalchemy 
+snowflake-connector-python

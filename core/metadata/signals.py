@@ -20,13 +20,30 @@ along with elevata. If not, see <https://www.gnu.org/licenses/>.
 Contact: <https://github.com/elevata-labs/elevata>.
 """
 
-from django.db.models.signals import post_save
-from django.dispatch import receiver
 from django.db import transaction
+from django.db.models.signals import post_save, post_delete, pre_delete
+
+from django.dispatch import receiver
 from typing import Iterable
 
-from metadata.models import TargetDataset, TargetColumn
+from metadata.models import (
+  TargetDataset,
+  TargetColumn,
+  QueryNode,
+  QueryUnionNode,
+  QueryUnionBranch,
+  QueryUnionOutputColumn,
+  QueryUnionBranchMapping,
+  QueryWindowNode,
+  QueryWindowColumn,
+  QueryWindowColumnArg,
+  QueryAggregateNode,
+  QueryAggregateGroupKey,
+  QueryAggregateMeasure,
+)
+
 from metadata.generation.target_generation_service import TargetGenerationService
+from metadata.services.query_contract_sync_trigger import trigger_query_contract_column_sync
 
 
 def _merge_former_names(a, b):
@@ -166,3 +183,170 @@ def sync_hist_on_rawcore_column_change(sender, instance: TargetColumn, **kwargs)
       hist_col.save(update_fields=["former_names"])
 
   transaction.on_commit(_run)
+
+
+def _td_from_instance(obj):
+  # Try common patterns, keep it robust.
+  td = getattr(obj, "target_dataset", None)
+  if td is not None:
+    return td
+
+  node = getattr(obj, "node", None)
+  if node is not None:
+    td = getattr(node, "target_dataset", None)
+    if td is not None:
+      return td
+    
+  # If relation is already gone (cascade), try *_id (works in pre_delete reliably)
+  node_id = getattr(obj, "node_id", None)
+  if node_id:
+    try:
+      qn = QueryNode.objects.select_related("target_dataset").get(pk=node_id)
+      td = getattr(qn, "target_dataset", None)
+      if td is not None:
+        return td
+    except Exception:
+      pass    
+
+  # Window models: QueryWindowNode / QueryWindowColumn / QueryWindowColumnArg
+  win = (
+    getattr(obj, "window_node", None)
+    or getattr(obj, "window", None)
+    or getattr(obj, "windownode", None)
+    or getattr(obj, "querywindownode", None)
+  )
+  if win is not None:
+    node = getattr(win, "node", None)
+    td = getattr(node, "target_dataset", None) if node is not None else None
+    if td is not None:
+      return td
+    
+  win_id = getattr(obj, "window_node_id", None) or getattr(obj, "window_id", None)
+  if win_id:
+    try:
+      # QueryWindowNode has FK "node" -> QueryNode -> TargetDataset
+      from metadata.models import QueryWindowNode
+      wn = QueryWindowNode.objects.select_related("node__target_dataset").get(pk=win_id)
+      td = getattr(getattr(wn, "node", None), "target_dataset", None)
+      if td is not None:
+        return td
+    except Exception:
+      pass    
+
+  win_col = getattr(obj, "column", None)  # QueryWindowColumnArg -> column
+  if win_col is not None:
+    win = getattr(win_col, "window_node", None) or getattr(win_col, "window", None)
+    node = getattr(win, "node", None) if win is not None else None
+    td = getattr(node, "target_dataset", None) if node is not None else None
+    if td is not None:
+      return td
+
+  # Aggregate models: QueryAggregateNode / GroupKey / Measure
+  agg = (
+    getattr(obj, "aggregate_node", None)
+    or getattr(obj, "aggregate", None)
+    or getattr(obj, "aggregatenode", None)
+    or getattr(obj, "queryaggregatenode", None)
+  )
+  if agg is not None:
+    node = getattr(agg, "node", None)
+    td = getattr(node, "target_dataset", None) if node is not None else None
+    if td is not None:
+      return td
+    
+  agg_id = getattr(obj, "aggregate_node_id", None) or getattr(obj, "aggregate_id", None)
+  if agg_id:
+    try:
+      from metadata.models import QueryAggregateNode
+      an = QueryAggregateNode.objects.select_related("node__target_dataset").get(pk=agg_id)
+      td = getattr(getattr(an, "node", None), "target_dataset", None)
+      if td is not None:
+        return td
+    except Exception:
+      pass    
+
+  union_node = getattr(obj, "union_node", None)
+  if union_node is not None:
+    node = getattr(union_node, "node", None)
+    td = getattr(node, "target_dataset", None)
+    if td is not None:
+      return td
+    
+  union_node_id = getattr(obj, "union_node_id", None)
+  if union_node_id:
+    try:
+      from metadata.models import QueryUnionNode
+      un = QueryUnionNode.objects.select_related("node__target_dataset").get(pk=union_node_id)
+      td = getattr(getattr(un, "node", None), "target_dataset", None)
+      if td is not None:
+        return td
+    except Exception:
+      pass    
+
+  branch = getattr(obj, "branch", None)
+  if branch is not None:
+    un = getattr(branch, "union_node", None)
+    node = getattr(un, "node", None) if un else None
+    td = getattr(node, "target_dataset", None) if node else None
+    if td is not None:
+      return td
+
+  return None
+
+# Any change in query structure or output contract should sync columns.
+_SYNC_MODELS = (
+  QueryNode,
+  QueryUnionNode,
+  QueryUnionBranch,
+  QueryUnionOutputColumn,
+  QueryUnionBranchMapping,
+  QueryWindowNode,
+  QueryWindowColumn,
+  QueryWindowColumnArg,
+  QueryAggregateNode,
+  QueryAggregateGroupKey,
+  QueryAggregateMeasure,
+)
+
+
+def _trigger_query_sync(sender, instance, **kwargs):  # type: ignore
+  """
+  Central QB->TargetColumn sync hook.
+  Registered for multiple models via signal.connect() to avoid decorator-in-loop pitfalls.
+  """
+  td = _td_from_instance(instance)
+  if td is None:
+    return
+  
+  # Only datasets that allow query trees should sync query-derived TargetColumns.
+  try:
+    from metadata.generation.policies import query_tree_allowed_for_dataset
+    if not query_tree_allowed_for_dataset(td):
+      return
+  except Exception:
+    pass
+
+  # Run AFTER the current transaction commits.
+  # Otherwise contract inference may see stale/partial state (esp. during inline edits).
+  try:
+    from django.db import transaction
+    transaction.on_commit(lambda: trigger_query_contract_column_sync(td))
+  except Exception:
+    # Best-effort fallback (should be rare)
+    trigger_query_contract_column_sync(td)
+
+
+# Register handlers explicitly (stable, deduplicated via dispatch_uid)
+for _Model in _SYNC_MODELS:
+  post_save.connect(
+    _trigger_query_sync,
+    sender=_Model,
+    dispatch_uid=f"qb_contract_sync_post_save::{_Model.__name__}",
+  )
+
+  # IMPORTANT: cascades often break td resolution in post_delete -> use pre_delete
+  pre_delete.connect(
+    _trigger_query_sync,
+    sender=_Model,
+    dispatch_uid=f"qb_contract_sync_pre_delete::{_Model.__name__}",
+  )

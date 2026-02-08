@@ -31,9 +31,11 @@ class ContractResult:
   Output contract for a query node:
     - columns: ordered list of output column aliases
     - issues: validator-style messages ("ERROR:" / "WARN:")
+    - available_input_columns: columns selectable by downstream operators
   """
   columns: List[str]
   issues: List[str]
+  available_input_columns: List[str] | None = None
 
 
 def infer_query_node_contract(
@@ -50,18 +52,69 @@ def infer_query_node_contract(
   return _infer_node(node, cache, visiting)
 
 
+def _select_upstream_column_names(td) -> List[str]:
+  """
+  Best-effort: return column names selectable from the SELECT node's upstream source.
+  This is what downstream operators (AGG/Window) should be allowed to reference,
+  even if the SELECT output schema doesn't include those columns.
+  """
+  try:
+    inputs = getattr(td, "input_links", None)
+    if inputs is None:
+      return []
+    # inputs is a related manager in real code; in tests it might already be list-like
+    items = inputs.all() if hasattr(inputs, "all") else list(inputs)
+    # Prefer upstream TargetDataset if present
+    for inp in items:
+      utd = getattr(inp, "upstream_target_dataset", None)
+      if utd is not None:
+        tcols = getattr(utd, "target_columns", None)
+        if tcols is None:
+          return []
+        tc_items = tcols.filter(active=True) if hasattr(tcols, "filter") else list(tcols)
+        out = []
+        for c in tc_items:
+          name = (getattr(c, "target_column_name", "") or "").strip()
+          if name:
+            out.append(name)
+        return out
+    # Fallback: SourceDataset columns (if you have them)
+    for inp in items:
+      sd = getattr(inp, "source_dataset", None)
+      if sd is not None:
+        scols = getattr(sd, "source_columns", None)
+        if scols is None:
+          return []
+        sc_items = scols.all() if hasattr(scols, "all") else list(scols)
+        out = []
+        for c in sc_items:
+          name = (getattr(c, "source_column_name", "") or "").strip()
+          if name:
+            out.append(name)
+        return out
+  except Exception:
+    return []
+  return []
+
+
 def _infer_node(node, cache: Dict[int, ContractResult], visiting: Set[int]) -> ContractResult:
   if node.id in cache:
     return cache[node.id]
   if node.id in visiting:
     # Cycle in query graph -> contract cannot be inferred safely.
-    res = ContractResult(columns=[], issues=[f"ERROR: Query graph cycle detected at node {node.id}."])
+    res = ContractResult(
+      columns=[],
+      issues=[f"ERROR: Query graph cycle detected at node {node.id}."],
+      available_input_columns=[],
+    )
+
     cache[node.id] = res
     return res
 
   visiting.add(node.id)
   issues: List[str] = []
   cols: List[str] = []
+  inp: Optional[ContractResult] = None
 
   ntype = (node.node_type or "").strip().lower()
 
@@ -69,7 +122,12 @@ def _infer_node(node, cache: Dict[int, ContractResult], visiting: Set[int]) -> C
     # Minimal/select MVP: select node uses owning TargetDataset definition.
     td = node.target_dataset
     # Prefer explicit ordering if available.
-    td_cols = list(td.target_columns.all().order_by("ordinal_position", "id"))
+    td_cols = list(
+      td.target_columns
+        .filter(active=True)
+        .exclude(lineage_origin="query_derived")
+        .order_by("ordinal_position", "id")
+    )
     cols = [c.target_column_name for c in td_cols]
 
   elif ntype == "aggregate":
@@ -182,7 +240,39 @@ def _infer_node(node, cache: Dict[int, ContractResult], visiting: Set[int]) -> C
     lower_seen.add(lk)
     deduped.append(key)
 
-  res = ContractResult(columns=deduped, issues=issues)
+  # ------------------------------------------------------------
+  # Determine available input columns for downstream operators
+  # ------------------------------------------------------------
+  available_inputs: List[str] = []
+
+  if ntype == "aggregate":
+    # Aggregate editor must still see input columns from the input node.
+    # Prefer inp.available_input_columns if present, else inp.columns.
+    if inp is not None:
+      available_inputs = list(getattr(inp, "available_input_columns", None) or inp.columns or [])
+    else:
+      available_inputs = []
+  elif ntype == "window":
+    # Window can reference input columns + previous outputs; simplest: current output projection.
+    available_inputs = list(deduped)
+  elif ntype == "union":
+    # Union downstream sees only union output schema.
+    available_inputs = list(deduped)
+  elif ntype == "select":
+    # SELECT output schema is dataset-defined, but downstream operators must be able
+    # to reference upstream input columns even if they're not projected.
+    td = getattr(node, "target_dataset", None)
+    upstream_cols = _select_upstream_column_names(td) if td is not None else []
+    available_inputs = upstream_cols or list(deduped)
+  else:
+    available_inputs = list(deduped)
+
+  res = ContractResult(
+    columns=deduped,
+    issues=issues,
+    available_input_columns=available_inputs,
+  )
+
   cache[node.id] = res
   visiting.remove(node.id)
   return res

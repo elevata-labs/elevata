@@ -24,7 +24,7 @@ from django import forms
 from django.apps import apps
 from django.contrib import messages
 from django.db import transaction
-from django.db.models import Count, Prefetch
+from django.db.models import Count
 from django.forms import widgets as wdg
 from django.http import HttpResponse, HttpResponseNotFound, Http404
 from django.shortcuts import render, get_object_or_404, redirect
@@ -38,6 +38,7 @@ from metadata.generation.policies import (
   query_tree_mutation_block_reason,
 )
 from metadata.generation.query_contract import infer_query_node_contract
+from metadata.services.query_contract_sync_trigger import trigger_query_contract_column_sync
 from metadata.forms import TargetColumnForm
 from metadata.models import (
   # Target-side
@@ -132,8 +133,8 @@ def _get_query_builder_dataset(parent_obj):
 
   if isinstance(parent_obj, (QueryAggregateGroupKey, QueryAggregateMeasure)):
     agg = getattr(parent_obj, "aggregate_node", None)
-    node = getattr(agg, "node", None) if agg is not None else None
-    return getattr(node, "target_dataset", None) if node is not None else None
+    input_node = getattr(agg, "input_node", None) if agg is not None else None
+    return getattr(input_node, "target_dataset", None) if input_node is not None else None  
 
   if isinstance(parent_obj, (QueryUnionOutputColumn, QueryUnionBranch)):
     un = getattr(parent_obj, "union_node", None)
@@ -186,34 +187,80 @@ def _first_attr(obj, names):
   return None
 
 
-def _candidate_column_names_for_targetdataset(td, query_node=None):  
+def _candidate_column_names_for_targetdataset(td, query_node=None):
   """
   Best-effort list of column names to help users pick input_column_name fields.
   Prefers inferred query contract if available; falls back to dataset columns.
-  If query_node is provided, infer columns from that node's contract (preferred).  
+  If query_node is provided, infer columns from that node's *input* contract (preferred).
   """
-  # 1) Try inferred contract (if the helper exists in your codebase)
+  # 1) Prefer inferred contract for the relevant node (best UX for input_column_name fields)
   try:
     import metadata.generation.query_contract as query_contract
-    root = query_node or getattr(td, "query_root", None)
+    # ------------------------------------------------------------
+    # Determine which node defines the INPUT contract
+    # ------------------------------------------------------------
+    root = None
+
+    if query_node is not None:
+
+      # AGGREGATE nodes must use their input node contract
+      agg = getattr(query_node, "aggregate", None)
+      if agg and getattr(agg, "input_node", None):
+        root = agg.input_node
+
+      else:
+        # WINDOW nodes also operate on input node output
+        wnd = getattr(query_node, "window", None)
+        if wnd and getattr(wnd, "input_node", None):
+          root = wnd.input_node
+        else:
+          root = query_node
+
+    else:
+      root = getattr(td, "query_root", None)
+
     if root is not None:
       contract = query_contract.infer_query_node_contract(root)
-      cols = getattr(contract, "output_columns", None) or getattr(contract, "columns", None) or []
-      cols = [str(c) for c in cols if c is not None]
-      if cols:
-        return cols
+      
+      raw = (
+        getattr(contract, "available_input_columns", None)
+        or getattr(contract, "output_columns", None)
+        or getattr(contract, "columns", None)
+        or []
+      )
+
+      out = []
+      for c in raw:
+        if isinstance(c, str):
+          v = c.strip()
+        else:
+          v = (getattr(c, "name", None) or getattr(c, "output_name", None) or str(c) or "").strip()
+        if v:
+          out.append(v)
+      if out:
+        return out
   except Exception:
     pass
 
-  # 2) Fallback: use TargetColumns of the dataset (if present)
+  # 2) Fallback: real TargetColumns (materialization truth / legacy screens)
   cols = []
   try:
-    for c in td.columns.all():
-      name = getattr(c, "target_column_name", "") or getattr(c, "name", "")
-      if name:
-        cols.append(name)
+    qs = getattr(td, "columns", None) or getattr(td, "target_columns", None)
+    if qs is not None:
+      items = qs
+      # qs may be a related manager or already a list-like (tests)
+      if hasattr(items, "all"):
+        items = items.all()
+      # items may be a QuerySet OR a plain list (FakeQuerySet/list)
+      if hasattr(items, "order_by"):
+        items = items.order_by("ordinal_position", "id")
+      for c in list(items):
+        name = (getattr(c, "target_column_name", "") or getattr(c, "name", "") or "").strip()
+        if name:
+          cols.append(name)
   except Exception:
     pass
+
   return cols
 
 
@@ -229,6 +276,67 @@ def _select_widget_from_columns(cols):
       out.append(c)
   choices = [("", "---------")] + [(c, c) for c in out]
   return forms.Select(choices=choices)
+
+
+def _td_from_query_instance(obj):
+  """
+  Best-effort TargetDataset resolver for Query-scoped models.
+  Keep it intentionally small + defensive.
+  """
+  if obj is None:
+    return None
+
+  td = getattr(obj, "target_dataset", None)
+  if td is not None:
+    return td
+
+  node = getattr(obj, "node", None)
+  if node is not None:
+    td = getattr(node, "target_dataset", None)
+    if td is not None:
+      return td
+
+  # Most children have node via their parent (window/aggregate/union)
+  for attr in ("window_node", "aggregate_node", "union_node"):
+    parent = getattr(obj, attr, None)
+    if parent is None:
+      continue
+    node = getattr(parent, "node", None)
+    if node is None:
+      continue
+    td = getattr(node, "target_dataset", None)
+    if td is not None:
+      return td
+
+  # WindowColumnArg -> column -> window_node -> node -> td
+  col = getattr(obj, "column", None)
+  if col is not None:
+    wn = getattr(col, "window_node", None)
+    node = getattr(wn, "node", None) if wn is not None else None
+    td = getattr(node, "target_dataset", None) if node is not None else None
+    if td is not None:
+      return td
+
+  return None
+
+
+def _maybe_trigger_query_contract_sync(instance):
+  """
+  Hard safety net: Query UI mutations must keep TargetColumn in sync.
+  Signals are nice, but UI flows can bypass them (bulk paths / edge deletes).
+  """
+  try:
+    if not _is_query_scoped_model(instance.__class__):
+      return
+  except Exception:
+    return
+
+  td = _td_from_query_instance(instance)
+  if td is None:
+    return
+
+  # Run after commit so contract inference sees the final state.
+  transaction.on_commit(lambda: trigger_query_contract_column_sync(td))
 
 
 class _ScopedChildView(GenericCRUDView):
@@ -692,6 +800,9 @@ class _ScopedChildView(GenericCRUDView):
       if hasattr(form, "save_m2m"):
         form.save_m2m()
 
+      # Hard safety net: keep TargetColumn in sync for query-scoped mutations
+      _maybe_trigger_query_contract_sync(instance)        
+
       # return a fully-populated row context so row.html won't crash
       ctx = {
         "object": instance,
@@ -815,6 +926,9 @@ class _ScopedChildView(GenericCRUDView):
         # Save ManyToMany relationships explicitly (e.g. upstream_columns)
         if hasattr(form, "save_m2m"):
           form.save_m2m()
+
+        # Hard safety net: keep TargetColumn in sync for query-scoped mutations
+        _maybe_trigger_query_contract_sync(updated)
 
         # return the final row view (static mode again) so HTMX swaps it back
         ctx = {
@@ -1541,7 +1655,7 @@ class QueryAggregateGroupKeyScopedView(_ScopedChildView):
     except Exception:
       pass
     return form
-
+  
 
 class QueryAggregateMeasureScopedView(_ScopedChildView):
   model = QueryAggregateMeasure

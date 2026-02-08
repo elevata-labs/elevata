@@ -97,7 +97,7 @@ def test_build_load_plan_hist_dataset_never_uses_merge():
   td = DummyTargetDataset(
     name="rc_customer_hist",
     schema_short="rawcore",
-    incremental_strategy="merge",
+    incremental_strategy="full",
     natural_key_fields=["customer_id"],
     incremental_source=src,
     handle_deletes=True,

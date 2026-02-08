@@ -73,7 +73,7 @@ applied across ingestion, merge, and delete detection.
 
 ### 🧩 2.6 Dialect Adapter Layer
 - Implements quoting, merge syntax, hashing, concatenation  
-- Ensures SQL runs identically across platforms (DuckDB, MSSQL, Snowflake, ...)
+- Ensures SQL runs identically across platforms (BigQuery, Databricks, DuckDB, Fabric Warehouse, MSSQL, Postgres, Snowflake)
 
 ### 🧩 2.7 Load SQL Layer
 - Full load: INSERT INTO ... SELECT  

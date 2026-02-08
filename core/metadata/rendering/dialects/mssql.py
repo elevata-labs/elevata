@@ -252,33 +252,6 @@ class MssqlDialect(SqlDialect):
       END;
     """.strip()
 
-  def render_create_table_if_not_exists(self, td) -> str:
-    """
-    Create the target dataset table based on TargetColumn metadata.
-    SQL Server requires IF OBJECT_ID(...) checks (no CREATE TABLE IF NOT EXISTS).
-    """
-    schema_name = td.target_schema.schema_name
-    table_name = td.target_dataset_name
-    columns: list[dict[str, object]] = []
-    for c in self._iter_target_columns(td):
-      col_type = self.map_logical_type(
-        datatype=c.datatype,
-        max_length=getattr(c, "max_length", None),
-        precision=getattr(c, "decimal_precision", None),
-        scale=getattr(c, "decimal_scale", None),
-        strict=True,
-      )
-      columns.append({
-        "name": c.target_column_name,
-        "type": col_type,
-        "nullable": bool(getattr(c, "nullable", True)),
-      })
-    return self.render_create_table_if_not_exists_from_columns(
-      schema=schema_name,
-      table=table_name,
-      columns=columns,
-    )
-
   def render_create_table_if_not_exists_from_columns(
     self,
     *,

@@ -32,6 +32,7 @@ TYPE_CHOICES = sorted([
   ("bigquery", "Google BigQuery"),
   ("duckdb", "DuckDB"),
   ("databricks", "Databricks SQL"),
+  ("fabric_warehouse", "Microsoft Fabric Warehouse"),
 
   # Beta / limited SQLAlchemy reflection
   ("trino", "Trino (beta, limited reflection)"),
@@ -266,6 +267,7 @@ LINEAGE_ORIGIN_CHOICES=[
   ("constant", "Constant"),
   ("surrogate_key", "Surrogate Key"),
   ("foreign_key", "Foreign Key"),
+  ("query_derived", "Query Derived"),
 ]
 
 TARGET_COMBINATION_MODE_CHOICES=[
