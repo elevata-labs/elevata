@@ -35,6 +35,18 @@ designed to be safe, lineage-aware, and reproducible across environments.
 
 ---
 
+## 🔧 Type authority
+
+The TargetColumn datatype defined in metadata is authoritative.
+
+Upstream datatypes are treated as advisory input during initial column creation,  
+but do not override explicit datatype changes made at the TargetColumn level.
+
+This allows controlled schema evolution (widening, rebuild, and type alignment)  
+without upstream schema changes forcing unintended reversions.
+
+---
+
 ## 🔧 Column and Dataset Renames
 
 Renames are handled explicitly via metadata:
@@ -88,8 +100,6 @@ the planner will:
 
 This prevents silent data corruption.
 
----
-
 ### 🧩 Historization Awareness
 
 Historized datasets (`*_hist`) are treated as **structural mirrors** of their
@@ -124,7 +134,7 @@ Examples include:
 These equivalence rules are applied during **schema drift detection**  
 and are intentionally **dialect-aware but planner-enforced**.
 
-#### Design rationale
+#### 🔎 Design rationale
 
 - elevata does not perform automatic type alterations  
 - minor vendor-specific type spelling differences should not cause noise  
@@ -132,6 +142,99 @@ and are intentionally **dialect-aware but planner-enforced**.
 
 Type equivalence affects **drift detection only**.  
 It does not influence SQL rendering or physical DDL generation.
+
+---
+
+## 🔧 Type Drift Detection and Evolution
+
+elevata includes deterministic type drift detection as part of the materialization planning phase.
+
+Type drift occurs when the physical column datatype differs from the datatype defined in metadata.
+
+### 🧩 Canonical Type Comparison
+
+Type comparison is performed using canonical types instead of dialect-specific physical types.
+
+Physical types are mapped to canonical types during introspection.
+
+Example:
+
+| Physical Type (Dialect) | Canonical Type |
+|---|---|
+| INT (MSSQL) | INTEGER |
+| NUMBER(38,0) (Snowflake) | BIGINT |
+| BIGINT | BIGINT |
+| VARCHAR(100) | STRING |
+| TEXT | STRING |
+
+This allows consistent drift detection across different warehouses.
+
+Canonical types represent the logical datatype used by elevata for
+schema comparison and drift classification.
+
+They are independent of physical database representations.
+
+### 🧩 Drift Classification
+
+Type drift is classified into three categories:
+
+### 🧩 Equivalent
+No effective change. Execution continues without action.
+
+Examples:
+
+- INT vs INTEGER  
+- VARCHAR vs STRING (dialect alias)
+
+#### 🔎 Widening (Safe)
+The target type can safely represent all existing values.
+
+Examples:
+
+- INT → BIGINT  
+- VARCHAR(100) → VARCHAR(200)  
+- DECIMAL(10,2) → DECIMAL(18,4)
+
+Safe widening changes are automatically remediated.
+
+#### 🔎 Narrowing / Incompatible (Unsafe)
+The new type may truncate or invalidate existing data.
+
+Examples:
+
+- BIGINT → INT  
+- VARCHAR(200) → VARCHAR(50)  
+- DECIMAL(18,4) → DECIMAL(10,2)
+
+Unsafe drift blocks execution deterministically.
+
+---
+
+### 🧩 Evolution Strategy
+
+When widening drift is detected:
+
+1. If the dialect supports `ALTER COLUMN TYPE`, elevata generates an ALTER statement.  
+2. Otherwise, elevata performs a deterministic rebuild:
+
+```sql
+CREATE TABLE <table>__rebuild_tmp
+INSERT INTO <tmp> SELECT CAST(...) FROM <original>
+DROP TABLE <original>
+RENAME <tmp> → <original>
+```
+
+The rebuild strategy guarantees identical results across dialects.
+
+### 🧩 Deterministic Blocking
+
+Execution is blocked when:
+
+- narrowing drift is detected  
+- incompatible type change detected  
+- dialect cannot safely evolve schema
+
+Blocking occurs during preflight, before any SQL execution.
 
 ---
 

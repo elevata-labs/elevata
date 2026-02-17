@@ -1,6 +1,6 @@
 """
 elevata - Metadata-driven Data Platform Framework
-Copyright © 2025 Ilona Tag
+Copyright © 2025-2026 Ilona Tag
 
 This file is part of elevata.
 
@@ -25,6 +25,7 @@ from types import SimpleNamespace
 import pytest
 
 from metadata.rendering import load_sql as load_mod
+from tests._dialect_test_mixin import DialectTestMixin
 
 
 class DummyTargetDataset:
@@ -33,12 +34,16 @@ class DummyTargetDataset:
   def __init__(self, name: str = "dummy_dataset"):
     self.target_dataset_name = name
 
+  @property
+  def is_hist(self) -> bool:
+    return (
+      getattr(getattr(self, "target_schema", None), "short_name", None) == "rawcore"
+      and getattr(self, "incremental_strategy", None) == "historize"
+    )
 
-class DummyDialect:
-  """Minimal dialect stub used for routing tests."""
 
-  def __init__(self, name: str = "dummy"):
-    self.name = name
+class DummyDialect(DialectTestMixin):
+  pass
 
 
 def _make_plan(mode: str, handle_deletes: bool = False):

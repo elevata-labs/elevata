@@ -147,6 +147,32 @@ def validate_incremental_target_dataset(td: "TargetDataset") -> List[str]:
   """
   issues: List[str] = []
 
+  if td.incremental_strategy == "historize":
+    schema = getattr(td, "target_schema", None)
+    short = getattr(schema, "short_name", None)
+    name = getattr(td, "target_dataset_name", "")
+
+    if short != "rawcore":
+      issues.append("incremental_strategy='historize' is only allowed in schema short_name='rawcore'.")
+
+    if not isinstance(name, str) or not name.endswith("_hist"):
+      issues.append("incremental_strategy='historize' requires dataset name to end with '_hist' (naming convention).")
+
+    if getattr(td, "historize", False):
+      issues.append("historize=True is not allowed on historize datasets (no history-of-history).")
+
+    if getattr(td, "handle_deletes", False):
+      issues.append("handle_deletes=True is not applicable to historize datasets (handled by SCD2 logic).")
+
+    if not getattr(td, "is_system_managed", False):
+      issues.append("incremental_strategy='historize' requires is_system_managed=True.")
+
+    # optional: incremental_source should be unset
+    if getattr(td, "incremental_source", None) is not None:
+      issues.append("incremental_source should not be set for historize datasets (derived from base rawcore table).")
+
+    return issues
+
   if td.incremental_strategy != "merge":
     return issues
 
@@ -192,6 +218,50 @@ def validate_all_incremental_targets() -> Dict[int, List[str]]:
 
   for td in qs.select_related("target_schema", "incremental_source"):
     issues = validate_incremental_target_dataset(td)
+    if issues:
+      result[td.pk] = issues
+
+  return result
+
+
+def validate_hist_naming_convention(td: "TargetDataset") -> List[str]:
+  """
+  Advisory (INFO):
+  - If a dataset name ends with '_hist' but it is NOT configured as a historize dataset,
+    emit an informational notice because this is likely confusing/unintended.
+
+  Note:
+  - This does NOT try to infer "histness" from the name. It's purely a governance check.
+  - Histness should be driven by metadata semantics: incremental_strategy == 'historize'.
+  """
+  issues: List[str] = []
+
+  name = (getattr(td, "target_dataset_name", "") or "")
+  strategy = getattr(td, "incremental_strategy", None)
+
+  if isinstance(name, str) and name.endswith("_hist") and strategy != "historize":
+    issues.append(
+      "INFO: dataset name ends with '_hist' but incremental_strategy is not 'historize'. "
+      "This is likely confusing and may be unintended. "
+      "Either rename the dataset or set incremental_strategy='historize' (rawcore only)."
+    )
+
+  return issues
+
+
+def validate_all_hist_naming() -> Dict[int, List[str]]:
+  """
+  Advisory (INFO) validator across all datasets:
+  - catches '_hist' suffix used on non-historize datasets
+  """
+  TargetDataset = apps.get_model("metadata", "TargetDataset")
+
+  result: Dict[int, List[str]] = {}
+
+  qs = TargetDataset.objects.select_related("target_schema")
+
+  for td in qs:
+    issues = validate_hist_naming_convention(td)
     if issues:
       result[td.pk] = issues
 

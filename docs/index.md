@@ -3,6 +3,9 @@
 Welcome to the **elevata Labs Documentation Hub** —  
 your single source of truth for metadata-driven data & analytics automation.
 
+This documentation describes the current behavior and architecture of elevata.  
+Release history and feature introductions are documented in the CHANGELOG.
+
 This index gives you an overview of all major topics and how they fit together.
 
 ---
@@ -172,7 +175,7 @@ A personal open-source initiative exploring the future of declarative data archi
 
 ---
 
-_Last updated: 2026-01-04_
+_Last updated: 2026-02-14_
 
 © 2025-2026 elevata Labs — Internal Technical Documentation
 Built with purpose. Rendered with precision. 🪶

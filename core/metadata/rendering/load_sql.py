@@ -1,6 +1,6 @@
 """
 elevata - Metadata-driven Data Platform Framework
-Copyright © 2025 Ilona Tag
+Copyright © 2025-2026 Ilona Tag
 
 This file is part of elevata.
 
@@ -48,6 +48,7 @@ from metadata.rendering.dsl import parse_surrogate_dsl
 from metadata.rendering.expr import (
   Expr, ColumnRef, Cast, Concat, Coalesce, FuncCall, RawSql
 )
+from metadata.ingestion.types_map import canonicalize_type
 
 
 def _get_target_columns_in_order(td: TargetDataset) -> Sequence[TargetColumn]:
@@ -332,6 +333,119 @@ def _find_stage_upstream_for_rawcore(td: TargetDataset):
   return None
 
 
+def _maybe_cast_for_target(dialect, expr_sql, src_type, target_type):
+  """
+  Apply dialect cast only when canonical types differ.
+  """
+  if not src_type or not target_type:
+    return expr_sql
+
+  src_can = canonicalize_type(dialect.DIALECT_NAME, src_type)
+  tgt_can = canonicalize_type(dialect.DIALECT_NAME, target_type)
+
+  if src_can == tgt_can:
+    return expr_sql
+
+  return dialect.cast_expression(expr_sql, target_type)
+
+
+def _apply_target_type_casts(td, dialect, expr_map):
+  """
+  Apply dialect-aware CAST only when source and target types differ.
+  """
+  result = dict(expr_map or {})
+
+  def _canonical(t: str | None) -> str | None:
+    if not t:
+      return None
+    # Prefer dialect canonicalization if available (new base API).
+    if hasattr(dialect, "canonicalize_logical_type"):
+      try:
+        return dialect.canonicalize_logical_type(t, strict=False)
+      except Exception:
+        pass
+    try:
+      return canonicalize_type(dialect.DIALECT_NAME, t)
+    except Exception:
+      return (t or "").strip().upper() or None
+
+  def _resolve_upstream_logical_type(target_col) -> str | None:
+    """
+    Best-effort: follow active upstream link (rawcore <- stage) and read upstream_target_column.datatype.
+    If we can't resolve it (e.g. in unit tests with fake columns), return None.
+    """
+    links = getattr(target_col, "input_links", None)
+    if not links:
+      return None
+
+    # Try queryset-style first (Django ORM).
+    try:
+      link = (
+        links
+          .filter(active=True, upstream_target_column__isnull=False)
+          .select_related("upstream_target_column")
+          .order_by("ordinal_position", "id")
+          .first()
+      )
+      if not link:
+        link = (
+          links
+            .filter(upstream_target_column__isnull=False)
+            .select_related("upstream_target_column")
+            .order_by("ordinal_position", "id")
+            .first()
+        )
+      if link and getattr(link, "upstream_target_column", None):
+        return getattr(link.upstream_target_column, "datatype", None)
+      return None
+    except Exception:
+      pass
+
+    # Fallback: iterable list of links.
+    try:
+      for link in list(links):
+        utc = getattr(link, "upstream_target_column", None)
+        if utc is None:
+          continue
+        return getattr(utc, "datatype", None)
+    except Exception:
+      return None
+    return None
+
+  for c in _get_target_columns_in_order(td):
+    col_name = c.target_column_name
+    expr = result.get(col_name)
+    if not expr:
+      continue
+
+    # Compare canonical logical types (metadata-driven).
+    src_logical = _resolve_upstream_logical_type(c)
+    tgt_logical = getattr(c, "datatype", None)
+    src_can = _canonical(src_logical)
+    tgt_can = _canonical(tgt_logical)
+
+    # If we cannot determine upstream type (e.g. tests / missing lineage),
+    # we do NOT cast. This keeps behavior conservative and avoids noisy CASTs.
+    if not src_can or not tgt_can or src_can == tgt_can:
+      continue
+
+    target_physical = dialect.map_logical_type(
+      datatype=c.datatype,
+      max_length=getattr(c, "max_length", None),
+      precision=getattr(c, "decimal_precision", None),
+      scale=getattr(c, "decimal_scale", None),
+      strict=True,
+    )
+
+    try:
+      result[col_name] = dialect.cast_expression(expr, target_physical)
+
+    except Exception:
+      pass
+
+  return result
+
+
 def render_merge_sql(td: TargetDataset, dialect) -> str:
   """
   Render a backend-aware MERGE / upsert statement for a target dataset.
@@ -398,6 +512,12 @@ def render_merge_sql(td: TargetDataset, dialect) -> str:
 
   # Expressions per target column from the logical SELECT
   expr_map = _get_rendered_column_exprs_for_target(td, dialect)
+
+  expr_map = _apply_target_type_casts(
+    td=td,
+    dialect=dialect,
+    expr_map=expr_map,
+  )
 
   # If the dialect explicitly opts out of native MERGE support, use the
   # UPDATE + INSERT fallback strategy.
@@ -607,9 +727,6 @@ def render_hist_incremental_sql(td: TargetDataset, dialect) -> str:
   schema_name = getattr(schema, "schema_name", "<unknown_schema>")
   hist_name = getattr(td, "target_dataset_name", "<unknown_table>")
 
-  # rawcore_name may be needed later for diagnostic or routing purposes.
-  rawcore_name = get_rawcore_name_from_hist(hist_name)
-
   comment = (
     f"-- History load for {schema_name}.{hist_name} (SCD Type 2).\n"
     f"-- Planned SCD Type 2 semantics based on:\n"
@@ -666,48 +783,21 @@ def render_hist_delete_sql(td: TargetDataset, dialect) -> str:
   schema_name = schema.schema_name
   hist_name = td.target_dataset_name
 
-  if not hist_name.endswith("_hist"):
-    raise ValueError("render_hist_delete_sql called for non-hist dataset.")
+  if not td.is_hist:
+    raise ValueError("render_hist_delete_sql called for non-historize dataset.")
 
   # Corresponding rawcore name
   rawcore_name = get_rawcore_name_from_hist(hist_name)
 
-  # Surrogate key name is always: <rawcorename>_key
-  sk_name = dialect.render_identifier(f"{rawcore_name}_key")
-
-  is_mssql = getattr(dialect, "DIALECT_NAME", "").lower() == "mssql"
-
-  hist_tbl = dialect.render_table_identifier(schema_name, hist_name)
-  rc_tbl = dialect.render_table_identifier(schema_name, rawcore_name)
-
-  if is_mssql:
-    return (
-      "UPDATE h\n"
-      "SET\n"
-      f"  version_ended_at = {{{{ load_timestamp }}}},\n"
-      "  version_state    = 'deleted',\n"
-      f"  load_run_id      = {{{{ load_run_id }}}}\n"
-      f"FROM {hist_tbl} h\n"
-      "WHERE h.version_ended_at IS NULL\n"
-      "  AND NOT EXISTS (\n"
-      "    SELECT 1\n"
-      f"    FROM {rc_tbl} r\n"
-      f"    WHERE r.{sk_name} = h.{sk_name}\n"
-      "  );"
+  if not hasattr(dialect, "render_hist_delete_sql"):
+    raise NotImplementedError(
+      f"{dialect.__class__.__name__} does not implement render_hist_delete_sql()."
     )
 
-  return (
-    f"UPDATE {hist_tbl} AS h\n"
-    "SET\n"
-    f"  version_ended_at = {{{{ load_timestamp }}}},\n"
-    "  version_state    = 'deleted',\n"
-    f"  load_run_id      = {{{{ load_run_id }}}}\n"
-    "WHERE h.version_ended_at IS NULL\n"
-    "  AND NOT EXISTS (\n"
-    "    SELECT 1\n"
-    f"    FROM {rc_tbl} AS r\n"
-    f"    WHERE r.{sk_name} = h.{sk_name}\n"
-    "  );"
+  return dialect.render_hist_delete_sql(
+    schema_name=schema_name,
+    hist_table=hist_name,
+    rawcore_table=rawcore_name,
   )
 
 
@@ -720,48 +810,21 @@ def render_hist_changed_update_sql(td: TargetDataset, dialect) -> str:
   schema_name = schema.schema_name
   hist_name = td.target_dataset_name
 
-  if not hist_name.endswith("_hist"):
-    raise ValueError("render_hist_changed_update_sql called for non-hist dataset.")
+  if not td.is_hist:
+    raise ValueError("render_hist_changed_update_sql called for non-historize dataset.")
 
   # Corresponding rawcore table and its surrogate key
   rawcore_name = get_rawcore_name_from_hist(hist_name)
-  sk_name = dialect.render_identifier(f"{rawcore_name}_key")
 
-  is_mssql = getattr(dialect, "DIALECT_NAME", "").lower() == "mssql"
-
-  hist_tbl = dialect.render_table_identifier(schema_name, hist_name)
-  rc_tbl = dialect.render_table_identifier(schema_name, rawcore_name)
-
-  if is_mssql:
-    return (
-      "UPDATE h\n"
-      "SET\n"
-      f"  version_ended_at = {{{{ load_timestamp }}}},\n"
-      "  version_state    = 'changed',\n"
-      f"  load_run_id      = {{{{ load_run_id }}}}\n"
-      f"FROM {hist_tbl} h\n"
-      "WHERE h.version_ended_at IS NULL\n"
-      "  AND EXISTS (\n"
-      "    SELECT 1\n"
-      f"    FROM {rc_tbl} r\n"
-      f"    WHERE r.{sk_name} = h.{sk_name}\n"
-      "      AND r.row_hash <> h.row_hash\n"
-      "  );"
+  if not hasattr(dialect, "render_hist_changed_update_sql"):
+    raise NotImplementedError(
+      f"{dialect.__class__.__name__} does not implement render_hist_changed_update_sql()."
     )
 
-  return (
-    f"UPDATE {hist_tbl} AS h\n"
-    "SET\n"
-    f"  version_ended_at = {{{{ load_timestamp }}}},\n"
-    "  version_state    = 'changed',\n"
-    f"  load_run_id      = {{{{ load_run_id }}}}\n"
-    "WHERE h.version_ended_at IS NULL\n"
-    "  AND EXISTS (\n"
-    "    SELECT 1\n"
-    f"    FROM {rc_tbl} AS r\n"
-    f"    WHERE r.{sk_name} = h.{sk_name}\n"
-    "      AND r.row_hash <> h.row_hash\n"
-    "  );"
+  return dialect.render_hist_changed_update_sql(
+    schema_name=schema_name,
+    hist_table=hist_name,
+    rawcore_table=rawcore_name,
   )
 
 
@@ -822,8 +885,9 @@ def _get_hist_insert_columns(td: TargetDataset, dialect) -> tuple[list[str], lis
   - Right side: SQL expressions selecting from rawcore alias "r" and runtime placeholders
   """
   hist_tn = td.target_dataset_name
-  if not hist_tn.endswith("_hist"):
-    raise ValueError("_get_hist_insert_columns called for non-hist dataset")
+  if not td.is_hist:
+    raise ValueError("_get_hist_insert_columns called for non-historize dataset.")
+
 
   rawcore_name = get_rawcore_name_from_hist(hist_tn)
   sk_name_hist = f"{rawcore_name}_hist_key"   # history-row SK (new per version)
@@ -1021,10 +1085,10 @@ def render_hist_changed_insert_template(td: TargetDataset) -> str:
   schema_name = schema.schema_name
   hist_name = td.target_dataset_name
 
-  if not hist_name.endswith("_hist"):
-    raise ValueError("render_hist_changed_insert_template called for non-hist dataset.")
+  if not td.is_hist:
+    raise ValueError("render_hist_changed_insert_template called for non-historize dataset.")
 
-  rawcore_name = hist_name[:-5]
+  rawcore_name = get_rawcore_name_from_hist(hist_name)
   sk_name = f"{rawcore_name}_key"
 
   return (
@@ -1122,15 +1186,7 @@ def render_load_sql_for_target(td: TargetDataset, dialect) -> str:
 
   # Special case: history datasets – use dedicated history renderer.
   # Guarded with getattr so DummyTargetDataset in tests still works.
-  schema = getattr(td, "target_schema", None)
-  schema_short = getattr(schema, "short_name", None)
-  name = getattr(td, "target_dataset_name", None)
-
-  if (
-    schema_short == "rawcore"
-    and isinstance(name, str)
-    and name.endswith("_hist")
-  ):
+  if td.is_hist:
     return render_hist_incremental_sql(td, dialect)
   
   # Materialization handling

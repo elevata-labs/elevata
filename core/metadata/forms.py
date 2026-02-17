@@ -293,10 +293,23 @@ class TargetColumnForm(forms.ModelForm):
       return cleaned
 
     src = upstream_list[0]
-    cleaned["datatype"] = src.datatype or ""
-    cleaned["max_length"] = src.max_length
-    cleaned["decimal_precision"] = src.decimal_precision
-    cleaned["decimal_scale"] = src.decimal_scale
-    cleaned["nullable"] = src.nullable
+
+    # Only propagate if datatype is not explicitly set.
+    # TargetColumn datatype is authoritative once defined.
+    if not cleaned.get("datatype"):
+      cleaned["datatype"] = src.datatype or ""
+
+    if cleaned.get("max_length") in (None, "", 0):
+      cleaned["max_length"] = src.max_length
+
+    if cleaned.get("decimal_precision") in (None, "", 0):
+      cleaned["decimal_precision"] = src.decimal_precision
+
+    if cleaned.get("decimal_scale") in (None, "", 0):
+      cleaned["decimal_scale"] = src.decimal_scale
+
+    # nullable is advisory only — do not override explicit user changes
+    if cleaned.get("nullable") is None:
+      cleaned["nullable"] = src.nullable
 
     return cleaned

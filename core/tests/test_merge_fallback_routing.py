@@ -1,6 +1,6 @@
 """
 elevata - Metadata-driven Data Platform Framework
-Copyright © 2025 Ilona Tag
+Copyright © 2025-2026 Ilona Tag
 
 This file is part of elevata.
 
@@ -28,26 +28,29 @@ from metadata.rendering.load_sql import (
   render_merge_sql,
   _render_update_then_insert_sql,
 )
+from tests._dialect_test_mixin import DialectTestMixin
 
-class DummyDialectNoMerge:
+
+class DummyDialectNoMerge(DialectTestMixin):
   supports_merge = False
   supports_delete_detection = False
+  pass
 
-  def render_identifier(self, name: str) -> str:
-    # For tests we keep it simple: no quoting logic, just return the name
-    return name
 
-  def render_table_identifier(self, schema: str | None, name: str) -> str:
-    if schema:
-      return f"{schema}.{name}"
-    return name
-  
-class DummyDialectWithMerge(DummyDialectNoMerge):
-  supports_merge = True
+class DummyDialectWithMerge(DialectTestMixin):
+  pass
+
 
 class DummyTargetColumn:
-  def __init__(self, name: str) -> None:
+  def __init__(self, name, **kwargs):
     self.target_column_name = name
+    # ordinal_position is only used for ordering; we stub it here
+    self.ordinal_position = 1
+    self.datatype = kwargs.get("datatype", "STRING")
+    self.max_length = kwargs.get("max_length")
+    self.decimal_precision = kwargs.get("decimal_precision")
+    self.decimal_scale = kwargs.get("decimal_scale")
+
 
 def test_update_then_insert_sql_builds_expected_structure():
   td = SimpleNamespace()

@@ -1,6 +1,6 @@
 """
 elevata - Metadata-driven Data Platform Framework
-Copyright © 2025 Ilona Tag
+Copyright © 2025-2026 Ilona Tag
 
 This file is part of elevata.
 
@@ -97,10 +97,14 @@ class FakeTargetSchema:
 
 
 class FakeTargetColumn:
-  def __init__(self, name: str):
+  def __init__(self, name, **kwargs):
     self.target_column_name = name
     # ordinal_position is only used for ordering; we stub it here
     self.ordinal_position = 1
+    self.datatype = kwargs.get("datatype", "STRING")
+    self.max_length = kwargs.get("max_length")
+    self.decimal_precision = kwargs.get("decimal_precision")
+    self.decimal_scale = kwargs.get("decimal_scale")
 
 
 class FakeTargetDataset:
@@ -125,6 +129,13 @@ class FakeTargetDataset:
       self.natural_key_fields = ["customer_id"]
     else:
       self.natural_key_fields = natural_key_fields
+
+  @property
+  def is_hist(self) -> bool:
+    return (
+      getattr(getattr(self, "target_schema", None), "short_name", None) == "rawcore"
+      and getattr(self, "incremental_strategy", None) == "historize"
+    )
 
 
 class FakeStageTargetDataset(FakeTargetDataset):
@@ -157,7 +168,52 @@ class DummyNoMergeDialect:
     if schema:
       return f"{schema}.{name}"
     return name
+  
+  def render_physical_type(
+    self,
+    *,
+    datatype: str,
+    max_length=None,
+    decimal_precision=None,
+    decimal_scale=None,
+    strict: bool = True,
+  ) -> str:
+    # Good enough for tests
+    t = (datatype or "").upper()
+    if t == "STRING":
+      n = int(max_length or 64)
+      return f"VARCHAR({n})"
+    if t == "INTEGER":
+      return "INT"
+    if t == "BIGINT":
+      return "BIGINT"
+    if t == "DECIMAL":
+      if decimal_precision is not None and decimal_scale is not None:
+        return f"DECIMAL({int(decimal_precision)},{int(decimal_scale)})"
+      return "DECIMAL"
+    if t == "TIMESTAMP":
+      return "TIMESTAMP"
+    if t == "DATE":
+      return "DATE"
+    return t
 
+  def map_logical_type(
+    self,
+    *,
+    datatype: str,
+    max_length=None,
+    precision=None,
+    scale=None,
+    strict: bool = True,
+  ) -> str:
+    # load_sql expects this name on dialects
+    return self.render_physical_type(
+      datatype=datatype,
+      max_length=max_length,
+      decimal_precision=precision,
+      decimal_scale=scale,
+      strict=strict,
+    )
 
 def test_render_merge_sql_basic_happy_path(monkeypatch):
   """

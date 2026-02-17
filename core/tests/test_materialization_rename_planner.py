@@ -28,43 +28,14 @@ import pytest
 
 from metadata.materialization.planner import build_materialization_plan
 from metadata.materialization.policy import MaterializationPolicy
+from tests._dialect_test_mixin import DialectTestMixin
 
 # ---------------------------------------------------------------------
 # Minimal doubles
 # ---------------------------------------------------------------------
 
-class DummyDialect:
-  def map_logical_type(self, datatype, max_length=None, precision=None, scale=None, strict=True):
-    dt = (datatype or "").upper()
-    if dt in ("INT", "INTEGER"):
-      return "INTEGER"
-    return "VARCHAR"
-
-  def introspect_table(
-    self,
-    *,
-    schema_name: str,
-    table_name: str,
-    introspection_engine,
-    exec_engine=None,
-    debug_plan: bool = False,
-  ):
-    # This method is monkeypatched in tests to return specific schemas.
-    return {
-      "table_exists": False,
-      "physical_table": table_name,
-      "actual_cols_by_norm_name": {},
-    }
-
-  def render_create_schema_if_not_exists(self, schema_name: str) -> str:
-    return f"CREATE SCHEMA IF NOT EXISTS {schema_name};"
-
-  def render_rename_column(self, schema_name: str, table_name: str, old_col: str, new_col: str) -> str:
-    return f'ALTER TABLE {schema_name}.{table_name} RENAME COLUMN "{old_col}" TO "{new_col}"'
-
-  def render_add_column(self, schema_name: str, table_name: str, col_name: str, col_type: str) -> str:
-    return f'ALTER TABLE {schema_name}.{table_name} ADD COLUMN "{col_name}" {col_type}'
-
+class DummyDialect(DialectTestMixin):
+  pass
 
 class DummySchema:
   def __init__(self, short_name="rawcore", schema_name="rawcore"):

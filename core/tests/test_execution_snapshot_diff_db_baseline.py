@@ -1,6 +1,6 @@
 """
 elevata - Metadata-driven Data Platform Framework
-Copyright © 2026 Ilona Tag
+Copyright © 2025-2026 Ilona Tag
 
 This file is part of elevata.
 
@@ -26,6 +26,7 @@ import types
 import pytest
 
 import metadata.management.commands.elevata_load as cmd_mod
+from tests._dialect_test_mixin import DialectTestMixin
 
 
 class DummyEngine:
@@ -41,12 +42,8 @@ class DummyEngine:
     pass
 
 
-class DummyDialect:
-  def __init__(self, engine):
-    self._engine = engine
-
-  def get_execution_engine(self, system):
-    return self._engine
+class DummyDialect(DialectTestMixin):
+  pass
 
 
 def test_snapshot_diff_uses_db_baseline_over_file(monkeypatch):
@@ -82,7 +79,7 @@ def test_snapshot_diff_uses_db_baseline_over_file(monkeypatch):
   monkeypatch.setattr(cmd_mod, "get_target_system", lambda _: DummySystem())
 
   engine = DummyEngine()
-  dialect = DummyDialect(engine)
+  dialect = DummyDialect(engine=engine)
   monkeypatch.setattr(cmd_mod, "get_active_dialect", lambda _: dialect)
 
   # --- Patch plan builder to avoid depending on real TargetDataset structure

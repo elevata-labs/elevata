@@ -1,6 +1,6 @@
 """
 elevata - Metadata-driven Data Platform Framework
-Copyright © 2026 Ilona Tag
+Copyright © 2025-2026 Ilona Tag
 
 This file is part of elevata.
 
@@ -25,6 +25,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Callable
 import uuid
+
+from django.core.management.base import CommandError
 
 from metadata.models import TargetDataset
 
@@ -191,6 +193,18 @@ def execute_plan(
         )
         last_exc = None
         break
+
+      except CommandError as exc:
+        # Controlled failure (e.g., preflight blocked). Do not treat as exception noise.
+        last_exc = None
+        result = {
+          "status": "blocked",
+          "kind": "preflight",
+          "dataset": step.dataset_key,
+          "message": str(exc),
+        }
+        break
+
       except Exception as exc:
         last_exc = exc
         should_retry = bool(execute) and attempt_no <= policy.max_retries
@@ -230,7 +244,7 @@ def execute_plan(
     status = str((result or {}).get("status") or "unknown")
     status_by_key[step.dataset_key] = status
 
-    if status == "error":
+    if status in ("error", "blocked"):
       had_error = True
       if not policy.continue_on_error:
         _append_aborted_from_index(idx + 1)

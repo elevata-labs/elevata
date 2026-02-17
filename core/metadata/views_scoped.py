@@ -29,6 +29,7 @@ from django.forms import widgets as wdg
 from django.http import HttpResponse, HttpResponseNotFound, Http404
 from django.shortcuts import render, get_object_or_404, redirect
 from django.urls import reverse, reverse_lazy
+from django.utils.html import escape
 from django.utils.translation import gettext_lazy as _
 from crum import get_current_user
 from generic import GenericCRUDView, htmx_oob_warning
@@ -170,6 +171,54 @@ def _get_query_builder_dataset(parent_obj):
     return getattr(pb, "target_dataset", None) if pb is not None else None
 
   return None
+
+
+def _downstream_target_datasets(td) -> list[str]:
+  """
+  Return a stable list of downstream datasets (schema.dataset) that depend on td.
+  Best-effort: used for user-facing error messages.
+  """
+  try:
+    TargetDatasetInput = apps.get_model("metadata", "TargetDatasetInput")
+    qs = TargetDatasetInput.objects.filter(upstream_target_dataset=td)
+    # respect active flag if present
+    try:
+      if any(f.name == "active" for f in TargetDatasetInput._meta.get_fields()):
+        qs = qs.filter(active=True)
+    except Exception:
+      pass
+
+    ds = []
+    # Prefer select_related to avoid extra queries
+    qs = qs.select_related("target_dataset", "target_dataset__target_schema")
+    for r in qs:
+      d = getattr(r, "target_dataset", None)
+      if d is None:
+        continue
+      schema = getattr(getattr(d, "target_schema", None), "short_name", None) or ""
+      name = getattr(d, "target_dataset_name", None) or ""
+      key = f"{schema}.{name}".strip(".")
+      if key and key not in ds:
+        ds.append(key)
+    ds.sort()
+    return ds
+  except Exception:
+    return []
+
+
+def _blocked_by_downstream_message(td) -> str:
+  ds = _downstream_target_datasets(td)
+  if ds:
+    # escape for safety; this ends up in HTML
+    safe = ", ".join(escape(x) for x in ds)
+    return (
+      "Rename not allowed: this column is already referenced by downstream datasets: "
+      + safe
+    )
+  return (
+    "Rename not allowed: this column is already referenced by downstream datasets. "
+    "Please update dependent datasets (inputs/mappings) first or remove the dependency."
+  )
 
 
 def _first_attr(obj, names):
@@ -382,7 +431,9 @@ class _ScopedChildView(GenericCRUDView):
 
     # Layer restriction (hard rule)
     if not query_tree_allowed_for_dataset(td):
-      reason = query_tree_mutation_block_reason(td)
+      # Give a more actionable error than the generic policy text.
+      # (Especially for inline edits where the user otherwise only sees "409 Conflict".)
+      reason = _blocked_by_downstream_message(td)
       if _is_htmx(request):
         return htmx_oob_warning(reason)
       messages.error(request, reason)

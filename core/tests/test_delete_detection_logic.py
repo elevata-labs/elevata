@@ -1,6 +1,6 @@
 """
 elevata - Metadata-driven Data Platform Framework
-Copyright © 2025 Ilona Tag
+Copyright © 2025-2026 Ilona Tag
 
 This file is part of elevata.
 
@@ -26,44 +26,11 @@ import pytest
 
 from metadata.rendering import load_sql as load_sql_mod
 from metadata.rendering.load_sql import render_delete_missing_rows_sql
+from tests._dialect_test_mixin import DialectTestMixin
 
-class DummyDialect:
-  """Minimal dialect stub for delete detection tests."""
 
-  def __init__(self):
-    self.supports_delete_detection = True
-    self.calls: list[dict] = []
-
-  def render_identifier(self, name: str) -> str:
-    # For tests we keep it simple: no quoting logic, just return the name
-    return name
-
-  def render_table_identifier(self, schema: str | None, name: str) -> str:
-    if schema:
-      return f"{schema}.{name}"
-    return name
-
-  def render_delete_detection_statement(
-    self,
-    target_schema,
-    target_table,
-    stage_schema,
-    stage_table,
-    join_predicates,
-    scope_filter=None,
-  ):
-    # Record call for assertions and return a dummy SQL marker
-    self.calls.append(
-      {
-        "target_schema": target_schema,
-        "target_table": target_table,
-        "stage_schema": stage_schema,
-        "stage_table": stage_table,
-        "join_predicates": list(join_predicates),
-        "scope_filter": scope_filter,
-      }
-    )
-    return "-- dummy delete detection sql"
+class DummyDialect(DialectTestMixin):
+  pass
 
 def _make_td(
   schema_short: str = "rawcore",

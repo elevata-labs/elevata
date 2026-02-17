@@ -22,13 +22,14 @@ Contact: <https://github.com/elevata-labs/elevata>.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Iterable
 import json
 import time
 import logging
 import os
 import re
 import uuid
+import hashlib
 from pathlib import Path
 from django.utils.timezone import now
 from django.core.management.base import BaseCommand, CommandError
@@ -72,6 +73,55 @@ from metadata.materialization.schema import ensure_target_schema
 from metadata.ingestion.connectors import engine_for_target
 
 logger = logging.getLogger(__name__)
+
+
+def _resolve_td_timestamp_best_effort(td: TargetDataset) -> str:
+  """
+  Best-effort last-changed marker for a TargetDataset.
+  We intentionally support multiple attribute names because different projects
+  use different audit field conventions.
+  """
+  for attr in ("updated_at", "modified_at", "last_modified", "changed_at", "created_at"):
+    v = getattr(td, attr, None)
+    if v:
+      try:
+        return v.isoformat()  # timezone-aware datetime
+      except Exception:
+        return str(v)
+  return "<?>"
+
+
+def _compute_execution_plan_fingerprint(target_datasets: Iterable[TargetDataset]) -> str:
+  """
+  Compute a stable fingerprint for the planned execution set.
+  Used to detect metadata/contract changes between plan creation and execution.
+  """
+  parts: list[str] = []
+  for td in target_datasets:
+    schema = getattr(getattr(td, "target_schema", None), "short_name", "<?>")
+    name = getattr(td, "target_dataset_name", "<?>")
+    mode = str(getattr(td, "incremental_strategy", "") or "")
+    mat = str(getattr(td, "materialization_type", "") or "")
+    ts = _resolve_td_timestamp_best_effort(td)
+    parts.append(f"{schema}.{name}|{mode}|{mat}|{ts}")
+
+  payload = "\n".join(sorted(parts)).encode("utf-8")
+  return hashlib.sha256(payload).hexdigest()
+
+
+def _fingerprint_for_execution_ids(execution_ids: list[int]) -> str:
+  """
+  Recompute the fingerprint from the DB for the given TargetDataset ids.
+  This detects changes that happened after the plan was built.
+  """
+  qs = (
+    TargetDataset.objects
+    .select_related("target_schema")
+    .filter(pk__in=execution_ids)
+  )
+  # Important: the queryset order is not guaranteed; the fingerprint sorts internally.
+  return _compute_execution_plan_fingerprint(list(qs))
+
 
 def _get_bool_env(name: str, default: bool) -> bool:
   """Read a boolean flag from the environment (supports true/false/1/0/yes/no)."""
@@ -283,6 +333,9 @@ def run_single_target_dataset(
   load_plan_override=None,
   chunk_size: int = 5000,
   attempt_no: int = 1,
+  no_type_changes: bool = False,
+  fail_on_type_drift: bool = False,
+  allow_lossy_type_drift: bool = False,
 ) -> dict[str, object]:
   """
   Execute or render exactly one dataset.
@@ -391,6 +444,7 @@ def run_single_target_dataset(
   if execute and mat in ("table", "incremental"):
     mat_policy = load_materialization_policy()
     mat_policy = replace(mat_policy, debug_plan=bool(debug_plan))
+    mat_policy = replace(mat_policy, allow_lossy_type_drift=bool(allow_lossy_type_drift))
 
     if AUTO_PROVISION_TABLES and schema_short in mat_policy.sync_schema_shorts:
       # Introspection: Databricks should prefer exec_engine-based introspection
@@ -436,6 +490,100 @@ def run_single_target_dataset(
         plan.steps = [s for s in plan.steps if getattr(s, "op", None) in keep_ops]
 
       # do NOT dispose yet - hist_plan uses the same engine below
+
+      # ------------------------------------------------------------------
+      # Preflight: deterministic drift findings before applying DDL
+      # ------------------------------------------------------------------
+      type_drift_warnings = [
+        w for w in (plan.warnings or [])
+        if str(w).startswith("TYPE_DRIFT:")
+      ]
+
+      if type_drift_warnings and not no_print:
+        stdout.write(style.WARNING(
+          f"-- Preflight: type drift detected for {dataset_key} "
+          f"({len(type_drift_warnings)} column(s))."
+        ))
+        for w in type_drift_warnings:
+          stdout.write(style.WARNING(f"-- Preflight warning: {w}"))
+
+      # For full refresh (recreate), type drift is informational only: the table will be rebuilt.
+      type_drift_warnings_for_block = [] if is_full_refresh else type_drift_warnings
+
+      # If type changes are disabled, do not execute ALTER/rebuild steps.
+      # We block deterministically on any drift (unless overridden via allow-lossy flag).
+      if no_type_changes:
+        # Remove type-evolution DDL steps from the plan to guarantee no changes happen.
+        # This covers ALTER_COLUMN_TYPE and the rebuild ops planned for widening in the planner.
+        drop_ops = {
+          "ALTER_COLUMN_TYPE",
+          "DROP_TABLE_IF_EXISTS",
+          "CREATE_TABLE",
+          "INSERT_SELECT",
+          "DROP_TABLE",
+          "RENAME_TABLE",
+        }
+        plan.steps = [s for s in (plan.steps or []) if getattr(s, "op", None) not in drop_ops]
+
+        if type_drift_warnings_for_block and not allow_lossy_type_drift:
+          raise CommandError(
+            f"Preflight blocked for {dataset_key}: type drift detected but schema evolution is disabled "
+            f"(--no-type-changes). Remove --no-type-changes to allow safe widening remediation."
+          )
+
+      # Decide whether to block deterministically.
+      # - fail_on_type_drift: blocks on ANY drift
+      # - default: block on narrowing/incompatible drift (unless allow_lossy_type_drift)
+      if type_drift_warnings_for_block:
+        if fail_on_type_drift:
+          raise CommandError(f"Preflight blocked for {dataset_key}: type drift detected (--fail-on-type-drift).")
+
+        if not allow_lossy_type_drift:
+          lossy = []
+          for w in type_drift_warnings_for_block:
+            s = str(w)
+            m = re.search(r"kind=([a-z_]+)", s)
+            kind = (m.group(1) if m else "").strip().lower()
+            if kind in ("narrowing", "incompatible"):
+              lossy.append(s)
+          if lossy:
+            raise CommandError(
+              f"Preflight blocked for {dataset_key}: narrowing/incompatible type drift detected. "
+              "Apply schema evolution (ALTER/rebuild) or override with --allow-lossy-type-drift."
+            )
+
+      # ------------------------------------------------------------------
+      # allow-lossy-type-drift override:
+      # The planner marks narrowing/incompatible drift as blocking (UNSAFE_TYPE_DRIFT).
+      # If the user explicitly allows lossy drift, do not block on those findings.
+      # The database may still reject the DDL (e.g., VARCHAR length shrink), which
+      # will surface as an execution error instead of a preflight block.
+      # ------------------------------------------------------------------
+      if allow_lossy_type_drift and plan.blocking_errors:
+        plan.blocking_errors = [
+          e for e in (plan.blocking_errors or [])
+          if not str(e).startswith("UNSAFE_TYPE_DRIFT:")
+        ]
+
+      # For full refresh (recreate), unsafe type drift is not blocking:
+      # the table will be dropped and created with the desired schema anyway.
+      # Keep other blocking errors (e.g., missing schema/table metadata) intact.
+      if is_full_refresh and plan.blocking_errors:
+        plan.blocking_errors = [
+          e for e in (plan.blocking_errors or [])
+          if not (
+            str(e).startswith("UNSAFE_TYPE_DRIFT:")
+            or str(e).startswith("UNSUPPORTED_TYPE_EVOLUTION:")
+          )
+        ]
+
+      # Blocking planner errors should fail deterministically before any DDL/SQL execution.
+      if plan.blocking_errors:
+        if not no_print:
+          for e in plan.blocking_errors:
+            stdout.write(style.ERROR(f"-- Preflight blocked: {e}"))
+        msg = "; ".join([str(e) for e in plan.blocking_errors])
+        raise CommandError(f"Preflight blocked for {dataset_key}: {msg}")
 
       if debug_materialization and not no_print:
         stdout.write(style.NOTICE(
@@ -497,20 +645,37 @@ def run_single_target_dataset(
               policy=mat_policy,
             )
 
-            if debug_materialization and not no_print:
-              stdout.write(style.NOTICE(
-                f"-- Hist materialization debug: dataset=rawcore.{hist_td.target_dataset_name} "
-                f"steps={len(hist_plan.steps)} warnings={len(hist_plan.warnings)} blocking={len(hist_plan.blocking_errors)}"
-              ))
-              for w in hist_plan.warnings:
-                stdout.write(style.WARNING(f"-- Hist materialization warning: {w}"))
-              for e in hist_plan.blocking_errors:
-                stdout.write(style.ERROR(f"-- Hist materialization blocked: {e}"))
-              for s in hist_plan.steps:
-                stdout.write(style.WARNING(f"-- Hist materialization step: {s.op}: {s.sql}"))
+            # Apply the same type-change disabling policy to hist plans as well.
+            if no_type_changes:
+              drop_ops = {
+                "ALTER_COLUMN_TYPE",
+                "DROP_TABLE_IF_EXISTS",
+                "CREATE_TABLE",
+                "INSERT_SELECT",
+                "DROP_TABLE",
+                "RENAME_TABLE",
+              }
+              hist_plan.steps = [
+                s for s in (hist_plan.steps or [])
+                if getattr(s, "op", None) not in drop_ops
+              ]
 
+              if debug_materialization and not no_print:
+                stdout.write(style.NOTICE(
+                  f"-- Hist materialization debug: dataset=rawcore.{hist_td.target_dataset_name} "
+                  f"steps={len(hist_plan.steps)} warnings={len(hist_plan.warnings)} blocking={len(hist_plan.blocking_errors)}"
+                ))
+                for w in hist_plan.warnings:
+                  stdout.write(style.WARNING(f"-- Hist materialization warning: {w}"))
+                for e in hist_plan.blocking_errors:
+                  stdout.write(style.ERROR(f"-- Hist materialization blocked: {e}"))
+                for s in hist_plan.steps:
+                  stdout.write(style.WARNING(f"-- Hist materialization step: {s.op}: {s.sql}"))
+
+            # Always apply hist sync (best-effort), regardless of no_type_changes.
             apply_materialization_plan(plan=hist_plan, exec_engine=target_system_engine)
             # (no need to touch did_materialization_provision here; this is best-effort hist sync)
+
       except Exception as exc:
         # Never break the load because of best-effort hist sync
         logger.warning("Hist materialization sync failed: %s", exc)
@@ -675,6 +840,26 @@ def run_single_target_dataset(
           f"SQL contains {{DELTA_CUTOFF}} but no active increment policy exists "
           f"for incremental_source in environment '{profile.name}'."
         )
+      
+    def _is_comment_only_sql(stmt: str) -> bool:
+      s = (stmt or "").strip()
+      if not s:
+        return True
+      for line in s.splitlines():
+        t = line.strip()
+        if not t:
+          continue
+        if t.startswith("--"):
+          continue
+        return False
+      return True
+
+    if _is_comment_only_sql(sql):
+      raise CommandError(
+        f"Non-executable SQL was rendered for {dataset_key}. "
+        f"Please check incremental_strategy and materialization_type.\n"
+        f"{sql}"
+      )      
 
     sql_exec = apply_runtime_placeholders(
       sql,
@@ -689,6 +874,22 @@ def run_single_target_dataset(
   except Exception as exc:
     load_status = "error"
     error_message = str(exc)
+
+    def _sanitize_sql_string(value: str, max_len: int = 1500) -> str:
+      # Make error messages safe for SQL VALUES('...') insertion across dialects.
+      # - Replace newlines to avoid multi-line string literal issues in some engines.
+      # - Escape single quotes using SQL standard quoting.
+      # - Keep it bounded to avoid oversized log rows.
+      s = (value or "")
+      s = s.replace("\r\n", "\n").replace("\r", "\n")
+      s = s.replace("\n", " ")
+      s = s.replace("'", "''")
+      s = " ".join(s.split())
+      if len(s) > max_len:
+        s = s[: max_len - 3] + "..."
+      return s
+
+    error_message = _sanitize_sql_string(error_message)
 
   exec_finished_at = now()
   execution_ms = (time.perf_counter() - exec_start_ts) * 1000.0
@@ -948,6 +1149,33 @@ class Command(BaseCommand):
         "any upstream dependencies."
       ),
     )
+    
+    parser.add_argument(
+      "--no-plan-guard",
+      action="store_true",
+      help="Disable execution plan predictability guard (not recommended).",
+    )
+
+    parser.add_argument(
+      "--no-type-changes",
+      action="store_true",
+      help=(
+        "Disable automatic schema evolution for type widening (ALTER/rebuild). "
+        "If type drift is detected, preflight will block unless overridden."
+      ),
+    )
+
+    parser.add_argument(
+      "--fail-on-type-drift",
+      action="store_true",
+      help="Fail the run if any schema type drift is detected (CI/strict mode).",
+    )
+
+    parser.add_argument(
+      "--allow-lossy-type-drift",
+      action="store_true",
+      help="Allow narrowing/incompatible type drift to proceed (not recommended).",
+    )
 
     parser.add_argument(
     "--continue-on-error",
@@ -1128,6 +1356,10 @@ class Command(BaseCommand):
     no_deps: bool = bool(options.get("no_deps", False))
     continue_on_error: bool = bool(options.get("continue_on_error", False))
     max_retries: int = int(options.get("max_retries") or 0)
+    no_plan_guard = bool(options.get("no_plan_guard"))
+    no_type_changes = bool(options.get("no_type_changes"))
+    fail_on_type_drift = bool(options.get("fail_on_type_drift"))
+    allow_lossy_type_drift = bool(options.get("allow_lossy_type_drift"))
     debug_execution: bool = bool(options.get("debug_execution", False))
     write_execution_snapshot: bool = bool(options.get("write_execution_snapshot", False))
     execution_snapshot_dir: str = str(options.get("execution_snapshot_dir") or ".elevata/execution_snapshots")
@@ -1198,6 +1430,29 @@ class Command(BaseCommand):
         else:
           execution_order = resolve_execution_order(root_td)
 
+      # 5.1) Predictability guard baseline: compute a fingerprint for the planned set.
+      # We store ids to re-check deterministically against the same planned set.
+      # Predictability guard baseline:
+      # If we have real DB-backed TargetDataset objects (pk present), re-check against DB.
+      # If not (e.g. unit tests with DummyTD), fall back to an in-memory fingerprint.
+      execution_ids = []
+      missing_pk = False
+      for td in execution_order:
+        pk = getattr(td, "pk", None)
+        if pk is None:
+          missing_pk = True
+          continue
+        execution_ids.append(int(pk))
+
+      plan_fingerprint = None
+      use_db_fingerprint = (not missing_pk)
+
+      if not no_plan_guard:
+        if use_db_fingerprint:
+          plan_fingerprint = _fingerprint_for_execution_ids(execution_ids)
+        else:
+          plan_fingerprint = _compute_execution_plan_fingerprint(execution_order)
+
       policy = ExecutionPolicy(
         continue_on_error=continue_on_error,
         max_retries=max_retries,
@@ -1213,6 +1468,13 @@ class Command(BaseCommand):
         schema_short=schema_short,
         no_print=no_print,
       )
+
+      if not no_print:
+        if no_plan_guard:
+          self.stdout.write(self.style.WARNING("Execution plan guard DISABLED (--no-plan-guard)."))
+        else:
+          self.stdout.write(self.style.NOTICE(f"Plan fingerprint: {plan_fingerprint}"))
+        self.stdout.write("")
 
       # 7) Debug plan for root only (exact formatting expected by tests)
       root_load_plan = None
@@ -1262,6 +1524,21 @@ class Command(BaseCommand):
 
       # 8) Execute datasets in order and collect summary
       def _run_dataset_fn(*, target_dataset, batch_run_id, load_run_id, load_plan_override, attempt_no):
+
+        # Predictability guard: detect metadata/contract drift after plan creation.
+        if not no_plan_guard:
+          if use_db_fingerprint:
+            current_fingerprint = _fingerprint_for_execution_ids(execution_ids)
+          else:
+            current_fingerprint = _compute_execution_plan_fingerprint(execution_order)
+
+          if current_fingerprint != plan_fingerprint:
+            ds = f"{target_dataset.target_schema.short_name}.{target_dataset.target_dataset_name}"
+            raise CommandError(
+              "Execution plan is stale: metadata/contract changed after plan creation. "
+              f"dataset={ds} expected_fingerprint={plan_fingerprint} current_fingerprint={current_fingerprint}"
+            )
+
         return run_single_target_dataset(
           stdout=self.stdout,
           style=self.style,
@@ -1279,6 +1556,9 @@ class Command(BaseCommand):
           load_plan_override=load_plan_override,
           chunk_size=5000,
           attempt_no=attempt_no,
+          no_type_changes=no_type_changes,
+          fail_on_type_drift=fail_on_type_drift,
+          allow_lossy_type_drift=allow_lossy_type_drift,   
         )
 
       results, had_error = execute_plan(
@@ -1499,14 +1779,41 @@ class Command(BaseCommand):
           kind = str(r.get("kind", "unknown"))
           ds = str(r.get("dataset", "unknown"))
 
-          symbol = "✔" if status in ("success", "dry_run", "skipped") else "✖"
+          status_lc = (status or "").lower()
+          kind_lc = (kind or "").lower()
+
+          if status_lc in ("success", "dry_run"):
+            symbol = "✔"
+          elif status_lc == "blocked" and kind_lc == "preflight":
+            symbol = "⚠"
+          elif status_lc == "skipped" and kind_lc in ("blocked", "aborted"):
+            symbol = "⏸"
+          elif status_lc == "skipped":
+            symbol = "⏭"
+          else:
+            symbol = "✖"
+
           line = f" {symbol} {ds:<35} {kind}"
 
           msg = r.get("message")
           if msg:
-            line += f" – {msg}"
+            # Shorten noisy preflight messages for readability
+            if status_lc == "blocked" and kind_lc == "preflight":
+              if "UNSAFE_TYPE_DRIFT" in msg:
+                line += " – blocked by UNSAFE_TYPE_DRIFT"
+              else:
+                line += " – blocked by schema preflight checks"
+            else:
+              line += f" – {msg}"
 
           self.stdout.write(line)
+
+          # Optional hint line for actionable preflight blocks
+          if status_lc == "blocked" and kind_lc == "preflight":
+            if msg and "UNSAFE_TYPE_DRIFT" in msg:
+              self.stdout.write(
+                "     hint: use --allow-lossy-type-drift to allow explicit narrowing/rebuild"
+              )          
 
         self.stdout.write("")
 
@@ -1543,15 +1850,37 @@ class Command(BaseCommand):
 
       # If we stopped early due to error and continue_on_error is False, re-raise now
       if had_error and not continue_on_error:
-        raise CommandError(
-          "Load execution failed. See execution summary above for details."
-        )
+        statuses = [str((r or {}).get("status") or "") for r in (results or [])]
+        kinds = [str((r or {}).get("kind") or "") for r in (results or [])]
+        has_exception = any(s in ("error", "exception") for s in statuses)
+        has_preflight_block = any((s == "blocked" and k == "preflight") for s, k in zip(statuses, kinds))
+
+        if has_exception:
+          raise CommandError("Load execution failed. See execution summary above for details.")
+        if has_preflight_block:
+          raise CommandError("Load blocked by preflight checks. See execution summary above for details.")
+        raise CommandError("Load execution failed. See execution summary above for details.")      
 
       if had_error:
+        statuses = [str((r or {}).get("status") or "") for r in (results or [])]
+        kinds = [str((r or {}).get("kind") or "") for r in (results or [])]
+        has_exception = any(s in ("error", "exception") for s in statuses)
+        has_preflight_block = any((s == "blocked" and k == "preflight") for s, k in zip(statuses, kinds))
+
+        if has_exception:
+          raise CommandError(
+            "One or more datasets failed during execution. "
+            "See execution summary above for details."
+          )
+        if has_preflight_block:
+          raise CommandError(
+            "One or more datasets were blocked by preflight checks. "
+            "See execution summary above for details."
+          )
         raise CommandError(
           "One or more datasets failed during execution. "
           "See execution summary above for details."
-        )
+        )      
 
     finally:
       # Always close the execution engine if it supports close()

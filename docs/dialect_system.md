@@ -324,6 +324,16 @@ Dialects implement two distinct methods for rendering identifiers:
 | `render_identifier(name: str) -> str` | Renders a single identifier only (e.g., column name) | `"customer_id"` |
 | `render_table_identifier(schema: str | None, name: str) -> str` | Renders a schema-qualified table reference | `"rawcore"."rc_customer"` |
 
+### 🧩 Table existence semantics
+
+Dialect introspection must reliably distinguish between:
+
+- table does not exist  
+- table exists but has no columns (rare engine-specific case)
+
+The planner assumes that `table_exists=False` means that the table must be provisioned.  
+Dialect implementations are responsible for handling engine-specific metadata quirks.
+
 ### 🧩 Usage in SQL Generation
 
 ```python

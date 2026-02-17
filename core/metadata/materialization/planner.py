@@ -22,9 +22,16 @@ Contact: <https://github.com/elevata-labs/elevata>.
 
 from __future__ import annotations
 
+import json
+from typing import Any, Optional
+
 from metadata.materialization.plan import MaterializationPlan, MaterializationStep
 from metadata.materialization.policy import MaterializationPolicy
-from typing import Any
+from metadata.ingestion.types_map import (
+  canonicalize_type,
+  canonical_type_str,
+  classify_type_drift,
+)
 
 
 def _warn(plan: MaterializationPlan, code: str, msg: str) -> None:
@@ -39,6 +46,14 @@ def _block(plan: MaterializationPlan, code: str, msg: str) -> None:
 
 def _norm_name(name: str) -> str:
   return (name or "").strip().lower()
+
+
+def _norm_loose(name: str) -> str:
+  """
+  Loose matching helper for physical columns that differ only by underscores/casing.
+  Example: modified_date == modifieddate
+  """
+  return _norm_name(name).replace("_", "")
 
 
 def _norm_type(t: Any) -> str:
@@ -144,8 +159,6 @@ def build_materialization_plan(*, td, introspection_engine, exec_engine=None, di
   # not depend on how introspection_engine is wired.
   dialect_name = getattr(dialect, "DIALECT_NAME", None) or getattr(dialect, "dialect_name", None)
   dialect_name_lc = (dialect_name or "").lower()
-  is_duckdb = dialect_name_lc == "duckdb"
-  is_bigquery = dialect_name_lc == "bigquery"
 
   debug_plan = bool(getattr(policy, "debug_plan", False))
 
@@ -183,7 +196,7 @@ def build_materialization_plan(*, td, introspection_engine, exec_engine=None, di
 
     # Guardrail: hist tables may only be renamed from hist-like former names.
     # Prevent accidental base -> hist renames if metadata is polluted.
-    if isinstance(table_name, str) and table_name.endswith("_hist"):
+    if td.is_hist:
       former_ds_norm = [n for n in former_ds_norm if isinstance(n, str) and n.endswith("_hist")]
 
     if former_ds_norm:
@@ -277,6 +290,11 @@ def build_materialization_plan(*, td, introspection_engine, exec_engine=None, di
     # for all desired columns (best-effort).
 
   # Compare columns: add missing, warn on type mismatch
+  rebuild_planned = False
+  truncate_to_len_by_col: dict[str, int] = {}
+  rebuild_reason: str | None = None
+  rebuild_lossy_casts: bool = False
+
   for (col_obj, dc_name, dc_type) in desired_cols:
     key = _norm_name(dc_name)
     actual = actual_cols_by_name.get(key)
@@ -409,41 +427,208 @@ def build_materialization_plan(*, td, introspection_engine, exec_engine=None, di
     at = _norm_type(actual.get("type"))
     dt = _norm_type(dc_type)
 
-    # Boolean aliases across dialects (e.g. BigQuery returns BOOLEAN)
-    bool_aliases = {"bool", "boolean"}
-    if dt in bool_aliases and at in bool_aliases:
+    if not dt or not at:
       continue
 
-    # Postgres: reflection/introspection often returns "timestamp" for
-    # columns that are semantically close to timestamptz (or legacy tables).
-    # We don't auto-ALTER types in MVP, so treat timestamp <-> timestamptz
-    # as equivalent to avoid noisy drift warnings.
-    if dialect_name_lc == "postgres":
-      if {dt, at} == {"timestamp", "timestamptz"}:
-        continue
+    desired_can = canonicalize_type(dialect_name_lc, dt)
+    actual_can = canonicalize_type(dialect_name_lc, at)
+    kind, reason = classify_type_drift(desired=desired_can, actual=actual_can)
 
-    # DuckDB does not reliably expose varchar length constraints via information_schema,
-    # so treat VARCHAR and VARCHAR(n) as equivalent for drift detection.
-    if is_duckdb:
-      if (
-        (dt.startswith("varchar(") and at == "varchar") or
-        (dt.startswith("char(") and at == "char")
-      ):
-        continue
+    if kind == "equivalent":
+      continue
 
-    # BigQuery: introspection may return INTEGER while desired type is INT64.
-    # Treat these as equivalent to avoid noisy drift warnings.
-    if is_bigquery:
-      bq_int_aliases = {"int64", "integer", "int"}
-      if dt in bq_int_aliases and at in bq_int_aliases:
-        continue
+    desired_str = canonical_type_str(desired_can)
+    actual_str = canonical_type_str(actual_can)
 
-    if dt and at and dt != at:
-      _warn(
-        plan,
-        "TYPE_DRIFT",
-        f"Type mismatch for {schema_name}.{table_name}.{dc_name}: desired={dt}, actual={at}",
+    _warn(
+      plan,
+      "TYPE_DRIFT",
+      (
+        f"kind={kind} reason={reason} "
+        f"col={schema_name}.{table_name}.{dc_name} "
+        f"desired={desired_str} actual={actual_str}"
+      ),
+    )
+
+    # Unknown drift must never block. Some engines (e.g. BigQuery) don't expose
+    # full type parameters (DECIMAL precision/scale, etc.). Users remain responsible.
+    if kind == "unknown":
+      continue
+
+    # Safe auto-remediation only for widening.
+    if kind == "widening":
+      if getattr(dialect, "supports_alter_column_type", False) and hasattr(dialect, "render_alter_column_type"):
+        ddl = dialect.render_alter_column_type(
+          schema=schema_name,
+          table=table_name,
+          column=dc_name,
+          new_type=str(dc_type),
+        )
+        if ddl:
+          plan.steps.append(MaterializationStep(
+            op="ALTER_COLUMN_TYPE",
+            sql=ddl,
+            safe=True,
+            reason=f"Type widening: alter {dc_name} to {dc_type}",
+          ))
+          continue
+
+      # Fallback: deterministic rebuild (drop old table) if dialect supports required primitives.
+      supports_rebuild = (
+        hasattr(dialect, "render_drop_table_if_exists") and
+        hasattr(dialect, "render_create_table_from_columns") and
+        hasattr(dialect, "render_insert_select_for_rebuild") and
+        hasattr(dialect, "render_drop_table") and
+        hasattr(dialect, "render_rename_table")
       )
+      if supports_rebuild:
+        if not rebuild_planned:
+          rebuild_planned = True
+          plan.requires_rebuild = True
+          rebuild_reason = rebuild_reason or "widening"
+          rebuild_lossy_casts = False  # widening is safe path
+        continue
+
+      _block(
+        plan,
+        "UNSUPPORTED_TYPE_EVOLUTION",
+        f"Type widening detected but dialect cannot ALTER or rebuild deterministically for {schema_name}.{table_name}.{dc_name}.",
+      )
+      continue
+
+    # Narrowing/incompatible drift: blocked by default, but can be remediated via
+    # deterministic rebuild when explicitly allowed.
+    allow_lossy = bool(getattr(policy, "allow_lossy_type_drift", False))
+    if kind in ("narrowing", "incompatible") and allow_lossy:
+      supports_rebuild = (
+        hasattr(dialect, "render_drop_table_if_exists") and
+        hasattr(dialect, "render_create_table_from_columns") and
+        hasattr(dialect, "render_insert_select_for_rebuild") and
+        hasattr(dialect, "render_drop_table") and
+        hasattr(dialect, "render_rename_table")
+      )
+      if supports_rebuild:
+        if not rebuild_planned:
+          rebuild_planned = True
+          plan.requires_rebuild = True
+          rebuild_reason = rebuild_reason or "lossy"
+          rebuild_lossy_casts = True
+
+        # Mark string shrink columns for truncation during rebuild (only shrink, not widen).
+        d_dt, d_ml, _d_p, _d_s = desired_can
+        a_dt, a_ml, _a_p, _a_s = actual_can
+        if (d_dt or "").upper() == "STRING" and d_ml is not None and a_ml is not None:
+          try:
+            if int(a_ml) > int(d_ml):
+              truncate_to_len_by_col[_norm_name(dc_name)] = int(d_ml)
+          except Exception:
+            pass
+        continue
+
+      _block(
+        plan,
+        "UNSUPPORTED_TYPE_EVOLUTION",
+        f"Lossy type drift allowed but dialect cannot rebuild deterministically for {schema_name}.{table_name}.{dc_name}.",
+      )
+      continue
+
+    # Default deterministic behavior: block narrowing/incompatible drift.
+    _block(
+      plan,
+      "UNSAFE_TYPE_DRIFT",
+      f"{schema_name}.{table_name}.{dc_name} kind={kind} desired={desired_str} actual={actual_str}.",
+    )
+
+  # ------------------------------------------------------------------
+  # Finalize rebuild (single pass) AFTER we planned any RENAME_COLUMN steps.
+  # This ensures the rebuild INSERT_SELECT references the post-rename column names
+  # (BigQuery example: modifieddate -> modified_date).
+  # ------------------------------------------------------------------
+  if rebuild_planned:
+    # Rebuild creates the target table with the desired column names.
+    # Any column rename must NOT be executed on the source table before backfill,
+    # otherwise INSERT_SELECT may reference columns that no longer exist.
+    keep_ops = {"ENSURE_SCHEMA", "RENAME_DATASET"}
+    plan.steps = [s for s in (plan.steps or []) if getattr(s, "op", None) in keep_ops]
+
+    def _resolve_source_name_for_rebuild(col_obj, desired_name: str) -> str:
+      key = _norm_name(desired_name)
+      a = actual_cols_by_name.get(key)
+      if a:
+        return str(a.get("name") or a.get("column_name") or desired_name)
+      
+      former = list(getattr(col_obj, "former_names", None) or [])
+
+      former += _synthetic_former_names_from_dataset(
+        desired_col=desired_name,
+        dataset_name=table_name,
+        dataset_former_names=list(getattr(td, "former_names", None) or []),
+      )
+
+      for fn in former:
+        fnn = _norm_name(fn)
+        if fnn and fnn in actual_cols_by_name:
+          aa = actual_cols_by_name[fnn]
+          return str(aa.get("name") or aa.get("column_name") or fn)    
+      return desired_name
+
+    tmp_table = f"{table_name}__rebuild_tmp"
+
+    desired_columns_payload: list[dict[str, object]] = []
+    for _c, _name, _type in desired_cols:
+      keyn = _norm_name(_name)
+
+      desired_columns_payload.append({
+        "name": _name,
+        "source_name": _resolve_source_name_for_rebuild(_c, _name),
+        "type": _type,
+        "nullable": bool(getattr(_c, "nullable", True)),
+        "max_length": getattr(_c, "max_length", None),
+        "precision": getattr(_c, "decimal_precision", None),
+        "scale": getattr(_c, "decimal_scale", None),
+        "truncate_to_length": truncate_to_len_by_col.get(keyn),
+      })
+
+    plan.steps.append(MaterializationStep(
+      op="DROP_TABLE_IF_EXISTS",
+      sql=dialect.render_drop_table_if_exists(schema=schema_name, table=tmp_table),
+      safe=True,
+      reason=f"Drop rebuild temp table if exists: {schema_name}.{tmp_table}",
+    ))
+    plan.steps.append(MaterializationStep(
+      op="CREATE_TABLE",
+      sql=dialect.render_create_table_from_columns(schema=schema_name, table=tmp_table, columns=desired_columns_payload),
+      safe=True,
+      reason=f"Create rebuild temp table: {schema_name}.{tmp_table}",
+    ))
+    plan.steps.append(MaterializationStep(
+      op="INSERT_SELECT",
+      sql=dialect.render_insert_select_for_rebuild(
+        schema=schema_name,
+        src_table=table_name,
+        dst_table=tmp_table,
+        columns=desired_columns_payload,
+        lossy_casts=bool(rebuild_lossy_casts),
+        truncate_strings=True,
+      ),
+      safe=True,
+      reason=(
+        f"{'Lossy' if rebuild_lossy_casts else 'Safe'} rebuild backfill from "
+        f"{schema_name}.{table_name}"
+      ),
+    ))
+    plan.steps.append(MaterializationStep(
+      op="DROP_TABLE",
+      sql=dialect.render_drop_table(schema=schema_name, table=table_name),
+      safe=True,
+      reason=f"Drop original table for rebuild: {schema_name}.{table_name}",
+    ))
+    plan.steps.append(MaterializationStep(
+      op="RENAME_TABLE",
+      sql=dialect.render_rename_table(schema_name, tmp_table, table_name),
+      safe=True,
+      reason=f"Rename rebuild temp table to original: {schema_name}.{tmp_table} -> {schema_name}.{table_name}",
+    ))
 
   # Drops are intentionally not planned now (policy-gated later).
   return plan

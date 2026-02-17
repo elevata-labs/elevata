@@ -110,6 +110,10 @@ class PostgresDialect(SqlDialect):
   def supports_merge(self) -> bool:
     """PostgreSQL supports merge via INSERT ... ON CONFLICT."""
     return True
+  
+  @property
+  def supports_alter_column_type(self) -> bool:
+    return True
 
   @property
   def supports_delete_detection(self) -> bool:
@@ -208,10 +212,19 @@ class PostgresDialect(SqlDialect):
     q = self.render_identifier
     return f"CREATE SCHEMA IF NOT EXISTS {q(schema)};"
   
+
+  def render_alter_column_type(self, *, schema: str, table: str, column: str, new_type: str) -> str:
+    # Postgres: ALTER TABLE <tbl> ALTER COLUMN <col> TYPE <type>
+    tbl = self.render_table_identifier(schema, table)
+    col = self.render_identifier(column)
+    return f"ALTER TABLE {tbl} ALTER COLUMN {col} TYPE {new_type}"
+
+  
   def render_drop_table_if_exists(self, *, schema: str, table: str, cascade: bool = False) -> str:
     target = self.render_table_identifier(schema, table)
     cas = " CASCADE" if cascade else ""
     return f"DROP TABLE IF EXISTS {target}{cas}"
+
 
   def render_truncate_table(self, schema: str, table: str) -> str:
     qtbl = self.render_table_identifier

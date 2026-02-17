@@ -1,6 +1,6 @@
 """
 elevata - Metadata-driven Data Platform Framework
-Copyright © 2025 Ilona Tag
+Copyright © 2025-2026 Ilona Tag
 
 This file is part of elevata.
 
@@ -30,6 +30,14 @@ StepOp = Literal[
   "ENSURE_SCHEMA",
   "CREATE_TABLE_IF_NOT_EXISTS",
   "ADD_COLUMN",
+  "RENAME_DATASET",
+  "RENAME_COLUMN",
+  "ALTER_COLUMN_TYPE",
+  "DROP_TABLE_IF_EXISTS",
+  "CREATE_TABLE",
+  "INSERT_SELECT",
+  "DROP_TABLE",
+  "RENAME_TABLE",
   "WARN",
   "BLOCK",
 ]

@@ -74,7 +74,9 @@ temporary <tr> in JS. -->
           hx-target="{% if is_new %}#row-new{% else %}#row-{{ object.pk }}{% endif %}"
           hx-swap="outerHTML"
           hx-disabled-elt="button[type=submit]"
-          data-elevata-refresh-url="{{ refresh_url }}"
+          hx-on::after-swap="
+            document.getElementById('grid-feedback-inline')?.replaceChildren();
+          "
     >
       {% csrf_token %}
 
@@ -89,7 +91,10 @@ temporary <tr> in JS. -->
           we can just drop the temporary row from the DOM. -->
           <button type="button"
                   class="btn btn-secondary btn-sm"
-                  onclick="document.getElementById('row-new')?.remove()">
+                  onclick="
+                    document.getElementById('grid-feedback-inline')?.replaceChildren();
+                    document.getElementById('row-new')?.remove();
+                  ">
             Cancel
           </button>
         {% else %}
@@ -97,9 +102,11 @@ temporary <tr> in JS. -->
           We want to re-fetch the static row HTML via HTMX,
           not navigate away and not reload the page. -->
           <a class="btn btn-secondary btn-sm"
-             hx-get="{{ cancel_url }}"
-             hx-target="#row-{{ object.pk }}"
-             hx-swap="outerHTML">
+            hx-get="{{ cancel_url }}"
+            hx-target="#row-{{ object.pk }}"
+            hx-swap="outerHTML"
+            onclick="document.getElementById('grid-feedback-inline')?.replaceChildren();"
+            hx-on::after-request="document.getElementById('grid-feedback-inline')?.replaceChildren();">
             Cancel
           </a>
         {% endif %}

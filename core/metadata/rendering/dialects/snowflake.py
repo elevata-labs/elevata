@@ -217,6 +217,10 @@ class SnowflakeDialect(SqlDialect):
   @property
   def supports_merge(self) -> bool:
     return True
+  
+  @property
+  def supports_alter_column_type(self) -> bool:
+    return True
 
   @property
   def supports_delete_detection(self) -> bool:
@@ -283,6 +287,17 @@ class SnowflakeDialect(SqlDialect):
   def render_create_schema_if_not_exists(self, schema_name: str) -> str:
     sch = self.render_identifier(schema_name)
     return f"CREATE SCHEMA IF NOT EXISTS {sch};"
+
+
+  # ---------------------------------------------------------------------------
+  # 4. DDL helpers
+  # ---------------------------------------------------------------------------
+  def render_alter_column_type(self, *, schema: str, table: str, column: str, new_type: str) -> str:
+    # Snowflake: ALTER TABLE <tbl> ALTER COLUMN <col> SET DATA TYPE <type>
+    tbl = self.render_table_identifier(schema, table)
+    col = self.render_identifier(column)
+    return f"ALTER TABLE {tbl} ALTER COLUMN {col} SET DATA TYPE {new_type}"
+
 
   # ---------------------------------------------------------------------------
   # 5. DML / load SQL primitives

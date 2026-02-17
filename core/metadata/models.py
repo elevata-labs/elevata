@@ -727,7 +727,8 @@ class TargetDataset(AuditFields):
       "- full: always full refresh (truncate + reload)\n"
       "- append: append-only incremental load\n"
       "- merge: upsert by business key and handle deletes\n"
-      "- snapshot: periodic snapshots by watermark/date"
+      "- snapshot: periodic snapshots by watermark/date\n"
+      "- historize: SCD2 history dataset (system-managed history load)"
     ),
   )
   incremental_source = models.ForeignKey(SourceDataset, on_delete=models.SET_NULL, null=True, blank=True, related_name="incremental_targets",
@@ -838,7 +839,10 @@ class TargetDataset(AuditFields):
 
   @property
   def is_hist(self) -> bool:
-    return self.target_schema.short_name == "rawcore" and self.target_dataset_name.endswith("_hist")
+    return (
+      getattr(self.target_schema, "short_name", None) == "rawcore"
+      and self.incremental_strategy == "historize"
+    )
 
   @property
   def natural_key_fields(self):
@@ -2537,9 +2541,8 @@ class TargetDatasetReference(AuditFields):
           continue
 
         ds = getattr(c, "target_dataset", None)
-        ds_name = getattr(ds, "target_dataset_name", "") or ""
         role = (getattr(c, "system_role", "") or "").strip()
-        is_hist_ds = ds_name.endswith("_hist")
+        is_hist_ds = ds.is_hist
         is_fk_role = (role == "foreign_key")
 
         if not (is_hist_ds or is_fk_role):

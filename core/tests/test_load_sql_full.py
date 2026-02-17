@@ -1,6 +1,6 @@
 """
 elevata - Metadata-driven Data Platform Framework
-Copyright © 2025 Ilona Tag
+Copyright © 2025-2026 Ilona Tag
 
 This file is part of elevata.
 
@@ -55,6 +55,13 @@ class FakeTargetDataset:
     # Attributes used only in merge/delete paths; stay minimal here
     self.handle_deletes = False
     self.historize = False
+
+  @property
+  def is_hist(self) -> bool:
+    return (
+      getattr(getattr(self, "target_schema", None), "short_name", None) == "rawcore"
+      and getattr(self, "incremental_strategy", None) == "historize"
+    )    
 
 
 class FakeDialect(DuckDBDialect):

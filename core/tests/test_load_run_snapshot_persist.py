@@ -1,6 +1,6 @@
 """
 elevata - Metadata-driven Data Platform Framework
-Copyright © 2026 Ilona Tag
+Copyright © 2025-2026 Ilona Tag
 
 This file is part of elevata.
 
@@ -26,6 +26,7 @@ import uuid
 import pytest
 
 import metadata.management.commands.elevata_load as cmd_mod
+from tests._dialect_test_mixin import DialectTestMixin
 
 
 class DummyEngine:
@@ -36,61 +37,9 @@ class DummyEngine:
     self.executed.append(sql)
 
 
-class DummyDialect:
-  def __init__(self, engine):
-    self._engine = engine
 
-  def get_execution_engine(self, system):
-    return self._engine
-
-  # Needed by ensure_execution_snapshot_table()
-  LOAD_RUN_LOG_TYPE_MAP = {
-    "string": "TEXT",
-    "bool": "BOOLEAN",
-    "int": "INTEGER",
-    "timestamp": "TIMESTAMP",
-  }
-
-  def map_load_run_log_type(self, col_name, canonical_type):
-    return self.LOAD_RUN_LOG_TYPE_MAP.get(canonical_type)
-
-  def render_table_identifier(self, schema, table):
-    return f"{schema}.{table}"
-
-  def render_identifier(self, name):
-    return name
-
-  def literal(self, value):
-    # Simple literal renderer for test only
-    if value is None:
-      return "NULL"
-    if isinstance(value, bool):
-      return "TRUE" if value else "FALSE"
-    if isinstance(value, (int, float)):
-      return str(value)
-    s = str(value).replace("'", "''")
-    return f"'{s}'"
-
-  def render_create_table_if_not_exists_from_columns(self, *, schema, table, columns):
-    return f"CREATE TABLE IF NOT EXISTS {schema}.{table} (...);"
-
-  def render_add_column(self, schema, table, column, column_type):
-    return f"ALTER TABLE {schema}.{table} ADD COLUMN {column} {column_type};"
-
-  def render_insert_load_run_snapshot(self, *, meta_schema: str, values: dict[str, object]) -> str:
-    """
-    Snapshot inserts are a dialect responsibility (same contract as load_run_log).
-    Keep this dummy deterministic and registry-driven.
-    """
-    from metadata.materialization.logging import LOAD_RUN_SNAPSHOT_REGISTRY
-
-    tbl = self.render_table_identifier(meta_schema, "load_run_snapshot")
-    cols = list(LOAD_RUN_SNAPSHOT_REGISTRY.keys())
-
-    col_sql = ", ".join(self.render_identifier(c) for c in cols)
-    val_sql = ", ".join(self.literal(values.get(c)) for c in cols)
-
-    return f"INSERT INTO {tbl} ({col_sql}) VALUES ({val_sql});"
+class DummyDialect(DialectTestMixin):
+  pass
 
 
 def test_execution_snapshot_is_persisted_best_effort(monkeypatch):
@@ -126,7 +75,7 @@ def test_execution_snapshot_is_persisted_best_effort(monkeypatch):
   monkeypatch.setattr(cmd_mod, "get_target_system", lambda _: DummySystem())
 
   engine = DummyEngine()
-  dialect = DummyDialect(engine)
+  dialect = DummyDialect(engine=engine)
 
   monkeypatch.setattr(cmd_mod, "get_active_dialect", lambda _: dialect)
 

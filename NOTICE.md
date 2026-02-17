@@ -70,6 +70,12 @@ This project includes third-party software components that are licensed under th
   (not bundled with this software; distributed under the PostgreSQL License)  
   See [https://www.postgresql.org/about/licence/](https://www.postgresql.org/about/licence/)
 
+### Optional Example Integrations
+
+- **Apache Airflow** – optional orchestration example  
+  (not bundled with this software; distributed under the Apache License 2.0)  
+  See https://www.apache.org/licenses/LICENSE-2.0
+
 ---
 
 ## License Compatibility

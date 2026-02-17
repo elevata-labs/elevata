@@ -109,6 +109,17 @@ class SqlDialect(ABC):
     """Whether this dialect supports a native MERGE statement."""
     # Dialects must explicitly opt in by overriding this property.
     return False
+  
+
+  @property
+  def supports_alter_column_type(self) -> bool:
+    """
+    Whether this dialect supports altering an existing column's physical type
+    without rebuilding the table.
+    Default: False (fail closed).
+    """
+    return False
+
 
   @property
   def supports_delete_detection(self) -> bool:
@@ -375,6 +386,90 @@ class SqlDialect(ABC):
       col_defs.append(f"{name} {ctype} {null_sql}")
     cols_sql = ",\n  ".join(col_defs)
     return f"CREATE TABLE IF NOT EXISTS {target} (\n  {cols_sql}\n)"
+  
+
+  def render_create_table_from_columns(
+    self,
+    *,
+    schema: str,
+    table: str,
+    columns: list[dict[str, object]],
+  ) -> str:
+    """
+    Render CREATE TABLE <schema>.<table> (...) without IF NOT EXISTS.
+    Used for deterministic rebuild flows (temp tables).
+    """
+    target = self.render_table_identifier(schema, table)
+    col_defs: list[str] = []
+    for c in columns:
+      name = self.render_identifier(str(c["name"]))
+      ctype = str(c["type"])
+      nullable = bool(c.get("nullable", True))
+      null_sql = "NULL" if nullable else "NOT NULL"
+      col_defs.append(f"{name} {ctype} {null_sql}")
+    cols_sql = ",\n  ".join(col_defs)
+    return f"CREATE TABLE {target} (\n  {cols_sql}\n)"
+
+
+  def render_insert_select_for_rebuild(
+    self,
+    *,
+    schema: str,
+    src_table: str,
+    dst_table: str,
+    columns: list[dict[str, object]],
+    lossy_casts: bool = False,
+    truncate_strings: bool = False,
+  ) -> str:
+    """
+    Backfill dst_table from src_table using CAST to the desired physical type.
+    Default should work for most ANSI-ish engines.
+    """
+    src = self.render_table_identifier(schema, src_table)
+    dst = self.render_table_identifier(schema, dst_table)
+
+    col_names: list[str] = []
+    select_exprs: list[str] = []
+    for c in (columns or []):
+      # Defensive guards: planner should always provide these, but don't crash with KeyError.
+      name = str((c or {}).get("name") or "").strip()
+      ctype = str((c or {}).get("type") or "").strip()
+      if not name or not ctype:
+        # Skip invalid column payload entries deterministically.
+        continue
+
+      # "name" is the desired column name (destination),
+      # "source_name" is the physical source column name in the existing table (optional).
+      col = self.render_identifier(name)
+      src_col_name = (c.get("source_name") or c.get("name") or "").strip()
+      if not src_col_name:
+        # fall back defensively to destination name
+        src_col_name = str(c["name"])
+      src_col = self.render_identifier(src_col_name)
+      expr = self.cast_expression(src_col, ctype) if lossy_casts else src_col
+
+      # Optional lossy string shrink support (only when explicitly enabled)
+      if truncate_strings:
+        # Only truncate when planner explicitly marked this column as shrinking.
+        ml = (c or {}).get("truncate_to_length")
+
+        if ml is not None:
+          try:
+            # Only apply truncation to string-ish physical types (extra safety).
+            ctype_u = ctype.upper()
+            is_stringish = any(tok in ctype_u for tok in ("CHAR", "STRING", "TEXT", "VARCHAR"))
+            if is_stringish:
+              expr = self.truncate_string_expression(expr, int(ml))
+          except Exception:
+            pass
+
+      col_names.append(col)
+      select_exprs.append(f"{expr} AS {col}")
+
+    cols_sql = ", ".join(col_names)
+    sel_sql = ", ".join(select_exprs)
+    return f"INSERT INTO {dst} ({cols_sql}) SELECT {sel_sql} FROM {src};"
+
 
   def render_create_or_replace_view(
     self,
@@ -385,6 +480,7 @@ class SqlDialect(ABC):
   ) -> str:
     target = self.render_table_identifier(schema, view)
     return f"CREATE OR REPLACE VIEW {target} AS\n{select_sql}"
+  
 
   def render_add_column(self, schema: str, table: str, column: str, column_type: str | None) -> str:
     """
@@ -398,6 +494,32 @@ class SqlDialect(ABC):
     tbl = self.render_table_identifier(schema, table)
     col = self.render_identifier(column)
     return f"ALTER TABLE {tbl} ADD COLUMN {col} {column_type}"
+
+
+  def render_alter_column_type(
+    self,
+    *,
+    schema: str,
+    table: str,
+    column: str,
+    new_type: str,
+  ) -> str:
+    """
+    Render DDL to change a column's physical type.
+    Default: unsupported -> return empty string (planner must rebuild instead).
+    """
+    return ""
+
+
+  def render_drop_table(self, *, schema: str, table: str, cascade: bool = False) -> str:
+    """
+    Drop a table (no IF EXISTS).
+    Used for rebuild workflows where the planner has already proven existence.
+    Default ignores cascade unless overridden by dialects that support it.
+    """
+    target = self.render_table_identifier(schema, table)
+    return f"DROP TABLE {target}"
+
 
   def render_drop_table_if_exists(self, *, schema: str, table: str, cascade: bool = False) -> str:
     """
@@ -455,6 +577,82 @@ class SqlDialect(ABC):
       cols = ", ".join(self.render_identifier(c) for c in target_columns)
       return f"INSERT INTO {table} ({cols})\n{select_sql}"
     return f"INSERT INTO {table}\n{select_sql}"
+  
+  # ---------------------------------------------------------------------------
+  # Historization (SCD Type 2) SQL rendering
+  # ---------------------------------------------------------------------------
+  def render_hist_changed_update_sql(
+    self,
+    *,
+    schema_name: str,
+    hist_table: str,
+    rawcore_table: str,
+  ) -> str:
+    """
+    Close changed rows in the history table (SCD2):
+    - match on business key (rawcore surrogate key)
+    - detect changes via row_hash
+    - set version_ended_at/version_state/load_run_id
+
+    Default implementation assumes ANSI-ish UPDATE ... FROM syntax.
+    Dialects that require T-SQL style UPDATE <alias> ... FROM ... should override.
+    """
+    hist_tbl = self.render_table_identifier(schema_name, hist_table)
+    rc_tbl = self.render_table_identifier(schema_name, rawcore_table)
+
+    sk_name = self.render_identifier(f"{rawcore_table}_key")
+    row_hash = self.render_identifier("row_hash")
+
+    return (
+      f"UPDATE {hist_tbl} AS h\n"
+      "SET\n"
+      "  version_ended_at = {{ load_timestamp }},\n"
+      "  version_state    = 'changed',\n"
+      "  load_run_id      = {{ load_run_id }}\n"
+      "WHERE h.version_ended_at IS NULL\n"
+      "  AND EXISTS (\n"
+      "    SELECT 1\n"
+      f"    FROM {rc_tbl} AS r\n"
+      f"    WHERE r.{sk_name} = h.{sk_name}\n"
+      f"      AND r.{row_hash} <> h.{row_hash}\n"
+      "  );"
+    )
+
+  def render_hist_delete_sql(
+    self,
+    *,
+    schema_name: str,
+    hist_table: str,
+    rawcore_table: str,
+  ) -> str:
+    """
+    Mark deleted business keys in the history table (SCD2):
+
+    If a key is present in history (active row), but no longer exists in rawcore,
+    we close the active version and mark it as deleted.
+
+    Default implementation assumes ANSI-ish UPDATE ... FROM syntax.
+    Dialects that require T-SQL style UPDATE <alias> ... FROM ... should override.
+    """
+    hist_tbl = self.render_table_identifier(schema_name, hist_table)
+    rc_tbl = self.render_table_identifier(schema_name, rawcore_table)
+
+    sk_name = self.render_identifier(f"{rawcore_table}_key")
+
+    return (
+      f"UPDATE {hist_tbl} AS h\n"
+      "SET\n"
+      "  version_ended_at = {{ load_timestamp }},\n"
+      "  version_state    = 'deleted',\n"
+      "  load_run_id      = {{ load_run_id }}\n"
+      "WHERE h.version_ended_at IS NULL\n"
+      "  AND NOT EXISTS (\n"
+      "    SELECT 1\n"
+      f"    FROM {rc_tbl} AS r\n"
+      f"    WHERE r.{sk_name} = h.{sk_name}\n"
+      "  );"
+    )
+
 
   def render_merge_statement(
     self,
@@ -532,7 +730,8 @@ class SqlDialect(ABC):
 
     # Always terminate for safe multi-statement execution (e.g., DELETE + MERGE).
     return sql.rstrip() + ";"
-
+  
+  
   def render_insert_load_run_log(self, *, meta_schema: str, values: dict[str, object]) -> str | None:
     """
     Render an INSERT INTO meta.load_run_log (...) VALUES (...) statement.
@@ -907,6 +1106,16 @@ class SqlDialect(ABC):
     Wrap the given SQL expression in a dialect-specific CAST expression.
     """
     return f"CAST({expr} AS {target_type})"
+  
+
+  def truncate_string_expression(self, expr: str, max_length: int) -> str:
+    """
+    Truncate a string expression to max_length (lossy).
+    Default uses LEFT(...), which works in many engines.
+    Dialects can override (e.g., Databricks uses SUBSTRING).
+    """
+    return f"LEFT({expr}, {int(max_length)})"
+
 
   def concat_expression(self, rendered_parts: Sequence[str]) -> str:
     """
@@ -975,7 +1184,9 @@ class SqlDialect(ABC):
         cols[nm] = c
 
     return {
-      "table_exists": True,
+      # Do not assume "exists" just because reflection returned without raising.
+      # MSSQL/Fabric may return empty columns for missing objects.
+      "table_exists": bool(meta.get("table_exists", True)),
       "physical_table": table_name,
       "actual_cols_by_norm_name": cols,
     }

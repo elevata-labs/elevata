@@ -40,6 +40,9 @@ class MaterializationPolicy:
   # Debug output for planner introspection and decisions.
   debug_plan: bool = False
 
+  # by default, don't allow narrowing datatype changes
+  allow_lossy_type_drift: bool = False,
+
 
 def load_materialization_policy() -> MaterializationPolicy:
   allow_drop = os.getenv("ELEVATA_ALLOW_AUTO_DROP_COLUMNS", "false").lower() in ("1", "true", "yes")

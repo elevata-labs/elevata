@@ -8,9 +8,11 @@
 It’s designed as a **Declarative Data Architecture & Metadata Framework** — automated, governed, and platform-agnostic.
 
 Instead of manually crafting endless SQL and pipeline code, elevata lets metadata do the work.  
-By defining datasets, lineage, and transformation logic declaratively, you can generate consistent, auditable, and future-proof data models — including schema evolution and physical execution — ready to run on your preferred platform.
+By defining datasets, lineage, and transformation logic declaratively, you can generate consistent, auditable,  
+and future-proof data models — including schema evolution and physical execution — ready to run on your preferred platform.
 
-**elevata defines data platform architecture in metadata and executes it deterministically across warehouse engines — allowing architecture to be defined once and executed consistently everywhere.**
+**elevata defines data platform architecture in metadata and executes it deterministically across warehouse engines —  
+allowing architecture to be defined once and executed consistently everywhere.**
 
 ---
 
@@ -29,8 +31,8 @@ without rewriting models or introducing platform-specific logic.
 
 SQL becomes an execution artifact — not the architectural source of truth.
 
-Unlike many data tools that rely on adapter-specific behavior or runtime SQL rewriting,
-elevata derives execution deterministically from metadata contracts and logical planning.  
+Unlike many data tools that rely on adapter-specific behavior or runtime SQL rewriting, elevata derives execution  
+deterministically from metadata contracts and logical planning.  
 The same metadata definition therefore produces consistent results across platforms.
 
 ## License & Dependencies
@@ -63,13 +65,21 @@ Where most tools stop at SQL generation, elevata goes further:
 it defines **how a modern data architecture should look** — opinionated, governed, reproducible.  
 *In other words: elevata brings structure, governance, and automation to modern data platforms — from metadata to SQL.*  
 
-elevata is designed for teams that want governed, predictable, explainable data pipelines — without hiding logic behind implicit SQL behavior.
+elevata is designed for teams that want governed, predictable, explainable data pipelines —  
+without hiding logic behind implicit SQL behavior.
 
-Unlike transformation-centric tools, elevata treats metadata, lineage, and execution semantics as first-class concepts, not as conventions embedded in SQL.
+Unlike transformation-centric tools, elevata treats metadata, lineage, and execution semantics as first-class concepts,  
+not as conventions embedded in SQL.
+
+elevata emphasizes deterministic execution semantics.
+
+Schema evolution, materialization changes, and execution safety are validated before execution begins,  
+ensuring predictable behavior across environments and supported warehouse platforms.
+
 
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/elevata-labs/elevata/main/docs/elevata_v1_2_0.png" alt="elevata UI preview" width="700"/>
+  <img src="https://raw.githubusercontent.com/elevata-labs/elevata/main/docs/elevata_v1_3_0.png" alt="elevata UI preview" width="700"/>
   <br/>
   <em>Dataset detail view with lineage, metadata, and dialect-aware SQL previews</em>
 </p>
@@ -305,26 +315,54 @@ its core metadata models and execution semantics.
 
 ---
 
-## 🔮 Roadmap (Post-1.0)
+## 🔮 Roadmap
 
-The roadmap looks ahead, building on the stable 1.0 foundation.
+The roadmap reflects the current development direction of elevata.  
+It focuses on architectural depth and practical usability rather than feature breadth.
 
-### Execution & Governance
-- First-class execution targets for Snowflake, Databricks, and Fabric Warehouse  
-- Rule-based validation framework (blocking vs non-blocking)  
-- Policy-aware execution outcomes  
-- Execution lifecycle hooks for orchestration tools  
-  (Airflow, Dagster, Prefect, …)
+### Near-term focus — Ingestion Framework
 
-### Modeling Ergonomics
-- Improved authoring UX for complex Bizcore logic  
-- Optional helper abstractions for reusable query patterns  
-- Enhanced query modeling workflows
+The next development focus expands ingestion capabilities while preserving
+deterministic execution semantics.
 
-### Observability & Impact Analysis
-- Structured field-level lineage  
-- Semantic impact analysis across datasets  
-- Improved documentation and inspection tooling
+Planned areas:
+
+- REST API ingestion framework  
+- Flat file ingestion with fault-tolerant loading  
+- JSON → relational flattening in the Raw layer  
+- ingestion validation and low-level data quality safeguards  
+- incremental ingestion cursor abstractions
+
+The goal is to make elevata immediately applicable in real-world projects  
+where heterogeneous sources are common.
+
+---
+
+### Mid-term focus — Metadata Governance
+
+Once ingestion capabilities are expanded, the next focus area is governance  
+and long-term metadata stability.
+
+Planned areas:
+
+- contract breaking change detection  
+- dataset semantic versioning  
+- lineage completeness validation  
+- reproducible execution snapshots
+
+This builds directly on the deterministic execution and schema evolution model.
+
+---
+
+### Long-term direction — Performance Architecture
+
+Future work will focus on performance optimization and adaptive execution.
+
+Planned areas:
+
+- staged ingestion strategies  
+- adaptive materialization strategies  
+- warehouse-specific optimization layers
 
 ---
 

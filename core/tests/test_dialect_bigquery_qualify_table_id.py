@@ -58,3 +58,81 @@ def test_qualify_table_id_rejects_invalid_format():
   eng = _engine(DummyClient(project="p"))
   with pytest.raises(ValueError):
     eng._qualify_table_id("too.many.parts.here")
+
+
+def test_bigquery_introspect_table_missing_returns_table_exists_false(monkeypatch):
+  """
+  Regression guard:
+  If BigQuery API lookup (client.get_table) fails, introspection must report table_exists=False.
+  """
+  from metadata.rendering.dialects.bigquery import BigQueryDialect
+
+  class DummyClient:
+    def __init__(self):
+      self.project = "p"
+
+    def get_table(self, _table_ref):
+      raise Exception("not found")
+
+  class DummyExecEngine:
+    client = DummyClient()
+    project_id = "p"
+
+  d = BigQueryDialect()
+  res = d.introspect_table(
+    schema_name="rawcore",
+    table_name="does_not_exist",
+    introspection_engine=object(),
+    exec_engine=DummyExecEngine(),
+    debug_plan=False,
+  )
+
+  assert res["table_exists"] is False
+  assert res["actual_cols_by_norm_name"] == {}
+
+
+def test_bigquery_introspect_table_existing_returns_columns(monkeypatch):
+  """
+  Smoke test:
+  If client.get_table succeeds and returns a schema, we should get table_exists=True and mapped cols.
+  """
+  from metadata.rendering.dialects.bigquery import BigQueryDialect
+
+  class DummyField:
+    def __init__(self, name, field_type):
+      self.name = name
+      self.field_type = field_type
+
+  class DummyTable:
+    def __init__(self):
+      self.schema = [
+        DummyField("id", "INT64"),
+        DummyField("name", "STRING"),
+      ]
+
+  class DummyClient:
+    def __init__(self):
+      self.project = "p"
+
+    def get_table(self, _table_ref):
+      return DummyTable()
+
+  class DummyExecEngine:
+    client = DummyClient()
+    project_id = "p"
+
+  d = BigQueryDialect()
+  res = d.introspect_table(
+    schema_name="rawcore",
+    table_name="some_table",
+    introspection_engine=object(),
+    exec_engine=DummyExecEngine(),
+    debug_plan=False,
+  )
+
+  assert res["table_exists"] is True
+  cols = res["actual_cols_by_norm_name"]
+  assert "id" in cols
+  assert cols["id"]["type"] == "INT64"
+  assert "name" in cols
+  assert cols["name"]["type"] == "STRING"

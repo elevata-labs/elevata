@@ -59,6 +59,51 @@ status, timing, attempts, and failure reasons.
 
 ---
 
+## 🔧 3. Materialization Preflight Stage
+
+In elevata, materialization is split into two distinct phases:
+
+1. Planning (Preflight)  
+2. Application (Execution)
+
+### 🧩 Planning Phase
+
+During planning, elevata:
+
+- introspects the existing table structure  
+- compares desired and actual schemas  
+- generates a MaterializationPlan  
+- classifies schema differences  
+- determines required DDL steps
+
+The plan contains:
+
+- ordered materialization steps  
+- warnings  
+- blocking errors
+
+No changes are applied during this phase.
+
+### 🧩 Application Phase
+
+Only after successful preflight validation:
+
+- safe materialization steps are executed  
+- schema changes are applied  
+- execution continues to load SQL
+
+This separation ensures deterministic execution behavior across platforms.
+
+### 🧩 Hist Dataset Synchronization
+
+For rawcore datasets with historization enabled:
+
+- base dataset materialization is planned first
+- corresponding `_hist` dataset schema is synchronized afterwards
+- synchronization is best-effort and does not block base execution
+
+---
+
 ## 🔧 3. Dependency Graph & Ordering
 
 Dataset dependencies are resolved into a directed acyclic graph (DAG).

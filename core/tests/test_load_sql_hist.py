@@ -1,6 +1,6 @@
 """
 elevata - Metadata-driven Data Platform Framework
-Copyright © 2025 Ilona Tag
+Copyright © 2025-2026 Ilona Tag
 
 This file is part of elevata.
 
@@ -33,7 +33,9 @@ import textwrap
 from types import SimpleNamespace
 
 from metadata.rendering import load_sql
-from metadata.rendering.load_sql import render_hist_incremental_sql, _get_hist_insert_columns
+from metadata.rendering.load_sql import _get_hist_insert_columns
+from metadata.rendering.dialects.base import SqlDialect
+from tests._dialect_test_mixin import DialectTestMixin
 
 
 class DummyTargetColumnInputQS:
@@ -100,19 +102,21 @@ class DummyHistTargetDataset:
       short_name=schema_short_name,
     )
     self.target_dataset_name = dataset_name
+    self.incremental_strategy = "historize"
+    self.input_links = []
 
-# We do not need a real dialect here because the current implementation
-# of render_hist_incremental_sql does not use it. A simple dummy is enough.
-class DummyDialect:
-  def render_identifier(self, name: str) -> str:
-    # For tests we keep it simple: no quoting logic, just return the name
-    return name
+  @property
+  def is_hist(self) -> bool:
+    return (
+      getattr(getattr(self, "target_schema", None), "short_name", None) == "rawcore"
+      and getattr(self, "incremental_strategy", None) == "historize"
+    )
 
-  def render_table_identifier(self, schema: str | None, name: str) -> str:
-    if schema:
-      return f"{schema}.{name}"
-    return name
-  
+
+class DummyDialect(DialectTestMixin):
+  pass
+
+
 def test_render_load_sql_for_hist_routes_to_hist_renderer(monkeypatch):
   """
   Ensure that *_hist datasets are routed to render_hist_incremental_sql
@@ -334,3 +338,16 @@ def test_hist_incremental_sql_includes_insert_blocks_when_target_has_pk(monkeypa
   # Sanity: still contains the changed and deleted UPDATE blocks
   assert "version_state    = 'changed'" in sql
   assert "version_state    = 'deleted'" in sql
+
+def test_hist_default_renderer_uses_ansi_update_as_alias():
+  """
+  Guard: non-TSQL dialects should use the default base implementation:
+  UPDATE <table> AS h ...
+  """
+  d = DummyDialect()
+  td = DummyHistTargetDataset()
+  sql = load_sql.render_hist_changed_update_sql(td=td, dialect=d)
+  assert "UPDATE rawcore." in sql
+  assert " AS h" in sql
+  assert sql.startswith("UPDATE")
+  

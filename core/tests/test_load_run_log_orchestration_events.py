@@ -1,6 +1,6 @@
 """
 elevata - Metadata-driven Data Platform Framework
-Copyright © 2026 Ilona Tag
+Copyright © 2025-2026 Ilona Tag
 
 This file is part of elevata.
 
@@ -26,17 +26,11 @@ import uuid
 import pytest
 
 import metadata.management.commands.elevata_load as cmd_mod
+from tests._dialect_test_mixin import DialectTestMixin
 
 
-class DummyDialect:
-  def __init__(self, engine):
-    self._engine = engine
-
-  def get_execution_engine(self, system):
-    return self._engine
-
-  def render_insert_load_run_log(self, *, meta_schema, values):
-    return f"INSERT INTO {meta_schema}.load_run_log (...) VALUES (...);"
+class DummyDialect(DialectTestMixin):
+  pass
 
 
 class DummyEngine:
@@ -113,7 +107,7 @@ def test_orchestration_only_events_are_persisted(monkeypatch):
   monkeypatch.setattr(cmd_mod, "get_target_system", lambda _: DummySystem())
 
   engine = DummyEngine()
-  dialect = DummyDialect(engine)
+  dialect = DummyDialect(engine=engine)
 
   monkeypatch.setattr(cmd_mod, "get_active_dialect", lambda _: dialect)
 

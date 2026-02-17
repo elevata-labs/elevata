@@ -296,6 +296,7 @@ INCREMENTAL_STRATEGY_CHOICES = [
   ("append", "Append-only incremental load"),
   ("merge", "Merge (upsert by business key, handle deletes)"),
   ("snapshot", "Snapshot-based load"),
+  ("historize", "Historization (SCD2) dataset"),
 ]
 
 # Auto import via SQLAlchemy (stable)

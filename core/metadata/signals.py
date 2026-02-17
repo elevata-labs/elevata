@@ -21,8 +21,7 @@ Contact: <https://github.com/elevata-labs/elevata>.
 """
 
 from django.db import transaction
-from django.db.models.signals import post_save, post_delete, pre_delete
-
+from django.db.models.signals import post_save, pre_delete, pre_save
 from django.dispatch import receiver
 from typing import Iterable
 
@@ -73,6 +72,29 @@ def _update_fields_intersect(update_fields: Iterable[str] | None, interesting: s
   except Exception:
     return True
   return bool(uf & interesting)
+
+
+@receiver(pre_save, sender=TargetColumn)
+def track_target_column_rename(sender, instance: TargetColumn, **kwargs) -> None:
+  # English comments per your preference.
+  if not instance.pk:
+    return
+
+  try:
+    prev = TargetColumn.objects.only("target_column_name", "former_names").get(pk=instance.pk)
+  except TargetColumn.DoesNotExist:
+    return
+
+  old = (prev.target_column_name or "").strip()
+  new = (instance.target_column_name or "").strip()
+  if not old or not new or old == new:
+    return
+
+  current = list(getattr(instance, "former_names", None) or [])
+  # Ensure old name is recorded (case-insensitive uniqueness).
+  merged = _merge_former_names(current, [old])
+  if merged != current:
+    instance.former_names = merged
 
 
 @receiver(post_save, sender=TargetColumn)

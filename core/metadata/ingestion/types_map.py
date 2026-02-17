@@ -1,6 +1,6 @@
 """
 elevata - Metadata-driven Data Platform Framework
-Copyright © 2025 Ilona Tag
+Copyright © 2025-2026 Ilona Tag
 
 This file is part of elevata.
 
@@ -23,7 +23,7 @@ Contact: <https://github.com/elevata-labs/elevata>.
 from __future__ import annotations
 
 import re
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Literal
 
 """
 Canonical type mapper for multiple SQL dialects.
@@ -50,6 +50,10 @@ UUID = "UUID"
 JSON = "JSON"
 
 _PARAMS_RE = re.compile(r"\(([^)]+)\)")  # matches content inside parentheses, e.g. "(10,2)"
+
+CanonicalTypeTuple = Tuple[str, Optional[int], Optional[int], Optional[int]]
+
+TypeDriftKind = Literal["equivalent", "widening", "narrowing", "incompatible", "unknown"]
 
 
 def _extract_params(raw: str) -> Tuple[Optional[int], Optional[int], Optional[int], bool]:
@@ -82,7 +86,7 @@ def _extract_params(raw: str) -> Tuple[Optional[int], Optional[int], Optional[in
 def _ret(datatype: str,
          max_length: Optional[int] = None,
          decimal_precision: Optional[int] = None,
-         decimal_scale: Optional[int] = None) -> Tuple[str, Optional[int], Optional[int], Optional[int]]:
+         decimal_scale: Optional[int] = None) -> CanonicalTypeTuple:  
   """Helper: return the canonical 4-tuple."""
   return (datatype, max_length, decimal_precision, decimal_scale)
 
@@ -90,7 +94,7 @@ def _ret(datatype: str,
 def _generic_fallback(t: str,
                       length: Optional[int],
                       prec: Optional[int],
-                      scale: Optional[int]) -> Tuple[str, Optional[int], Optional[int], Optional[int]]:
+                      scale: Optional[int]) -> CanonicalTypeTuple:  
   tl = t.lower()
   if any(x in tl for x in ["char", "text", "string"]):
     return _ret(STRING, length, None, None)
@@ -124,7 +128,7 @@ def _generic_fallback(t: str,
 # -----------------------------------------------------------------------------
 # Public API
 # -----------------------------------------------------------------------------
-def map_sql_type(dialect_name: str, raw_type: object) -> Tuple[str, Optional[int], Optional[int], Optional[int]]:
+def map_sql_type(dialect_name: str, raw_type: object) -> CanonicalTypeTuple:
   """
   Normalize a dialect-specific type (string or SQLAlchemy type object) into elevata's
   canonical quadruple: (datatype, max_length, decimal_precision, decimal_scale).
@@ -250,6 +254,10 @@ def map_sql_type(dialect_name: str, raw_type: object) -> Tuple[str, Optional[int
       L = length if (length and any(x in t for x in ["char", "varchar", "string"])) else None
       return _ret(STRING, L)
     if t.startswith("number") or "decimal" in t or "numeric" in t:
+      # Snowflake frequently represents integer columns as NUMBER(38,0).
+      # Treat NUMBER(38,0) as INTEGER to avoid persistent false-positive drift.
+      if (prec == 38 and (scale == 0 or scale is None)):
+        return _ret(INTEGER)
       return _ret(DECIMAL, None, prec, scale)
     if "bigint" in t:
       return _ret(BIGINT)
@@ -461,3 +469,163 @@ def map_sql_type(dialect_name: str, raw_type: object) -> Tuple[str, Optional[int
 
   # ------------- Fallback (generic) -------------
   return _generic_fallback(t, length, prec, scale)
+
+
+# -----------------------------------------------------------------------------
+# Type drift helpers (planner / preflight)
+# -----------------------------------------------------------------------------
+def canonicalize_type(dialect_name: str, raw_type: object) -> CanonicalTypeTuple:
+  """
+  Convenience wrapper around map_sql_type().
+  """
+  return map_sql_type(dialect_name=dialect_name, raw_type=raw_type)
+
+
+def canonical_type_str(t: CanonicalTypeTuple) -> str:
+  """
+  Stable, human-readable type signature used for drift messages.
+  """
+  dt, ml, p, s = t
+  dt = (dt or "").upper()
+  if dt == STRING:
+    return f"{dt}({ml})" if ml else dt
+  if dt == DECIMAL:
+    if p is not None and s is not None:
+      return f"{dt}({p},{s})"
+    if p is not None:
+      return f"{dt}({p})"
+    return dt
+  return dt
+
+
+def semantically_equivalent(desired: CanonicalTypeTuple, actual: CanonicalTypeTuple) -> bool:
+  """
+  Determine if two canonical types should be treated as equivalent
+  for drift detection (noise suppression).
+
+  Rules are intentionally conservative and deterministic.
+  """
+  d_dt, d_ml, d_p, d_s = desired
+  a_dt, a_ml, a_p, a_s = actual
+
+  d_dt = (d_dt or "").upper()
+  a_dt = (a_dt or "").upper()
+
+  if not d_dt or not a_dt:
+    return False
+
+  if d_dt != a_dt:
+    return False
+
+  # Ignore unspecified vs specified length for STRING.
+  if d_dt == STRING:
+    if d_ml is None or a_ml is None:
+      return True
+    return int(d_ml) == int(a_ml)
+
+  # DECIMAL precision/scale: treat missing precision as unknown -> not equivalent.
+  if d_dt == DECIMAL:
+    if d_p is None or d_s is None or a_p is None or a_s is None:
+      return False
+    return int(d_p) == int(a_p) and int(d_s) == int(a_s)
+
+  # Everything else: same canonical type is equivalent.
+  return True
+
+
+def classify_type_drift(
+  *,
+  desired: CanonicalTypeTuple,
+  actual: CanonicalTypeTuple,
+) -> tuple[TypeDriftKind, str]:
+  """
+  Classify drift between (desired metadata type) and (actual physical type).
+
+  Returns (kind, reason), where kind is one of:
+    - equivalent: no real drift
+    - widening: desired is wider than actual (safe evolution likely possible)
+    - narrowing: desired is narrower than actual (risk of overflow/truncation)
+    - incompatible: different type families (cast/rebuild likely required)
+    - unknown: insufficient info
+  """
+  d_dt, d_ml, d_p, d_s = desired
+  a_dt, a_ml, a_p, a_s = actual
+
+  d_dt = (d_dt or "").upper()
+  a_dt = (a_dt or "").upper()
+
+  if not d_dt or not a_dt:
+    return ("unknown", "missing datatype")
+
+  # Exact equivalence + tolerated equivalence rules
+  if semantically_equivalent(desired, actual):
+    return ("equivalent", "semantically equivalent")
+
+  # Same family: evaluate parameters
+  if d_dt == a_dt:
+    if d_dt == STRING:
+      # If either length is unknown, we cannot safely decide narrowing/widening.
+      if d_ml is None or a_ml is None:
+        return ("unknown", "string length unknown")
+      if int(a_ml) < int(d_ml):
+        return ("widening", f"string length larger: actual={a_ml} < desired={d_ml}")
+      if int(a_ml) > int(d_ml):
+        return ("narrowing", f"string length smaller: actual={a_ml} > desired={d_ml}")
+      
+      return ("equivalent", "same string length")
+
+    if d_dt == DECIMAL:
+      # BigQuery and some engines do not reliably expose precision/scale.
+      # If both sides are DECIMAL but parameters are missing, treat as equivalent.
+      if (
+        (d_p is None or d_s is None) and (a_p is None or a_s is None)
+      ):
+        return ("equivalent", "decimal precision/scale unknown but same type")
+
+      # If only one side is known, we cannot safely classify drift.
+      if d_p is None or d_s is None or a_p is None or a_s is None:
+        return ("equivalent", "decimal precision/scale partially unknown")
+
+      # Compare scale first (scale reduction is risky)
+      if int(a_s) < int(d_s):
+        return ("widening", f"decimal scale larger: actual={a_s} < desired={d_s}")
+      if int(a_s) > int(d_s):
+        return ("narrowing", f"decimal scale smaller: actual={a_s} > desired={d_s}")
+
+      # Same scale: compare precision
+      if int(a_p) < int(d_p):
+        return ("widening", f"decimal precision larger: actual={a_p} < desired={d_p}")
+      if int(a_p) > int(d_p):
+        return ("narrowing", f"decimal precision smaller: actual={a_p} > desired={d_p}")
+
+      return ("equivalent", "same decimal precision/scale")
+
+    # For all other same-family types (INT, BIGINT, BOOLEAN, DATE, TIMESTAMP, ...),
+    # treat same datatype as equivalent (parameters already handled above where applicable).
+    return ("equivalent", "same datatype")
+
+  # Cross-family widening/narrowing that is reasonably ordered
+  # Note: we classify from "actual physical" -> "desired metadata"
+  if (a_dt, d_dt) == (INTEGER, BIGINT):
+    return ("widening", "integer -> bigint")
+  if (a_dt, d_dt) == (BIGINT, INTEGER):
+    return ("narrowing", "bigint -> integer")
+
+  # DATE vs TIMESTAMP: direction matters (classify from actual -> desired).
+  # DATE -> TIMESTAMP is widening (safe-ish; time is set deterministically, usually midnight).
+  if (a_dt, d_dt) == (DATE, TIMESTAMP):
+    return ("widening", "date -> timestamp")
+  # TIMESTAMP -> DATE is narrowing (lossy; time component is dropped).
+  if (a_dt, d_dt) == (TIMESTAMP, DATE):
+    return ("narrowing", "timestamp -> date (lossy)")  
+
+  # FLOAT vs DECIMAL: direction matters (classify from actual -> desired)
+  # DECIMAL -> FLOAT is usually possible but may lose precision (lossy).
+  if (a_dt, d_dt) == (DECIMAL, FLOAT):
+    return ("widening", "decimal -> float (lossy)")
+  # FLOAT -> DECIMAL requires scale/precision decisions and can change semantics.
+  if (a_dt, d_dt) == (FLOAT, DECIMAL):
+    return ("incompatible", "float -> decimal (precision semantics)")  
+
+  # Default: incompatible families
+  return ("incompatible", f"type mismatch: desired={d_dt} actual={a_dt}")

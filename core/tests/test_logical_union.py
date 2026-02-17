@@ -1,6 +1,6 @@
 """
 elevata - Metadata-driven Data Platform Framework
-Copyright © 2025 Ilona Tag
+Copyright © 2025-2026 Ilona Tag
 
 This file is part of elevata.
 
@@ -21,6 +21,7 @@ Contact: <https://github.com/elevata-labs/elevata>.
 """
 
 from metadata.rendering.logical_plan import LogicalUnion, LogicalSelect, SourceTable
+from tests._dialect_test_mixin import DialectTestMixin
 
 
 def test_logical_select_structure():
@@ -44,16 +45,7 @@ class DummySelect:
     return self._sql
 
 
-class DummyDialect:
-  """
-  Minimal dialect that can be passed to LogicalUnion.to_sql().
-
-  It supports both possible implementations:
-
-    - calling sel.to_sql(dialect)
-    - calling dialect.render_select(sel)
-  """
-
+class DummyDialect(DialectTestMixin):
   def render_select(self, sel: DummySelect) -> str:
     # Delegate back to the DummySelect, which ignores the dialect.
     return sel.to_sql(self)
@@ -75,7 +67,6 @@ class DummyDialect:
       return f"\n{sep}\n".join(rendered_parts)
 
     raise TypeError(f"Unsupported logical plan: {type(plan).__name__}")  
-
 
 
 def test_logical_union_render_plan_all():

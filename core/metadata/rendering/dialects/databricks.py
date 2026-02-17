@@ -384,6 +384,10 @@ class DatabricksDialect(SqlDialect):
   @property
   def supports_merge(self) -> bool:
     return True
+  
+  @property
+  def supports_alter_column_type(self) -> bool:
+    return True
 
   @property
   def supports_delete_detection(self) -> bool:
@@ -536,6 +540,36 @@ class DatabricksDialect(SqlDialect):
 
     cols_sql = ",\n  ".join(col_defs)
     return f"CREATE TABLE IF NOT EXISTS {target} (\n  {cols_sql}\n)"
+  
+
+  def render_create_table_from_columns(
+    self,
+    *,
+    schema: str,
+    table: str,
+    columns: list[dict[str, object]],
+  ) -> str:
+    """
+    Spark SQL: do not emit the NULL keyword for nullable columns.
+    Only emit NOT NULL when required.
+    Used for deterministic rebuild flows (temp tables).
+    """
+    target = self.render_table_identifier(schema, table)
+
+    col_defs: list[str] = []
+    for c in columns:
+      name = self.render_identifier(str(c["name"]))
+      ctype = str(c["type"])
+      nullable = bool(c.get("nullable", True))
+
+      null_sql = "NOT NULL" if not nullable else ""
+      piece = f"{name} {ctype}".rstrip()
+      if null_sql:
+        piece = f"{piece} {null_sql}"
+      col_defs.append(piece)
+
+    cols_sql = ",\n  ".join(col_defs)
+    return f"CREATE TABLE {target} (\n  {cols_sql}\n)"
 
 
   def render_rename_table(self, schema: str, old: str, new: str) -> str:
@@ -566,6 +600,16 @@ class DatabricksDialect(SqlDialect):
       f"ALTER TABLE {tbl} SET TBLPROPERTIES ('delta.columnMapping.mode' = 'name');\n"
       f"ALTER TABLE {tbl} RENAME COLUMN {old_col} TO {new_col};"
     )
+  
+
+  # ---------------------------------------------------------------------------
+  # 4. DDL helpers
+  # ---------------------------------------------------------------------------
+  def render_alter_column_type(self, *, schema: str, table: str, column: str, new_type: str) -> str:
+    # Databricks SQL: ALTER TABLE <tbl> ALTER COLUMN <col> TYPE <type>
+    tbl = self.render_table_identifier(schema, table)
+    col = self.render_identifier(column)
+    return f"ALTER TABLE {tbl} ALTER COLUMN {col} TYPE {new_type}"
 
 
   # ---------------------------------------------------------------------------
@@ -702,10 +746,17 @@ class DatabricksDialect(SqlDialect):
     s = str(value).replace("'", "''")
     return f"'{s}'"
 
+
+  def truncate_string_expression(self, expr: str, max_length: int) -> str:
+    # Databricks SQL: substring(expr, pos, len)
+    return f"SUBSTRING({expr}, 1, {int(max_length)})"
+
+
   def concat_expression(self, parts: Sequence[str]) -> str:
     if not parts:
       return "''"
     return "(" + " || ".join(parts) + ")"
+
 
   def hash_expression(self, expr: str, algo: str = "sha256") -> str:
     # Spark SQL: SHA2(expr, 256) returns a hex string.
@@ -771,17 +822,31 @@ class DatabricksDialect(SqlDialect):
         out["debug"] = f"SHOW TABLES IN {sch} LIKE '{tbl}' returned no rows"
       return out
 
-    # 2) Columns
+    # 2) Columns (names + types)
     cols_by_norm: dict[str, dict] = {}
     try:
-      col_rows = fetch_all(f"SHOW COLUMNS IN {sch}.{tbl}")
+      # DESCRIBE TABLE returns (col_name, data_type, comment, ...) and then
+      # section headers like "# Partition Information" / "# Detailed Table Information".
+      col_rows = fetch_all(f"DESCRIBE TABLE {sch}.{tbl}")
       for r in col_rows or []:
         if not r:
           continue
-        # first column = column name
-        nm = str(r[0]).strip().strip("`").strip('"').lower()
+
+        col_name = str(r[0] or "").strip()
+        data_type = str(r[1] or "").strip() if len(r) > 1 else ""
+
+        if not col_name:
+          continue
+        if col_name.startswith("#"):
+          break
+
+        nm = col_name.strip().strip("`").strip('"').lower()
         if nm:
-          cols_by_norm[nm] = {"name": str(r[0])}
+          cols_by_norm[nm] = {
+            "name": col_name,
+            "type": data_type or None,
+          }
+
     except Exception as exc:
       out = {
         "table_exists": True,
@@ -789,7 +854,7 @@ class DatabricksDialect(SqlDialect):
         "actual_cols_by_norm_name": {},
       }
       if debug_plan:
-        out["debug"] = f"SHOW COLUMNS failed: {exc}"
+        out["debug"] = f"DESCRIBE TABLE failed: {exc}"
       return out
 
     return {

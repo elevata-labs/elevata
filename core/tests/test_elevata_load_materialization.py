@@ -1,6 +1,6 @@
 """
 elevata - Metadata-driven Data Platform Framework
-Copyright © 2025 Ilona Tag
+Copyright © 2025-2026 Ilona Tag
 
 This file is part of elevata.
 
@@ -23,11 +23,11 @@ Contact: <https://github.com/elevata-labs/elevata>.
 from __future__ import annotations
 
 import types
-
 import pytest
 
 from metadata.materialization.plan import MaterializationPlan, MaterializationStep
 from metadata.models import TargetDataset, TargetSchema
+from tests._dialect_test_mixin import DialectTestMixin
 
 
 class DummyStdout:
@@ -56,21 +56,6 @@ class DummyExecEngine:
   def execute_scalar(self, _sql, _params=None):
     return None
 
-
-class DummyDialect:
-  def render_create_schema_if_not_exists(self, schema_name):
-    return f"CREATE SCHEMA IF NOT EXISTS {schema_name};"
-
-  def render_truncate_table(self, schema, table):
-    return f"TRUNCATE TABLE {schema}.{table};"
-  
-  def literal(self, value):
-    # simple SQL literal escaping for tests
-    if value is None:
-      return "NULL"
-    s = str(value).replace("'", "''")
-    return f"'{s}'"
-  
 
 @pytest.mark.django_db
 def test_incremental_merge_calls_ensure_target_table_when_plan_only_ensures_schema(monkeypatch):
@@ -226,3 +211,32 @@ def test_incremental_merge_calls_ensure_target_table_when_plan_only_ensures_sche
 
   assert res["status"] == "success"
   assert calls["ensure"] == 1
+
+
+class DummyDialect(DialectTestMixin):
+  pass
+
+def test_render_insert_select_for_rebuild_uses_source_name_and_truncate_marker():
+  dialect = DummyDialect()
+  sql = dialect.render_insert_select_for_rebuild(
+    schema="rawcore",
+    src_table="t_src",
+    dst_table="t_dst",
+    lossy_casts=True,
+    truncate_strings=True,
+    columns=[
+      {
+        "name": "c1",
+        "source_name": "c1_old",
+        "type": "STRING",
+        "truncate_to_length": 10,
+      },
+    ],
+  )
+  # Source column should be used
+  assert "c1_old" in sql
+  # Truncation should use explicit truncate marker (10)
+  assert "LEFT(" in sql
+  assert ", 10)" in sql
+  # Destination column name should still be c1
+  assert " AS c1" in sql

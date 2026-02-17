@@ -1,6 +1,6 @@
 """
 elevata - Metadata-driven Data Platform Framework
-Copyright © 2025 Ilona Tag
+Copyright © 2025-2026 Ilona Tag
 
 This file is part of elevata.
 
@@ -26,25 +26,12 @@ import pytest
 
 from metadata.rendering.load_sql import render_delete_missing_rows_sql
 from metadata.rendering.dialects.duckdb import DuckDBDialect
+from tests._dialect_test_mixin import DialectTestMixin
 
 
-class DummyDialectNoDelete:
-  """
-  Minimal dialect stub without delete detection capability.
-
-  Important: supports_delete_detection = False so that
-  render_delete_missing_rows_sql raises NotImplementedError.
-  """
+class DummyDialectNoDelete(DialectTestMixin):
   supports_delete_detection = False
-
-  def render_identifier(self, name: str) -> str:
-    # For tests we keep it simple: no quoting logic, just return the name
-    return name
-
-  def render_table_identifier(self, schema: str | None, name: str) -> str:
-    if schema:
-      return f"{schema}.{name}"
-    return name
+  pass
 
 
 class FakeTargetSchema:
@@ -161,50 +148,8 @@ def test_render_delete_missing_rows_sql_returns_comment_if_no_incremental_source
   assert "No delete detection SQL generated" in sql
 
 
-class DummyDialectWithDelete:
-  """
-  Dialect stub *with* delete detection support.
-
-  This mirrors the signature used in load_sql.render_delete_missing_rows_sql:
-  we expect keyword arguments target_schema, target_table, stage_schema,
-  stage_table, join_predicates, scope_filter.
-  """
-
-  def __init__(self):
-    self.supports_delete_detection = True
-    self.calls: list[dict] = []
-
-  def render_identifier(self, name: str) -> str:
-    # For tests: no quoting logic
-    return name
-
-  def render_table_identifier(self, schema: str | None, name: str) -> str:
-    if schema:
-      return f"{schema}.{name}"
-    return name
-
-  def render_delete_detection_statement(
-    self,
-    *,
-    target_schema: str,
-    target_table: str,
-    stage_schema: str,
-    stage_table: str,
-    join_predicates,
-    scope_filter: str,
-  ) -> str:
-    """Record call parameters and return dummy SQL."""
-    self.calls.append(
-      {
-        "target_schema": target_schema,
-        "target_table": target_table,
-        "stage_schema": stage_schema,
-        "stage_table": stage_table,
-        "join_predicates": list(join_predicates),
-        "scope_filter": scope_filter,
-      }
-    )
-    return "-- dummy delete detection sql"
+class DummyDialectWithDelete(DialectTestMixin):
+  pass
 
 
 def test_render_delete_missing_rows_sql_happy_path_calls_dialect(monkeypatch):

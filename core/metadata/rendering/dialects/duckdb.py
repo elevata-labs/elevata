@@ -183,6 +183,10 @@ class DuckDBDialect(SqlDialect):
   def supports_merge(self) -> bool:
     """DuckDB supports a native MERGE statement."""
     return True
+  
+  @property
+  def supports_alter_column_type(self) -> bool:
+    return True
 
   @property
   def supports_delete_detection(self) -> bool:
@@ -285,6 +289,14 @@ class DuckDBDialect(SqlDialect):
     """
     q = self.render_identifier
     return f"CREATE SCHEMA IF NOT EXISTS {q(schema)};"
+  
+
+  def render_alter_column_type(self, *, schema: str, table: str, column: str, new_type: str) -> str:
+    # DuckDB: ALTER TABLE <tbl> ALTER COLUMN <col> SET DATA TYPE <type>
+    tbl = self.render_table_identifier(schema, table)
+    col = self.render_identifier(column)
+    return f"ALTER TABLE {tbl} ALTER COLUMN {col} SET DATA TYPE {new_type}"
+
 
   # ---------------------------------------------------------------------------
   # 5. DML / load SQL primitives

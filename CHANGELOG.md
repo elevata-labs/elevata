@@ -22,6 +22,92 @@ This project adheres to [Semantic Versioning](https://semver.org/) and [Keep a C
 
 ---
 
+## [1.3.0] - 2026-02-17
+
+This release introduces execution safety improvements, deterministic schema evolution,  
+and orchestration-level predictability enhancements.
+
+The focus of this release is long-term stability and reproducible execution behavior  
+across platforms, rather than expanding modeling capabilities.
+
+Execution planning, schema evolution, and load execution are now aligned around a  
+deterministic preflight model that guarantees predictable outcomes before execution begins.
+
+---
+
+### ✨ Added
+
+#### Execution Safety & Predictability
+
+- Introduced preflight validation phase before execution  
+- Deterministic failure behavior for unsafe schema evolution scenarios  
+- Execution now blocks before SQL execution when unsafe changes are detected  
+- Consistent error vs warning classification during materialization planning  
+- Improved transparency of execution behavior and failure causes
+
+#### Schema Evolution & Type Drift Handling
+
+- Canonical datatype comparison across all supported dialects  
+- Type drift detection during materialization planning  
+- Drift classification into:  
+  - equivalent  
+  - widening (safe)  
+  - narrowing / incompatible (unsafe)  
+- Automatic schema evolution for safe widening changes  
+- Dialect-aware ALTER COLUMN generation where supported  
+- Deterministic rebuild fallback for dialects without ALTER support  
+- Consistent schema evolution behavior across Snowflake, Databricks, PostgreSQL,  
+  MSSQL and DuckDB
+
+#### Materialization & Execution Architecture
+
+- Materialization split into planning and application phases  
+- MaterializationPlan now explicitly represents:  
+  - required DDL steps  
+  - warnings  
+  - blocking errors  
+- Structural synchronization of rawcore `_hist` datasets aligned with base datasets  
+- Improved consistency between schema introspection, metadata, and execution behavior
+
+#### Orchestration & Execution Planning
+
+- Metadata-driven execution manifest generation  
+- Deterministic dependency graph for dataset execution order  
+- Airflow example DAG for lineage-based execution orchestration  
+- Execution planning fingerprint for reproducibility validation
+
+#### Query Builder UX Improvements
+
+- Query Builder now displays inline validation and dependency conflict messages  
+  directly in the editing context instead of failing silently  
+- Blocking mutations caused by downstream dataset dependencies are surfaced  
+  as contextual warnings in the grid UI  
+- Inline editors remain open when a mutation is rejected, allowing users to  
+  immediately correct input  
+- Conflict warnings are automatically cleared when cancelling or completing edits  
+- Improved transparency when renaming or modifying query-derived columns  
+  referenced downstream
+
+---
+
+### 🛠 Fixed
+
+- Multiple edge cases where schema drift could result in inconsistent execution behavior  
+- Incorrect handling of schema evolution across dialect-specific type representations  
+- Improved stability of materialization planning for renamed datasets and columns  
+- Various internal consistency improvements in execution planning and validation
+
+---
+
+### 🔒 Governance & Determinism
+
+- Execution behavior is now fully determined before execution begins
+- Unsafe schema changes are blocked deterministically
+- Reduced risk of partial schema application or inconsistent load states
+- Improved alignment between metadata contracts and physical schema evolution
+
+---
+
 ## [1.2.0] - 2026-02-08
 
 This release introduces a major upgrade to Query Builder contract handling,  

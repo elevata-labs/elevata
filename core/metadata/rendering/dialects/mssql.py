@@ -139,6 +139,10 @@ class MssqlDialect(SqlDialect):
   def supports_merge(self) -> bool:
     """SQL Server supports native MERGE statements."""
     return True
+  
+  @property
+  def supports_alter_column_type(self) -> bool:
+    return True
 
   @property
   def supports_delete_detection(self) -> bool:
@@ -279,11 +283,17 @@ class MssqlDialect(SqlDialect):
       END;
     """.strip()
 
-  def render_create_or_replace_view(self, *, schema, view, select_sql):
-    return f"""
-      CREATE OR ALTER VIEW {schema}.{view} AS
-      {select_sql}
-      """.strip()
+
+  def render_create_or_replace_view(
+    self,
+    *,
+    schema: str,
+    view: str,
+    select_sql: str,
+  ) -> str:
+    target = self.render_table_identifier(schema, view)
+    return f"CREATE OR ALTER VIEW {target} AS\n{select_sql}"
+
 
   def render_add_column(self, schema: str, table: str, column: str, column_type: str | None) -> str:
     """
@@ -295,6 +305,14 @@ class MssqlDialect(SqlDialect):
     tbl = self.render_table_identifier(schema, table)
     col = self.render_identifier(column)
     return f"ALTER TABLE {tbl} ADD {col} {column_type}"
+  
+
+  def render_alter_column_type(self, *, schema: str, table: str, column: str, new_type: str) -> str:
+    # SQL Server: ALTER TABLE <tbl> ALTER COLUMN <col> <type>
+    tbl = self.render_table_identifier(schema, table)
+    col = self.render_identifier(column)
+    return f"ALTER TABLE {tbl} ALTER COLUMN {col} {new_type}"
+
 
   def render_truncate_table(self, schema: str, table: str) -> str:
     qtbl = self.render_table_identifier
@@ -318,6 +336,70 @@ class MssqlDialect(SqlDialect):
   # ---------------------------------------------------------------------------
   # 5. DML / load SQL primitives
   # ---------------------------------------------------------------------------
+ 
+  # ---------------------------------------------------------------------------
+  # Historization (SCD Type 2) rendering overrides
+  #
+  # MSSQL / T-SQL requires UPDATE <alias> ... FROM <table> <alias> ...
+  # and does not support "UPDATE <table> AS <alias>".
+  # ---------------------------------------------------------------------------
+  def render_hist_changed_update_sql(
+    self,
+    *,
+    schema_name: str,
+    hist_table: str,
+    rawcore_table: str,
+  ) -> str:
+    hist_tbl = self.render_table_identifier(schema_name, hist_table)
+    rc_tbl = self.render_table_identifier(schema_name, rawcore_table)
+
+    sk_name = self.render_identifier(f"{rawcore_table}_key")
+    row_hash = self.render_identifier("row_hash")
+
+    return (
+      "UPDATE h\n"
+      "SET\n"
+      "  version_ended_at = {{ load_timestamp }},\n"
+      "  version_state    = 'changed',\n"
+      "  load_run_id      = {{ load_run_id }}\n"
+      f"FROM {hist_tbl} h\n"
+      "WHERE h.version_ended_at IS NULL\n"
+      "  AND EXISTS (\n"
+      "    SELECT 1\n"
+      f"    FROM {rc_tbl} r\n"
+      f"    WHERE r.{sk_name} = h.{sk_name}\n"
+      f"      AND r.{row_hash} <> h.{row_hash}\n"
+      "  );"
+    )
+
+  def render_hist_delete_sql(
+    self,
+    *,
+    schema_name: str,
+    hist_table: str,
+    rawcore_table: str,
+  ) -> str:
+    hist_tbl = self.render_table_identifier(schema_name, hist_table)
+    rc_tbl = self.render_table_identifier(schema_name, rawcore_table)
+
+    sk_name = self.render_identifier(f"{rawcore_table}_key")
+
+    return (
+      "UPDATE h\n"
+      "SET\n"
+      "  version_ended_at = {{ load_timestamp }},\n"
+      "  version_state    = 'deleted',\n"
+      "  load_run_id      = {{ load_run_id }}\n"
+      f"FROM {hist_tbl} h\n"
+      "WHERE h.version_ended_at IS NULL\n"
+      "  AND NOT EXISTS (\n"
+      "    SELECT 1\n"
+      f"    FROM {rc_tbl} r\n"
+      f"    WHERE r.{sk_name} = h.{sk_name}\n"
+      "  );"
+    )
+
+
   def render_delete_detection_statement(
     self,
     target_schema,

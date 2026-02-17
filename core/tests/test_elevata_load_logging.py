@@ -1,6 +1,6 @@
 """
 elevata - Metadata-driven Data Platform Framework
-Copyright © 2025 Ilona Tag
+Copyright © 2025-2026 Ilona Tag
 
 This file is part of elevata.
 
@@ -26,6 +26,7 @@ import logging
 import pytest
 
 from metadata.management.commands.elevata_load import Command as ElevataLoadCommand
+from tests._dialect_test_mixin import DialectTestMixin
 
 
 class DummyProfile:
@@ -39,13 +40,8 @@ class DummySystem:
     self.type = type_
 
 
-class DummyDialect:
-  # In execute=True mode, handle() calls dialect.get_execution_engine(system).
-  def get_execution_engine(self, _system):
-    return object()
-
-  def __repr__(self):
-    return "DummyDialect"
+class DummyDialect(DialectTestMixin):
+  pass
 
 
 class DummySchema:

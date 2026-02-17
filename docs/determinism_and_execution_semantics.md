@@ -32,7 +32,51 @@ The Query Builder UI surfaces this via:
 
 ---
 
-## 🔧 3. Window functions
+## 🔧 3. Preflight Validation Phase
+
+elevata includes a preflight validation phase executed before any DDL or DML statements are applied.
+
+The preflight phase guarantees that execution behavior is fully predictable.
+
+### 🧩 Responsibilities
+
+The preflight phase performs:
+
+- schema introspection  
+- materialization planning  
+- type drift detection  
+- validation of blocking conditions  
+- execution safety checks
+
+No SQL affecting data or schema is executed before preflight completes successfully.
+
+### 🧩 Deterministic Failure Modes
+
+Execution may fail during preflight when:
+
+- unsafe schema evolution is required  
+- narrowing or incompatible type drift is detected  
+- required dialect capabilities are missing  
+- metadata inconsistencies are found
+
+Failures always occur before execution starts.
+
+This guarantees:
+
+- no partially applied schema changes  
+- no partial data loads  
+- reproducible execution behavior.
+
+### 🧩 Full Refresh Exception
+
+Datasets using full refresh materialization are exempt from type drift blocking  
+because the table is recreated during execution.
+
+Type drift warnings may still be emitted for visibility.
+
+---
+
+## 🔧 4. Window functions
 
 Some window functions are inherently nondeterministic without ordering.
 
@@ -54,7 +98,7 @@ Windowed aggregates (SUM/AVG/…) may not require ORDER BY:
 
 ---
 
-## 🔧 4. Aggregation determinism
+## 🔧 5. Aggregation determinism
 
 Aggregations can become nondeterministic if result ordering is undefined in the aggregation semantics.
 
@@ -67,7 +111,7 @@ Other aggregates (SUM, COUNT, MIN, MAX, AVG) are deterministic without ordering.
 
 ---
 
-## 🔧 5. Contract stability and collisions
+## 🔧 6. Contract stability and collisions
 
 The output contract must be stable and unambiguous.
 
@@ -79,7 +123,7 @@ Rules:
 
 ---
 
-## 🔧 6. Why elevata is not a semantic layer
+## 🔧 7. Why elevata is not a semantic layer
 
 elevata does not implement query-time semantics (like BI semantic layers or metric stores).  
 Instead, elevata materializes semantics into datasets deterministically:
@@ -92,7 +136,7 @@ This avoids tool-specific logic and ensures reproducible pipelines.
 
 ---
 
-## 🔧 7. References
+## 🔧 8. References
 
 - [Query Tree & Query Builder](query_builder_and_query_tree.md)    
 - [Lineage Model & Logical Plan](logical_plan.md)   

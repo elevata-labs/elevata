@@ -38,6 +38,7 @@ except ImportError as exc:
 from .base import SqlDialect
 
 from metadata.rendering.expr import Expr, FuncCall
+from metadata.rendering.logical_plan import LogicalUnion
 from metadata.ingestion.types_map import (
   STRING, INTEGER, BIGINT, DECIMAL, FLOAT, BOOLEAN, DATE, TIME, TIMESTAMP, BINARY, UUID, JSON,
 )
@@ -257,6 +258,10 @@ class BigQueryDialect(SqlDialect):
     return True
 
   @property
+  def supports_alter_column_type(self) -> bool:
+    return True
+
+  @property
   def supports_delete_detection(self) -> bool:
     """BigQuery supports delete detection via DELETE + NOT EXISTS."""
     return True
@@ -393,6 +398,38 @@ class BigQueryDialect(SqlDialect):
     cols_sql = ",\n  ".join(col_defs)
     return f"CREATE TABLE IF NOT EXISTS {target} (\n  {cols_sql}\n)"
   
+
+  def render_create_table_from_columns(
+    self,
+    *,
+    schema: str,
+    table: str,
+    columns: list[dict[str, object]],
+  ) -> str:
+    """
+    BigQuery DDL: column nullability is implicit.
+    - Use NOT NULL for required columns
+    - Do NOT emit "NULL" for nullable columns (BQ rejects it in column defs)
+    """
+    target = self.render_table_identifier(schema, table)
+    col_defs: list[str] = []
+    for c in (columns or []):
+      name = self.render_identifier(str(c["name"]))
+      ctype = str(c["type"])
+      nullable = bool(c.get("nullable", True))
+      null_sql = " NOT NULL" if not nullable else ""
+      col_defs.append(f"{name} {ctype}{null_sql}")
+    cols_sql = ",\n  ".join(col_defs)
+    return f"CREATE TABLE IF NOT EXISTS {target} (\n  {cols_sql}\n)"
+  
+
+  def render_alter_column_type(self, *, schema: str, table: str, column: str, new_type: str) -> str:
+    # BigQuery: ALTER TABLE `schema.table` ALTER COLUMN col SET DATA TYPE <type>
+    tbl = self.render_table_identifier(schema, table)
+    col = self.render_identifier(column)
+    return f"ALTER TABLE {tbl} ALTER COLUMN {col} SET DATA TYPE {new_type}"
+
+  
   def render_truncate_table(self, schema: str, table: str) -> str:
     return f"TRUNCATE TABLE {self.render_table_identifier(schema, table)}"
 
@@ -512,13 +549,43 @@ class BigQueryDialect(SqlDialect):
       order_by_sql = self.render_expr(args[2])
       return f"STRING_AGG({value_sql}, {delim_sql} ORDER BY {order_by_sql})"
     return f"STRING_AGG({value_sql}, {delim_sql})"
+  
+
+  def render_plan(self, plan) -> str:
+    if isinstance(plan, LogicalUnion):
+      rendered_parts = [self.render_select(sel) for sel in plan.selects]
+
+      ut = (plan.union_type or "").strip().upper()
+
+      if ut == "ALL":
+        sep = "UNION ALL"
+      elif ut in ("DISTINCT", ""):
+        # BigQuery requires explicit keyword
+        sep = "UNION DISTINCT"
+      else:
+        raise ValueError(f"Unsupported union_type: {plan.union_type!r}")
+
+      separator = f"\n{sep}\n"
+      return separator.join(rendered_parts)
+
+    return super().render_plan(plan)
 
 
   def cast_expression(self, expr: Expr, target_type: str) -> str:
     t = (target_type or "").strip().lower()
-    if t in {"string", "varchar", "text"}:
+    # Normalize common physical spellings we may receive from map_logical_type().
+    # Example: "STRING", "STRING(64)", "NUMERIC", "DATE", ...
+    base = t.split("(", 1)[0].strip()
+  
+    if base in {"string", "varchar", "text"}:
       return f"CAST({self.render_expr(expr)} AS STRING)"
+  
+    # BigQuery: TIMESTAMP -> DATE is common/allowed, but requires explicit CAST/DATE().
+    if base == "date":
+      return f"CAST({self.render_expr(expr)} AS DATE)"
+  
     return super().cast_expression(expr, target_type)
+
 
   # ---------------------------------------------------------------------------
   # 7. Introspection hooks
@@ -594,6 +661,12 @@ class BigQueryDialect(SqlDialect):
         continue
       # BigQuery field_type is e.g. "STRING", "INT64", ...
       ft = (getattr(f, "field_type", None) or getattr(f, "field_type", "") or "").strip()
+      # BigQuery exposes precision/scale for NUMERIC/BIGNUMERIC fields
+      p = getattr(f, "precision", None)
+      s = getattr(f, "scale", None)
+      if ft.upper() in ("NUMERIC", "BIGNUMERIC") and p is not None and s is not None:
+        ft = f"{ft.upper()}({int(p)},{int(s)})"
+
       cols[nm.lower()] = {
         "name": nm,
         "type": ft,

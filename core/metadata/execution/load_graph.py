@@ -145,3 +145,61 @@ def topological_sort(graph: dict[TargetDataset, set[TargetDataset]]) -> list[Tar
     visit(td)
 
   return result
+
+
+def topological_levels(graph: dict[TargetDataset, set[TargetDataset]]) -> list[list[TargetDataset]]:
+  """
+  Return datasets in parallelizable levels (upstreams first).
+
+  Each level contains nodes whose dependencies are fully satisfied by earlier levels.
+  Deterministic ordering is guaranteed via sorting keys.
+  """
+  nodes = set(graph.keys())
+  for deps in graph.values():
+    nodes.update(deps)
+
+  deps_left: dict[TargetDataset, set[TargetDataset]] = {n: set(graph.get(n, set())) for n in nodes}
+  reverse: dict[TargetDataset, set[TargetDataset]] = {n: set() for n in nodes}
+
+  for n, deps in deps_left.items():
+    for d in deps:
+      reverse.setdefault(d, set()).add(n)
+
+  levels: list[list[TargetDataset]] = []
+  visited: set[TargetDataset] = set()
+
+  ready = sorted(
+    [n for n in nodes if not deps_left.get(n)],
+    key=lambda d: (d.target_schema.short_name, d.target_dataset_name),
+  )
+
+  while ready:
+    level = list(ready)
+    levels.append(level)
+
+    next_ready: set[TargetDataset] = set()
+    for n in level:
+      visited.add(n)
+      for child in reverse.get(n, set()):
+        if child in visited:
+          continue
+        deps_left[child].discard(n)
+        if not deps_left[child]:
+          next_ready.add(child)
+
+    ready = sorted(
+      next_ready,
+      key=lambda d: (d.target_schema.short_name, d.target_dataset_name),
+    )
+
+  if len(visited) != len(nodes):
+    remaining = sorted(
+      nodes - visited,
+      key=lambda d: (d.target_schema.short_name, d.target_dataset_name),
+    )
+    raise ValueError(
+      "Cycle detected in dataset graph: "
+      + ", ".join(f"{d.target_schema.short_name}.{d.target_dataset_name}" for d in remaining)
+    )
+
+  return levels

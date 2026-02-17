@@ -129,15 +129,45 @@ class FabricWarehouseDialect(SqlDialect):
   # ---------------------------------------------------------------------------
   DIALECT_NAME = "fabric_warehouse"
 
-  # Default lengths (no MAX in Fabric Warehouse)
+  # Default lengths (Fabric supports VARCHAR(MAX); keep deterministic defaults but allow MAX where required)
   DEFAULT_VARCHAR_LEN = 4000
   # Keep conservative, deterministic lengths to avoid platform-specific limits.
   LARGE_VARCHAR_LEN = 4000
   DEFAULT_VARBINARY_LEN = 4000
 
+
+  @classmethod
+  def _ensure_length_spec(cls, physical_type: str) -> str:
+    """Ensure explicit length for types that default to length 1.
+
+    In Fabric Warehouse (T-SQL endpoint), `VARCHAR`/`VARBINARY`/`CHAR` without an
+    explicit length can be created as length 1, which is almost never intended.
+    This helper makes DDL deterministic and safe.
+    """
+    t = (physical_type or "").strip()
+    if not t:
+      return t
+
+    upper = t.upper()
+    if "(" in upper:
+      return t
+
+    if upper in ("VARCHAR", "CHAR"):
+      return f"{t}({cls.DEFAULT_VARCHAR_LEN})"
+    if upper == "VARBINARY":
+      return f"{t}({cls.DEFAULT_VARBINARY_LEN})"
+
+    return t
+
+
   @property
   def supports_merge(self) -> bool:
     return True
+  
+  @property
+  def supports_alter_column_type(self) -> bool:
+    # Fabric Warehouse: treat ALTER COLUMN TYPE as unsupported; planner must rebuild.
+    return False
 
   @property
   def supports_delete_detection(self) -> bool:
@@ -188,17 +218,32 @@ class FabricWarehouseDialect(SqlDialect):
 
     Modeled after MSSQL mapping rules but:
       - VARCHAR only (no NVARCHAR)
-      - no MAX: use deterministic default lengths
+      - prefer deterministic default lengths, but allow VARCHAR(MAX) for unbounded/large text
     """
     t = (datatype or "").upper()
 
     if t == STRING:
-      if max_length:
-        return f"VARCHAR({int(max_length)})"
-      return f"VARCHAR({self.DEFAULT_VARCHAR_LEN})"
+      if max_length is not None:
+        try:
+          n = int(max_length)
+        except Exception:
+          n = None
+        if n is not None and n > 0:
+          if strict:
+            # If requested length exceeds our conservative threshold, switch to MAX to avoid truncation.
+            if n > int(self.LARGE_VARCHAR_LEN):
+              return "VARCHAR(MAX)"
+            return f"VARCHAR({n})"
+          # Non-strict: honor requested length; if it's very large, MAX is safer than hard-capping.
+          if n > int(self.LARGE_VARCHAR_LEN):
+            return "VARCHAR(MAX)"
+          return f"VARCHAR({n})"
+      # Unspecified length: treat as unbounded text to keep ingestion predictable (e.g., XML payloads).
+      return "VARCHAR(MAX)"    
 
     if t == INTEGER:
       return "INT"
+    
     if t == BIGINT:
       return "BIGINT"
 
@@ -224,7 +269,10 @@ class FabricWarehouseDialect(SqlDialect):
       return "DATETIME2"
 
     if t == BINARY:
-      return f"VARBINARY({self.DEFAULT_VARBINARY_LEN})"
+      n = int(self.DEFAULT_VARBINARY_LEN)
+      if strict:
+        n = min(n, int(self.DEFAULT_VARBINARY_LEN))
+      return f"VARBINARY({n})"    
 
     if t == UUID:
       # Avoid UNIQUEIDENTIFIER due to cross-endpoint semantics:
@@ -233,8 +281,8 @@ class FabricWarehouseDialect(SqlDialect):
       return "VARCHAR(36)"    
 
     if t == JSON:
-      # No native JSON type; store as VARCHAR with a stable large length.
-      return f"VARCHAR({self.LARGE_VARCHAR_LEN})"
+      # No native JSON type; JSON payloads can be large -> avoid truncation.
+      return "VARCHAR(MAX)"
 
     raise ValueError(
       f"Unsupported canonical datatype for Fabric Warehouse: {datatype!r}. "
@@ -244,12 +292,23 @@ class FabricWarehouseDialect(SqlDialect):
   def render_create_schema_if_not_exists(self, schema_name: str) -> str:
     sch = str(schema_name or "").replace("'", "''")
     return f"""
-IF NOT EXISTS (SELECT 1 FROM sys.schemas WHERE name = '{sch}')
-BEGIN
-  EXEC('CREATE SCHEMA {self.quote_ident(schema_name)}');
-END;
-""".strip()
+      IF NOT EXISTS (SELECT 1 FROM sys.schemas WHERE name = '{sch}')
+      BEGIN
+        EXEC('CREATE SCHEMA {self.quote_ident(schema_name)}');
+      END;
+      """.strip()
 
+
+  def render_create_or_replace_view(
+    self,
+    *,
+    schema: str,
+    view: str,
+    select_sql: str,
+  ) -> str:
+    target = self.render_table_identifier(schema, view)
+    return f"CREATE OR ALTER VIEW {target} AS\n{select_sql}"
+  
 
   def render_add_column(self, schema: str, table: str, col_name: str, physical_type: str) -> str:
     """
@@ -258,10 +317,28 @@ END;
     """
     target = self.render_table_identifier(schema, table)
     col = self.render_identifier(col_name)
-    typ = str(physical_type or "").strip()
+    typ = self._ensure_length_spec(str(physical_type or "").strip())
+
     if not typ:
       raise ValueError("render_add_column requires a non-empty physical_type")
     return f"ALTER TABLE {target} ADD {col} {typ};"
+
+
+  def render_rename_column(self, schema: str, table: str, old: str, new: str) -> str:
+    """
+    Fabric Warehouse (T-SQL endpoint):
+    Column rename via sp_rename.
+    """
+    full = f"{schema}.{table}.{old}"
+    return f"EXEC sp_rename '{full}', '{new}', 'COLUMN';"
+
+
+  def render_rename_table(self, schema: str, old: str, new: str) -> str:
+    """
+    Fabric Warehouse table rename via sp_rename.
+    """
+    full = f"{schema}.{old}"
+    return f"EXEC sp_rename '{full}', '{new}';"
   
 
   def render_create_table_if_not_exists_from_columns(self, *, schema: str, table: str, columns: list[dict[str, object]]) -> str:
@@ -274,7 +351,7 @@ END;
     col_defs: list[str] = []
     for c in (columns or []):
       name = self.render_identifier(str(c["name"]))
-      ctype = str(c["type"])
+      ctype = self._ensure_length_spec(str(c["type"]))
       nullable = bool(c.get("nullable", True))
       null_sql = "NULL" if nullable else "NOT NULL"
       col_defs.append(f"{name} {ctype} {null_sql}")
@@ -290,10 +367,168 @@ BEGIN
   );
 END;
 """.strip()
+  
+  # ---------------------------------------------------------------------------
+  # Schema evolution helpers (type drift rebuild path)
+  # ---------------------------------------------------------------------------
+  def render_drop_table_if_exists(self, *, schema: str, table: str, cascade: bool = False) -> str:
+    target = self.render_table_identifier(schema, table)
+    full_name = f"{schema}.{table}".replace("'", "''")
+    return f"""
+IF OBJECT_ID('{full_name}', 'U') IS NOT NULL
+BEGIN
+  DROP TABLE {target};
+END;
+""".strip()
+
+  def render_drop_table(self, *, schema: str, table: str) -> str:
+    target = self.render_table_identifier(schema, table)
+    return f"DROP TABLE {target};"
+
+  def render_create_table_from_columns(self, *, schema: str, table: str, columns: list[dict[str, object]]) -> str:
+    """
+    Create table unconditionally. Intended to be used together with render_drop_table_if_exists.
+    """
+    target = self.render_table_identifier(schema, table)
+
+    col_defs: list[str] = []
+    for c in (columns or []):
+      name = self.render_identifier(str(c["name"]))
+      ctype = self._ensure_length_spec(str(c["type"]))
+      nullable = bool(c.get("nullable", True))
+      null_sql = "NULL" if nullable else "NOT NULL"
+      col_defs.append(f"{name} {ctype} {null_sql}")
+
+    cols_sql = ",\n  ".join(col_defs)
+    return f"""
+CREATE TABLE {target} (
+  {cols_sql}
+);
+""".strip()
+
+  def render_insert_select_for_rebuild(
+    self,
+    *,
+    schema: str,
+    src_table: str,
+    dst_table: str,
+    columns: list[dict[str, object]],
+    lossy_casts: bool = False,
+    truncate_strings: bool = False,
+  ) -> str:
+    """
+    Backfill dst_table from src_table using CAST to the desired physical type.
+    """
+    src = self.render_table_identifier(schema, src_table)
+    dst = self.render_table_identifier(schema, dst_table)
+
+    col_names: list[str] = []
+    select_exprs: list[str] = []
+    for c in (columns or []):
+      # Defensive guards: planner should always provide these, but don't crash with KeyError.
+      name = str((c or {}).get("name") or "").strip()
+      ctype = str((c or {}).get("type") or "").strip()
+      if not name or not ctype:
+        continue
+
+      dst_col = self.render_identifier(name)
+
+      # Use source_name when present (rename-safe rebuild)
+      src_name = (c or {}).get("source_name") or (c or {}).get("name") or name
+      src_name = str(src_name).strip() or name
+
+      src_col = self.render_identifier(src_name)
+
+      ctype = self._ensure_length_spec(ctype)
+      expr = self.cast_expression(src_col, ctype) if lossy_casts else src_col
+
+      if truncate_strings:
+        # Only truncate when planner explicitly marked this column as shrinking.
+        ml = (c or {}).get("truncate_to_length")
+        if ml is not None:
+          try:
+            ctype_u = ctype.upper()
+            is_stringish = any(tok in ctype_u for tok in ("CHAR", "STRING", "TEXT", "VARCHAR"))
+            if is_stringish:
+              expr = self.truncate_string_expression(expr, int(ml))
+          except Exception:
+            pass
+
+      col_names.append(dst_col)
+      select_exprs.append(f"{expr} AS {dst_col}")
+
+    cols_sql = ", ".join(col_names)
+    sel_sql = ", ".join(select_exprs)
+    return f"INSERT INTO {dst} ({cols_sql}) SELECT {sel_sql} FROM {src};"
+
 
   # ---------------------------------------------------------------------------
   # 5. DML / load SQL primitives
   # ---------------------------------------------------------------------------
+ 
+  # ---------------------------------------------------------------------------
+  # Historization (SCD Type 2) rendering overrides
+  #
+  # Fabric Warehouse uses a T-SQL compatible surface and requires
+  # UPDATE <alias> ... FROM <table> <alias> ... syntax.
+  # ---------------------------------------------------------------------------
+  def render_hist_changed_update_sql(
+    self,
+    *,
+    schema_name: str,
+    hist_table: str,
+    rawcore_table: str,
+  ) -> str:
+    hist_tbl = self.render_table_identifier(schema_name, hist_table)
+    rc_tbl = self.render_table_identifier(schema_name, rawcore_table)
+
+    sk_name = self.render_identifier(f"{rawcore_table}_key")
+    row_hash = self.render_identifier("row_hash")
+
+    return (
+      "UPDATE h\n"
+      "SET\n"
+      "  version_ended_at = {{ load_timestamp }},\n"
+      "  version_state    = 'changed',\n"
+      "  load_run_id      = {{ load_run_id }}\n"
+      f"FROM {hist_tbl} h\n"
+      "WHERE h.version_ended_at IS NULL\n"
+      "  AND EXISTS (\n"
+      "    SELECT 1\n"
+      f"    FROM {rc_tbl} r\n"
+      f"    WHERE r.{sk_name} = h.{sk_name}\n"
+      f"      AND r.{row_hash} <> h.{row_hash}\n"
+      "  );"
+    )
+
+  def render_hist_delete_sql(
+    self,
+    *,
+    schema_name: str,
+    hist_table: str,
+    rawcore_table: str,
+  ) -> str:
+    hist_tbl = self.render_table_identifier(schema_name, hist_table)
+    rc_tbl = self.render_table_identifier(schema_name, rawcore_table)
+
+    sk_name = self.render_identifier(f"{rawcore_table}_key")
+
+    return (
+      "UPDATE h\n"
+      "SET\n"
+      "  version_ended_at = {{ load_timestamp }},\n"
+      "  version_state    = 'deleted',\n"
+      "  load_run_id      = {{ load_run_id }}\n"
+      f"FROM {hist_tbl} h\n"
+      "WHERE h.version_ended_at IS NULL\n"
+      "  AND NOT EXISTS (\n"
+      "    SELECT 1\n"
+      f"    FROM {rc_tbl} r\n"
+      f"    WHERE r.{sk_name} = h.{sk_name}\n"
+      "  );"
+    )
+
+
   def render_merge_statement(
     self,
     schema: str,

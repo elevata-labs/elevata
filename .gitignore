@@ -8,6 +8,9 @@
 # It is not code, but part of the build and configuration setup.
 # ======================================================
 
+# elevata
+core/.artifacts/
+
 # Python
 __pycache__/
 .pytest_cache/

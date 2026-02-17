@@ -55,12 +55,22 @@ def display_key(*parts):
 
 def htmx_oob_warning(message: str) -> HttpResponse:
   html = (
-    '<div id="grid-feedback" hx-swap-oob="innerHTML">'
-    '<div class="alert alert-warning py-2 mb-2">'
-    f'{message}'
-    "</div></div>"
+    # Inline grid feedback (left aligned, full width)
+    '<div id="grid-feedback-inline" hx-swap-oob="innerHTML">'
+      '<div class="alert alert-danger py-2 mb-2" role="alert">'
+        f'{message}'
+      '</div>'
+    '</div>'
   )
-  return HttpResponse(html, status=409)
+  # IMPORTANT:
+  # - If we return 4xx (e.g. 409), HTMX may treat it as an error response and
+  #   skip/ignore OOB swaps depending on configuration/version.
+  # - We want to KEEP the current row editor open (no outerHTML swap),
+  #   but still render the OOB warning.
+  resp = HttpResponse(html, status=200)
+  # Prevent swapping the target element (row <tr>) with this warning payload.
+  resp["HX-Reswap"] = "none"
+  return resp
 
 
 def _get_owning_targetdataset(obj):

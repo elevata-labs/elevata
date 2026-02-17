@@ -193,7 +193,8 @@ class TargetGenerationService:
     This method also PATCHES existing columns to keep their documentation consistent
     (description, max_length, nullable, role) and removes legacy 'system column' remarks.
     """
-    layer = "hist" if td.target_dataset_name.endswith("_hist") else td.target_schema.short_name
+    layer = "hist" if td.is_hist else td.target_schema.short_name
+
     tech_specs = self._tech_specs_for_layer(layer)
     if not tech_specs:
       return
@@ -804,7 +805,7 @@ class TargetGenerationService:
       return None
 
     # Do not accidentally create hist for hist datasets themselves
-    if rawcore_td.target_dataset_name.endswith("_hist"):
+    if rawcore_td.is_hist: 
       return None
 
     hist_name = f"{rawcore_td.target_dataset_name}_hist"
@@ -830,7 +831,9 @@ class TargetGenerationService:
         "handle_deletes": False,
         "historize": False,  # no history of history
         "is_system_managed": True,
+        "incremental_strategy": "historize",
       }
+
       if lineage_key:
         defaults["lineage_key"] = lineage_key
 
@@ -847,6 +850,9 @@ class TargetGenerationService:
     else:
       # Hist dataset exists for this lineage -> keep name + lineage in sync
       changed = False
+      if hist_td.incremental_strategy != "historize":
+        hist_td.incremental_strategy = "historize"
+        changed = True
       if hist_td.target_dataset_name != hist_name:
         hist_td.target_dataset_name = hist_name
         changed = True

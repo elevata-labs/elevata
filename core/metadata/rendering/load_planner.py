@@ -31,6 +31,7 @@ LoadMode = Literal[
   "append",
   "merge",
   "snapshot",
+  "historize"
 ]
 
 
@@ -60,7 +61,6 @@ def build_load_plan(target_dataset: TargetDataset) -> LoadPlan:
   """
   schema = getattr(target_dataset, "target_schema", None)
   schema_short = getattr(schema, "short_name", None)
-  dataset_name = getattr(target_dataset, "target_dataset_name", "")
   mat_type = getattr(target_dataset, "materialization_type", "table")
   strategy = getattr(target_dataset, "incremental_strategy", "full")
 
@@ -69,7 +69,7 @@ def build_load_plan(target_dataset: TargetDataset) -> LoadPlan:
   schema_default_hist = bool(getattr(schema, "default_historize", False)) if schema is not None else False
   td_historize = bool(getattr(target_dataset, "historize", False))
   historize_enabled = bool(td_historize or schema_default_hist)
-  is_hist = bool(schema_short == "rawcore" and isinstance(dataset_name, str) and dataset_name.endswith("_hist"))
+  is_hist = bool(getattr(target_dataset, "is_hist", False))
 
   # 1) Views / logical models: no separate load step, just SELECT/VIEW
   if mat_type == "view":
@@ -80,6 +80,13 @@ def build_load_plan(target_dataset: TargetDataset) -> LoadPlan:
     )
 
   # 2) Tables: decide based on incremental strategy
+  if strategy == "historize":
+    return LoadPlan(
+      mode="historize",
+      handle_deletes=False,
+      historize=False,  # history-of-history never
+    )
+
   if strategy == "full":
     return LoadPlan(
       mode="full",
