@@ -70,9 +70,11 @@ with DAG(
   generate_manifest = BashOperator(
     task_id="generate_manifest",
     bash_command=(
+      "bash -lc 'set -euo pipefail; "
       f"{ELEVATA_CMD} elevata_manifest "
       f"--profile {PROFILE} "
       f"--target-system {TARGET_SYSTEM}"
+      "'"
     ),
   )
 
@@ -146,12 +148,15 @@ with DAG(
         tasks_by_id[node_id] = BashOperator(
           task_id=_task_id(node_id),
           bash_command=(
-            f"set -euo pipefail; "
-            f"{ELEVATA_CMD} elevata_load {dataset_name} "
+            f"{ELEVATA_CMD} elevata_load '{dataset_name}' "
             f"--execute --no-deps "
-            f"--profile {PROFILE} "
             f"--target-system {TARGET_SYSTEM}"
           ),
+          env={
+            # Make profile explicit for the subprocess (optional, but nice)
+            "ELEVATA_PROFILE": PROFILE,
+            "ELEVATA_TARGET_SYSTEM": TARGET_SYSTEM,
+          },
         )
 
       # 2) Wire dependencies purely by lineage

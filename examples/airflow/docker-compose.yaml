@@ -8,12 +8,41 @@ x-airflow-common: &airflow-common
   build:
     context: ../..
     dockerfile: examples/airflow/Dockerfile
-    args:
-      ELEVATA_REQ_BASE: requirements/base.txt
-      ELEVATA_REQ_BACKEND: requirements/duckdb.txt
+    
+  env_file:
+    - ../../.env
 
   environment:
     TZ: ${TZ:-UTC}
+
+    # --- Airflow 3 API / auth (required for scheduler<->api-server handshake) ---
+    AIRFLOW__API__BASE_URL: "http://localhost:8080"
+    # Airflow 3.x: execution API server URL is in [core], not [api]
+    # MUST include /execution/ and should be reachable from scheduler container
+    AIRFLOW__CORE__EXECUTION_API_SERVER_URL: "http://airflow-webserver:8080/execution/"
+
+    AIRFLOW__WEBSERVER__BASE_URL: "http://localhost:8080"
+    # Airflow 3: secret_key moved from [webserver] -> [api]; must be identical across ALL components
+    AIRFLOW__API__SECRET_KEY: "demo-elevata-airflow-secret-key-change-me-please-64chars-min-xxxxxxxxxxxxxxxxxxxxxxxx"
+    # Some Airflow 3.x builds still read secret_key from [core] for signing internal JWTs
+    AIRFLOW__CORE__SECRET_KEY: "demo-elevata-airflow-secret-key-change-me-please-64chars-min-xxxxxxxxxxxxxxxxxxxxxxxx"
+    # Optional backward-compat (harmless)
+    AIRFLOW__WEBSERVER__SECRET_KEY: "demo-elevata-airflow-secret-key-change-me-please-64chars-min-xxxxxxxxxxxxxxxxxxxxxxxx"
+    # JWT key for scheduler <-> execution API auth (Airflow 3.x)
+    AIRFLOW__API_AUTH__JWT_SECRET: "demo-elevata-airflow-jwt-secret-key-change-me-please-64bytes-min-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+    # optional (default when jwt_secret is set is HS512)
+    AIRFLOW__API_AUTH__JWT_ALGORITHM: "HS512"
+    # Optional but good for consistency across containers (encryption of connections/vars).
+    AIRFLOW__CORE__FERNET_KEY: "QW0yNfF8m9jJQH5tqJ4e1xqHhUu8d8o6s2mQY8N3i4Q="
+
+    # Served logs (fallback path): without host Airflow builds http://:8793/... (invalid)
+    # With LocalExecutor tasks run on the scheduler container.
+    AIRFLOW__LOGGING__WORKER_LOG_SERVER_HOST: airflow-scheduler
+    AIRFLOW__LOGGING__WORKER_LOG_SERVER_PORT: "8793"
+    AIRFLOW__LOGGING__WORKER_LOG_SERVER_BIND_HOST: "0.0.0.0"
+    # Airflow 3.x: "file.task" deprecated; use "task"
+    AIRFLOW__LOGGING__TASK_LOG_READER: "task"
+    AIRFLOW__LOGGING__BASE_LOG_FOLDER: /opt/airflow/logs
 
     # --- Airflow core ---
     AIRFLOW__CORE__EXECUTOR: LocalExecutor
@@ -33,19 +62,22 @@ x-airflow-common: &airflow-common
     AIRFLOW__CORE__DAGS_FOLDER: /opt/airflow/dags
 
     # --- elevata defaults used by the example DAG ---
-    ELEVATA_PROFILE: ${ELEVATA_PROFILE:-dev}
-    ELEVATA_TARGET_SYSTEM: ${ELEVATA_TARGET_SYSTEM:-dwh}
-    ELEVATA_CMD: ${ELEVATA_CMD:-python manage.py}
+    # elevata runtime config comes from env_file (../../.env).
+    # Defaults are applied in entrypoint.sh if variables are missing.
 
     # Optional: staleness warning threshold
     ELEVATA_MANIFEST_MAX_AGE_HOURS: ${ELEVATA_MANIFEST_MAX_AGE_HOURS:-24}
 
   volumes:
-    # DAGs
-    - ./dags:/opt/airflow/dags:ro
+    # Mount DAGs and elevata repo
+    # NOTE: these variables must be available at *compose parse time*
+    # (Compose reads them from ./examples/airflow/.env or from the shell env).
+    # `env_file:` does NOT apply to variable substitution in this section.
+    - ${ELEVATA_AIRFLOW_DAGS_DIR:-./dags}:/opt/airflow/dags:ro
+    - ${ELEVATA_REPO_DIR:-../..}:/opt/elevata:rw
 
-    # Mount elevata repo
-    - ../..:/opt/elevata:rw
+    # Shared Airflow logs (so the UI can read logs without served-log URLs)
+    - airflow_logs:/opt/airflow/logs:rw
 
   working_dir: /opt/elevata/core
   user: "${AIRFLOW_UID:-50000}:0"
@@ -69,50 +101,78 @@ services:
 
   airflow-init:
     <<: *airflow-common
+    user: "0:0"
+    hostname: airflow-init
     entrypoint: /bin/bash
     command:
       - -c
       - |
         set -euo pipefail
-        airflow db migrate
-        airflow users create \
+        chown -R ${AIRFLOW_UID:-50000}:0 /opt/airflow/logs
+        chmod -R g+rwX /opt/airflow/logs
+        su airflow -c "airflow db migrate"
+        su airflow -c "airflow users create \
           --username admin \
           --password admin \
           --firstname Admin \
           --lastname User \
           --role Admin \
-          --email admin@example.com
+          --email admin@example.com" || true
     restart: "no"
 
   airflow-webserver:
     <<: *airflow-common
-    command: airflow api-server
+    hostname: airflow-webserver
+    command:
+      - airflow
+      - api-server
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8080"
     ports:
       - "8080:8080"
+    healthcheck:
+      test: ["CMD", "bash", "-lc", "python - << 'PY'\nimport requests\nr=requests.get('http://localhost:8080/api/v2/monitor/health', timeout=3)\nprint(r.status_code)\nraise SystemExit(0 if r.status_code==200 else 1)\nPY"]
+      interval: 5s
+      retries: 20
+      start_period: 10s
     depends_on:
       airflow-init:
         condition: service_completed_successfully
 
   airflow-dag-processor:
     <<: *airflow-common
-    command: airflow dag-processor
+    hostname: airflow-dag-processor
+    command:
+      - airflow
+      - dag-processor
     depends_on:
       airflow-init:
         condition: service_completed_successfully
 
   airflow-scheduler:
     <<: *airflow-common
-    command: airflow scheduler
+    hostname: airflow-scheduler
+    command:
+      - airflow
+      - scheduler
     depends_on:
       airflow-init:
         condition: service_completed_successfully
+      airflow-webserver:
+        condition: service_healthy
 
   airflow-triggerer:
     <<: *airflow-common
-    command: airflow triggerer
+    hostname: airflow-triggerer
+    command:
+      - airflow
+      - triggerer
     depends_on:
       airflow-init:
         condition: service_completed_successfully
 
 volumes:
   airflow_pgdata:
+  airflow_logs:

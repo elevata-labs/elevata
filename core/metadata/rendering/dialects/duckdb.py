@@ -24,7 +24,10 @@ from __future__ import annotations
 
 from typing import Any, Dict, Optional
 import re
-import duckdb
+try:
+  import duckdb
+except ModuleNotFoundError as e:
+  duckdb = None
 
 from .base import SqlDialect, BaseExecutionEngine
 from metadata.ingestion.types_map import (

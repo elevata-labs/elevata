@@ -15,6 +15,7 @@ python-dotenv
 dj-database-url
 sqlalchemy
 pyYAML
+pyodbc
 # Azure Key Vault support
 azure-identity
 azure-keyvault-secrets

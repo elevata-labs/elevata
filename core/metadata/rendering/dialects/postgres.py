@@ -22,7 +22,10 @@ Contact: <https://github.com/elevata-labs/elevata>.
 
 from __future__ import annotations
 
-import psycopg2
+try:
+  import  psycopg2
+except ModuleNotFoundError as e:
+   psycopg2 = None
 
 from datetime import date, datetime
 from decimal import Decimal

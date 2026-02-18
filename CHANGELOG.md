@@ -22,6 +22,68 @@ This project adheres to [Semantic Versioning](https://semver.org/) and [Keep a C
 
 ---
 
+## [1.3.1] - 2026-02-18
+
+This release stabilizes the Airflow example environment and resolves several issues  
+that could prevent successful execution when testing elevata with external target  
+systems.
+
+The focus of this release is usability and reliability of the Airflow example setup,  
+ensuring that users can immediately validate elevata orchestration against their own  
+target database without requiring additional infrastructure.
+
+---
+
+### ✨ Improved
+
+#### Airflow Example Stability
+
+- Airflow example now installs backend-specific dependencies at container startup  
+  instead of build time  
+- Backend selection is now driven entirely by environment configuration
+  via `ELEVATA_SQL_DIALECT`
+- Removed hardcoded backend assumptions from Dockerfile and docker-compose  
+- Airflow containers now run elevata inside an isolated virtual environment,  
+  preventing dependency conflicts with Airflow itself  
+- Improved compatibility with Databricks, PostgreSQL, MSSQL, Snowflake,  
+  BigQuery and other supported targets
+
+#### Configuration & Environment Handling
+
+- Environment configuration now consistently sourced from `.env`  
+- Removed docker-compose defaults overriding user configuration  
+- Simplified switching between target systems without rebuilding images  
+- Improved portability for local testing and Open Source usage
+
+#### Dependency Handling
+
+- Backend-specific requirements are installed only when required  
+- Prevented SQLAlchemy version conflicts with Airflow dependencies  
+- Optional dialect imports (e.g. DuckDB) no longer fail when backend is not active
+
+---
+
+### 🛠 Fixed
+
+- Airflow example failing to start due to dependency conflicts  
+- SQLAlchemy downgrade caused by backend requirement installation  
+- Incorrect backend loading when multiple dialects were present  
+- Environment variable precedence issues between `.env`,  
+  docker-compose defaults and container runtime  
+- Multiple startup issues related to entrypoint execution  
+- Improved robustness of dialect imports across environments
+
+---
+
+### 🔧 Internal
+
+- Refactored Airflow entrypoint initialization logic  
+- Added backend installation stamp mechanism to avoid repeated installs  
+- Improved separation between Airflow runtime dependencies  
+  and elevata execution dependencies
+
+---
+
 ## [1.3.0] - 2026-02-17
 
 This release introduces execution safety improvements, deterministic schema evolution,  
