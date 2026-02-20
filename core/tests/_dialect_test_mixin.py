@@ -119,3 +119,26 @@ class DialectTestMixin(SqlDialect):
     )
     return "-- dummy delete detection sql"
   
+  # ---------------------------------------------------------------------------
+  # Merge spy hook
+  # ---------------------------------------------------------------------------
+  def render_merge_statement(self, **kwargs):
+    """
+    Spy wrapper around the real dialect implementation.
+
+    Records semantic merge ingredients passed from load_sql:
+      - target_fqn
+      - source_select_sql
+      - key_columns
+      - update_columns
+      - insert_columns
+
+    Then delegates to the actual dialect implementation via super().
+    """
+    # Record semantic contract for assertions
+    self.calls.append({
+      "merge_kwargs": dict(kwargs)
+    })
+
+    # Delegate to real dialect implementation
+    return super().render_merge_statement(**kwargs)

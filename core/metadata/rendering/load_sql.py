@@ -62,6 +62,67 @@ def _get_target_columns_in_order(td: TargetDataset) -> Sequence[TargetColumn]:
   )
 
 
+def _render_typed_stage_projection_for_target(
+  td: TargetDataset,
+  *,
+  dialect,
+  stage_td: TargetDataset,
+  source_alias: str = "s",
+  target_columns: list[str] | None = None,
+) -> tuple[str, dict[str, str]]:
+  """
+  Build a stage-based source SELECT that yields *target-typed* columns.
+
+  Returns:
+    (source_select_sql, typed_expr_map)
+
+  This is used by merge and delete detection to ensure assignments and join
+  predicates are type-compatible (e.g. BigQuery TIMESTAMP -> DATE).
+  """
+  q = dialect.render_identifier
+
+  # Expressions per target column name from the logical SELECT
+  expr_map = _get_rendered_column_exprs_for_target(td, dialect)
+  expr_map = _apply_target_type_casts(
+    td=td,
+    dialect=dialect,
+    expr_map=expr_map,
+  )
+
+  # Determine projection columns
+  if target_columns is None:
+    tcols = list(_get_target_columns_in_order(td))
+    target_columns = [c.target_column_name for c in tcols]
+
+  # Strict mode: every requested projection column must have a rendered expression
+  # from the logical SELECT. We do not fall back to "s.<col>" because that can
+  # silently produce incorrect SQL (wrong column names, missing manual_expr, missing CASTs).
+  missing = [c for c in target_columns if c not in expr_map]
+  if missing:
+    raise ValueError(
+      "Strict mode: logical SELECT did not produce expressions for required target columns: "
+      + ", ".join(missing)
+    )
+
+  source_full = dialect.render_table_identifier(
+    stage_td.target_schema.schema_name,
+    stage_td.target_dataset_name,
+  )
+
+  select_items: list[str] = []
+  for col in target_columns:
+    expr = expr_map[col]
+    select_items.append(f"{expr} AS {q(col)}")
+
+  source_select_sql = (
+    "SELECT\n  "
+    + ",\n  ".join(select_items)
+    + f"\nFROM\n  {source_full} AS {source_alias}"
+  ).strip()
+
+  return source_select_sql, expr_map
+
+
 def _get_rendered_column_exprs_for_target(td: TargetDataset, dialect) -> dict[str, str]:
   """
   Helper for merge: use the same logical SELECT as preview/full load
@@ -74,8 +135,10 @@ def _get_rendered_column_exprs_for_target(td: TargetDataset, dialect) -> dict[st
 
   # For rawcore we expect a single LogicalSelect (no UNION).
   if not isinstance(plan, LogicalSelect):
-    # Fallback: not supported yet -> let caller decide how to proceed.
-    return {}
+    raise ValueError(
+      "Merge source rendering currently requires a single LogicalSelect. "
+      "UNION-based logical plans are not supported for merge yet."
+    )  
 
   expr_map: dict[str, str] = {}
 
@@ -108,6 +171,11 @@ def _build_incremental_scope_filter_for_target(
   - We only rewrite identifiers that match known source column names (case-insensitive).
   """
 
+  # Unit tests (and some callers) may provide lightweight stubs that do not
+  # include the ORM relation. In that case, we cannot do a safe rewrite.
+  if not getattr(td, "target_columns", None):
+    return None
+
   src = getattr(td, "incremental_source", None)
   if not src:
     return None
@@ -129,7 +197,11 @@ def _build_incremental_scope_filter_for_target(
   mapping: dict[str, str] = {}
 
   # Iterate rawcore columns and resolve their immediate stage upstream column (active link)
-  cols = td.target_columns.all() if hasattr(td.target_columns, "all") else td.target_columns
+  cols_obj = getattr(td, "target_columns", None)
+  if cols_obj is None:
+    return None
+  cols = cols_obj.all() if hasattr(cols_obj, "all") else cols_obj
+
   for rc_col in cols:
     # Find the primary upstream stage column feeding this rawcore column
     link_qs = getattr(rc_col, "input_links", None)
@@ -278,8 +350,16 @@ def render_delete_missing_rows_sql(td: TargetDataset, dialect) -> str | None:
   stage_schema_name = stage_td.target_schema.schema_name
   stage_table_name = stage_td.target_dataset_name
 
-  # Expressions per target column name from the logical SELECT
-  expr_map = _get_rendered_column_exprs_for_target(td, dialect)
+  # Build typed expressions (for join predicate RHS)
+  # NOTE: We only need expr_map here, but we build through the shared helper
+  # so casting behavior stays consistent across merge + delete detection.
+  _source_select_sql, expr_map = _render_typed_stage_projection_for_target(
+    td,
+    dialect=dialect,
+    stage_td=stage_td,
+    source_alias="s",
+    target_columns=[c for c in td.natural_key_fields],
+  )
 
   target_alias = "t"
   source_alias = "s"
@@ -291,8 +371,10 @@ def render_delete_missing_rows_sql(td: TargetDataset, dialect) -> str | None:
     # reading from stage (usually s."<stage_col_name>", but inc. manual_expr and CASTs)
     rhs_sql = expr_map.get(col_name)
     if not rhs_sql:
-      # Fallback: best effort; should be rare
-      rhs_sql = f'{source_alias}.{q(col_name)}'
+      raise ValueError(
+        "Strict mode: delete detection requires a rendered key expression for "
+        f"natural key column {col_name!r} on target {td.target_dataset_name}."
+      )
 
     join_predicates.append(
       f'{target_alias}.{q(col_name)} = {rhs_sql}'
@@ -333,27 +415,16 @@ def _find_stage_upstream_for_rawcore(td: TargetDataset):
   return None
 
 
-def _maybe_cast_for_target(dialect, expr_sql, src_type, target_type):
-  """
-  Apply dialect cast only when canonical types differ.
-  """
-  if not src_type or not target_type:
-    return expr_sql
-
-  src_can = canonicalize_type(dialect.DIALECT_NAME, src_type)
-  tgt_can = canonicalize_type(dialect.DIALECT_NAME, target_type)
-
-  if src_can == tgt_can:
-    return expr_sql
-
-  return dialect.cast_expression(expr_sql, target_type)
-
-
 def _apply_target_type_casts(td, dialect, expr_map):
   """
   Apply dialect-aware CAST only when source and target types differ.
   """
   result = dict(expr_map or {})
+
+  # In unit tests we often pass lightweight TargetDataset stubs without ORM relations.
+  # If target_columns are not available, we cannot resolve target types reliably.
+  if not getattr(td, "target_columns", None):
+    return result
 
   def _canonical(t: str | None) -> str | None:
     if not t:
@@ -412,7 +483,12 @@ def _apply_target_type_casts(td, dialect, expr_map):
       return None
     return None
 
-  for c in _get_target_columns_in_order(td):
+  try:
+    cols_in_order = _get_target_columns_in_order(td)
+  except Exception:
+    return result
+
+  for c in cols_in_order:
     col_name = c.target_column_name
     expr = result.get(col_name)
     if not expr:
@@ -448,21 +524,21 @@ def _apply_target_type_casts(td, dialect, expr_map):
 
 def render_merge_sql(td: TargetDataset, dialect) -> str:
   """
-  Render a backend-aware MERGE / upsert statement for a target dataset.
+  Render a backend-aware MERGE / UPSERT statement for a target dataset.
 
-  Semantics:
-
-  - rawcore:
-      Merge the integrated rawcore table from its upstream stage snapshot,
-      matching on the natural_key_fields (business key).
-
-  - other schemas:
-      merge is currently not supported and will raise a ValueError.
+  Convention:
+    - load_sql provides only the semantic ingredients:
+        * source SELECT SQL
+        * key columns
+        * update columns
+        * insert columns
+    - the SQL shape (native MERGE, UPDATE+INSERT, INSERT..ON CONFLICT, ...)
+      is the dialect's responsibility via dialect.render_merge_statement().
 
   Assumptions:
-    - td.incremental_strategy == 'merge'
-    - effective materialization type is 'table'
-    - natural_key_fields define the business key in both stage and rawcore
+    - td.incremental_strategy == 'merge' (if set)
+    - target schema is rawcore (merge loads currently defined for rawcore only)
+    - natural_key_fields define the business key
   """
   # Safety guard: this helper must only be used for merge datasets
   # when an explicit incremental_strategy is configured.
@@ -479,199 +555,47 @@ def render_merge_sql(td: TargetDataset, dialect) -> str:
       f"got schema={td.target_schema.short_name!r} for {td.target_dataset_name}."
     )
 
-  # Find upstream stage dataset
+  key_cols = list(getattr(td, "natural_key_fields", None) or [])
+
+  if not key_cols:
+    raise ValueError(
+      f"TargetDataset {getattr(td, 'id', '?')} has merge strategy but no natural_key_fields defined."
+    )
+  
+  # Find upstream stage dataset (needed to build a stable, typed merge source SELECT)
   stage_td = _find_stage_upstream_for_rawcore(td)
   if not stage_td:
     raise ValueError(
       f"Could not resolve upstream stage dataset for rawcore target {td.target_dataset_name}."
     )
 
-  # Resolve fully-qualified target and source table names
-  target_schema_name = td.target_schema.schema_name
-  target_table_name = td.target_dataset_name
-  target_full = dialect.render_table_identifier(target_schema_name, target_table_name)
-  target_alias = "t"
-
-  source_schema_name = stage_td.target_schema.schema_name
-  source_table_name = stage_td.target_dataset_name
-  source_full = dialect.render_table_identifier(source_schema_name, source_table_name)
-  source_alias = "s"
-
-  q = dialect.render_identifier
-
-  # Business key columns shared between stage and rawcore
-  key_cols = td.natural_key_fields
-  if not key_cols:
-    raise ValueError(
-      f"TargetDataset {td.id} has merge strategy but no natural_key_fields defined."
-    )
-
   # All target columns in stable order
   target_cols = list(_get_target_columns_in_order(td))
-  non_key_cols = [c for c in target_cols if c.target_column_name not in key_cols]
+  insert_columns = [c.target_column_name for c in target_cols]
+  update_columns = [c for c in insert_columns if c not in set(key_cols)]
 
-  # Expressions per target column from the logical SELECT
-  expr_map = _get_rendered_column_exprs_for_target(td, dialect)
-
-  expr_map = _apply_target_type_casts(
-    td=td,
+  source_select_sql, _expr_map = _render_typed_stage_projection_for_target(
+    td,
     dialect=dialect,
-    expr_map=expr_map,
+    stage_td=stage_td,
+    source_alias="s",
+    target_columns=insert_columns,
   )
 
-  # If the dialect explicitly opts out of native MERGE support, use the
-  # UPDATE + INSERT fallback strategy.
-  supports_merge = getattr(dialect, "supports_merge", True)
-  if not supports_merge:
-    return _render_update_then_insert_sql(
-      td=td,
-      dialect=dialect,
-      source_full=source_full,
-      source_alias=source_alias,
-      target_full=target_full,
-      target_alias=target_alias,
-      key_cols=key_cols,
-      expr_map=expr_map,
-      target_cols=target_cols,
-    )
-
-  # ON predicate: t.pk = <expr_for_pk_from_stage>
-  on_clauses: list[str] = []
-  for col in key_cols:
-    rhs_sql = expr_map.get(col)
-    if not rhs_sql:
-      # Fallback: simple s."col" if the expression map does not contain it
-      rhs_sql = f"{source_alias}.{q(col)}"
-    on_clauses.append(
-      f"{target_alias}.{q(col)} = {rhs_sql}"
-    )
-  on_clause = " AND\n      ".join(on_clauses)
-
-  # UPDATE SET col = <expr_for_col_from_stage>
-  update_assignments: list[str] = []
-  for c in non_key_cols:
-    col_name = c.target_column_name
-    value_sql = expr_map.get(col_name)
-    if not value_sql:
-      # Fallback: classic s."col" reference, if something is unexpectedly missing
-      value_sql = f"{source_alias}.{q(col_name)}"
-    update_assignments.append(f"{q(col_name)} = {value_sql}")
-  update_clause = ",\n      ".join(update_assignments)
-
-  # INSERT (cols) VALUES (<expr_for_col>, ...)
-  insert_columns = [c.target_column_name for c in target_cols]
-  insert_cols_sql = ", ".join(q(c) for c in insert_columns)
-
-  insert_values: list[str] = []
-  for col_name in insert_columns:
-    value_sql = expr_map.get(col_name)
-    if not value_sql:
-      value_sql = f"{source_alias}.{q(col_name)}"
-    insert_values.append(value_sql)
-  insert_vals_sql = ", ".join(insert_values)
-
-  # Final MERGE statement; we emit a generic MERGE INTO ... USING ... ON ...
-  sql_parts: list[str] = []
-
-  sql_parts.append(
-    f"MERGE INTO {target_full} AS {target_alias}\n"
-    f"USING {source_full} AS {source_alias}\n"
-    f"ON {on_clause}\n"
+  target_fqn = dialect.render_table_identifier(
+    td.target_schema.schema_name,
+    td.target_dataset_name,
   )
 
-  # Update branch
-  sql_parts.append(
-    "WHEN MATCHED THEN\n"
-    f"  UPDATE SET\n"
-    f"      {update_clause}"
+  return dialect.render_merge_statement(
+    target_fqn=target_fqn,
+    source_select_sql=source_select_sql,
+    key_columns=key_cols,
+    update_columns=update_columns,
+    insert_columns=insert_columns,
+    target_alias="t",
+    source_alias="s",
   )
-
-  # Insert branch
-  sql_parts.append(
-    "WHEN NOT MATCHED THEN\n"
-    f"  INSERT ({insert_cols_sql})\n"
-    f"  VALUES ({insert_vals_sql});"
-  )
-
-  return "\n".join(sql_parts)
-
-
-def _render_update_then_insert_sql(
-  td: TargetDataset,
-  dialect,
-  source_full: str,
-  source_alias: str,
-  target_full: str,
-  target_alias: str,
-  key_cols: list[str],
-  expr_map: dict[str, str],
-  target_cols: Sequence[TargetColumn],
-) -> str:
-  """
-  Fallback implementation for dialects that do not support native MERGE.
-
-  Strategy:
-    1) UPDATE target t
-       SET non-key columns = expressions from source
-       FROM source s
-       WHERE business-key join
-
-    2) INSERT INTO target (...)
-       SELECT expressions FROM source s
-       WHERE NOT EXISTS (SELECT 1 FROM target t WHERE business-key join)
-  """
-  q = dialect.render_identifier
-
-  # Build join predicate based on business key
-  join_predicates: list[str] = []
-  for col in key_cols:
-    rhs_sql = expr_map.get(col) or f"{source_alias}.{q(col)}"
-    join_predicates.append(f"{target_alias}.{q(col)} = {rhs_sql}")
-  on_expr = " AND ".join(join_predicates)
-
-  # UPDATE branch: only non-key columns are updated
-  non_key_cols = [c for c in target_cols if c.target_column_name not in key_cols]
-  update_assignments: list[str] = []
-  for c in non_key_cols:
-    col_name = c.target_column_name
-    value_sql = expr_map.get(col_name) or f"{source_alias}.{q(col_name)}"
-    update_assignments.append(f"{q(col_name)} = {value_sql}")
-  update_clause = ", ".join(update_assignments)
-
-  update_sql = (
-    f"UPDATE {target_full} AS {target_alias}\n"
-    f"SET {update_clause}\n"
-    f"FROM {source_full} AS {source_alias}\n"
-    f"WHERE {on_expr};"
-  )
-
-  # INSERT branch: insert rows that do not yet exist in the target
-  insert_columns = [c.target_column_name for c in target_cols]
-  insert_cols_sql = ", ".join(q(c) for c in insert_columns)
-
-  select_values: list[str] = []
-  for col_name in insert_columns:
-    value_sql = expr_map.get(col_name) or f"{source_alias}.{q(col_name)}"
-    select_values.append(value_sql)
-  select_values_sql = ", ".join(select_values)
-
-  not_exists_predicates: list[str] = []
-  for col in key_cols:
-    rhs_sql = expr_map.get(col) or f"{source_alias}.{q(col)}"
-    not_exists_predicates.append(f"{target_alias}.{q(col)} = {rhs_sql}")
-  not_exists_join = " AND ".join(not_exists_predicates)
-
-  insert_sql = (
-    f"INSERT INTO {target_full} ({insert_cols_sql})\n"
-    f"SELECT {select_values_sql}\n"
-    f"FROM {source_full} AS {source_alias}\n"
-    f"WHERE NOT EXISTS (\n"
-    f"  SELECT 1 FROM {target_full} AS {target_alias}\n"
-    f"  WHERE {not_exists_join}\n"
-    f");"
-  )
-
-  return update_sql + "\n\n" + insert_sql
 
 
 def render_full_refresh_sql(td: TargetDataset, dialect) -> str:
@@ -712,65 +636,115 @@ def render_snapshot_sql(td: TargetDataset, dialect) -> str:
   )
 
 
-def render_hist_incremental_sql(td: TargetDataset, dialect) -> str:
+def render_hist_incremental_sql(td: TargetDataset, dialect, *, include_comment: bool = False) -> str:
   """
   Renderer for *_hist datasets.
 
-  Returns:
-    - a descriptive SCD Type 2 comment block,
-    - plus *real* SQL for changed rows (UPDATE),
-    - plus *real* SQL for deleted business keys (UPDATE),
-    - and, for real TargetDataset instances, INSERT statements
-      for changed and new business keys.
+  elevata convention:
+    - load_sql provides semantic ingredients
+    - dialect owns SQL shape AND orchestration for the history pipeline
   """
   schema = getattr(td, "target_schema", None)
   schema_name = getattr(schema, "schema_name", "<unknown_schema>")
   hist_name = getattr(td, "target_dataset_name", "<unknown_table>")
 
-  comment = (
-    f"-- History load for {schema_name}.{hist_name} (SCD Type 2).\n"
-    f"-- Planned SCD Type 2 semantics based on:\n"
-    f"--   * surrogate key for history rows\n"
-    f"--   * row_hash for change detection\n"
-    f"--   * version_started_at / version_ended_at\n"
-    f"--   * version_state ('new', 'changed', 'deleted')\n"
-    f"--   * load_run_id and load_timestamp provided by executor\n"
-    f"--\n"
-    f"-- Real SQL for new, changed and deleted business keys follows below.\n"
-  )
+  if not getattr(td, "is_hist", False):
+    raise ValueError("render_hist_incremental_sql called for non-historize dataset.")
 
-  changed_update_sql = render_hist_changed_update_sql(td, dialect)
-  delete_sql = render_hist_delete_sql(td, dialect)
-
-  parts: list[str] = [
-    comment,
-    "",
-    changed_update_sql,
-    "",
-    delete_sql,
-  ]
-
-  # only real TargetDataset instances (with int-PK) get the INSERT blocks.
+  rawcore_name = get_rawcore_name_from_hist(hist_name)
   has_pk = isinstance(getattr(td, "id", None), int)
 
+  # Strict mode: validate presence of required history columns when metadata is available.
+  cols_obj = getattr(td, "target_columns", None)
+  if cols_obj is not None:
+    cols = cols_obj.all() if hasattr(cols_obj, "all") else cols_obj
+    names = {getattr(c, "target_column_name", None) for c in cols}
+
+    required_hist = {
+      "row_hash",
+      "version_started_at",
+      "version_ended_at",
+      "version_state",
+      "load_run_id",
+      "loaded_at",
+      f"{rawcore_name}_key",
+    }
+    missing = sorted([c for c in required_hist if c not in names])
+    if missing:
+      raise ValueError(
+        "Strict mode: historization requires the following columns on "
+        f"'{hist_name}': {', '.join(missing)}"
+      )
+
+  changed_insert_kwargs = None
+  new_insert_kwargs = None
+
   if has_pk:
-    changed_insert_sql = render_hist_changed_insert_sql(td, dialect)
-    new_insert_sql = render_hist_new_insert_sql(td, dialect)
-    parts.extend([
-      "",
-      changed_insert_sql,
-      "",
-      new_insert_sql,
-    ])
-  else:
-    # Dummy context (e.g. tests with DummyHistTargetDataset):
-    # No ORM access, only append a remark.
-    parts.append(
-      "\n-- INSERT statements for changed/new rows are omitted "
-      "because this is not a real TargetDataset instance.\n"
+    hist_cols, rawcore_cols = _get_hist_insert_columns(td, dialect)
+
+    # Strict mode: ensure version_state exists (required for setting 'new')
+    q = dialect.render_identifier
+    vs_ident = q("version_state")
+    if vs_ident not in hist_cols:
+      raise ValueError(
+        f"Strict mode: history dataset '{hist_name}' is missing required column 'version_state'."
+      )
+
+    sk_name_raw = q(f"{rawcore_name}_key")
+
+    changed_insert_kwargs = dict(
+      hist_schema=schema_name,
+      hist_table=hist_name,
+      hist_columns_sql=hist_cols,
+      source_schema=schema_name,
+      source_table=rawcore_name,
+      source_alias="r",
+      select_exprs_sql=list(rawcore_cols),
+      exists_schema=schema_name,
+      exists_table=hist_name,
+      exists_alias="h",
+      exists_predicates=[
+        "h.version_ended_at = {{ load_timestamp }}",
+        "h.version_state = 'changed'",
+        f"h.{sk_name_raw} = r.{sk_name_raw}",
+      ],
+      exists_negated=False,
     )
 
-  return "\n".join(parts) + "\n"
+    # New insert: clone select exprs, override version_state to 'new'
+    rawcore_cols_new = list(rawcore_cols)
+    state_idx = hist_cols.index(vs_ident)
+    rawcore_cols_new[state_idx] = "'new'"
+
+    new_insert_kwargs = dict(
+      hist_schema=schema_name,
+      hist_table=hist_name,
+      hist_columns_sql=hist_cols,
+      source_schema=schema_name,
+      source_table=rawcore_name,
+      source_alias="r",
+      select_exprs_sql=rawcore_cols_new,
+      exists_schema=schema_name,
+      exists_table=hist_name,
+      exists_alias="h",
+      exists_predicates=[f"h.{sk_name_raw} = r.{sk_name_raw}"],
+      exists_negated=True,
+    )
+
+  if not hasattr(dialect, "render_hist_incremental_statement"):
+    raise NotImplementedError(
+      f"{dialect.__class__.__name__} does not implement render_hist_incremental_statement()."
+    )
+
+  return dialect.render_hist_incremental_statement(
+    schema_name=schema_name,
+    hist_table=hist_name,
+    rawcore_table=rawcore_name,
+    include_comment=include_comment,
+    include_inserts=has_pk,
+    changed_insert_kwargs=changed_insert_kwargs,
+    new_insert_kwargs=new_insert_kwargs,
+  )
 
 
 def render_hist_delete_sql(td: TargetDataset, dialect) -> str:
@@ -1012,6 +986,13 @@ def _get_hist_insert_columns(td: TargetDataset, dialect) -> tuple[list[str], lis
       f"Duplicate history insert columns detected: {dupes}. "
       "This indicates a metadata/lineage overlap (e.g. row_hash duplicated)."
     )
+  
+  # Strict mode: INSERT list alignment must be 1:1
+  if len(hist_cols) != len(rawcore_cols):
+    raise ValueError(
+      f"Strict mode: history INSERT column mismatch for '{td.target_dataset_name}'. "
+      f"hist_cols={len(hist_cols)}, select_exprs={len(rawcore_cols)}."
+    ) 
 
   return hist_cols, rawcore_cols
 
@@ -1026,20 +1007,30 @@ def render_hist_changed_insert_sql(td: TargetDataset, dialect) -> str:
 
   hist_cols, rawcore_cols = _get_hist_insert_columns(td, dialect)
 
-  return (
-    f"INSERT INTO {dialect.render_table_identifier(schema_name, hist_name)} (\n"
-    f"  " + ",\n  ".join(hist_cols) + "\n"
-    f")\n"
-    f"SELECT\n"
-    f"  " + ",\n  ".join(rawcore_cols) + "\n"
-    f"FROM {dialect.render_table_identifier(schema_name, rawcore_name)} AS r\n"
-    f"WHERE EXISTS (\n"
-    f"  SELECT 1\n"
-    f"  FROM {dialect.render_table_identifier(schema_name, hist_name)} AS h\n"
-    f"  WHERE h.version_ended_at = {{{{ load_timestamp }}}}\n"
-    f"    AND h.version_state = 'changed'\n"
-    f"    AND h.{sk_name_raw} = r.{sk_name_raw}\n"
-    f");"
+  # Strict guard: ensure version_state column exists
+  if dialect.render_identifier("version_state") not in hist_cols:
+    raise ValueError(
+      f"Strict mode: history dataset '{td.target_dataset_name}' "
+      f"is missing required column 'version_state'."
+    )
+
+  return dialect.render_hist_insert_statement(
+    hist_schema=schema_name,
+    hist_table=hist_name,
+    hist_columns_sql=hist_cols,
+    source_schema=schema_name,
+    source_table=rawcore_name,
+    source_alias="r",
+    select_exprs_sql=list(rawcore_cols),
+    exists_schema=schema_name,
+    exists_table=hist_name,
+    exists_alias="h",
+    exists_predicates=[
+      "h.version_ended_at = {{ load_timestamp }}",
+      "h.version_state = 'changed'",
+      f"h.{sk_name_raw} = r.{sk_name_raw}",
+    ],
+    exists_negated=False,
   )
 
 
@@ -1056,66 +1047,36 @@ def render_hist_new_insert_sql(td: TargetDataset, dialect) -> str:
   rawcore_cols = list(rawcore_cols)
 
   # Override version_state to 'new' using the aligned column index.
-  state_idx = hist_cols.index(dialect.render_identifier("version_state"))
+  try:
+    state_idx = hist_cols.index(dialect.render_identifier("version_state"))
+  except ValueError:
+    raise ValueError(
+      f"Strict mode: history dataset '{td.target_dataset_name}' "
+      f"is missing required column 'version_state'."
+    )
+
   rawcore_cols[state_idx] = "'new'"
 
-  return (
-    f"INSERT INTO {dialect.render_table_identifier(schema_name, hist_name)} (\n"
-    f"  " + ",\n  ".join(hist_cols) + "\n"
-    f")\n"
-    f"SELECT\n"
-    f"  " + ",\n  ".join(rawcore_cols) + "\n"
-    f"FROM {dialect.render_table_identifier(schema_name, rawcore_name)} AS r\n"
-    f"WHERE NOT EXISTS (\n"
-    f"  SELECT 1\n"
-    f"  FROM {dialect.render_table_identifier(schema_name, hist_name)} AS h\n"
-    f"  WHERE h.{sk_name_raw} = r.{sk_name_raw}\n"
-    f");"
-  )
+  # Defensive alignment check after override
+  if len(hist_cols) != len(rawcore_cols):
+    raise ValueError(
+      f"Strict mode: history INSERT column mismatch for '{td.target_dataset_name}'. "
+      f"hist_cols={len(hist_cols)}, select_exprs={len(rawcore_cols)}."
+    )
 
-
-def render_hist_changed_insert_template(td: TargetDataset) -> str:
-  """
-  Comment-only template for the 'insert new versions for changed rows'
-  part of the SCD Type 2 history load.
-
-  This is *not* executed yet, but documents the intended SQL pattern.
-  """
-  schema = td.target_schema
-  schema_name = schema.schema_name
-  hist_name = td.target_dataset_name
-
-  if not td.is_hist:
-    raise ValueError("render_hist_changed_insert_template called for non-historize dataset.")
-
-  rawcore_name = get_rawcore_name_from_hist(hist_name)
-  sk_name = f"{rawcore_name}_key"
-
-  return (
-    f"--\n"
-    f"-- 2) Insert new *versions* for changed rows:\n"
-    f"--\n"
-    f"-- INSERT INTO {schema_name}.{hist_name} (\n"
-    f"--   /* TODO: history-row SK column, e.g. {rawcore_name}_hist_key */\n"
-    f"--   /* TODO: all rawcore columns (including {sk_name}, row_hash, ...) */\n"
-    f"--   /* TODO: version_started_at, version_ended_at, version_state, load_run_id, loaded_at */\n"
-    f"-- )\n"
-    f"-- SELECT\n"
-    f"--   /* TODO: history SK expression based on ({sk_name}, version_started_at) */\n"
-    f"--   /* TODO: r.* columns in the right order */\n"
-    f"--   {{{{ load_timestamp }}}}      AS version_started_at,\n"
-    f"--   NULL                      AS version_ended_at,\n"
-    f"--   'changed'                 AS version_state,\n"
-    f"--   {{{{ load_run_id }}}}         AS load_run_id,\n"
-    f"--   {{{{ load_timestamp }}}}      AS loaded_at\n"
-    f"-- FROM {schema_name}.{rawcore_name} AS r\n"
-    f"-- WHERE EXISTS (\n"
-    f"--   SELECT 1\n"
-    f"--   FROM {schema_name}.{hist_name} AS h\n"
-    f"--   WHERE h.version_ended_at = {{{{ load_timestamp }}}}\n"
-    f"--     AND h.version_state    = 'changed'\n"
-    f"--     AND h.{sk_name}        = r.{sk_name}\n"
-    f"-- );\n"
+  return dialect.render_hist_insert_statement(
+    hist_schema=schema_name,
+    hist_table=hist_name,
+    hist_columns_sql=hist_cols,
+    source_schema=schema_name,
+    source_table=rawcore_name,
+    source_alias="r",
+    select_exprs_sql=rawcore_cols,
+    exists_schema=schema_name,
+    exists_table=hist_name,
+    exists_alias="h",
+    exists_predicates=[f"h.{sk_name_raw} = r.{sk_name_raw}"],
+    exists_negated=True,
   )
 
 

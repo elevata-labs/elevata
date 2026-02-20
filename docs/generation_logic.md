@@ -67,8 +67,20 @@ Used when multiple upstream sources require conflict resolution.
 - linkage:  
   - dataset-level via lineage_key (rename-safe),
   - column-level via TargetColumnInput from rawcore → hist.
-- current limitation:
-  - no independent load SQL for *_hist yet; previews return a comment instead of SQL.
+
+#### 🔎 Execution Semantics
+
+History datasets generate fully executable SCD Type 2 SQL.
+
+The historization pipeline is rendered via the active SqlDialect and
+includes:
+
+- closing changed versions (UPDATE)  
+- closing deleted versions (UPDATE)  
+- inserting new changed versions (INSERT..SELECT)  
+- inserting first versions for new business keys (INSERT..SELECT)
+
+History SQL is execution-ready.
 
 ---
 

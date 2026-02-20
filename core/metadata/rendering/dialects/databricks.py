@@ -617,38 +617,76 @@ class DatabricksDialect(SqlDialect):
   # ---------------------------------------------------------------------------
   def render_merge_statement(
     self,
-    schema: str,
-    table: str,
-    select_sql: str,
-    unique_key_columns: list[str],
+    *,
+    target_fqn: str,
+    source_select_sql: str,
+    key_columns: list[str],
     update_columns: list[str],
+    insert_columns: list[str],
+    target_alias: str = "t",
+    source_alias: str = "s",
   ) -> str:
-    target = self.render_table_identifier(schema, table)
+    """
+    Render a dialect-native MERGE / UPSERT statement.
 
-    keys = list(unique_key_columns or [])
-    updates = [c for c in (update_columns or [])]
-    all_cols = keys + [c for c in updates if c not in keys]
+    This method is a core dialect primitive: elevata's load layer supplies only the
+    semantic ingredients (source SELECT + key/update/insert column lists), while the
+    dialect decides the optimal SQL shape.
 
-    on_pred = " AND ".join([f"t.{self.render_identifier(k)} = s.{self.render_identifier(k)}" for k in keys])
+    Parameters:
+      target_fqn: Fully qualified target table identifier (already rendered/quoted).
+      source_select_sql: SELECT statement used as merge source (no trailing ';').
+      key_columns: Non-empty list of target key columns used for matching.
+      update_columns: Target columns to update on match.
+      insert_columns: Target columns to insert for new rows.
 
-    update_assignments = ", ".join(
-      [f"{self.render_identifier(c)} = s.{self.render_identifier(c)}" for c in updates]
+    Databricks renders a Delta Lake MERGE INTO statement.
+    """
+    q = self.render_identifier
+    target = str(target_fqn).strip()
+
+    keys = [c for c in (key_columns or []) if c]
+    if not keys:
+      raise ValueError("DatabricksDialect.render_merge_statement requires non-empty key_columns")
+
+    insert_cols = [c for c in (insert_columns or []) if c]
+    if not insert_cols:
+      seen = set()
+      insert_cols = []
+      for c in keys + list(update_columns or []):
+        if c and c not in seen:
+          seen.add(c)
+          insert_cols.append(c)
+
+    updates = [c for c in (update_columns or []) if c and c not in set(keys)]
+
+    on_pred = " AND ".join(
+      [f"{q(target_alias)}.{q(k)} = {q(source_alias)}.{q(k)}" for k in keys]
     )
 
-    insert_cols = ", ".join([self.render_identifier(c) for c in all_cols])
-    insert_vals = ", ".join([f"s.{self.render_identifier(c)}" for c in all_cols])
+    src = f"(\n{source_select_sql.strip()}\n) AS {q(source_alias)}"
 
-    sql = f"""
-      MERGE INTO {target} AS t
-      USING (
-      {select_sql}
-      ) AS s
-      ON {on_pred}
-      WHEN MATCHED THEN UPDATE SET {update_assignments}
-      WHEN NOT MATCHED THEN INSERT ({insert_cols}) VALUES ({insert_vals});
-      """.strip()
+    parts: list[str] = []
+    parts.append(
+      f"MERGE INTO {target} AS {q(target_alias)}\n"
+      f"USING {src}\n"
+      f"ON {on_pred}"
+    )
 
-    return sql
+    if updates:
+      update_assignments = ", ".join(
+        [f"{q(c)} = {q(source_alias)}.{q(c)}" for c in updates]
+      )
+      parts.append(f"WHEN MATCHED THEN UPDATE SET {update_assignments}")
+
+    insert_cols_sql = ", ".join([q(c) for c in insert_cols])
+    insert_vals_sql = ", ".join([f"{q(source_alias)}.{q(c)}" for c in insert_cols])
+    parts.append(
+      f"WHEN NOT MATCHED THEN INSERT ({insert_cols_sql}) VALUES ({insert_vals_sql});"
+    )
+
+    return "\n".join(parts).strip()
+
 
   def render_delete_detection_statement(
     self,

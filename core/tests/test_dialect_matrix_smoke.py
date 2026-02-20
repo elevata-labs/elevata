@@ -99,8 +99,8 @@ def test_merge_statement_smoke(dialect_name: str):
   """
   Cross-dialect smoke test for MERGE / UPSERT behavior.
 
-  - Dialects that declare supports_merge=False must raise NotImplementedError.
-  - Dialects that support MERGE must return syntactically plausible SQL.
+  Dialects may implement native MERGE (where supported) or a deterministic
+  fallback (e.g. UPDATE + INSERT).
   """
 
   dialect = get_active_dialect(dialect_name)
@@ -108,26 +108,13 @@ def test_merge_statement_smoke(dialect_name: str):
   # Minimal synthetic SELECT used as merge source
   select_sql = "SELECT 1 AS id, 'x' AS payload"
 
-  if not getattr(dialect, "supports_merge", False):
-    # Dialects may still provide a default implementation in base.
-    try:
-      sql = dialect.render_merge_statement(
-        schema="dw",
-        table="dim_dummy",
-        select_sql=select_sql,
-        unique_key_columns=["id"],
-        update_columns=["payload"],
-      )
-    except NotImplementedError:
-      return
-  else:
-    sql = dialect.render_merge_statement(
-      schema="dw",
-      table="dim_dummy",
-      select_sql=select_sql,
-      unique_key_columns=["id"],
-      update_columns=["payload"],
-    )
+  sql = dialect.render_merge_statement(
+    target_fqn=dialect.render_table_identifier("dw", "dim_dummy"),
+    source_select_sql=select_sql,
+    key_columns=["id"],
+    update_columns=["payload"],
+    insert_columns=["id", "payload"],
+  )
 
   assert isinstance(sql, str)
   lower = sql.lower()
@@ -142,6 +129,7 @@ def test_merge_statement_smoke(dialect_name: str):
   assert (
     "merge" in lower
     or ("insert into" in lower and "on conflict" in lower)
+    or ("update" in lower and "insert into" in lower)
   )
 
 @pytest.mark.parametrize("dialect_name", get_available_dialect_names())

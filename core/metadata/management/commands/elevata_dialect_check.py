@@ -187,17 +187,17 @@ class Command(BaseCommand):
           ),
         ))
 
-      if getattr(dialect, "supports_merge", False) and hasattr(dialect, "render_merge_statement"):
+      if hasattr(dialect, "render_merge_statement"):
         checks.append((
           "merge_statement",
           *self._run_check(
             "merge_statement",
             lambda _: dialect.render_merge_statement(
-              schema="dw",
-              table="dummy",
-              select_sql="SELECT 1 AS id",
-              unique_key_columns=["id"],
+              target_fqn=dialect.render_table_identifier("dw", "dummy"),
+              source_select_sql="SELECT 1 AS id",
+              key_columns=["id"],
               update_columns=[],
+              insert_columns=["id"],
             ),
           ),
         ))

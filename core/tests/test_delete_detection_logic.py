@@ -250,7 +250,7 @@ def test_delete_detection_happy_path_calls_dialect_with_expected_args(monkeypatc
   ]
 
 
-def test_delete_detection_falls_back_to_simple_source_ref_if_expr_missing(monkeypatch):
+def test_delete_detection_raises_if_expr_missing_in_strict_mode(monkeypatch):
   td = _make_td(
     schema_short="rawcore",
     schema_name="dw_rawcore",
@@ -287,12 +287,7 @@ def test_delete_detection_falls_back_to_simple_source_ref_if_expr_missing(monkey
     lambda _td, _dialect: {},
   )
 
-  sql = render_delete_missing_rows_sql(td, dialect)
+  with pytest.raises(ValueError) as excinfo:
+    render_delete_missing_rows_sql(td, dialect)
 
-  assert sql == "-- dummy delete detection sql"
-  assert len(dialect.calls) == 1
-
-  call = dialect.calls[0]
-  assert call["join_predicates"] == [
-    't.missing_key = s.missing_key',
-    ]
+  assert "Strict mode" in str(excinfo.value)

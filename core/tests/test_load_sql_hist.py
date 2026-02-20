@@ -120,7 +120,7 @@ class DummyDialect(DialectTestMixin):
 def test_render_load_sql_for_hist_routes_to_hist_renderer(monkeypatch):
   """
   Ensure that *_hist datasets are routed to render_hist_incremental_sql
-  and that the returned SQL is a descriptive comment, not a MERGE/FULL statement.
+  and that the returned SQL contains history UPDATE blocks (not MERGE/FULL SQL).
   """
 
   td = DummyHistTargetDataset()
@@ -130,13 +130,15 @@ def test_render_load_sql_for_hist_routes_to_hist_renderer(monkeypatch):
   sql = load_sql.render_load_sql_for_target(td, dialect)
   normalized = textwrap.dedent(sql).strip()
 
-  # Basic expectations: comment, schema+table mentioned, SCD wording present.
-  assert normalized.startswith("-- History load for rawcore.rc_aw_product_hist")
-  assert "SCD Type 2" in normalized or "SCD Type 2" in normalized
-  assert "row_hash" in normalized
-  assert "version_started_at" in normalized
-  assert "version_ended_at" in normalized
-  assert "load_run_id" in normalized
+  # Must contain history UPDATE blocks
+  assert "UPDATE rawcore.rc_aw_product_hist AS h" in normalized
+  assert "version_state    = 'changed'" in normalized
+  assert "version_state    = 'deleted'" in normalized
+
+  # Must NOT contain merge/full refresh SQL
+  assert "MERGE INTO" not in normalized
+  assert "INSERT INTO rawcore.rc_aw_product_hist SELECT" not in normalized
+
 
 def test_hist_sql_contains_changed_update_block():
   td = DummyHistTargetDataset()
@@ -351,3 +353,21 @@ def test_hist_default_renderer_uses_ansi_update_as_alias():
   assert " AS h" in sql
   assert sql.startswith("UPDATE")
   
+def test_render_hist_incremental_sql_comment_option(monkeypatch):
+  """
+  Verify that include_comment flag controls presence of the descriptive header.
+  """
+  td = DummyHistTargetDataset()
+  dialect = DummyDialect()
+
+  # Default: no comment
+  sql_no_comment = load_sql.render_hist_incremental_sql(td, dialect)
+  assert not sql_no_comment.strip().startswith("-- History load")
+
+  # Explicit: include comment
+  sql_with_comment = load_sql.render_hist_incremental_sql(
+    td,
+    dialect,
+    include_comment=True,
+  )
+  assert sql_with_comment.strip().startswith("-- History load")

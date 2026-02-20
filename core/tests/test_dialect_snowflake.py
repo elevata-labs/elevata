@@ -46,11 +46,11 @@ def test_snowflake_hash_expression_uses_sha2_and_hex():
 def test_snowflake_merge_renders_merge_into():
   d = SnowflakeDialect()
   sql = d.render_merge_statement(
-    schema="dw",
-    table="dim_x",
-    select_sql="SELECT 1 AS id, 'a' AS payload",
-    unique_key_columns=["id"],
+    target_fqn=d.render_table_identifier("dw", "dim_x"),
+    source_select_sql="SELECT 1 AS id, 'a' AS payload",
+    key_columns=["id"],
     update_columns=["payload"],
+    insert_columns=["id", "payload"],
   )
   assert "merge into" in sql.lower()
 

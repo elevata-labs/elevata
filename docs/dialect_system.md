@@ -596,6 +596,139 @@ Execution parity is validated by:
 
 ---
 
+## 🔧 19. Merge & Historization Contract
+
+The Dialect System is responsible not only for expression and SELECT rendering,  
+but also for deterministic incremental data movement and historization semantics.
+
+The architectural principle is:
+
+> `load_sql` provides semantic ingredients.  
+> The dialect owns the SQL shape.
+
+This guarantees clean separation of concerns and cross-dialect behavioral parity.
+
+---
+
+### 🧩 19.1 Merge Contract (Incremental RAWCORE Loads)
+
+Incremental RAWCORE datasets require deterministic merge semantics.
+
+The core layer prepares semantic ingredients:
+
+- `source_select_sql`  
+- `key_columns`  
+- `update_columns`  
+- `insert_columns`
+
+The dialect must implement:
+
+```python
+render_merge_statement(...)
+```
+
+Dialect responsibilities:
+
+- Use native `MERGE` where supported  
+- Provide a performant fallback (`UPDATE` + `INSERT`) when MERGE is unavailable  
+- Render deterministic key predicates  
+- Preserve type correctness  
+- Apply identifier quoting consistently  
+
+All officially supported dialects must support merge semantics.
+
+---
+
+### 🧩 19.2 Delete Detection Contract
+
+For incremental pipelines with `handle_deletes=True`,
+dialects must implement:
+
+```python
+render_delete_detection_statement(...)
+```
+
+The core provides:
+
+- target schema + table  
+- stage schema + table  
+- join predicates  
+- scope filter  
+
+The dialect renders the DELETE (or equivalent) statement.
+
+Dialects may opt out by setting:
+
+```python
+supports_delete_detection = False
+```
+
+In that case, the core raises a clear `NotImplementedError`.
+
+---
+
+### 🧩 19.3 Historization Contract (SCD Type 2)
+
+Historization pipelines for `*_hist` datasets are fully dialect-driven.
+
+The core prepares semantic ingredients and calls:
+
+```python
+render_hist_incremental_statement(...)
+```
+
+The default orchestration renders:
+
+1. Changed version UPDATE  
+2. Deleted version UPDATE  
+3. Changed version INSERT  
+4. New version INSERT  
+
+Dialects may override orchestration if required by the backend.
+
+Strict guarantees:
+
+- Exactly one open version per business key  
+- Deterministic `row_hash` comparison  
+- No overlapping validity intervals  
+- Append-only behavior  
+
+Historization SQL must be fully executable and not a placeholder.
+
+---
+
+### 🧩 19.4 Strict Mode Guarantees
+
+The core validates:
+
+- Required SCD columns exist  
+- Insert column alignment is 1:1  
+- Required surrogate keys are present  
+
+Dialects can assume validated semantic input and focus solely on SQL rendering.
+
+---
+
+### 🧩 19.5 Architectural Symmetry
+
+Merge and Historization follow the same layered responsibility model:
+
+| Layer | Responsibility |
+|-------|---------------|
+| Logical layer | Semantic intent |
+| `load_sql` | Semantic ingredient preparation |
+| Dialect | SQL shape rendering |
+| Execution engine | Execution only |
+
+This symmetry ensures:
+
+- Predictable cross-dialect behavior  
+- Clean extensibility  
+- Stable internal architecture  
+- No SQL-shape logic in the core layer  
+
+---
+
 ## 🔧 Related Documents
 
 - [Logical Plan & Lineage](logical_plan.md)  

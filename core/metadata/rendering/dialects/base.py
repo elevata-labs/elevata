@@ -654,39 +654,229 @@ class SqlDialect(ABC):
     )
 
 
+  def render_hist_insert_statement(
+    self,
+    *,
+    hist_schema: str,
+    hist_table: str,
+    hist_columns_sql: list[str],
+    source_schema: str,
+    source_table: str,
+    source_alias: str,
+    select_exprs_sql: list[str],
+    exists_schema: str,
+    exists_table: str,
+    exists_alias: str,
+    exists_predicates: list[str],
+    exists_negated: bool,
+  ) -> str:
+    """Render an INSERT ... SELECT guarded by (NOT) EXISTS.
+
+    elevata convention:
+      - load_sql supplies semantic ingredients (already-rendered identifiers and predicates)
+      - dialect owns the SQL shape (and can override this method if needed)
+    """
+    hist_fqn = self.render_table_identifier(hist_schema, hist_table)
+    src_fqn = self.render_table_identifier(source_schema, source_table)
+    ex_fqn = self.render_table_identifier(exists_schema, exists_table)
+
+    exists_kw = "NOT EXISTS" if exists_negated else "EXISTS"
+    preds = [p for p in (exists_predicates or []) if (p or "").strip()]
+    pred_sql = "\n    AND ".join(preds) if preds else "1=1"
+
+    cols_sql = ",\n  ".join(hist_columns_sql)
+    exprs_sql = ",\n  ".join(select_exprs_sql)
+
+    return (
+      f"INSERT INTO {hist_fqn} (\n"
+      f"  {cols_sql}\n"
+      f")\n"
+      "SELECT\n"
+      f"  {exprs_sql}\n"
+      f"FROM {src_fqn} AS {source_alias}\n"
+      f"WHERE {exists_kw} (\n"
+      "  SELECT 1\n"
+      f"  FROM {ex_fqn} AS {exists_alias}\n"
+      f"  WHERE {pred_sql}\n"
+      ");"
+    )
+
+
+  def render_hist_incremental_statement(
+    self,
+    *,
+    schema_name: str,
+    hist_table: str,
+    rawcore_table: str,
+    include_comment: bool,
+    include_inserts: bool,
+    changed_insert_kwargs: dict | None,
+    new_insert_kwargs: dict | None,
+  ) -> str:
+    """Render the full SCD2 incremental pipeline for a *_hist dataset.
+
+    The default orchestration is:
+      1) close changed versions (UPDATE)
+      2) mark deleted business keys (UPDATE)
+      3) insert new versions for changed keys (INSERT..SELECT..EXISTS) [optional]
+      4) insert first versions for new keys (INSERT..SELECT..NOT EXISTS) [optional]
+    """
+    parts: list[str] = []
+
+    if include_comment:
+      parts.append(
+        f"-- History load for {schema_name}.{hist_table} (SCD Type 2).\n"
+        f"-- Real SQL for new, changed and deleted business keys follows below.\n"
+      )
+
+    parts.append(
+      self.render_hist_changed_update_sql(
+        schema_name=schema_name,
+        hist_table=hist_table,
+        rawcore_table=rawcore_table,
+      )
+    )
+    parts.append("")
+    parts.append(
+      self.render_hist_delete_sql(
+        schema_name=schema_name,
+        hist_table=hist_table,
+        rawcore_table=rawcore_table,
+      )
+    )
+
+    if include_inserts:
+      if changed_insert_kwargs:
+        parts.append("")
+        parts.append(self.render_hist_insert_statement(**changed_insert_kwargs))
+      if new_insert_kwargs:
+        parts.append("")
+        parts.append(self.render_hist_insert_statement(**new_insert_kwargs))
+
+    sql = "\n".join([p for p in parts if p is not None]).rstrip()
+    return sql + "\n"
+
+
   def render_merge_statement(
     self,
-    schema: str,
-    table: str,
-    select_sql: str,
-    unique_key_columns: list[str],
+    *,
+    target_fqn: str,
+    source_select_sql: str,
+    key_columns: list[str],
     update_columns: list[str],
+    insert_columns: list[str],
+    target_alias: str = "t",
+    source_alias: str = "s",
   ) -> str:
-    full = self.render_table_identifier(schema, table)
+    """
+    Render an UPSERT / merge statement for this dialect.
 
-    on_clause = " AND ".join(
-      f"t.{self.render_identifier(c)} = s.{self.render_identifier(c)}"
-      for c in unique_key_columns
+    This is a *dialect responsibility* primitive: elevata's load layer supplies
+    only the semantic ingredients (source SELECT + column lists), while the
+    dialect decides the SQL shape (native MERGE, INSERT..ON CONFLICT, or a
+    performance-oriented fallback like UPDATE+INSERT).
+
+    Parameters:
+      target_fqn:
+        Fully-qualified target table identifier, already rendered (quoted) for
+        this dialect (e.g. schema.table, or project.dataset.table).
+      source_select_sql:
+        A SELECT statement that yields columns whose names match `insert_columns`
+        (or a superset). It must not end with a trailing semicolon.
+      key_columns:
+        Non-empty list of target column names used for matching (business key).
+      update_columns:
+        Target column names to update on match (typically non-key columns).
+      insert_columns:
+        Target column names to insert for new rows (stable order).
+      target_alias / source_alias:
+        Aliases used in the rendered statement.
+
+    Semantics:
+      - Updates existing rows matched on key_columns.
+      - Inserts missing rows.
+      - Deterministic output for deterministic inputs.
+
+    Default behavior:
+      - If supports_merge is True: render an ANSI-ish MERGE statement.
+      - Otherwise: render an UPDATE ... FROM + INSERT ... WHERE NOT EXISTS fallback.
+      - Dialects should override for idiomatic/performance-optimized SQL.
+    """
+    keys = [c for c in (key_columns or []) if c]
+    if not keys:
+      raise ValueError("render_merge_statement requires non-empty key_columns")
+
+    insert_cols = [c for c in (insert_columns or []) if c]
+    if not insert_cols:
+      # Minimal insert set: keys + update columns, stable order.
+      seen = set()
+      insert_cols = []
+      for c in keys + list(update_columns or []):
+        if c and c not in seen:
+          seen.add(c)
+          insert_cols.append(c)
+
+    updates = [c for c in (update_columns or []) if c and c not in set(keys)]
+
+    q = self.render_identifier
+    tgt = str(target_fqn).strip()
+    src = f"(\n{source_select_sql.strip()}\n) AS {q(source_alias)}"
+
+    on_pred = " AND ".join(
+      [f"{q(target_alias)}.{q(k)} = {q(source_alias)}.{q(k)}" for k in keys]
     )
 
-    update_assignments = ", ".join(
-      f"{self.render_identifier(col)} = s.{self.render_identifier(col)}"
-      for col in update_columns
+    if self.supports_merge:
+      parts: list[str] = []
+      parts.append(
+        f"MERGE INTO {tgt} AS {q(target_alias)}\n"
+        f"USING {src}\n"
+        f"ON {on_pred}"
+      )
+
+      if updates:
+        update_assignments = ", ".join(
+          [f"{q(c)} = {q(source_alias)}.{q(c)}" for c in updates]
+        )
+        parts.append(f"WHEN MATCHED THEN UPDATE SET {update_assignments}")
+
+      insert_cols_sql = ", ".join([q(c) for c in insert_cols])
+      insert_vals_sql = ", ".join([f"{q(source_alias)}.{q(c)}" for c in insert_cols])
+      parts.append(
+        f"WHEN NOT MATCHED THEN INSERT ({insert_cols_sql}) VALUES ({insert_vals_sql});"
+      )
+      return "\n".join(parts).strip()
+
+    # Fallback: UPDATE then INSERT (anti-join)
+    update_sql = ""
+    if updates:
+      set_sql = ", ".join(
+        [f"{q(target_alias)}.{q(c)} = {q(source_alias)}.{q(c)}" for c in updates]
+      )
+      update_sql = (
+        f"UPDATE {tgt} AS {q(target_alias)}\n"
+        f"SET {set_sql}\n"
+        f"FROM {src}\n"
+        f"WHERE {on_pred};"
+      )
+
+    insert_cols_sql = ", ".join([q(c) for c in insert_cols])
+    select_cols_sql = ", ".join([f"{q(source_alias)}.{q(c)}" for c in insert_cols])
+    insert_sql = (
+      f"INSERT INTO {tgt} ({insert_cols_sql})\n"
+      f"SELECT {select_cols_sql}\n"
+      f"FROM {src}\n"
+      f"WHERE NOT EXISTS (\n"
+      f"  SELECT 1\n"
+      f"  FROM {tgt} AS {q(target_alias)}\n"
+      f"  WHERE {on_pred}\n"
+      f");"
     )
 
-    all_cols = unique_key_columns + update_columns
-    col_list = ", ".join(self.render_identifier(c) for c in all_cols)
-    val_list = ", ".join(f"s.{self.render_identifier(c)}" for c in all_cols)
+    if update_sql:
+      return f"{update_sql}\n\n{insert_sql}".strip()
+    return insert_sql.strip()
 
-    return f"""
-      MERGE INTO {full} AS t
-      USING (
-      {select_sql}
-      ) AS s
-      ON {on_clause}
-      WHEN MATCHED THEN UPDATE SET {update_assignments}
-      WHEN NOT MATCHED THEN INSERT ({col_list}) VALUES ({val_list});
-    """.strip()
 
   def render_delete_detection_statement(
     self,

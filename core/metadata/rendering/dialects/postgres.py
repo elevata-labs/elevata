@@ -238,45 +238,82 @@ class PostgresDialect(SqlDialect):
   # ---------------------------------------------------------------------------
   def render_merge_statement(
     self,
-    schema: str,
-    table: str,
-    select_sql: str,
-    unique_key_columns: list[str],
+    *,
+    target_fqn: str,
+    source_select_sql: str,
+    key_columns: list[str],
     update_columns: list[str],
+    insert_columns: list[str],
+    target_alias: str = "t",
+    source_alias: str = "s",
   ) -> str:
     """
-    Implement incremental MERGE via INSERT .. ON CONFLICT.
+    Render a Postgres-compatible merge/upsert statement.
 
-    Contract:
-      - `select_sql` must produce columns whose names match the target columns.
-      - The column set must at least cover:
-        unique_key_columns + update_columns
+    Important: INSERT ... ON CONFLICT requires a UNIQUE/EXCLUDE constraint (or
+    a matching unique index) on the conflict target. In many elevata rawcore
+    datasets, business keys are not enforced as unique constraints.
+
+    Therefore, Postgres uses a deterministic UPDATE + INSERT ... WHERE NOT EXISTS
+    pattern that does not require constraints, while preserving merge semantics.
     """
-    target_qualified = self.render_table_identifier(schema, table)
+    q = self.render_identifier
+    target = str(target_fqn).strip()
 
-    # ON CONFLICT uses the unique key columns
-    key_list = ", ".join(self.render_identifier(c) for c in unique_key_columns)
+    keys = [c for c in (key_columns or []) if c]
+    if not keys:
+      raise ValueError("PostgresDialect.render_merge_statement requires non-empty key_columns")
 
-    # Insert column order = keys first, then update columns
-    all_columns = unique_key_columns + [
-      c for c in update_columns if c not in unique_key_columns
-    ]
-    insert_col_list = ", ".join(self.render_identifier(c) for c in all_columns)
+    insert_cols = [c for c in (insert_columns or []) if c]
+    if not insert_cols:
+      seen = set()
+      insert_cols = []
+      for c in keys + list(update_columns or []):
+        if c and c not in seen:
+          seen.add(c)
+          insert_cols.append(c)
 
-    # ON CONFLICT DO UPDATE SET <col> = EXCLUDED.<col>
-    update_assignments = ", ".join(
-      f"{self.render_identifier(c)} = EXCLUDED.{self.render_identifier(c)}"
-      for c in update_columns
+    updates = [c for c in (update_columns or []) if c and c not in set(keys)]
+
+    # Wrap the source SELECT as a subquery and alias it.
+    src = f"(\n{source_select_sql.strip()}\n) AS {q(source_alias)}"
+
+    on_pred = " AND ".join(
+      [f"{q(target_alias)}.{q(k)} = {q(source_alias)}.{q(k)}" for k in keys]
     )
 
-    sql = (
-      f"INSERT INTO {target_qualified} ({insert_col_list})\n"
-      f"{select_sql}\n"
-      f"ON CONFLICT ({key_list})\n"
-      f"DO UPDATE SET {update_assignments};"
+    # UPDATE branch (if there are non-key columns)
+    update_sql = ""
+    if updates:
+      set_sql = ", ".join(
+        # Postgres: SET target columns must NOT be qualified with the table alias.
+        [f"{q(c)} = {q(source_alias)}.{q(c)}" for c in updates]
+      )
+      update_sql = (
+        f"UPDATE {target} AS {q(target_alias)}\n"
+        f"SET {set_sql}\n"
+        f"FROM {src}\n"
+        f"WHERE {on_pred};"
+      )
+
+    # INSERT branch (anti-join)
+    insert_cols_sql = ", ".join([q(c) for c in insert_cols])
+    select_cols_sql = ", ".join([f"{q(source_alias)}.{q(c)}" for c in insert_cols])
+    insert_sql = (
+      f"INSERT INTO {target} ({insert_cols_sql})\n"
+      f"SELECT {select_cols_sql}\n"
+      f"FROM {src}\n"
+      f"WHERE NOT EXISTS (\n"
+      f"  SELECT 1\n"
+      f"  FROM {target} AS {q(target_alias)}\n"
+      f"  WHERE {on_pred}\n"
+      f");"
     )
 
-    return sql.strip()
+    if update_sql:
+      return f"{update_sql}\n\n{insert_sql}".strip()
+    return insert_sql.strip()
+
 
   LOAD_RUN_LOG_TYPE_MAP = {
     "string": "TEXT",

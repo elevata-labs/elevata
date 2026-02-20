@@ -304,6 +304,38 @@ class DuckDBDialect(SqlDialect):
   # ---------------------------------------------------------------------------
   # 5. DML / load SQL primitives
   # ---------------------------------------------------------------------------
+  def render_merge_statement(
+    self,
+    *,
+    target_fqn: str,
+    source_select_sql: str,
+    key_columns: list[str],
+    update_columns: list[str],
+    insert_columns: list[str],
+    target_alias: str = "t",
+    source_alias: str = "s",
+  ) -> str:
+    """
+    Render a DuckDB MERGE statement.
+
+    DuckDB supports a native MERGE statement. We keep the SQL shape simple and
+    warehouse-native, delegating only semantic inputs from elevata's load layer:
+      - a source SELECT
+      - key/update/insert column lists
+    """
+    # DuckDB's MERGE is close enough to the base implementation. We still
+    # override to document the contract and to allow future optimizations.
+    return super().render_merge_statement(
+      target_fqn=target_fqn,
+      source_select_sql=source_select_sql,
+      key_columns=key_columns,
+      update_columns=update_columns,
+      insert_columns=insert_columns,
+      target_alias=target_alias,
+      source_alias=source_alias,
+    )
+
+
   LOAD_RUN_LOG_TYPE_MAP = {
     "string": "VARCHAR",
     "bool": "BOOLEAN",

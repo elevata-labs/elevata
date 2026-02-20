@@ -61,26 +61,33 @@ def test_pg_literal_render():
   assert d.render_literal(None) == "NULL"
   assert d.render_literal(True) == "TRUE"
 
-def test_pg_merge_statement_uses_insert_on_conflict_upsert():
+def test_pg_merge_statement_uses_update_and_insert_fallback_upsert():
   d = PostgresDialect()
 
   select_sql = "SELECT 1 AS id, 'x'::text AS payload"
 
   sql = d.render_merge_statement(
-    schema="dw",
-    table="dim_customer",
-    select_sql=select_sql,
-    unique_key_columns=["id"],
+    target_fqn=d.render_table_identifier("dw", "dim_customer"),
+    source_select_sql=select_sql,
+    key_columns=["id"],
     update_columns=["payload"],
+    insert_columns=["id", "payload"],
   )
 
   # Basic shape checks
   lower = sql.lower()
 
-  # Should be an INSERT ... ON CONFLICT ... DO UPDATE statement
-  assert "insert into" in lower
-  assert "on conflict" in lower
-  assert "do update set" in lower
+  # PostgreSQL can express upsert either via native INSERT .. ON CONFLICT
+  # (requires a unique/exclusion constraint) or via UPDATE .. FROM + INSERT .. NOT EXISTS.
+  assert "insert into" in lower or "update" in lower
+
+  if "on conflict" in lower:
+    assert "do update" in lower
+  else:
+    # Fallback path
+    assert "update" in lower
+    assert "from" in lower
+    assert "where not exists" in lower
 
   # The target table should appear, typically quoted
   assert "dim_customer" in sql

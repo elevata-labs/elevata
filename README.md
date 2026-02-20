@@ -296,25 +296,6 @@ dependencies before execution.
 
 ---
 
-## 🚀 elevata 1.0 — Stable Foundation
-
-With version **1.0**, elevata reaches a major milestone.
-
-This release establishes a **stable, backward-compatible core** for
-metadata-driven data platform engineering, including:
-
-- Deterministic SQL planning and generation  
-- Explicit dataset modeling with lineage and contracts  
-- Query Trees as a first-class metadata model for controlled query logic  
-- A metadata-native Query Builder for authoring, inspecting and governing query trees  
-- Business semantics via Bizcore datasets (joins, aggregations, rules)  
-- Policy-enforced governance and validation
-
-From this release onward, elevata preserves compatibility of
-its core metadata models and execution semantics.
-
----
-
 ## 🔮 Roadmap
 
 The roadmap reflects the current development direction of elevata.  

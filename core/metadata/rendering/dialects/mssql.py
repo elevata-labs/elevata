@@ -400,6 +400,79 @@ class MssqlDialect(SqlDialect):
     )
 
 
+  def render_merge_statement(
+    self,
+    *,
+    target_fqn: str,
+    source_select_sql: str,
+    key_columns: list[str],
+    update_columns: list[str],
+    insert_columns: list[str],
+    target_alias: str = "t",
+    source_alias: str = "s",
+  ) -> str:
+    """
+    Render an MS SQL Server MERGE statement.
+
+    SQL Server supports a native MERGE statement. We render a standard T-SQL MERGE
+    using a subquery source:
+
+      MERGE <target> AS t
+      USING (<source_select_sql>) AS s
+      ON t.k1 = s.k1 AND ...
+      WHEN MATCHED THEN UPDATE SET t.col = s.col, ...
+      WHEN NOT MATCHED THEN INSERT (c1, c2, ...) VALUES (s.c1, s.c2, ...);
+
+    Notes:
+      - T-SQL requires a statement terminator ';' for MERGE.
+      - If update_columns is empty (keys only), we omit the WHEN MATCHED clause.
+    """
+    q = self.render_identifier
+    target = str(target_fqn).strip()
+
+    keys = [c for c in (key_columns or []) if c]
+    if not keys:
+      raise ValueError("MssqlDialect.render_merge_statement requires non-empty key_columns")
+
+    insert_cols = [c for c in (insert_columns or []) if c]
+    if not insert_cols:
+      seen = set()
+      insert_cols = []
+      for c in keys + list(update_columns or []):
+        if c and c not in seen:
+          seen.add(c)
+          insert_cols.append(c)
+
+    updates = [c for c in (update_columns or []) if c and c not in set(keys)]
+
+    on_pred = " AND ".join(
+      [f"{q(target_alias)}.{q(k)} = {q(source_alias)}.{q(k)}" for k in keys]
+    )
+
+    src = f"(\n{source_select_sql.strip()}\n) AS {q(source_alias)}"
+
+    parts: list[str] = []
+    parts.append(
+      f"MERGE {target} AS {q(target_alias)}\n"
+      f"USING {src}\n"
+      f"ON {on_pred}"
+    )
+
+    if updates:
+      update_assignments = ", ".join(
+        [f"{q(target_alias)}.{q(c)} = {q(source_alias)}.{q(c)}" for c in updates]
+      )
+      parts.append(f"WHEN MATCHED THEN UPDATE SET {update_assignments}")
+
+    insert_cols_sql = ", ".join([q(c) for c in insert_cols])
+    insert_vals_sql = ", ".join([f"{q(source_alias)}.{q(c)}" for c in insert_cols])
+    parts.append(
+      f"WHEN NOT MATCHED THEN INSERT ({insert_cols_sql}) VALUES ({insert_vals_sql});"
+    )
+
+    return "\n".join(parts).strip()
+
+
   def render_delete_detection_statement(
     self,
     target_schema,

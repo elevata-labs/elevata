@@ -5,20 +5,73 @@ This project adheres to [Semantic Versioning](https://semver.org/) and [Keep a C
 
 ---
 
-## [Unreleased]
-
-### Added
-- (nothing yet)
-### Changed
-- (nothing yet)
-### Fixed
-- (nothing yet)
-
----
 📈 For the full roadmap, see [Project Readme](https://github.com/elevata-labs/elevata/blob/main/README.md)
 
 🧾 Licensed under the **AGPL-v3** — open, governed, and community-driven.  
 💡 *elevata keeps evolving — one small, meaningful release at a time.*
+
+
+---
+
+## [Unreleased]
+
+This update finalizes the dialect-driven Merge and Historization architecture.
+
+The focus is architectural consistency, strict metadata validation,  
+and full cross-dialect parity for incremental and SCD Type 2 pipelines.
+
+---
+
+### ✨ Improved
+
+#### Dialect-Driven Merge Rendering
+
+- Refactored `render_merge_sql()` to delegate SQL shape entirely to dialects  
+- `load_sql` now provides semantic ingredients only (source select, keys, columns)  
+- All dialects implement `render_merge_statement()`  
+- Native MERGE used where supported  
+- Automatic UPDATE + INSERT fallback where MERGE is not available  
+- Removed SQL-shape logic from core layer  
+
+#### Fully Executable Historization (SCD Type 2)
+
+- History datasets (`*_hist`) now generate complete execution-ready SQL  
+- Introduced `render_hist_incremental_statement()` as dialect primitive  
+- Historization pipeline fully dialect-owned (UPDATE + INSERT orchestration)  
+- Removed placeholder-only history rendering  
+- Added optional `include_comment` flag for preview mode  
+
+#### Strict Mode for Historization
+
+- Validates required SCD technical columns:
+  - `row_hash`  
+  - `version_started_at`  
+  - `version_ended_at`  
+  - `version_state`  
+  - `load_run_id`  
+  - `<rawcore>_key`  
+- Validates INSERT column alignment (1:1 guarantee)  
+- Raises deterministic errors instead of silent SQL misalignment  
+
+---
+
+### 🛠 Fixed
+
+- BigQuery type mismatch regression in MERGE updates  
+- Postgres `SET` qualification bug in UPDATE statements  
+- Incorrect ON CONFLICT fallback semantics  
+- Delete detection routing edge cases  
+- Multiple test-suite regressions caused by refactor  
+
+---
+
+### 🔧 Internal
+
+- Removed obsolete helper functions from `load_sql`  
+- Consolidated history INSERT logic into dialect layer  
+- Harmonized merge and historization architecture  
+- Expanded dialect smoke testing coverage  
+- Improved strict-mode validation for deterministic SQL generation  
 
 ---
 
