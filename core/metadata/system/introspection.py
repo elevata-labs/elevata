@@ -25,6 +25,9 @@ from typing import Dict, Any
 import re
 
 
+_IDENT_PART_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+
 def _normalize_sa_columns(cols: list[dict]) -> list[dict]:
   """
   Ensure SQLAlchemy inspector columns are consistent across dialects:
@@ -43,6 +46,39 @@ def _normalize_sa_columns(cols: list[dict]) -> list[dict]:
       cc["nullable"] = bool(cc["nullable"])
     out.append(cc)
   return out
+
+
+def _quote_ident(engine, ident: str) -> str:
+  """
+  Quote a single identifier part using SQLAlchemy's identifier preparer.
+
+  This is safe for introspection SQL where identifiers cannot be bound
+  as parameters (only values can).
+  """
+  prep = getattr(engine.dialect, "identifier_preparer", None)
+  if not prep:
+    # Fallback: keep as-is (should not happen for real SQLAlchemy dialects).
+    return ident
+  return prep.quote(ident)
+
+
+def _quote_qualified_name(engine, qualified: str) -> str:
+  """
+  Quote a potentially qualified name such as:
+    - schema
+    - schema.table
+    - catalog.schema.table
+
+  We quote each part individually.
+  """
+  parts = [p for p in (qualified or "").split(".") if p]
+  if not parts:
+    raise ValueError("Empty identifier")
+  for p in parts:
+    # Keep this strict: introspection must not accept arbitrary SQL.
+    if not _IDENT_PART_RE.match(p):
+      raise ValueError(f"Unsafe identifier part: {p!r}")
+  return ".".join(_quote_ident(engine, p) for p in parts)
 
 
 def read_table_metadata(engine, schema: str, table: str) -> Dict[str, Any]:
@@ -105,7 +141,10 @@ def _format_mssql_type(system_type: str, max_length: int | None, precision: int 
   return st or "nvarchar(max)"
 
 
-def _read_table_metadata_mssql(engine, schema: str, table: str):
+def _read_table_metadata_tsql(engine, schema: str, table: str, *, format_type_fn):
+  """
+  Common T-SQL sys.* introspection used for MSSQL and Fabric Warehouse.
+  """
   exists_sql = text("""
     SELECT 1
     FROM sys.tables t
@@ -133,7 +172,6 @@ def _read_table_metadata_mssql(engine, schema: str, table: str):
     ORDER BY c.column_id
     """)
 
-  # SQLAlchemy 2.0: use a connection
   with engine.connect() as conn:
     table_exists = conn.execute(exists_sql, {"schema": schema, "table": table}).scalar() is not None
     rows = conn.execute(sql, {"schema": schema, "table": table}).mappings().all()
@@ -152,7 +190,12 @@ def _read_table_metadata_mssql(engine, schema: str, table: str):
 
   cols = []
   for r in rows:
-    sys_type = _format_mssql_type(r["system_type_name"], r["max_length"], r["precision"], r["scale"])
+    sys_type = format_type_fn(
+      r["system_type_name"],
+      r["max_length"],
+      r["precision"],
+      r["scale"],
+    )
 
     cols.append({
       "name": r["column_name"],
@@ -176,7 +219,16 @@ def _read_table_metadata_mssql(engine, schema: str, table: str):
   }
 
 
-_TSQL_BASE_RE = re.compile(r"^([a-zA-Z0-9_]+)")
+def _read_table_metadata_mssql(engine, schema: str, table: str):
+  return _read_table_metadata_tsql(
+    engine,
+    schema,
+    table,
+    format_type_fn=lambda system_type_name, max_length, precision, scale: _format_mssql_type(
+      system_type_name, max_length, precision, scale
+    ),
+  )
+
 
 def _format_fabric_type(system_type_name: str, max_length, precision, scale) -> str:
   """Format T-SQL types for Fabric Warehouse.
@@ -227,79 +279,23 @@ def _format_fabric_type(system_type_name: str, max_length, precision, scale) -> 
 
   return formatted
 
+
 def _read_table_metadata_fabric(engine, schema: str, table: str):
   """Fabric Warehouse: same sys.* metadata query as MSSQL, but Fabric type formatting."""
-  exists_sql = text("""
-    SELECT 1
-    FROM sys.tables t
-    JOIN sys.schemas s ON t.schema_id = s.schema_id
-    WHERE s.name = :schema AND t.name = :table
-    """)
-
-  sql = text("""
-    SELECT
-      c.name AS column_name,
-      ut.name AS user_type_name,
-      st.name AS system_type_name,
-      c.max_length,
-      c.precision,
-      c.scale,
-      c.is_nullable,
-      c.collation_name,
-      c.column_id
-    FROM sys.columns c
-    JOIN sys.tables t ON c.object_id = t.object_id
-    JOIN sys.schemas s ON t.schema_id = s.schema_id
-    JOIN sys.types ut ON c.user_type_id = ut.user_type_id
-    JOIN sys.types st ON c.system_type_id = st.system_type_id AND st.user_type_id = st.system_type_id
-    WHERE s.name = :schema AND t.name = :table
-    ORDER BY c.column_id
-    """)
-
-  with engine.connect() as conn:
-    table_exists = conn.execute(exists_sql, {"schema": schema, "table": table}).scalar() is not None
-    rows = conn.execute(sql, {"schema": schema, "table": table}).mappings().all()
-
-  insp = inspect(engine)
-  pk = insp.get_pk_constraint(table_name=table, schema=schema) or {}
-  fks = insp.get_foreign_keys(table_name=table, schema=schema) or []
-
-  pk_cols = set(pk.get("constrained_columns") or [])
-  fk_map = {}
-  for fk in fks:
-    ref_table = fk.get("referred_table")
-    for col in fk.get("constrained_columns", []):
-      fk_map[col] = ref_table
-
-  cols = []
-  for r in rows:
-    sys_type = _format_fabric_type(
-      r["system_type_name"], r["max_length"], r["precision"], r["scale"]
-    )
-    cols.append({
-      "name": r["column_name"],
-      "type": sys_type,
-      "nullable": bool(r["is_nullable"]) if r["is_nullable"] is not None else None,
-      "comment": None,
-      "raw_type_user": r["user_type_name"],
-      "raw_type_system": r["system_type_name"],
-      "max_length": r["max_length"],
-      "precision": r["precision"],
-      "scale": r["scale"],
-      "collation": r["collation_name"],
-      "ordinal_position": r["column_id"],
-    })
-
-  return {
-    "columns": cols,
-    "primary_key_cols": pk_cols,
-    "fk_map": fk_map,
-    "table_exists": bool(table_exists),
-  }
+  return _read_table_metadata_tsql(
+    engine,
+    schema,
+    table,
+    format_type_fn=_format_fabric_type,
+  )
 
 
 def _read_table_metadata_databricks(engine, schema: str, table: str):
-  sql = f"DESCRIBE TABLE {schema}.{table}"
+  # Databricks does not reliably expose all metadata via SQLAlchemy inspector.
+  # Use DESCRIBE TABLE, but quote identifiers strictly to avoid injection.
+  qualified = f"{schema}.{table}" if schema else table
+  qualified_sql = _quote_qualified_name(engine, qualified)
+  sql = f"DESCRIBE TABLE {qualified_sql}"
 
   with engine.connect() as conn:
     rows = conn.execute(text(sql)).fetchall()

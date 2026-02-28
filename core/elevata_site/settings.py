@@ -43,7 +43,7 @@ from utils.db import build_metadata_database_url
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(find_dotenv(filename=".env", raise_error_if_not_found=False))
 
-ELEVATA_VERSION = "1.3.1"
+ELEVATA_VERSION = "1.4.0"
 
 ELEVATA_PROFILES_PATH = os.getenv("ELEVATA_PROFILES_PATH", str((BASE_DIR.parent / "config" / "elevata_profiles.yaml")))
 
@@ -599,6 +599,7 @@ ELEVATA_CRUD = {
             "business_key": "badge badge-pk",
             "entity_key": "badge badge-fk",
             "row_hash": "",
+            "payload": "",
             "load_run_id": "",
             "loaded_at": "",
             "version_started_at": "",
@@ -612,6 +613,7 @@ ELEVATA_CRUD = {
             "business_key": "BK",
             "entity_key": "EK",
             "row_hash": "",
+            "payload": "",
             "load_run_id": "",
             "loaded_at": "",
             "version_started_at": "",

@@ -1,6 +1,6 @@
 """
 elevata - Metadata-driven Data Platform Framework
-Copyright © 2025 Ilona Tag
+Copyright © 2025-2026 Ilona Tag
 
 This file is part of elevata.
 
@@ -33,10 +33,12 @@ from .types_map import map_sql_type
 from .connectors import engine_for_source_system
 
 from metadata.models import SourceColumn
-from metadata.constants import SUPPORTED_SQLALCHEMY, BETA_SQLALCHEMY
+from metadata.constants import SUPPORTED_SQLALCHEMY, BETA_SQLALCHEMY, AUTO_IMPORT_NON_SQLALCHEMY
+from metadata.ingestion.rest_import import import_rest_metadata_for_dataset
+from metadata.ingestion.file_import import import_file_metadata_for_dataset
 
 # Allow auto import for these types (stable + beta)
-ALLOWED_FOR_IMPORT = SUPPORTED_SQLALCHEMY | BETA_SQLALCHEMY
+ALLOWED_FOR_IMPORT = SUPPORTED_SQLALCHEMY | BETA_SQLALCHEMY | AUTO_IMPORT_NON_SQLALCHEMY
 
 log = logging.getLogger(__name__)
 
@@ -116,7 +118,36 @@ def import_metadata_for_datasets(
         "You can still document it manually in elevata."
       )
 
-    # Reuse or create engine per source system
+    # Non-SQLAlchemy import path (REST / files)
+    if system_type in AUTO_IMPORT_NON_SQLALCHEMY:
+      try:
+        if system_type == "rest":
+          res = import_rest_metadata_for_dataset(
+            ds,
+            autointegrate_pk=autointegrate_pk,
+            reset_flags=reset_flags,
+          )
+        else:
+          res = import_file_metadata_for_dataset(
+            ds,
+            file_type=system_type,
+            autointegrate_pk=autointegrate_pk,
+            reset_flags=reset_flags,
+          )
+      except Exception as e:
+        msg = f"{ds.schema_name}.{ds.source_dataset_name}".strip(".")
+        log.error("Error importing metadata for %s (%s): %s", msg, system_type, e)
+        skipped.append(msg + f" (error: {e})")
+        continue
+
+      totals["datasets"] += 1
+      totals["columns_imported"] += int(res.get("columns_imported") or 0)
+      totals["created"] += int(res.get("created") or 0)
+      totals["updated"] += int(res.get("updated") or 0)
+      totals["removed"] += int(res.get("removed") or 0)
+      continue
+
+    # Reuse or create engine per source system (SQLAlchemy sources)
     if ss.id not in engines:
       try:
         engines[ss.id] = engine_for_source_system(system_type=system_type, short_name=ss.short_name)

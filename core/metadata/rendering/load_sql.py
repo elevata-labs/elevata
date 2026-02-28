@@ -43,7 +43,7 @@ from metadata.models import TargetDataset, TargetColumn, TargetColumnInput
 from metadata.rendering.load_planner import build_load_plan
 from metadata.rendering.renderer import get_effective_materialization, render_select_for_target
 from metadata.rendering.builder import build_logical_select_for_target
-from metadata.rendering.logical_plan import LogicalSelect
+from metadata.rendering.logical_plan import LogicalSelect, SourceTable, SelectItem
 from metadata.rendering.dsl import parse_surrogate_dsl
 from metadata.rendering.expr import (
   Expr, ColumnRef, Cast, Concat, Coalesce, FuncCall, RawSql
@@ -79,7 +79,6 @@ def _render_typed_stage_projection_for_target(
   This is used by merge and delete detection to ensure assignments and join
   predicates are type-compatible (e.g. BigQuery TIMESTAMP -> DATE).
   """
-  q = dialect.render_identifier
 
   # Expressions per target column name from the logical SELECT
   expr_map = _get_rendered_column_exprs_for_target(td, dialect)
@@ -104,22 +103,34 @@ def _render_typed_stage_projection_for_target(
       + ", ".join(missing)
     )
 
-  source_full = dialect.render_table_identifier(
-    stage_td.target_schema.schema_name,
-    stage_td.target_dataset_name,
+  # Build a vendor-neutral LogicalSelect and let the dialect render the SQL shape.
+  src = SourceTable(
+    schema=stage_td.target_schema.schema_name,
+    name=stage_td.target_dataset_name,
+    alias=source_alias,
   )
 
-  select_items: list[str] = []
+  select_list: list[SelectItem] = []
   for col in target_columns:
-    expr = expr_map[col]
-    select_items.append(f"{expr} AS {q(col)}")
+    expr_sql = expr_map.get(col)
+    if expr_sql:
+      # expr_sql is already rendered for the active dialect (incl. casts),
+      # so we wrap it as RawSql to avoid re-rendering expression structure.
+      expr_obj: Expr = RawSql(sql=expr_sql, default_table_alias=source_alias, is_template=False)
+    else:
+      # Fall back to a direct column reference from the stage table.
+      expr_obj = ColumnRef(table_alias=source_alias, column_name=col)
+      # Keep expr_map complete for downstream callers (join predicates, assignments).
+      expr_map[col] = dialect.render_expr(expr_obj)
 
-  source_select_sql = (
-    "SELECT\n  "
-    + ",\n  ".join(select_items)
-    + f"\nFROM\n  {source_full} AS {source_alias}"
-  ).strip()
+    select_list.append(SelectItem(expr=expr_obj, alias=col))
 
+  sel = LogicalSelect(
+    from_=src,
+    select_list=select_list,
+  )
+
+  source_select_sql = dialect.render_select(sel)
   return source_select_sql, expr_map
 
 

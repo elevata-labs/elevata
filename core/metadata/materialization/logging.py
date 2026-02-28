@@ -29,7 +29,6 @@ across all target systems and SQL dialects.
 Notes:
 - Types are canonical (string, bool, int, timestamp)
 - Dialects are responsible for mapping canonical types to physical types
-- This schema is allowed to change before v1.0 (breaking changes OK)
 """
 
 import re
@@ -71,6 +70,50 @@ LOAD_RUN_LOG_REGISTRY = {
     "datatype": "string",
     "nullable": False,
     "description": "Execution profile/environment name",
+  },
+
+  # ------------------------------------------------------------------
+  # Run kind / upstream ingestion context (optional)
+  # ------------------------------------------------------------------
+  "run_kind": {
+    "datatype": "string",
+    "nullable": False,
+    "description": "Run category (sql / ingestion / orchestration)",
+  },
+  "source_system": {
+    "datatype": "string",
+    "nullable": True,
+    "description": "Source system short name (for ingestion runs)",
+  },
+  "source_dataset": {
+    "datatype": "string",
+    "nullable": True,
+    "description": "Source dataset name (for ingestion runs)",
+  },
+  "source_object": {
+    "datatype": "string",
+    "nullable": True,
+    "description": "Optional source object reference (e.g. schema.table or endpoint)",
+  },
+  "ingest_mode": {
+    "datatype": "string",
+    "nullable": True,
+    "description": "Ingestion mode (full / incremental / cdc)",
+  },
+  "delta_cutoff": {
+    "datatype": "timestamp",
+    "nullable": True,
+    "description": "Resolved delta cutoff timestamp (if applicable)",
+  },
+  "rows_extracted": {
+    "datatype": "int",
+    "nullable": True,
+    "description": "Rows extracted from source (if available)",
+  },
+  "chunk_size": {
+    "datatype": "int",
+    "nullable": True,
+    "description": "Chunk size used for ingestion inserts (if applicable)",
   },
 
   # ------------------------------------------------------------------
@@ -218,6 +261,14 @@ def build_load_run_log_row(
   target_dataset: str,
   target_system: str,
   profile: str,
+  run_kind: str = "sql",
+  source_system: str | None = None,
+  source_dataset: str | None = None,
+  source_object: str | None = None,
+  ingest_mode: str | None = None,
+  delta_cutoff=None,
+  rows_extracted: int | None = None,
+  chunk_size: int | None = None,
   mode: str,
   handle_deletes: bool,
   historize: bool,
@@ -241,6 +292,14 @@ def build_load_run_log_row(
     "target_dataset": target_dataset,
     "target_system": target_system,
     "profile": profile,
+    "run_kind": run_kind,
+    "source_system": source_system,
+    "source_dataset": source_dataset,
+    "source_object": source_object,
+    "ingest_mode": ingest_mode,
+    "delta_cutoff": delta_cutoff,
+    "rows_extracted": int(rows_extracted) if rows_extracted is not None else None,
+    "chunk_size": int(chunk_size) if chunk_size is not None else None,
     "mode": mode,
     "handle_deletes": bool(handle_deletes),
     "historize": bool(historize),

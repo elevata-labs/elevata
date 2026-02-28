@@ -23,6 +23,7 @@ Contact: <https://github.com/elevata-labs/elevata>.
 from __future__ import annotations
 
 import datetime
+import re
 from decimal import Decimal
 from typing import Sequence
 
@@ -183,10 +184,47 @@ class FabricWarehouseDialect(SqlDialect):
     s = str(name or "")
     s = s.replace('"', '""')
     return f'"{s}"'
+  
+
+  _KEYWORDS = {
+    # Minimal set (extend over time). Must include 'index' at least.
+    "index",
+    "table",
+    "select",
+    "from",
+    "where",
+    "group",
+    "order",
+    "by",
+    "user",
+  }
+
+
+  def should_quote(self, name: str) -> bool:
+    """
+    Quote identifiers that collide with SQL Server keywords or violate identifier rules.
+    """
+    if super().should_quote(name):
+      return True
+    n = str(name or "").strip().lower()
+    return n in self._KEYWORDS
+
 
   # ---------------------------------------------------------------------------
   # 3. Type mapping / DDL helpers
   # ---------------------------------------------------------------------------
+  @staticmethod
+  def _strip_nullability_from_physical_type(physical_type: str) -> str:
+    """
+    Guard against types that already include NULL/NOT NULL, since this dialect
+    appends nullability explicitly in CREATE TABLE rendering.
+    """
+    t = str(physical_type or "").strip()
+    t = re.sub(r"\s+NOT\s+NULL\s*$", "", t, flags=re.IGNORECASE)
+    t = re.sub(r"\s+NULL\s*$", "", t, flags=re.IGNORECASE)
+    return t.strip()
+
+
   def render_physical_type(
     self,
     *,
@@ -351,7 +389,7 @@ class FabricWarehouseDialect(SqlDialect):
     col_defs: list[str] = []
     for c in (columns or []):
       name = self.render_identifier(str(c["name"]))
-      ctype = self._ensure_length_spec(str(c["type"]))
+      ctype = self._strip_nullability_from_physical_type(self._ensure_length_spec(str(c["type"])))
       nullable = bool(c.get("nullable", True))
       null_sql = "NULL" if nullable else "NOT NULL"
       col_defs.append(f"{name} {ctype} {null_sql}")

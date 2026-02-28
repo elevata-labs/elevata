@@ -47,7 +47,7 @@ from metadata.rendering.load_sql import (
 from metadata.rendering.load_planner import build_load_plan
 from metadata.rendering.placeholders import resolve_delta_cutoff_for_source_dataset
 from metadata.intent.ingestion import resolve_ingest_mode
-from metadata.ingestion.native_raw import ingest_raw_full
+from metadata.ingestion.connectors import ingest_raw_for_source_dataset
 from metadata.execution.load_graph import resolve_execution_order, resolve_execution_order_all
 from metadata.execution.executor import build_execution_plan, execute_plan, ExecutionPolicy
 from metadata.execution.snapshot import (
@@ -390,12 +390,23 @@ def run_single_target_dataset(
       profile=profile,
       chunk_size=chunk_size,
       batch_run_id=batch_run_id,
+      load_run_id=load_run_id,
     )
 
     if not no_print:
+      src_sql = (result or {}).get("source_sql")
+      if src_sql:
+        stdout.write("")
+        stdout.write(style.NOTICE(f"-- Dataset: {dataset_key}"))
+        stdout.write(style.NOTICE(f"-- Profile: {profile.name}"))
+        stdout.write(style.NOTICE(f"-- Target system: {target_system.short_name} (type={target_system.type})"))
+        stdout.write(style.NOTICE("-- Source extraction SQL:"))
+        stdout.write("")
+        stdout.write(src_sql)
+        stdout.write("")
       stdout.write(style.NOTICE(f"[OK] {dataset_key}: RAW ingestion result: {result}"))
 
-    # Normalize ingestion outcome (best-effort: ingest_raw_full already returns status)
+    # Normalize ingestion outcome (best-effort: ingest_raw_relational already returns status)
     status = (result or {}).get("status", "success")
     msg = (result or {}).get("reason") or None
 
@@ -906,6 +917,8 @@ def run_single_target_dataset(
       target_dataset=td.target_dataset_name,
       target_system=target_system.short_name,
       profile=profile.name,
+      run_kind="sql",
+      delta_cutoff=delta_cutoff,
       mode=str(summary.get("mode") or getattr(load_plan, "mode", None) or "full"),
       handle_deletes=bool(summary.get("handle_deletes") or False),
       historize=bool(summary.get("historize") or False),
@@ -976,6 +989,7 @@ def execute_raw_via_ingestion(
   profile,
   chunk_size=5000,
   batch_run_id=None,
+  load_run_id=None,
 ):
   """
   Execute semantics for RAW: run ingestion instead of load-SQL.
@@ -1004,13 +1018,22 @@ def execute_raw_via_ingestion(
   if mode != "native":
     raise ValueError(f"Unknown ingest mode: {mode!r}")
 
-  return ingest_raw_full(
+  batch_run_id = batch_run_id or str(uuid.uuid4())
+  load_run_id = load_run_id or str(uuid.uuid4())
+
+  dialect = get_active_dialect(target_system.type)
+
+  return ingest_raw_for_source_dataset(
     source_dataset=src_ds,
+    td=target_dataset,
     target_system=target_system,
+    dialect=dialect,
     profile=profile,
-    chunk_size=chunk_size,
     batch_run_id=batch_run_id,
+    load_run_id=load_run_id,
+    chunk_size=chunk_size,
   )
+
 
 def warn_if_stage_exec_without_raw(target_dataset):
   """
@@ -1735,6 +1758,7 @@ class Command(BaseCommand):
               target_dataset=target_dataset,
               target_system=system.short_name,
               profile=profile.name,
+              run_kind="orchestration",
               # Orchestration-only rows: still need non-null semantics fields
               mode="orchestration",
               handle_deletes=False,

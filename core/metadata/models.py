@@ -278,6 +278,14 @@ class SourceDataset(AuditFields):
       "If No: suppress creation of a raw landing TargetDataset."
     )
   )
+  ingestion_config = models.JSONField(blank=True, null=True,
+    help_text=(
+      "Optional config for ingestion from non-relational sources (REST, files, etc.). "
+      "This is a contracted JSON structure interpreted by ingestion connectors. "
+      "Examples: endpoint path, query template/params, pagination strategy, "
+      "record JSON path, archive policy."
+    )
+  )
   active = models.BooleanField(default=True, 
     help_text=(
       "Indicates whether this dataset is still considered an active source in the originating system. "
@@ -529,6 +537,9 @@ class SourceColumn(AuditFields):
       "to be integrated/modeled as a SourceDataset. "
       "Used for lineage suggestions and probable future FK generation."
     )
+  )
+  json_path = models.CharField(max_length=512, null=True, blank=True,
+    help_text="Optional JSON path for semi-structured sources (REST/files), e.g. $.customer.id",
   )
   description = models.CharField(max_length=255, blank=True, null=True,
     help_text="Business description / semantic meaning of the column."
@@ -2031,7 +2042,7 @@ class TargetColumn(AuditFields):
   system_role = models.CharField(max_length=30, choices=SYSTEM_COLUMN_ROLE_CHOICES, blank=True, default="",
     help_text=(
       "Semantic role for system-managed columns. "
-      "Used to reliably render/execute technical columns (e.g. load_run_id, loaded_at) "
+      "Used to reliably render/execute technical columns (e.g. payload, load_run_id, loaded_at) "
       "and to support forensics without relying on naming conventions."
     ),
   )

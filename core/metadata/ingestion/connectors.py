@@ -275,6 +275,63 @@ def _resolve_db_secret(ref: str) -> DbSecret:
   return DbSecret.from_value(raw_value)
 
 
+def resolve_secret_ref(ref: str):
+  """
+  Resolve a secret reference against the active profile.
+  Returns the raw secret value (string or dict).
+  """
+  return resolve_profile_secret_value(
+    profiles_path=settings.ELEVATA_PROFILES_PATH,
+    ref=ref,
+  )
+
+
+def rest_config_for_source_system(*, system_type: str, short_name: str) -> dict:
+  """
+  Resolve REST connector config for a source system.
+  Secret convention: sec/{profile}/conn/{type}/{short_name}
+
+  Recommended secret shape:
+    {
+      "base_url": "https://api.example.com",
+      "headers": {"Authorization": "Bearer ..."},
+      "query": {"fixed_param": "x"}
+    }
+
+  Alternative: plain string base_url.
+  """
+  ref = build_secret_ref(
+    profiles_path=settings.ELEVATA_PROFILES_PATH,
+    type=system_type.lower(),
+    short_name=short_name,
+  )
+  sec = resolve_secret_ref(ref)
+  if isinstance(sec, str):
+    s = sec.strip()
+    # Support JSON object secrets stored as strings (e.g. from .env providers).
+    if s.startswith("{"):
+      try:
+        obj = json.loads(s)
+        if isinstance(obj, dict):
+          return {
+            "base_url": str(obj.get("base_url") or "").strip(),
+            "headers": dict(obj.get("headers") or {}),
+            "query": dict(obj.get("query") or {}),
+          }
+      except Exception:
+        pass
+    # Fallback: treat string as plain base_url.
+    return {"base_url": s, "headers": {}, "query": {}}
+
+  if isinstance(sec, dict):
+    return {
+      "base_url": str(sec.get("base_url") or "").strip(),
+      "headers": dict(sec.get("headers") or {}),
+      "query": dict(sec.get("query") or {}),
+    }
+  raise ValueError(f"Unsupported REST secret format for ref={ref}")
+
+
 def engine_from_secret_ref(ref: str) -> Engine:
   """
   Generic entrypoint: provide a final secret *reference*, get a SQLAlchemy engine back.
@@ -335,3 +392,75 @@ def is_url_like(value: str) -> bool:
     return bool(u.scheme and (u.hostname or u.path))
   except Exception:
     return False
+
+# -----------------------------------------------------------------------------
+# Ingestion dispatcher (source -> RAW)
+# -----------------------------------------------------------------------------
+def ingest_raw_for_source_dataset(
+  *,
+  source_dataset,
+  td,
+  target_system,
+  dialect,
+  profile,
+  batch_run_id: str,
+  load_run_id: str,
+  meta_schema: str = "meta",
+  **kwargs,
+):
+  """
+  Dispatch RAW ingestion based on source system type.
+  Keeps routing logic in one place.
+  """
+  # IMPORTANT:
+  # Keep imports local to avoid circular deps (native_raw imports engine_for_target).
+  from metadata.ingestion.rest import ingest_raw_rest
+  from metadata.ingestion.native_raw import ingest_raw_file, ingest_raw_relational
+
+  sys = getattr(source_dataset, "source_system", None)
+  if not sys:
+    raise ValueError("source_dataset.source_system is required")
+
+  st = str(getattr(sys, "type", "") or "").strip().lower()
+
+  if st == "rest":
+    return ingest_raw_rest(
+      source_dataset=source_dataset,
+      td=td,
+      target_system=target_system,
+      dialect=dialect,
+      profile=profile,
+      batch_run_id=batch_run_id,
+      load_run_id=load_run_id,
+      meta_schema=meta_schema,
+      **kwargs,
+    )
+
+  # File-like sources: source_system.type is the file type (csv/json/jsonl/...)
+  # (matches auto-import behavior in file_import.py).
+  # File-like sources: source_system.type is the file type (csv/json/jsonl/...)
+  if st in ("file", "csv", "json", "jsonl", "ndjson", "parquet", "excel"):
+    return ingest_raw_file(
+      source_dataset=source_dataset,
+      td=td,
+      target_system=target_system,
+      dialect=dialect,
+      profile=profile,
+      batch_run_id=batch_run_id,
+      load_run_id=load_run_id,
+      meta_schema=meta_schema,
+      file_type=st,
+      **kwargs,
+    )
+
+  # Fallback: treat everything else as relational/native source (db connectors).
+  return ingest_raw_relational(
+    source_dataset=source_dataset,
+    td=td,
+    target_system=target_system,
+    dialect=dialect,
+    profile=profile,
+    batch_run_id=batch_run_id,
+    load_run_id=load_run_id,
+    **kwargs,
+  )

@@ -26,8 +26,6 @@ import pytest
 
 from metadata.rendering.logical_plan import SourceTable, LogicalSelect, SelectItem
 from metadata.generation import naming
-# TODO: adjust Expr import to your real API
-# from metadata.expr import ColumnRef
 
 
 class DummyTargetSchema:
@@ -70,7 +68,7 @@ def logical_select_for_physical_name(physical_name_for_preview):
     alias="t",
   )
 
-  dummy_expr = object()  # TODO: replace with a real Expr/ColumnRef
+  dummy_expr = object()  
   select_items = [
     SelectItem(expr=dummy_expr, alias="row_count"),
   ]
@@ -87,7 +85,6 @@ def test_preview_uses_expected_physical_name(logical_select_for_physical_name, p
   Once wired, this test should ensure that the preview SQL uses the
   physical dataset name derived by the naming logic.
   """
-  # TODO: Import and call your real preview renderer.
   # Example:
   # from metadata.preview import build_preview_sql
   # sql = build_preview_sql(logical_select_for_physical_name)

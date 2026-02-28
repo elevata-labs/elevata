@@ -15,63 +15,61 @@ This project adheres to [Semantic Versioning](https://semver.org/) and [Keep a C
 
 ## [Unreleased]
 
-This update finalizes the dialect-driven Merge and Historization architecture.
+TBD
 
-The focus is architectural consistency, strict metadata validation,  
-and full cross-dialect parity for incremental and SCD Type 2 pipelines.
+---
+
+## [1.4.0] - 2026-02-28
+
+This release significantly expands elevata’s ingestion capabilities (REST + Files)  
+while further strengthening deterministic, dialect-owned execution semantics  
+across all supported warehouses.
+
+---
+
+### ✨ Added
+
+#### Ingestion Framework (RAW)
+
+- Native RAW ingestion for REST APIs and file-based sources via `SourceDataset.ingestion_config`  
+- Support for CSV, JSON, JSONL, Excel and Parquet sources  
+- Environment variable expansion for file URIs (e.g. `${ELEVATA_INGEST_ROOT}/...`)  
+- CSV parsing options (`delimiter`, `quotechar`, `encoding`)  
+- Excel ingestion options (`sheet_name` / `sheet_index`, `header_row`, `max_rows`) with strict validation  
+- Chunked file processing for large datasets with accurate total row tracking  
+- Standardized RAW landing with preserved JSON `payload` (system role)  
+- Deterministic JSON path–driven column mapping for REST and JSON ingestion
+
+#### Ingestion Routing
+
+- Unified ingestion dispatcher as single entry point (`ingest_raw_for_source_dataset(...)`)
 
 ---
 
 ### ✨ Improved
 
-#### Dialect-Driven Merge Rendering
+#### Dialect-Owned Merge Rendering
 
-- Refactored `render_merge_sql()` to delegate SQL shape entirely to dialects  
+- Refactored merge rendering to delegate SQL shape entirely to dialects  
 - `load_sql` now provides semantic ingredients only (source select, keys, columns)  
-- All dialects implement `render_merge_statement()`  
-- Native MERGE used where supported  
-- Automatic UPDATE + INSERT fallback where MERGE is not available  
-- Removed SQL-shape logic from core layer  
+- Cross-platform MERGE fallbacks where native MERGE is not available  
+- Improved dialect diagnostics and merge validation behavior
 
 #### Fully Executable Historization (SCD Type 2)
 
-- History datasets (`*_hist`) now generate complete execution-ready SQL  
-- Introduced `render_hist_incremental_statement()` as dialect primitive  
-- Historization pipeline fully dialect-owned (UPDATE + INSERT orchestration)  
-- Removed placeholder-only history rendering  
-- Added optional `include_comment` flag for preview mode  
-
-#### Strict Mode for Historization
-
-- Validates required SCD technical columns:
-  - `row_hash`  
-  - `version_started_at`  
-  - `version_ended_at`  
-  - `version_state`  
-  - `load_run_id`  
-  - `<rawcore>_key`  
-- Validates INSERT column alignment (1:1 guarantee)  
-- Raises deterministic errors instead of silent SQL misalignment  
+- History datasets (`*_hist`) now generate execution-ready SQL  
+- Historization pipeline fully dialect-owned (incremental history primitives)  
+- Strict validation for required SCD technical columns and INSERT alignment
 
 ---
 
 ### 🛠 Fixed
 
-- BigQuery type mismatch regression in MERGE updates  
-- Postgres `SET` qualification bug in UPDATE statements  
-- Incorrect ON CONFLICT fallback semantics  
-- Delete detection routing edge cases  
-- Multiple test-suite regressions caused by refactor  
-
----
-
-### 🔧 Internal
-
-- Removed obsolete helper functions from `load_sql`  
-- Consolidated history INSERT logic into dialect layer  
-- Harmonized merge and historization architecture  
-- Expanded dialect smoke testing coverage  
-- Improved strict-mode validation for deterministic SQL generation  
+- SQLAlchemy 2.0 execution compatibility in ingestion landing paths  
+- Correct cumulative row reporting for chunked RAW ingestion  
+- Cross-dialect merge, historization and delete-detection edge cases  
+- BigQuery hashing stability and literal rendering correctness  
+- Windows file URI normalization for file-based ingestion
 
 ---
 

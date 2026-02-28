@@ -179,10 +179,24 @@ class Command(BaseCommand):
           *self._run_check(
             "insert_into_table",
             lambda _: dialect.render_insert_into_table(
-              schema="dw",
-              table="dummy",
-              select_sql="SELECT 1 AS x",
+              "dw",
+              "dummy",
+              "SELECT 1 AS x",
               target_columns=["x"],
+            ),
+          ),
+        ))
+
+      if hasattr(dialect, "render_insert_values_statement"):
+        checks.append((
+          "insert_values_statement",
+          *self._run_check(
+            "insert_values_statement",
+            lambda _: dialect.render_insert_values_statement(
+              "dw",
+              "dummy",
+              target_columns=["x", "y"],
+              values_sql="(?, ?)",
             ),
           ),
         ))

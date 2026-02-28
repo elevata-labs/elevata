@@ -107,6 +107,9 @@ This index gives you an overview of all major topics and how they fit together.
 - [Source Backends](source_backends.md)  
   Overview of supported source systems and how to configure them (JDBC/ODBC, file-based, etc.).
 
+- [Source Ingestion Configuration](source_backends.md#-file-based-sources-raw-ingestion)  
+  (Manual: `ingestion_config` for Files / REST)
+
 ---
 
 ### ✅ Testing & Quality

@@ -47,14 +47,14 @@ TYPE_CHOICES = sorted([
   ("exasol", "Exasol (manual, no reflection)"),
 
   # File-based
-  ("csv", "CSV File(s) (manual, no reflection)"),
-  ("parquet", "Parquet File(s) (manual, no reflection)"),
-  ("excel", "Excel / XLSX File(s) (manual, no reflection)"),
-  ("json", "JSON File(s) (manual, no reflection)"),
-  ("jsonl", "JSON Lines File(s) (manual, no reflection)"),
+  ("csv", "CSV File(s)"),
+  ("parquet", "Parquet File(s)"),
+  ("excel", "Excel / XLSX File(s)"),
+  ("json", "JSON File(s)"),
+  ("jsonl", "JSON Lines File(s)"),
 
   # API-based
-  ("rest", "REST API (manual, no reflection)"),
+  ("rest", "REST API"),
   ("graphql", "GraphQL API (manual, no reflection)"),
 
   # Cloud / Transport layers
@@ -67,7 +67,7 @@ TYPE_CHOICES = sorted([
 DIALECT_HINTS = {
   # SQLAlchemy-supported
   "mssql": "Driver: ODBC Driver 18 (pyodbc). Install `sqlalchemy` + `pyodbc`. Example in docs/source_backends.md.",
-  "postgresql": "Driver: psycopg2. Install `sqlalchemy[postgresql]`.",
+  "postgres": "Driver: psycopg2. Install `sqlalchemy[postgresql]`.",
   "mysql": "Driver: mysqlclient or pymysql.",
   "sqlite": "Built-in SQLite; perfect for local tests.",
   "oracle": "Driver: python-oracledb.",
@@ -90,14 +90,14 @@ DIALECT_HINTS = {
   "exasol": "Manual only; reflection not supported yet.",
 
   # File-based
-  "csv": "Manual only; specify path or pattern in SourceDataset. Schema inference planned.",
-  "parquet": "Manual only; specify folder/prefix. Auto schema detection planned.",
-  "excel": "Manual only; specify workbook and sheet name. Adapter planned.",
-  "json": "Manual only; specify path or pattern. Schema inference planned.",
-  "jsonl": "Manual only; specify folder or file pattern. Adapter planned.",
+  "csv": "Specify path or pattern in SourceDataset.",
+  "parquet": "Specify folder/prefix.",
+  "excel": "Specify workbook and sheet name.",
+  "json": "Specify path or pattern.",
+  "jsonl": "Specify folder or file pattern.",
 
   # API-based
-  "rest": "Manual only; document endpoint and auth. REST adapter planned.",
+  "rest": "Document endpoint and auth.",
   "graphql": "Manual only; document endpoint and query. Adapter planned.",
 
   # Cloud / Transport
@@ -251,6 +251,7 @@ SYSTEM_COLUMN_ROLE_CHOICES = [
   ("row_hash", "Row hash"),
 
   # Technical / forensics
+  ("payload", "Payload"),
   ("load_run_id", "Load run id"),
   ("loaded_at", "Loaded at timestamp"),
 
@@ -301,7 +302,7 @@ INCREMENTAL_STRATEGY_CHOICES = [
 
 # Auto import via SQLAlchemy (stable)
 SUPPORTED_SQLALCHEMY = {
-  "mssql","postgresql","mysql","sqlite","oracle",
+  "mssql","postgres","mysql","sqlite","oracle",
   "snowflake","redshift","bigquery","duckdb","databricks",
 }
 
@@ -313,9 +314,22 @@ BETA_SQLALCHEMY = {
 # Manual/documentation-only (no reflection)
 MANUAL_TYPES = {
   "teradata","db2","hana","sapr3","exasol",
-  "csv","parquet","excel","json","jsonl",
-  "rest","graphql",
-  "s3","gcs","azureblob","sftp",
+  "graphql", "s3","gcs","azureblob","sftp",
+}
+
+# Types that support automated metadata import without SQLAlchemy inspection.
+# These types should show the "Import" button in the UI and be handled by
+# ImportService via a dedicated non-relational import path.
+AUTO_IMPORT_NON_SQLALCHEMY = {
+  # REST API
+  "rest",
+
+  # Flat/semistructured files
+  "csv",
+  "json",
+  "jsonl",
+  "parquet",
+  "excel",
 }
 
 # Optional: human labels for badges
@@ -333,9 +347,19 @@ TYPE_BADGE_CLASS = {
 }
 
 def classify_type(code: str) -> str:
-  """Return 'auto' | 'beta' | 'manual' for a given type code."""
-  if code in SUPPORTED_SQLALCHEMY:
+  """
+  Classifies system/source type into: 'auto' | 'beta' | 'manual'.
+  """
+  t = (code or "").lower()
+
+  if t in SUPPORTED_SQLALCHEMY:
     return "auto"
-  if code in BETA_SQLALCHEMY:
+
+  if t in BETA_SQLALCHEMY:
     return "beta"
+
+  # Non-SQLAlchemy auto import types (REST / files).
+  if t in AUTO_IMPORT_NON_SQLALCHEMY:
+    return "auto"  
+
   return "manual"

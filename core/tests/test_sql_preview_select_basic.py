@@ -1,6 +1,6 @@
 """
 elevata - Metadata-driven Data Platform Framework
-Copyright © 2025 Ilona Tag
+Copyright © 2025-2026 Ilona Tag
 
 This file is part of elevata.
 
@@ -25,8 +25,6 @@ Contact: <https://github.com/elevata-labs/elevata>.
 import pytest
 
 from metadata.rendering.logical_plan import SourceTable, LogicalSelect, SelectItem
-# TODO: adjust Expr import to your real API
-# from metadata.expr import ColumnRef
 
 
 @pytest.fixture
@@ -43,7 +41,6 @@ def simple_logical_select():
     alias="c",
   )
 
-  # TODO: Replace this with a real Expr instance, e.g. ColumnRef("c", "customer_id")
   dummy_expr = object()
 
   select_items = [
@@ -66,10 +63,6 @@ def test_sql_preview_basic_from_and_alias(simple_logical_select):
   - alias is rendered correctly
   - selected columns/aliases appear in the SQL
   """
-  # TODO: adjust import and call to your real preview/builder API.
-  # Example:
-  # from metadata.preview import build_preview_sql
-  # sql = build_preview_sql(simple_logical_select)
 
   from metadata.rendering.preview import build_preview_sql  # type: ignore  # noqa: F401
   sql = build_preview_sql(simple_logical_select)  # type: ignore  # noqa: F821

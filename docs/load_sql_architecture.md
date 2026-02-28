@@ -252,6 +252,21 @@ Practical rule:
 - If you `--execute` a Stage model, elevata assumes that its upstream exists inside the target execution context  
   (RAW landing or federated/external availability), and will fail fast otherwise.
 
+#### 🔎 Ingestion configuration (`ingestion_config`)
+
+For RAW ingestion, source connection details and behavior are defined via `SourceDataset.ingestion_config`.
+
+- For relational sources, scoping is controlled via `static_filter` and `increment_filter`.  
+- For non-relational sources (Files / REST), `ingestion_config` contains connector-specific parameters  
+(e.g. `uri` or `url`).
+
+Regardless of source type, RAW ingestion is always executed as **Full Replace**:
+
+- Drop (if supported)  
+- Create  
+- Truncate  
+- Insert
+
 ### 🧩 10.3 Auto‑Provisioning
 
 When enabled, execution automatically provisions:  

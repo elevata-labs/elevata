@@ -28,6 +28,9 @@ from metadata.materialization.schema import ensure_target_schema
 from metadata.system.introspection import read_table_metadata
 from metadata.materialization.logging import LOAD_RUN_SNAPSHOT_REGISTRY
 
+from metadata.rendering.logical_plan import LogicalSelect, SourceTable, SelectItem
+from metadata.rendering.expr import ColumnRef, Literal, RawSql
+
 
 LOAD_RUN_SNAPSHOT_COLUMNS = list(LOAD_RUN_SNAPSHOT_REGISTRY.keys())
 _DATABRICKS_DUPLICATE_COL_RE = re.compile(r"(FIELD_ALREADY_EXISTS|SQLSTATE:\s*42710)", re.IGNORECASE)
@@ -219,6 +222,43 @@ def render_select_load_run_snapshot_json(
   bid = dialect.literal(batch_run_id)
   # No LIMIT/TOP needed if batch_run_id is unique in practice.
   return f"SELECT snapshot_json FROM {tbl} WHERE batch_run_id = {bid}"
+
+
+def render_select_latest_load_run_snapshot_json_by_root_key(
+  *,
+  dialect,
+  meta_schema: str,
+  root_dataset_key: str,
+) -> str:
+  """
+  Select the latest snapshot_json for a stable root_dataset_key.
+
+  SQL shape is rendered via dialect.render_select(), so TOP/LIMIT differences
+  are handled by the dialect (not in this store function).
+  """
+  src = SourceTable(schema=meta_schema, name="load_run_snapshot", alias="s")
+
+  where_expr = RawSql(
+    sql="s.root_dataset_key = {expr:key}",
+    is_template=True,
+    expr_bindings={"key": Literal(root_dataset_key)},
+  )
+
+  order_by_expr = RawSql(sql="s.created_at DESC")
+
+  sel = LogicalSelect(
+    from_=src,
+    where=where_expr,
+    order_by=[order_by_expr],
+    select_list=[SelectItem(expr=ColumnRef(table_alias="s", column_name="snapshot_json"))],
+  )
+
+  # LogicalSelect currently does not model LIMIT as a dataclass field.
+  # Dialects typically read getattr(select, "limit", None) in render_select().
+  setattr(sel, "limit", 1)
+
+  return dialect.render_select(sel)
+
 
 def fetch_one_value(engine, sql: str):
   """

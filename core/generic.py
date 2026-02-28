@@ -127,7 +127,7 @@ def _has_downstream_dependents(obj) -> bool:
 
 def _is_query_relevant_model(model_or_obj) -> bool:
   """
-  Only block contract-changing CRUD for query-related models (v1.0).
+  Only block contract-changing CRUD for query-related models.
   """
   try:
     name = model_or_obj.__name__ if hasattr(model_or_obj, "__name__") else model_or_obj.__class__.__name__
@@ -1422,7 +1422,7 @@ class GenericCRUDView(LoginRequiredMixin, View):
     if not isinstance(current_val, bool):
       return HttpResponse("Field not toggleable", status=400)
 
-    # v1.0 safety for query-relevant models: block contract-changing toggles when impacted
+    # safety for query-relevant models: block contract-changing toggles when impacted
     if _is_query_relevant_model(obj):
       # Block disabling active=True -> False when referenced OR downstream exists
       if field_name == "active" and current_val is True:

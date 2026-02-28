@@ -1,6 +1,6 @@
 """
 elevata - Metadata-driven Data Platform Framework
-Copyright © 2025 Ilona Tag
+Copyright © 2025-2026 Ilona Tag
 
 This file is part of elevata.
 
@@ -25,8 +25,6 @@ Contact: <https://github.com/elevata-labs/elevata>.
 import pytest
 
 from metadata.rendering.logical_plan import LogicalUnion, LogicalSelect, SourceTable, SelectItem
-# TODO: adjust Expr import to your real implementation
-# from metadata.expr import ColumnRef
 
 
 def _build_minimal_select(schema: str, table: str, alias: str, column_alias: str) -> LogicalSelect:
@@ -37,7 +35,7 @@ def _build_minimal_select(schema: str, table: str, alias: str, column_alias: str
     alias=alias,
   )
 
-  dummy_expr = object()  # TODO: replace with ColumnRef(alias, "id") or similar
+  dummy_expr = object() 
 
   select_items = [
     SelectItem(expr=dummy_expr, alias=column_alias),

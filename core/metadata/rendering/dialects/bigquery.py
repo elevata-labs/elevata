@@ -597,8 +597,8 @@ class BigQueryDialect(SqlDialect):
         if not expr.args or len(expr.args) != 1:
           raise ValueError(f"{name} expects exactly one argument.")
         inner = self.render_expr(expr.args[0])
-        return f"TO_HEX(SHA256({inner}))"
-
+        return self.hash_expression(inner, algo="sha256")
+      
       if name == "CONCAT_WS":
         # CONCAT_WS(sep, a, b, c) -> ARRAY_TO_STRING([a,b,c], sep)
         if not expr.args or len(expr.args) < 2:
@@ -658,6 +658,23 @@ class BigQueryDialect(SqlDialect):
       return f"CAST({self.render_expr(expr)} AS DATE)"
   
     return super().cast_expression(expr, target_type)
+
+
+  def hash_expression(self, expr_sql: str, algo: str = "sha256") -> str:
+    """
+    Build a BigQuery hashing expression returning hex.
+
+    BigQuery SHA256/MD5 return BYTES. We wrap with TO_HEX(...) for a stable
+    string digest output. For typical elevata usage, the input is a string
+    expression (e.g. CONCAT/ARRAY_TO_STRING output), so we normalize via
+    CAST(<expr> AS BYTES).
+    """
+    a = (algo or "sha256").strip().lower()
+    if a in ("sha256", "sha-256", "hash256", "hash"):
+      return f"TO_HEX(SHA256(CAST({expr_sql} AS BYTES)))"
+    if a in ("md5",):
+      return f"TO_HEX(MD5(CAST({expr_sql} AS BYTES)))"
+    raise ValueError(f"Unsupported hash algo for BigQuery: {algo!r}")
 
 
   # ---------------------------------------------------------------------------

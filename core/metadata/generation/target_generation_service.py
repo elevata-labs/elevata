@@ -58,6 +58,18 @@ class TargetGenerationService:
   # Note: For computed columns (e.g. row_hash), we may want to PATCH but NOT CREATE
   # to avoid missing expressions.
   TECH_COLUMN_REGISTRY = [
+    # Raw landing payload (semi-structured sources like REST/files).
+    {
+      "name": "payload",
+      "datatype": "STRING",
+      "max_length": None,
+      "nullable": True,
+      "system_role": "payload",
+      "layers": {"raw"},
+      "description": "Original source payload as JSON/text for debugging and reproducibility.",
+      "create_if_missing": True,
+      "order": 100,
+    },
     # Common load tracking
     {
       "name": "load_run_id",

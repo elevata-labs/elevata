@@ -578,6 +578,31 @@ class SqlDialect(ABC):
       return f"INSERT INTO {table} ({cols})\n{select_sql}"
     return f"INSERT INTO {table}\n{select_sql}"
   
+
+  def render_insert_values_statement(
+    self,
+    schema_name: str,
+    table_name: str,
+    *,
+    target_columns: list[str],
+    values_sql: str,
+  ) -> str:
+    """
+    Render an INSERT ... VALUES statement.
+
+    This is used by ingestion/landing code paths that bulk insert rows via
+    execute_many() (parameterized VALUES).
+
+    values_sql must be a single VALUES clause payload, e.g.:
+      "(%s, %s, %s)"
+      "(?, ?, ?)"
+    Dialects can override to support special syntaxes.
+    """
+    table = self.render_table_identifier(schema_name, table_name)
+    cols = ", ".join(self.render_identifier(c) for c in (target_columns or []))
+    return f"INSERT INTO {table} ({cols}) VALUES {values_sql};"
+
+  
   # ---------------------------------------------------------------------------
   # Historization (SCD Type 2) SQL rendering
   # ---------------------------------------------------------------------------

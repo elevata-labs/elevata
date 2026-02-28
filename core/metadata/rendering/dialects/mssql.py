@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import pyodbc
 
+import re
 import datetime
 from decimal import Decimal
 from typing import Sequence, Dict, Any, Optional
@@ -166,9 +167,47 @@ class MssqlDialect(SqlDialect):
     escaped = name.replace('"', '""')
     return f'"{escaped}"'
 
+  
+  _KEYWORDS = {
+    # Minimal set (extend over time). Must include 'index' at least.
+    "index",
+    "table",
+    "select",
+    "from",
+    "where",
+    "group",
+    "order",
+    "by",
+    "user",
+  }
+
+
+  def should_quote(self, name: str) -> bool:
+    """
+    Quote identifiers that collide with SQL Server keywords or violate identifier rules.
+    """
+    if super().should_quote(name):
+      return True
+    n = str(name or "").strip().lower()
+    return n in self._KEYWORDS
+
+
   # ---------------------------------------------------------------------------
   # 3. Types
   # ---------------------------------------------------------------------------
+  @staticmethod
+  def _strip_nullability_from_physical_type(physical_type: str) -> str:
+    """
+    Guard against types that already include NULL/NOT NULL, since this dialect
+    appends nullability explicitly in CREATE TABLE rendering.
+    """
+    t = str(physical_type or "").strip()
+    # Strip a trailing NULL / NOT NULL (case-insensitive)
+    t = re.sub(r"\s+NOT\s+NULL\s*$", "", t, flags=re.IGNORECASE)
+    t = re.sub(r"\s+NULL\s*$", "", t, flags=re.IGNORECASE)
+    return t.strip()
+
+
   def render_physical_type(
     self,
     *,
@@ -268,7 +307,7 @@ class MssqlDialect(SqlDialect):
     col_defs: list[str] = []
     for c in columns:
       name = q(str(c["name"]))
-      ctype = str(c["type"])
+      ctype = self._strip_nullability_from_physical_type(str(c["type"]))
       nullable = bool(c.get("nullable", True))
       null_sql = "NULL" if nullable else "NOT NULL"
       col_defs.append(f"{name} {ctype} {null_sql}")
