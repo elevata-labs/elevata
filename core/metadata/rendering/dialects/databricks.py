@@ -34,6 +34,7 @@ from metadata.ingestion.types_map import (
   STRING, INTEGER, BIGINT, DECIMAL, FLOAT, BOOLEAN, DATE, TIME, TIMESTAMP, BINARY, UUID, JSON
 )
 from metadata.materialization.logging import LOAD_RUN_LOG_REGISTRY
+from metadata.rendering.dialects.keywords.databricks import RESERVED_KEYWORDS as DATABRICKS_RESERVED_KEYWORDS
 
 
 class DatabricksExecutionEngine(BaseExecutionEngine):
@@ -380,6 +381,7 @@ class DatabricksDialect(SqlDialect):
   # 1. Class meta / capabilities
   # ---------------------------------------------------------------------------
   DIALECT_NAME = "databricks"
+  RESERVED_KEYWORDS = DATABRICKS_RESERVED_KEYWORDS
 
   @property
   def supports_merge(self) -> bool:
@@ -449,7 +451,7 @@ class DatabricksDialect(SqlDialect):
     s = str(name or "")
     s = s.replace("`", "``")
     return f"`{s}`"
-  
+
 
   def render_table_identifier(self, schema: str | None, name: str) -> str:
     """
@@ -457,6 +459,16 @@ class DatabricksDialect(SqlDialect):
     Important: UC does not allow spaces/special chars in object names even when quoted.
     We therefore normalize schema/table/view names to a safe physical identifier.
     """
+
+    # Table function refs must NOT be normalized/quoted as identifiers.
+    # Example: Databricks expects `FROM sql_keywords()` (not a table/view named sql_keywords).
+    # Use the base helper to keep behavior consistent across dialects.
+    if self._is_table_function_ref(name):
+      if schema:
+        sch = self._normalize_uc_object_name(schema)
+        return f"{sch}.{name}"
+      return name
+
     obj = self._normalize_uc_object_name(name)
     if schema:
       sch = self._normalize_uc_object_name(schema)
@@ -783,6 +795,17 @@ class DatabricksDialect(SqlDialect):
 
     s = str(value).replace("'", "''")
     return f"'{s}'"
+
+  
+  def render_reserved_keywords_query(self) -> str:
+    """
+    Databricks: use sql_keywords() table function and filter reserved keywords.
+    """
+    return (
+      "SELECT keyword\n"
+      "FROM sql_keywords()\n"
+      "ORDER BY keyword"
+    )
 
 
   def truncate_string_expression(self, expr: str, max_length: int) -> str:

@@ -43,6 +43,7 @@ from metadata.ingestion.types_map import (
   STRING, INTEGER, BIGINT, DECIMAL, FLOAT, BOOLEAN, DATE, TIME, TIMESTAMP, BINARY, UUID, JSON,
 )
 from metadata.materialization.logging import LOAD_RUN_LOG_REGISTRY
+from metadata.rendering.dialects.keywords.bigquery import RESERVED_KEYWORDS as BIGQUERY_RESERVED_KEYWORDS
 
 
 class BigQueryExecutionEngine:
@@ -251,6 +252,7 @@ class BigQueryDialect(SqlDialect):
   # 1. Class meta / capabilities
   # ---------------------------------------------------------------------------
   DIALECT_NAME = "bigquery"
+  RESERVED_KEYWORDS = BIGQUERY_RESERVED_KEYWORDS
 
   @property
   def supports_merge(self) -> bool:
@@ -304,6 +306,25 @@ class BigQueryDialect(SqlDialect):
     """
     escaped = name.replace("`", "``")
     return f"`{escaped}`"
+  
+  
+  def render_table_identifier(self, schema: str | None, table: str) -> str:
+    """
+    Render a table identifier for BigQuery.
+
+    BigQuery allows quoting each segment with backticks:
+      `<project>`.`<dataset_or_special_schema>`.`<table_or_view>`
+
+    We support special dotted table names like:
+      schema=<project>, table="INFORMATION_SCHEMA.KEYWORDS"
+    """
+    if schema and table and "." in table:
+      parts = [p for p in table.split(".") if p]
+      rendered_parts = [self.render_identifier(p) for p in parts]
+      return f"{self.render_identifier(schema)}." + ".".join(rendered_parts)
+
+    # Fallback to base behavior for normal schema/table rendering.
+    return super().render_table_identifier(schema, table)
 
   # ---------------------------------------------------------------------------
   # 3. Types

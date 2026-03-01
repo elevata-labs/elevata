@@ -24,8 +24,7 @@ import re
 
 import pytest
 
-from metadata.rendering.dialects.mssql import MssqlDialect
-from metadata.rendering.dialects.fabric_warehouse import FabricWarehouseDialect
+from metadata.rendering.dialects.dialect_factory import get_all_registered_dialects
 
 
 def _is_quoted(ident: str, raw: str) -> bool:
@@ -41,22 +40,33 @@ def _is_quoted(ident: str, raw: str) -> bool:
   return any(re.match(p, raw) for p in patterns)
 
 
-@pytest.mark.parametrize("dialect_cls", [MssqlDialect, FabricWarehouseDialect])
-def test_keyword_index_is_quoted(dialect_cls):
-  # Ensure reserved keyword 'index' is quoted for the dialect.
-  d = dialect_cls()
-  assert d.should_quote("index") is True
+def test_reserved_keywords_are_quoted_per_dialect():
+  """
+  Ensure that each dialect quotes exactly its own reserved keywords.
+  """
+  for d in get_all_registered_dialects():
+    reserved = getattr(d, "RESERVED_KEYWORDS", set())
+    assert reserved, f"{d.__class__.__name__} has no RESERVED_KEYWORDS"
 
-  rendered = d.render_identifier("index")
-  assert rendered != "index"
-  assert _is_quoted("index", rendered)
+    # test a representative subset for performance
+    sample = list(reserved)[:20]
+
+    for kw in sample:
+      ident = kw.lower()
+      rendered = d.render_identifier(ident)
+
+      assert rendered != ident
+      assert _is_quoted(ident, rendered)
+      assert bool(d.should_quote(ident)) is True
 
 
-@pytest.mark.parametrize("dialect_cls", [MssqlDialect, FabricWarehouseDialect])
-def test_regular_identifier_is_not_quoted(dialect_cls):
-  # Ensure a typical identifier remains unquoted (unless base rules require quoting).
-  d = dialect_cls()
-  assert d.should_quote("customer_id") is False
+def test_non_reserved_identifier_is_not_quoted():
+  """
+  Ensure a regular identifier is not quoted.
+  """
+  for d in get_all_registered_dialects():
+    ident = "customer_id"
+    rendered = d.render_identifier(ident)
 
-  rendered = d.render_identifier("customer_id")
-  assert rendered == "customer_id"
+    assert rendered == ident
+    assert bool(d.should_quote(ident)) is False

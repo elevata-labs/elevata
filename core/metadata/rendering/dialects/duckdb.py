@@ -34,6 +34,8 @@ from metadata.ingestion.types_map import (
   STRING, INTEGER, BIGINT, DECIMAL, FLOAT, BOOLEAN, DATE, TIME, TIMESTAMP, BINARY, UUID, JSON
 )
 from metadata.materialization.logging import LOAD_RUN_LOG_REGISTRY
+from metadata.rendering.dialects.keywords.duckdb import RESERVED_KEYWORDS as DUCKDB_RESERVED_KEYWORDS
+
 
 class DuckDbExecutionEngine(BaseExecutionEngine):
   """
@@ -181,6 +183,7 @@ class DuckDBDialect(SqlDialect):
   # 1. Class meta / capabilities
   # ---------------------------------------------------------------------------
   DIALECT_NAME = "duckdb"
+  RESERVED_KEYWORDS = DUCKDB_RESERVED_KEYWORDS
 
   @property
   def supports_merge(self) -> bool:
@@ -412,6 +415,18 @@ class DuckDBDialect(SqlDialect):
       order_by_sql = self.render_expr(args[2])
       return f"string_agg({value_sql}, {delim_sql} ORDER BY {order_by_sql})"
     return f"string_agg({value_sql}, {delim_sql})"
+  
+
+  def render_reserved_keywords_query(self) -> str:
+    """
+    DuckDB: use duckdb_keywords() table function for reserved keywords.
+    """
+    return (
+      "SELECT keyword_name\n"
+      "FROM duckdb_keywords()\n"
+      "WHERE keyword_category = 'reserved'\n"
+      "ORDER BY keyword_name"
+    )
 
 
   def concat_expression(self, parts):
@@ -419,6 +434,7 @@ class DuckDBDialect(SqlDialect):
     if not parts:
       return "''"
     return "(" + " || ".join(parts) + ")"
+
 
   def hash_expression(self, expr: str, algo: str = "sha256") -> str:
     algo_lower = algo.lower()

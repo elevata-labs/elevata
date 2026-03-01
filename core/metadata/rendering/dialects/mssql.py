@@ -34,6 +34,7 @@ from metadata.ingestion.types_map import (
   STRING, INTEGER, BIGINT, DECIMAL, FLOAT, BOOLEAN, DATE, TIME, TIMESTAMP, BINARY, UUID, JSON
 )
 from metadata.materialization.logging import LOAD_RUN_LOG_REGISTRY
+from metadata.rendering.dialects.keywords.mssql import RESERVED_KEYWORDS as MSSQL_RESERVED_KEYWORDS
 
 
 class MssqlExecutionEngine(BaseExecutionEngine):
@@ -135,6 +136,7 @@ class MssqlDialect(SqlDialect):
   # 1. Class meta / capabilities
   # ---------------------------------------------------------------------------
   DIALECT_NAME = "mssql"
+  RESERVED_KEYWORDS = MSSQL_RESERVED_KEYWORDS
 
   @property
   def supports_merge(self) -> bool:
@@ -158,38 +160,15 @@ class MssqlDialect(SqlDialect):
   # ---------------------------------------------------------------------------
   def quote_ident(self, name: str) -> str:
     """
-    Quote identifiers with double quotes.
-
+    Quote identifiers with square brackets.
     Note:
-      SQL Server supports QUOTED_IDENTIFIER and accepts "name" as identifier
-      quoting style (similar to Postgres / DuckDB).
+      SQL Server supports delimited identifiers and accepts [name] style quoting.
     """
-    escaped = name.replace('"', '""')
-    return f'"{escaped}"'
-
-  
-  _KEYWORDS = {
-    # Minimal set (extend over time). Must include 'index' at least.
-    "index",
-    "table",
-    "select",
-    "from",
-    "where",
-    "group",
-    "order",
-    "by",
-    "user",
-  }
-
-
-  def should_quote(self, name: str) -> bool:
-    """
-    Quote identifiers that collide with SQL Server keywords or violate identifier rules.
-    """
-    if super().should_quote(name):
-      return True
-    n = str(name or "").strip().lower()
-    return n in self._KEYWORDS
+    # Prefer T-SQL native bracket quoting to avoid dependency on QUOTED_IDENTIFIER.
+    # Escape closing bracket by doubling: ] -> ]]
+    s = str(name or "")
+    s = s.replace("]", "]]")
+    return f"[{s}]"
 
 
   # ---------------------------------------------------------------------------

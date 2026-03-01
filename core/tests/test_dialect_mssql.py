@@ -34,10 +34,13 @@ def test_mssql_dialect_is_registered():
   assert isinstance(dialect, MssqlDialect)
 
 
-def test_mssql_quote_ident_uses_double_quotes():
+def test_mssql_quote_ident_uses_square_brackets():
   d = MssqlDialect()
-  assert d.quote_ident("foo") == '"foo"'
-  assert d.quote_ident('a"b') == '"a""b"'
+  assert d.quote_ident("foo") == "[foo]"
+  # Double quotes no longer need escaping in bracket quoting
+  assert d.quote_ident('a"b') == '[a"b]'
+  # Closing bracket must be escaped
+  assert d.quote_ident("a]b") == "[a]]b]"
 
 
 def test_mssql_boolean_literal():

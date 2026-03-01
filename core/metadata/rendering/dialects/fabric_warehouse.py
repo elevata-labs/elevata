@@ -32,6 +32,7 @@ from metadata.ingestion.types_map import (
   STRING, INTEGER, BIGINT, DECIMAL, FLOAT, BOOLEAN, DATE, TIME, TIMESTAMP, BINARY, UUID, JSON
 )
 from metadata.materialization.logging import LOAD_RUN_LOG_REGISTRY
+from metadata.rendering.dialects.keywords.fabric_warehouse import RESERVED_KEYWORDS as FABRIC_RESERVED_KEYWORDS
 
 
 class FabricWarehouseExecutionEngine(BaseExecutionEngine):
@@ -129,6 +130,7 @@ class FabricWarehouseDialect(SqlDialect):
   # 1. Class meta / capabilities
   # ---------------------------------------------------------------------------
   DIALECT_NAME = "fabric_warehouse"
+  RESERVED_KEYWORDS = FABRIC_RESERVED_KEYWORDS
 
   # Default lengths (Fabric supports VARCHAR(MAX); keep deterministic defaults but allow MAX where required)
   DEFAULT_VARCHAR_LEN = 4000
@@ -181,34 +183,11 @@ class FabricWarehouseDialect(SqlDialect):
   # 2. Identifier rendering
   # ---------------------------------------------------------------------------
   def quote_ident(self, name: str) -> str:
+    # Prefer T-SQL native bracket quoting to avoid dependency on QUOTED_IDENTIFIER.
+    # Escape closing bracket by doubling: ] -> ]]
     s = str(name or "")
-    s = s.replace('"', '""')
-    return f'"{s}"'
-  
-
-  _KEYWORDS = {
-    # Minimal set (extend over time). Must include 'index' at least.
-    "index",
-    "table",
-    "select",
-    "from",
-    "where",
-    "group",
-    "order",
-    "by",
-    "user",
-  }
-
-
-  def should_quote(self, name: str) -> bool:
-    """
-    Quote identifiers that collide with SQL Server keywords or violate identifier rules.
-    """
-    if super().should_quote(name):
-      return True
-    n = str(name or "").strip().lower()
-    return n in self._KEYWORDS
-
+    s = s.replace("]", "]]")
+    return f"[{s}]"
 
   # ---------------------------------------------------------------------------
   # 3. Type mapping / DDL helpers

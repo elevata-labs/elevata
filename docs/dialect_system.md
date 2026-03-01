@@ -729,6 +729,23 @@ This symmetry ensures:
 
 ---
 
+## 🔧 20. Reserved Keyword Registry
+
+Each dialect provides a deterministic reserved keyword registry located in  
+`rendering/dialects/keywords/<dialect>.py`.
+
+Keyword extraction follows one of two strategies:
+
+- Engine-truth (preferred when available)  
+- Documentation-based parsing with strict sanity validation
+
+All SQL required for engine-based extraction must be implemented inside the dialect class  
+via `render_reserved_keywords_query()`.
+
+Management commands must not contain vendor-specific SQL.
+
+---
+
 ## 🔧 Related Documents
 
 - [Logical Plan & Lineage](logical_plan.md)  

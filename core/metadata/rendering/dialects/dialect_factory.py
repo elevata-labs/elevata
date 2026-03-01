@@ -128,3 +128,32 @@ def get_active_dialect_name(name: Optional[str] = None) -> str:
   get_active_dialect (explicit → env → profile → fallback).
   """
   return _resolve_dialect_name(name)
+
+
+def get_all_registered_dialects() -> list[SqlDialect]:
+  """
+  Return instances of all registered SQL dialects.
+
+  This function is deterministic and does not use env/profile resolution logic.
+  It is primarily intended for tests, diagnostics, and CI guardrails.
+  """
+  return [cls() for cls in _DIALECT_REGISTRY.values()]
+
+
+def assert_all_dialects_define_reserved_keywords() -> None:
+  """
+  Raise RuntimeError if any registered dialect does not define RESERVED_KEYWORDS.
+
+  This is a hard guardrail to ensure keyword safety remains deterministic
+  across all platforms. New dialects must ship with a complete keyword set.
+  """
+  missing: list[str] = []
+  for name, cls in _DIALECT_REGISTRY.items():
+    d = cls()
+    kw = getattr(d, "RESERVED_KEYWORDS", None)
+    if not kw:
+      missing.append(name)
+  if missing:
+    raise RuntimeError(
+      "Missing RESERVED_KEYWORDS for dialect(s): " + ", ".join(sorted(missing))
+    )

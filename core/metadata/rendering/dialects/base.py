@@ -26,6 +26,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Sequence, Any, Dict, Optional
 
+import re
 import datetime
 from decimal import Decimal
 
@@ -47,6 +48,7 @@ from ..logical_plan import Join, LogicalSelect, LogicalUnion, SelectItem, Source
 
 from metadata.system.introspection import read_table_metadata
 from metadata.materialization.logging import LOAD_RUN_SNAPSHOT_REGISTRY
+
 
 class BaseExecutionEngine:
   def execute(self, sql: str) -> int | None:
@@ -84,6 +86,9 @@ class SqlDialect(ABC):
   # 1. Class meta / capabilities
   # ---------------------------------------------------------------------------
   DIALECT_NAME = "base"
+  # Dialect-specific reserved keywords (UPPERCASE tokens).
+  # Dialects must override this. Base stays empty by design (no implicit fallback).
+  RESERVED_KEYWORDS: set[str] = set()
 
   @dataclass(frozen=True)
   class FunctionSpec:
@@ -145,14 +150,16 @@ class SqlDialect(ABC):
     """
     raise NotImplementedError
 
+
   def should_quote(self, name: str) -> bool:
     """
-    Decide whether identifier must be quoted.
-    Rules:
-      - empty or None → quote
-      - contains whitespace or not alnum/_ → quote
-      - starts with digit → quote
-      - all-uppercase/lowercase safe sql keywords → quote
+    Decide whether an identifier must be quoted.
+
+    Rules (conservative):
+      - empty →  quote
+      - starts with digit →  quote
+      - contains characters outside [A-Za-z0-9_] →  quote
+      - collides with a reserved keyword for this dialect →  quote
     """
     if not name:
       return True
@@ -160,8 +167,22 @@ class SqlDialect(ABC):
       return True
     if not name.replace("_", "").isalnum():
       return True
-    # future: check dialect keyword lists
-    return False
+    # Reserved keywords (dialect-specific)
+    if self.is_reserved_keyword(name):
+      return True
+  
+
+  def is_reserved_keyword(self, name: str) -> bool:
+    """
+    Return True if the given identifier collides with a reserved keyword
+    for this dialect.
+    """
+    n = (name or "").strip()
+    if not n:
+      return False
+    kw = getattr(self, "RESERVED_KEYWORDS", None) or set()
+    return n.upper() in kw
+
 
   def render_identifier(self, name: str) -> str:
     """
@@ -170,6 +191,20 @@ class SqlDialect(ABC):
     if self.should_quote(name):
       return self.quote_ident(name)
     return name
+  
+
+  def _is_table_function_ref(self, name: str) -> bool:
+    """
+    Return True if `name` looks like a table function reference such as:
+      sql_keywords()
+      duckdb_keywords()
+
+    We intentionally keep this conservative: a single identifier followed by ().
+    """
+    if not name:
+      return False
+    return re.match(r"^[A-Za-z_][A-Za-z0-9_]*\\(\\)$", name) is not None
+
 
   def render_table_identifier(self, schema: str | None, name: str) -> str:
     """
@@ -178,7 +213,16 @@ class SqlDialect(ABC):
       render_table_identifier("rawcore", "customer") -> rawcore.customer (quoted as needed)
       render_table_identifier(None, "customer")      -> customer (quoted as needed)
     """
+    # Table function refs must not be rendered as identifiers (quoting breaks the call).
+    # Example: Databricks expects `FROM sql_keywords()` (not FROM `sql_keywords`).
+    if self._is_table_function_ref(name):
+      if schema:
+        schema_sql = self.render_identifier(schema)
+        return f"{schema_sql}.{name}"
+      return name
+
     name_sql = self.render_identifier(name)
+
     if schema:
       schema_sql = self.render_identifier(schema)
       return f"{schema_sql}.{name_sql}"
@@ -1255,6 +1299,15 @@ class SqlDialect(ABC):
       sql.append(f"OFFSET {int(offset_val)}")
 
     return "\n".join(sql)
+  
+
+  def render_reserved_keywords_query(self) -> str:
+    """
+    Return a dialect-specific SQL query that yields one column with reserved keywords.
+
+    The result must be a single-column recordset (keyword strings).
+    """
+    raise NotImplementedError("Dialect must implement render_reserved_keywords_query().")
 
 
   def render_plan(self, plan) -> str:

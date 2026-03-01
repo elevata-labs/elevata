@@ -33,6 +33,7 @@ from metadata.ingestion.types_map import (
   STRING, INTEGER, BIGINT, DECIMAL, FLOAT, BOOLEAN, DATE, TIME, TIMESTAMP, BINARY, UUID, JSON
 )
 from metadata.materialization.logging import LOAD_RUN_LOG_REGISTRY
+from metadata.rendering.dialects.keywords.snowflake import RESERVED_KEYWORDS as SNOWFLAKE_RESERVED_KEYWORDS
 
 
 class SnowflakeExecutionEngine(BaseExecutionEngine):
@@ -213,6 +214,7 @@ class SnowflakeDialect(SqlDialect):
   # 1. Class meta / capabilities
   # ---------------------------------------------------------------------------
   DIALECT_NAME = "snowflake"
+  RESERVED_KEYWORDS = SNOWFLAKE_RESERVED_KEYWORDS
 
   @property
   def supports_merge(self) -> bool:

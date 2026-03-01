@@ -32,9 +32,10 @@ def test_fabric_warehouse_dialect_is_registered():
   assert isinstance(d, FabricWarehouseDialect)
 
 
-def test_fabric_warehouse_quote_ident_uses_double_quotes():
+def test_fabric_warehouse_quote_ident_uses_square_brackets():
   d = FabricWarehouseDialect()
-  assert d.quote_ident("foo") == '"foo"'
+  assert d.quote_ident("foo") == "[foo]"
+  assert d.quote_ident("a]b") == "[a]]b]"
 
 
 def test_fabric_warehouse_hash_expression_uses_hashbytes():

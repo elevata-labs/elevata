@@ -19,6 +19,54 @@ TBD
 
 ---
 
+## [1.4.1] - 2026-03-01
+
+This patch release introduces and stabilizes elevata’s
+dialect-specific SQL keyword registry.
+
+The focus of this release is deterministic, dialect-owned handling
+of reserved identifiers across all supported warehouses.
+
+---
+
+### ✨ Added
+
+#### Deterministic SQL Keyword Registry
+
+- Introduced dialect-specific reserved keyword modules  
+  (`rendering/dialects/keywords/*.py`)  
+- Added `elevata_generate_reserved_keywords` management command  
+- Engine-truth extraction for:  
+  - Databricks (`sql_keywords()`)  
+  - DuckDB (`duckdb_keywords()`)  
+- Documentation-based extraction with strict validation for:  
+  - PostgreSQL  
+  - Snowflake  
+  - MSSQL  
+  - Fabric Warehouse  
+  - BigQuery  
+- Sanity checks guarding against incomplete or malformed keyword sets  
+- Optional core SQL overlay for defensive fallback safety
+
+---
+
+### 🔄 Improved
+
+- Fully restored dialect-owned SQL rendering for keyword extraction  
+- Ensured no vendor-specific SQL remains in management commands  
+- Stabilized documentation parsing across vendor doc layouts  
+- Harmonized quoting behavior across all dialects
+
+---
+
+### 🔒 Architectural Integrity
+
+- Keyword extraction is deterministic and reproducible  
+- All SQL used in extraction is owned by the dialect layer  
+- Identifier quoting behavior is now fully dialect-driven
+
+---
+
 ## [1.4.0] - 2026-02-28
 
 This release significantly expands elevata’s ingestion capabilities (REST + Files)  
@@ -63,7 +111,7 @@ across all supported warehouses.
 
 ---
 
-### 🛠 Fixed
+### 🛠️ Fixed
 
 - SQLAlchemy 2.0 execution compatibility in ingestion landing paths  
 - Correct cumulative row reporting for chunked RAW ingestion  
@@ -114,7 +162,7 @@ target database without requiring additional infrastructure.
 
 ---
 
-### 🛠 Fixed
+### 🛠️ Fixed
 
 - Airflow example failing to start due to dependency conflicts  
 - SQLAlchemy downgrade caused by backend requirement installation  
@@ -203,7 +251,7 @@ deterministic preflight model that guarantees predictable outcomes before execut
 
 ---
 
-### 🛠 Fixed
+### 🛠️ Fixed
 
 - Multiple edge cases where schema drift could result in inconsistent execution behavior  
 - Incorrect handling of schema evolution across dialect-specific type representations  
@@ -275,7 +323,7 @@ multiple modern cloud data warehouse platforms.
 - Eliminates per-row execution overhead caused by connector-level executemany behavior
 - No changes required to metadata models or query definitions
 
-### 🛠 Fixed
+### 🛠️ Fixed
 
 - Window columns incorrectly defaulting to STRING datatype  
 - Aggregate measures not inheriting input column datatype  
@@ -327,7 +375,7 @@ schema sync, and historization.
 - Technical tail columns always appended last  
 - Deterministic ordinal normalization for system-managed schemas
 
-### 🛠 Fixed
+### 🛠️ Fixed
 
 - UNIQUE constraint violations in hist regeneration  
 - Broken rename propagation across rawcore → hist  
@@ -668,7 +716,7 @@ identifier rules.
 ---
 
 ## [0.5.2] — 2025-12-07
-### 🛠️ Metadata stability & History (HIST) foundation
+### 🛠️️ Metadata stability & History (HIST) foundation
 
 This release significantly improves the robustness, determinism, and safety of 
 history metadata generation in the RAWCORE schema.
@@ -713,7 +761,7 @@ All test suites remain unchanged and green.
 ---
 
 ## [0.5.0] — 2025-12-01
-### 🛠️ Multi-Dialect Engine, MSSQL Support & Deterministic FK Hashing
+### 🛠️️ Multi-Dialect Engine, MSSQL Support & Deterministic FK Hashing
 
 This release delivers the next major milestone of elevata’s SQL engine:
 full **multi-dialect SQL generation**, an extensible dialect factory,

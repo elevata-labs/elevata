@@ -36,6 +36,8 @@ from metadata.ingestion.types_map import (
   STRING, INTEGER, BIGINT, DECIMAL, FLOAT, BOOLEAN, DATE, TIME, TIMESTAMP, BINARY, UUID, JSON
 )
 from metadata.materialization.logging import LOAD_RUN_LOG_REGISTRY
+from metadata.rendering.dialects.keywords.postgres import RESERVED_KEYWORDS as POSTGRES_RESERVED_KEYWORDS
+
 
 class PostgresExecutionEngine(BaseExecutionEngine):
   def __init__(self, system):
@@ -108,6 +110,7 @@ class PostgresDialect(SqlDialect):
   # 1. Class meta / capabilities
   # ---------------------------------------------------------------------------
   DIALECT_NAME = "postgres"
+  RESERVED_KEYWORDS = POSTGRES_RESERVED_KEYWORDS
 
   @property
   def supports_merge(self) -> bool:
