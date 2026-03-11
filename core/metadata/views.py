@@ -26,6 +26,7 @@ from io import StringIO
 from typing import Any
 
 from collections import deque
+from crum import get_current_user
 from django.core.management import call_command
 from django.apps import apps
 from django.conf import settings
@@ -119,6 +120,44 @@ TargetDatasetCRUDView.form_class = TargetDatasetForm  # type: ignore[attr-define
 # helper
 def _is_htmx(request):
   return request.headers.get("HX-Request") == "true"
+
+
+def _get_actor_from_request(request):
+  """
+  Resolve the effective actor for explicit audit attribution in direct
+  query-builder actions.
+  """
+  actor = get_current_user()
+  if getattr(actor, "is_authenticated", False):
+    return actor
+
+  actor = getattr(request, "user", None)
+  if getattr(actor, "is_authenticated", False):
+    return actor
+
+  return None
+
+
+def _save_with_actor(obj, actor, update_fields=None):
+  """
+  Persist an ORM instance with explicit audit attribution.
+  """
+  if actor is not None:
+    if not obj.pk and not getattr(obj, "created_by_id", None):
+      obj.created_by = actor
+    obj.updated_by = actor
+
+    if update_fields is not None:
+      fields = list(update_fields)
+      if "updated_by" not in fields:
+        fields.append("updated_by")
+      update_fields = list(dict.fromkeys(fields))
+
+  if update_fields is None:
+    obj.save()
+  else:
+    obj.save(update_fields=update_fields)
+
 
 @login_required
 @permission_required("metadata.change_sourcedataset", raise_exception=True)
@@ -236,7 +275,11 @@ def generate_targets(request):
 
   try:
     # Run the management command; output is captured in buffer
-    call_command("generate_targets", stdout=buffer)
+    call_command(
+      "generate_targets",
+      stdout=buffer,
+      actor_id=request.user.pk,
+    )
 
     raw_output = buffer.getvalue().strip()
 
@@ -649,6 +692,7 @@ def targetdataset_query_builder(request, pk: int):
 @require_POST
 def targetdataset_create_query_root(request, pk: int):
   td = get_object_or_404(TargetDataset, pk=pk)
+  actor = _get_actor_from_request(request)
 
   # Only bizcore/serving may define custom query logic
   if not query_tree_allowed_for_dataset(td):
@@ -667,19 +711,23 @@ def targetdataset_create_query_root(request, pk: int):
   QuerySelectNode = apps.get_model("metadata", "QuerySelectNode")
 
   with transaction.atomic():
-    root = QueryNode.objects.create(
+    root = QueryNode(
       target_dataset=td,
       node_type="select",
       name="Base select",
       active=True,
     )
-    QuerySelectNode.objects.create(
+    _save_with_actor(root, actor)
+
+    select = QuerySelectNode(      
       node=root,
       use_dataset_definition=True,
     )
+    _save_with_actor(select, actor)
+
     td.query_root = root
     td.query_head = root
-    td.save(update_fields=["query_root", "query_head"])
+    _save_with_actor(td, actor, update_fields=["query_root", "query_head"])
 
   return redirect("targetdataset_query_builder", pk=td.pk)
 
@@ -692,6 +740,7 @@ def targetdataset_reset_query_root(request, pk: int):
   - deletes all query nodes/operators owned by this dataset
   """
   td = get_object_or_404(TargetDataset, pk=pk)
+  actor = _get_actor_from_request(request)
 
   if not query_tree_allowed_for_dataset(td):
     messages.error(request, "Custom query logic is only allowed in bizcore/serving.")
@@ -715,7 +764,7 @@ def targetdataset_reset_query_root(request, pk: int):
     # 1) detach root first (so builder switches back immediately)
     td.query_root = None
     td.query_head = None
-    td.save(update_fields=["query_root", "query_head"])
+    _save_with_actor(td, actor, update_fields=["query_root", "query_head"])
 
     # 2) delete query graph owned by this dataset
     # PROTECT FKs between nodes mean we must delete "consumers" first.
@@ -764,6 +813,7 @@ def targetdataset_reset_query_root(request, pk: int):
 @require_POST
 def targetdataset_add_window_node(request, pk: int) -> HttpResponse:
   td = get_object_or_404(TargetDataset, pk=pk)
+  actor = _get_actor_from_request(request)
 
   # Only bizcore/serving may define custom query logic
   if not query_tree_allowed_for_dataset(td):
@@ -786,30 +836,33 @@ def targetdataset_add_window_node(request, pk: int) -> HttpResponse:
   QueryWindowColumn = apps.get_model("metadata", "QueryWindowColumn")
 
   # Wrap existing root: new window node becomes the new root
-  new_node = QueryNode.objects.create(
+  new_node = QueryNode(
     target_dataset=td,
     node_type="window",
     name="Window",
     active=True,
   )
+  _save_with_actor(new_node, actor)
 
-  w = QueryWindowNode.objects.create(
+  w = QueryWindowNode(
     node=new_node,
     input_node=query_head,
   )
+  _save_with_actor(w, actor)
 
   # Create one default output column so the tree is immediately "valid-ish"
   # (validator will only WARN about missing ORDER BY, not ERROR about missing columns)
-  QueryWindowColumn.objects.create(
+  default_col = QueryWindowColumn(
     window_node=w,
     output_name="row_number",
     function="ROW_NUMBER",
     ordinal_position=1,
     active=True,
   )
+  _save_with_actor(default_col, actor)
 
   td.query_head = new_node
-  td.save(update_fields=["query_head"])
+  _save_with_actor(td, actor, update_fields=["query_head"])
 
   # After creating the node, jump straight into the operator-specific editor.
   # For window nodes, the best next step is configuring window columns.
@@ -830,6 +883,7 @@ def targetdataset_add_window_node(request, pk: int) -> HttpResponse:
 @require_POST
 def targetdataset_add_aggregate_node(request, pk: int) -> HttpResponse:
   td = get_object_or_404(TargetDataset, pk=pk)
+  actor = _get_actor_from_request(request)
 
   # Only bizcore/serving may define custom query logic
   if not query_tree_allowed_for_dataset(td):
@@ -850,18 +904,20 @@ def targetdataset_add_aggregate_node(request, pk: int) -> HttpResponse:
   QueryAggregateNode = apps.get_model("metadata", "QueryAggregateNode")
 
   # Wrap existing root: new aggregate node becomes the new root
-  new_node = QueryNode.objects.create(
+  new_node = QueryNode(
     target_dataset=td,
     node_type="aggregate",
     name="Aggregate",
     active=True,
   )
+  _save_with_actor(new_node, actor)
 
-  agg = QueryAggregateNode.objects.create(node=new_node, input_node=query_head)
+  agg = QueryAggregateNode(node=new_node, input_node=query_head)
+  _save_with_actor(agg, actor)
 
   # IMPORTANT: root stays stable; head moves.
   td.query_head = new_node
-  td.save(update_fields=["query_head"])
+  _save_with_actor(td, actor, update_fields=["query_head"])
 
   try:
     messages.success(
@@ -881,6 +937,7 @@ def targetdataset_add_aggregate_node(request, pk: int) -> HttpResponse:
 @require_POST
 def targetdataset_add_union_node(request, pk: int) -> HttpResponse:
   td = get_object_or_404(TargetDataset, pk=pk)
+  actor = _get_actor_from_request(request)
 
   # Only bizcore/serving may define custom query logic
   if not query_tree_allowed_for_dataset(td):
@@ -902,28 +959,31 @@ def targetdataset_add_union_node(request, pk: int) -> HttpResponse:
   QueryUnionBranch = apps.get_model("metadata", "QueryUnionBranch")
 
   # Wrap existing root: new union node becomes the new root
-  new_node = QueryNode.objects.create(
+  new_node = QueryNode(
     target_dataset=td,
     node_type="union",
     name="UNION",
     active=True,
   )
+  _save_with_actor(new_node, actor)
 
   # Default to UNION ALL (explicitly)
-  un = QueryUnionNode.objects.create(
+  un = QueryUnionNode(
     node=new_node,
     mode="union_all",
   )
+  _save_with_actor(un, actor)
 
   # Create a first branch pointing to the previous root so the union is not empty.
-  QueryUnionBranch.objects.create(
+  first_branch = QueryUnionBranch(
     union_node=un,
     input_node=query_head,
     ordinal_position=1,
   )
+  _save_with_actor(first_branch, actor)
 
   td.query_head = new_node
-  td.save(update_fields=["query_head"])
+  _save_with_actor(td, actor, update_fields=["query_head"])
 
   try:
     messages.success(
@@ -950,6 +1010,8 @@ def queryunion_copy_output_schema_from_branch(request, parent_pk: int) -> HttpRe
     - branch_id
   """
   union_node = get_object_or_404(QueryUnionNode, pk=parent_pk)
+  actor = _get_actor_from_request(request)
+
   branch_id = request.POST.get("branch_id")
   if not branch_id:
     messages.error(request, "Missing branch_id.")
@@ -987,11 +1049,12 @@ def queryunion_copy_output_schema_from_branch(request, parent_pk: int) -> HttpRe
         continue
       if key in existing_by_norm:
         continue
-      QueryUnionOutputColumn.objects.create(
+      out_col = QueryUnionOutputColumn(
         union_node=union_node,
         output_name=c,
         ordinal_position=next_ord,
       )
+      _save_with_actor(out_col, actor)
       next_ord += 1
       created += 1
 
@@ -1015,6 +1078,7 @@ def queryunionbranch_automap_by_name(request, parent_pk: int) -> HttpResponse:
   Creates/updates QueryUnionBranchMapping rows.
   """
   branch = get_object_or_404(QueryUnionBranch, pk=parent_pk)
+  actor = _get_actor_from_request(request)
   union_node = getattr(branch, "union_node", None)
   if not union_node:
     messages.error(request, "Branch has no union_node.")
@@ -1066,16 +1130,49 @@ def queryunionbranch_automap_by_name(request, parent_pk: int) -> HttpResponse:
       obj, is_new = QueryUnionBranchMapping.objects.get_or_create(
         branch=branch,
         output_column=outc,
-        defaults={"input_column_name": match},        
+        defaults={
+          "input_column_name": match,
+          **(
+            {"created_by": actor, "updated_by": actor}
+            if actor is not None else {}
+          ),
+        },
       )
       if is_new:
         created += 1
+        if actor is not None and (
+          not getattr(obj, "created_by_id", None) or not getattr(obj, "updated_by_id", None)
+        ):
+          if not getattr(obj, "created_by_id", None):
+            obj.created_by = actor
+          if not getattr(obj, "updated_by_id", None):
+            obj.updated_by = actor
+          obj.save(update_fields=[
+            *(
+              ["created_by"] if not getattr(obj, "created_by_id", None) else []
+            ),
+            *(
+              ["updated_by"] if not getattr(obj, "updated_by_id", None) else []
+            ),
+          ])
       else:
         # Only overwrite if empty or different (safe default: overwrite to match)
         if (getattr(obj, "input_column_name", "") or "").strip() != match:
           obj.input_column_name = match
-          obj.save(update_fields=["input_column_name"])
+          _save_with_actor(obj, actor, update_fields=["input_column_name"])
           updated += 1
+        elif actor is not None and (
+          not getattr(obj, "created_by_id", None) or not getattr(obj, "updated_by_id", None)
+        ):
+          fields = []
+          if not getattr(obj, "created_by_id", None):
+            obj.created_by = actor
+            fields.append("created_by")
+          if not getattr(obj, "updated_by_id", None):
+            obj.updated_by = actor
+            fields.append("updated_by")
+          if fields:
+            obj.save(update_fields=fields)
 
   messages.success(
     request,
@@ -1256,6 +1353,7 @@ def queryunion_set_as_head(request, parent_pk: int) -> HttpResponse:
   """
   union = get_object_or_404(QueryUnionNode, pk=parent_pk)
   td = union.node.target_dataset
+  actor = _get_actor_from_request(request)
 
   issues = _normalize_issues(validate_query_tree_integrity(td))
   union_issues = [(lvl, msg) for (lvl, msg) in issues if "union" in (msg or "").lower()]
@@ -1264,6 +1362,6 @@ def queryunion_set_as_head(request, parent_pk: int) -> HttpResponse:
     return redirect("queryunionbranch_list", parent_pk=union.pk)
 
   td.query_head = union.node
-  td.save(update_fields=["query_head"])
+  _save_with_actor(td, actor, update_fields=["query_head"])
   messages.success(request, "UNION is now the query head (dataset output is defined by this UNION).")
   return redirect("targetdataset_query_builder", pk=td.pk)

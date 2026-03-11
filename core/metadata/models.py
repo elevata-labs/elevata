@@ -80,7 +80,7 @@ class AuditFields(models.Model):
 
   def save(self, *args, **kwargs):
     user = get_current_user()
-    if user and not user.is_anonymous:
+    if user and getattr(user, "is_authenticated", False):
       # created_by only set once during creation
       if not self.pk and not self.created_by:
         self.created_by = user
@@ -486,6 +486,7 @@ class SourceDatasetOwnership(AuditFields):
   )
 
   class Meta:
+    db_table = "source_dataset_ownership"
     constraints = [models.UniqueConstraint(fields=["source_dataset", "person", "role"], name="unique_source_dataset_ownership")]
     ordering = ["-is_primary_owner", "source_dataset", "role", "since"]
 
@@ -1773,6 +1774,7 @@ class TargetDatasetJoin(AuditFields):
   )
 
   class Meta:
+    db_table = "target_dataset_join"
     ordering = ["join_order", "id"]
     constraints = [
       models.UniqueConstraint(
@@ -1916,6 +1918,7 @@ class TargetDatasetJoinPredicate(AuditFields):
   )
 
   class Meta:
+    db_table = "target_dataset_join_predicate"
     ordering = ["ordinal_position", "id"]
     constraints = [
       models.UniqueConstraint(
@@ -1986,6 +1989,7 @@ class TargetDatasetOwnership(AuditFields):
   )
 
   class Meta:
+    db_table = "target_dataset_ownership"
     constraints = [models.UniqueConstraint(fields=["target_dataset", "person", "role"], name="unique_target_dataset_ownership")]
     ordering = ["-is_primary_owner", "target_dataset", "role", "since"]
 
@@ -2619,7 +2623,7 @@ class TargetDatasetReferenceComponent(AuditFields):
   )
 
   class Meta:
-    db_table = "target_reference_key_component"
+    db_table = "target_dataset_reference_component"
     constraints = [
       models.UniqueConstraint(
         fields=["reference", "from_column", "to_column"],

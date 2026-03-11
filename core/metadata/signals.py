@@ -23,6 +23,7 @@ Contact: <https://github.com/elevata-labs/elevata>.
 from django.db import transaction
 from django.db.models.signals import post_save, pre_delete, pre_save
 from django.dispatch import receiver
+from crum import get_current_user
 from typing import Iterable
 
 from metadata.models import (
@@ -348,15 +349,25 @@ def _trigger_query_sync(sender, instance, **kwargs):  # type: ignore
   except Exception:
     pass
 
+  actor = get_current_user()
+  if not getattr(actor, "is_authenticated", False):
+    actor = None
+
+  # Fallback: derive actor from the just-persisted query-builder object itself.
+  # This helps when CRUM does not provide a current user in signal/on_commit flows.
+  if actor is None:
+    candidate = getattr(instance, "updated_by", None) or getattr(instance, "created_by", None)
+    if getattr(candidate, "is_authenticated", False):
+      actor = candidate
+
   # Run AFTER the current transaction commits.
   # Otherwise contract inference may see stale/partial state (esp. during inline edits).
   try:
     from django.db import transaction
-    transaction.on_commit(lambda: trigger_query_contract_column_sync(td))
+    transaction.on_commit(lambda: trigger_query_contract_column_sync(td, actor=actor))
   except Exception:
     # Best-effort fallback (should be rare)
-    trigger_query_contract_column_sync(td)
-
+    trigger_query_contract_column_sync(td, actor=actor)
 
 # Register handlers explicitly (stable, deduplicated via dispatch_uid)
 for _Model in _SYNC_MODELS:

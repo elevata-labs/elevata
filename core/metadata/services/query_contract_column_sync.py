@@ -75,6 +75,84 @@ class QueryContractColumnSyncService:
 
   LINEAGE_ORIGIN_QUERY = "query_derived"
 
+
+  def __init__(self, actor=None):
+    self.actor = actor if getattr(actor, "is_authenticated", False) else None
+
+
+  def _save_instance(self, obj, update_fields=None):
+    """
+    Persist an ORM instance and explicitly carry audit attribution for
+    query-builder driven contract sync.
+    """
+    if self.actor is not None:
+      if not obj.pk and not getattr(obj, "created_by_id", None):
+        obj.created_by = self.actor
+      obj.updated_by = self.actor
+
+      if update_fields is not None:
+        fields = list(update_fields)
+        if "updated_by" not in fields:
+          fields.append("updated_by")
+        update_fields = list(dict.fromkeys(fields))
+
+    if update_fields is None:
+      obj.save()
+    else:
+      obj.save(update_fields=update_fields)
+
+
+  def _create_instance(self, model_cls, **kwargs):
+    """
+    Create an ORM instance with explicit audit attribution.
+    """
+    if self.actor is not None:
+      kwargs.setdefault("created_by", self.actor)
+      kwargs.setdefault("updated_by", self.actor)
+    return model_cls.objects.create(**kwargs)
+
+
+  def _stamp_missing_audit(self, obj):
+    """
+    Conservative backfill for pre-existing rows with missing audit fields.
+    """
+    if self.actor is None or obj is None:
+      return
+
+    update_fields = []
+
+    if hasattr(obj, "created_by_id") and not getattr(obj, "created_by_id", None):
+      obj.created_by = self.actor
+      update_fields.append("created_by")
+
+    if hasattr(obj, "updated_by_id") and not getattr(obj, "updated_by_id", None):
+      obj.updated_by = self.actor
+      update_fields.append("updated_by")
+
+    if update_fields:
+      obj.save(update_fields=update_fields)
+
+
+  def _backfill_target_column_inputs_for_dataset(self, td: TargetDataset) -> None:
+    """
+    Conservative audit backfill for column-level lineage rows of a dataset.
+
+    We only fill missing created_by / updated_by and never overwrite existing values.
+    """
+    if self.actor is None or td is None:
+      return
+
+    qs = (
+      TargetColumnInput.objects
+      .filter(target_column__target_dataset=td)
+      .select_related("target_column")
+    )
+   
+    for obj in qs:
+      # ensure audit even for rows created outside this sync cycle
+      self._stamp_missing_audit(obj)
+
+
   def _allowed_datatypes(self) -> set[str]:
     return {str(k) for (k, _label) in (DATATYPE_CHOICES or [])}
 
@@ -160,7 +238,7 @@ class QueryContractColumnSyncService:
 
           rename_src.nullable = bool(dc.nullable)
           rename_src.active = True
-          rename_src.save()
+          self._save_instance(rename_src)
           current_by_norm[_norm(dc.name)] = rename_src
 
       # 2) Create / update desired columns
@@ -193,7 +271,8 @@ class QueryContractColumnSyncService:
             decimal_precision = dc.decimal_precision
             decimal_scale = dc.decimal_scale
 
-          obj = TargetColumn.objects.create(
+          obj = self._create_instance(
+            TargetColumn,
             target_dataset=td,
             target_column_name=dc.name,
             datatype=dtype,
@@ -208,6 +287,7 @@ class QueryContractColumnSyncService:
             ordinal_position=ord_base + idx,
             retired_at=None,
           )
+
           current_by_norm[dn] = obj
         else:
           # Update only if it is query-derived or if you explicitly allow upgrading an existing column.
@@ -245,7 +325,9 @@ class QueryContractColumnSyncService:
               obj.active = True
               changed = True
             if changed:
-              obj.save()
+              self._save_instance(obj)
+            else:
+              self._stamp_missing_audit(obj)
         created_or_seen.append(obj)
 
       # 3) Delete query-derived columns removed from contract
@@ -262,9 +344,16 @@ class QueryContractColumnSyncService:
         # Then delete the columns.
         TargetColumn.objects.filter(pk__in=[c.pk for c in removed]).delete()
 
+      for c in created_or_seen:
+        self._stamp_missing_audit(c)
+
       # 4) Normalize ordinals of query-derived columns to follow contract order
       # Keep query-derived ordinals stable *within their own appended segment* (no collisions).
       self._normalize_query_derived_ordinals(td, desired_norm)
+
+      # 5) Conservative backfill for column-level lineage rows belonging to this dataset
+      self._backfill_target_column_inputs_for_dataset(td)
+
 
   # -----------------------------
   # Contract inference + typing
@@ -747,11 +836,11 @@ class QueryContractColumnSyncService:
 
     for idx, c in enumerate(ordered, start=1):
       c.ordinal_position = safe_base + idx
-      c.save(update_fields=["ordinal_position"])
+      self._save_instance(c, update_fields=["ordinal_position"])
 
     # Pass 2: final positions directly after non-query columns
     for idx, c in enumerate(ordered, start=1):
       final_pos = base + idx
       if c.ordinal_position != final_pos:
         c.ordinal_position = final_pos
-        c.save(update_fields=["ordinal_position"])
+        self._save_instance(c, update_fields=["ordinal_position"])

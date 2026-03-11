@@ -520,6 +520,43 @@ class GenericCRUDView(LoginRequiredMixin, View):
     # exclude-mode: only settings-driven excludes
     exclude = set(self._ui_exclude_fields("form") or [])
     return sorted(exclude)
+  
+
+  def _audit_backfill_m2m(self, instance, actor):
+    """
+    Ensure created_by / updated_by are set on through models created
+    via form.save_m2m() (ManyToMany through relations).
+    """
+    if not getattr(instance, "pk", None):
+      return
+
+    if not getattr(actor, "is_authenticated", False):
+      return
+
+    for field in instance._meta.many_to_many:
+      through = field.remote_field.through
+
+      if not hasattr(through, "created_by_id"):
+        continue
+
+      try:
+        filter_kwargs = {field.m2m_field_name(): instance}
+
+        # fill created_by where missing
+        through.objects.filter(
+          **filter_kwargs,
+          created_by__isnull=True
+        ).update(created_by=actor)
+
+        # fill updated_by where missing
+        through.objects.filter(
+          **filter_kwargs,
+          updated_by__isnull=True
+        ).update(updated_by=actor)
+
+      except Exception:
+        pass
+
 
   def is_instance_system_managed(self, instance):
     """
@@ -1134,6 +1171,11 @@ class GenericCRUDView(LoginRequiredMixin, View):
         self.enforce_system_managed_integrity(instance)
 
         instance.save()
+
+        if hasattr(form, "save_m2m"):
+          form.save_m2m()
+          self._audit_backfill_m2m(instance, user)
+
         messages.success(request, _("Saved successfully."))
         return redirect(self.get_success_url())
     else:
@@ -1201,9 +1243,9 @@ class GenericCRUDView(LoginRequiredMixin, View):
 
         instance.save()
 
-        # Save ManyToMany relationships explicitly
         if hasattr(form, "save_m2m"):
           form.save_m2m()
+          self._audit_backfill_m2m(instance, user)
 
         context = {
           "model": self.model,
@@ -1332,9 +1374,9 @@ class GenericCRUDView(LoginRequiredMixin, View):
 
       instance.save()
 
-      # Save ManyToMany explicitly
       if hasattr(form, "save_m2m"):
         form.save_m2m()
+        self._audit_backfill_m2m(instance, user)
 
       context = {
         "model": self.model,

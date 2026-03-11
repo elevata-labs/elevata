@@ -19,6 +19,45 @@ TBD
 
 ---
 
+## [1.4.2] - 2026-03-11
+
+This patch release introduces deterministic audit attribution for metadata mutations  
+created through ManyToMany relations and scoped metadata editing workflows.
+
+The focus of this release is to ensure that all metadata mutations performed within  
+elevata's architecture runtime are consistently attributed to the initiating user.
+
+---
+
+### ✨ Added
+
+#### Deterministic Audit Attribution for Through Models
+
+- Introduced automatic audit propagation for ManyToMany through models
+  created via `form.save_m2m()`  
+- Added audit backfill logic ensuring `created_by` and `updated_by`
+  are populated for lineage relations such as `TargetColumnInput`  
+- Ensured consistent audit attribution across scoped metadata editors
+  and Query Builder operations
+
+---
+
+### ⚙ Improved
+
+#### Metadata Mutation Audit Consistency
+
+- Hardened audit attribution across metadata CRUD operations,
+  scoped views, and contract synchronization workflows  
+- Centralized audit backfill logic for ManyToMany through models
+  created outside standard ORM save paths
+
+#### Audit Backfill Performance
+
+- Optimized audit propagation for through models using
+  SQL-based updates instead of row-by-row ORM updates
+
+---
+
 ## [1.4.1] - 2026-03-01
 
 This patch release introduces and stabilizes elevata’s

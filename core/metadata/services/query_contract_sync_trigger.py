@@ -34,7 +34,7 @@ _pending_td_ids: set[int] = set()
 _running: bool = False
 
 
-def trigger_query_contract_column_sync(td: Optional[TargetDataset]) -> None:
+def trigger_query_contract_column_sync(td: Optional[TargetDataset], actor=None) -> None:
   global _running
 
   if td is None or not getattr(td, "pk", None):
@@ -51,7 +51,7 @@ def trigger_query_contract_column_sync(td: Optional[TargetDataset]) -> None:
       return
     _running = True
     try:
-      svc = QueryContractColumnSyncService()
+      svc = QueryContractColumnSyncService(actor=actor)
       # Copy and clear so subsequent commits can schedule again.
       ids = list(_pending_td_ids)
       _pending_td_ids.clear()

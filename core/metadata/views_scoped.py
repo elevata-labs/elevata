@@ -384,8 +384,37 @@ def _maybe_trigger_query_contract_sync(instance):
   if td is None:
     return
 
+  actor = get_current_user()
+  if not getattr(actor, "is_authenticated", False):
+    actor = getattr(instance, "updated_by", None) or getattr(instance, "created_by", None)
+  if not getattr(actor, "is_authenticated", False):
+    actor = None
+
   # Run after commit so contract inference sees the final state.
-  transaction.on_commit(lambda: trigger_query_contract_column_sync(td))
+  transaction.on_commit(lambda: trigger_query_contract_column_sync(td, actor=actor))
+
+
+def _backfill_target_column_inputs(instance, actor):
+  if not isinstance(instance, TargetColumn):
+    return
+
+  if not getattr(instance, "pk", None):
+    return
+
+  if not getattr(actor, "is_authenticated", False):
+    return
+
+  # fill created_by where missing
+  TargetColumnInput.objects.filter(
+      target_column=instance,
+      created_by__isnull=True
+  ).update(created_by=actor)
+
+  # fill updated_by where missing
+  TargetColumnInput.objects.filter(
+      target_column=instance,
+      updated_by__isnull=True
+  ).update(updated_by=actor)
 
 
 class _ScopedChildView(GenericCRUDView):
@@ -833,7 +862,7 @@ class _ScopedChildView(GenericCRUDView):
       instance = form.save(commit=False)
 
       # audit fields (created_by / updated_by etc.)
-      user = getattr(request, "user", None)
+      user = get_current_user() or request.user
       self._set_audit_fields(instance, user, is_new=True)
 
       # safety: never allow user to create rows marked as system-managed
@@ -850,6 +879,7 @@ class _ScopedChildView(GenericCRUDView):
       # Save ManyToMany relationships explicitly (e.g. upstream_columns)
       if hasattr(form, "save_m2m"):
         form.save_m2m()
+        _backfill_target_column_inputs(instance, user)
 
       # Hard safety net: keep TargetColumn in sync for query-scoped mutations
       _maybe_trigger_query_contract_sync(instance)        
@@ -964,7 +994,7 @@ class _ScopedChildView(GenericCRUDView):
         updated = form.save(commit=False)
 
         # audit on update
-        user = getattr(request, "user", None)
+        user = get_current_user() or request.user
         self._set_audit_fields(updated, user, is_new=False)
 
         # keep readonly/system-managed guarantees
@@ -977,6 +1007,7 @@ class _ScopedChildView(GenericCRUDView):
         # Save ManyToMany relationships explicitly (e.g. upstream_columns)
         if hasattr(form, "save_m2m"):
           form.save_m2m()
+          _backfill_target_column_inputs(instance, user)
 
         # Hard safety net: keep TargetColumn in sync for query-scoped mutations
         _maybe_trigger_query_contract_sync(updated)
@@ -1103,7 +1134,7 @@ class _ScopedChildView(GenericCRUDView):
     setattr(instance, field_name, new_val)
 
     # Audit (updated_by, updated_at, etc.)
-    user = getattr(request, "user", None)
+    user = get_current_user() or request.user
     self._set_audit_fields(instance, user, is_new=False)
 
     # Protect system-managed fields (don't allow illegal changes)
@@ -1774,7 +1805,7 @@ class OrderByExpressionScopedView(_ScopedChildView):
 
     if form.is_valid():
       obj = form.save(commit=False)
-      user = getattr(request, "user", None)
+      user = get_current_user() or request.user
       self._set_audit_fields(obj, user, is_new=True)
       if hasattr(obj, "is_system_managed"):
         obj.is_system_managed = False
@@ -2019,7 +2050,7 @@ class PartitionByExpressionScopedView(_ScopedChildView):
 
     if form.is_valid():
       obj = form.save(commit=False)
-      user = getattr(request, "user", None)
+      user = get_current_user() or request.user
       self._set_audit_fields(obj, user, is_new=True)
       if hasattr(obj, "is_system_managed"):
         obj.is_system_managed = False

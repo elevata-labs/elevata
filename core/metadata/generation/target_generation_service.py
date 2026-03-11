@@ -155,8 +155,140 @@ class TargetGenerationService:
     return specs
 
 
-  def __init__(self, pepper: str | None = None):
+  def __init__(self, pepper: str | None = None, actor=None):
     self.pepper = pepper or security.get_runtime_pepper()
+    self.actor = actor if getattr(actor, "is_authenticated", False) else None
+
+
+  def _save_instance(self, obj, update_fields=None):
+    """
+    Persist an ORM instance and make sure audit fields are written explicitly
+    for system-managed generation flows.
+    """
+    if self.actor is not None:
+      if not obj.pk and not getattr(obj, "created_by_id", None):
+        obj.created_by = self.actor
+      obj.updated_by = self.actor
+
+      if update_fields is not None:
+        fields = list(update_fields)
+        if "updated_by" not in fields:
+          fields.append("updated_by")
+        update_fields = fields
+
+    if update_fields is None:
+      obj.save()
+    else:
+      obj.save(update_fields=update_fields)
+
+
+  def _stamp_missing_audit(self, obj):
+    """
+    Backfill missing audit attribution for an already existing object.
+
+    This is intentionally conservative:
+    - only fills created_by if it is currently missing
+    - only fills updated_by if it is currently missing
+    - does not overwrite existing audit attribution
+    """
+    if self.actor is None or obj is None:
+      return
+
+    update_fields = []
+
+    if hasattr(obj, "created_by_id") and not getattr(obj, "created_by_id", None):
+      obj.created_by = self.actor
+      update_fields.append("created_by")
+
+    if hasattr(obj, "updated_by_id") and not getattr(obj, "updated_by_id", None):
+      obj.updated_by = self.actor
+      update_fields.append("updated_by")
+
+    if update_fields:
+      obj.save(update_fields=update_fields)
+
+
+  def _backfill_bundle_audit(self, td):
+    """
+    Backfill missing audit fields for a generated dataset bundle.
+
+    This covers:
+    - the TargetDataset itself
+    - all TargetColumns of the dataset
+    - all TargetDatasetInputs of the dataset
+    - all TargetColumnInputs of the dataset's columns
+
+    Existing non-null audit values are preserved.
+    """
+    if self.actor is None or td is None:
+      return
+
+    self._stamp_missing_audit(td)
+
+    for col in td.target_columns.all():
+      self._stamp_missing_audit(col)
+
+    for ds_input in td.input_links.all():
+      self._stamp_missing_audit(ds_input)
+
+    column_ids = list(td.target_columns.values_list("id", flat=True))
+    if column_ids:
+      for col_input in TargetColumnInput.objects.filter(target_column_id__in=column_ids):
+        self._stamp_missing_audit(col_input)
+
+
+  def _create_instance(self, model_cls, **kwargs):
+    """
+    Create a model instance with explicit audit attribution.
+    """
+    if self.actor is not None:
+      kwargs.setdefault("created_by", self.actor)
+      kwargs.setdefault("updated_by", self.actor)
+    return model_cls.objects.create(**kwargs)
+
+
+  def _get_or_create_instance(self, model_cls, lookup: dict, defaults: dict | None = None):
+    """
+    get_or_create with audit fields applied on the create path.
+    """
+    payload = dict(defaults or {})
+    if self.actor is not None:
+      payload.setdefault("created_by", self.actor)
+      payload.setdefault("updated_by", self.actor)
+    return model_cls.objects.get_or_create(defaults=payload, **lookup)
+
+
+  def _update_or_create_instance(self, model_cls, lookup: dict, defaults: dict | None = None):
+    """
+    update_or_create variant that preserves created_by and always stamps updated_by.
+    """
+    defaults = dict(defaults or {})
+
+    try:
+      obj = model_cls.objects.get(**lookup)
+      created = False
+    except model_cls.DoesNotExist:
+      create_kwargs = {**lookup, **defaults}
+      if self.actor is not None:
+        create_kwargs.setdefault("created_by", self.actor)
+        create_kwargs.setdefault("updated_by", self.actor)
+      obj = model_cls.objects.create(**create_kwargs)
+      return obj, True
+
+    update_fields = []
+    for field_name, value in defaults.items():
+      if getattr(obj, field_name) != value:
+        setattr(obj, field_name, value)
+        update_fields.append(field_name)
+
+    if self.actor is not None:
+      obj.updated_by = self.actor
+      update_fields.append("updated_by")
+
+    if update_fields:
+      self._save_instance(obj, update_fields=list(dict.fromkeys(update_fields)))
+
+    return obj, created
 
 
   def get_relevant_source_datasets(self) -> List[SourceDataset]:
@@ -231,7 +363,8 @@ class TargetGenerationService:
         continue
 
       if existing is None:
-        col = TargetColumn.objects.create(
+        col = self._create_instance(
+          TargetColumn,
           target_dataset=td,
           target_column_name=col_name,
           datatype=spec["datatype"],
@@ -286,7 +419,7 @@ class TargetGenerationService:
         update_fields.append("remark")
 
       if update_fields:
-        col.save(update_fields=update_fields)
+        self._save_instance(col, update_fields=update_fields)
 
 
   def _build_row_hash_expression(self, all_columns, target_schema) -> str:
@@ -737,11 +870,15 @@ class TargetGenerationService:
         "incremental_source": incremental_source,
         "historize": historize,
       }
-      target_dataset_obj, created = TargetDataset.objects.get_or_create(
-        target_schema=target_schema,
-        target_dataset_name=dataset_draft.target_dataset_name,
+      target_dataset_obj, created = self._get_or_create_instance(
+        TargetDataset,
+        lookup={
+          "target_schema": target_schema,
+          "target_dataset_name": dataset_draft.target_dataset_name,
+        },
         defaults=defaults,
       )
+
     else:
       # 3) Existing dataset found by lineage_key: update mutable fields
       changed = False
@@ -765,7 +902,7 @@ class TargetGenerationService:
           target_dataset_obj.incremental_source = incremental_source
           changed = True
       if changed:
-        target_dataset_obj.save()
+        self._save_instance(target_dataset_obj)
 
     # 4) If we found per name (created == False), lineage_key
     #    or the Incremental columns cannot fit
@@ -782,7 +919,7 @@ class TargetGenerationService:
           target_dataset_obj.incremental_source = incremental_source
           changed = True
       if changed:
-        target_dataset_obj.save()
+        self._save_instance(target_dataset_obj)
 
     return target_dataset_obj, created
 
@@ -849,15 +986,18 @@ class TargetGenerationService:
       if lineage_key:
         defaults["lineage_key"] = lineage_key
 
-      hist_td, _ = TargetDataset.objects.get_or_create(
-        target_schema=schema,
-        target_dataset_name=hist_name,
+      hist_td, _ = self._get_or_create_instance(
+        TargetDataset,
+        lookup={
+          "target_schema": schema,
+          "target_dataset_name": hist_name,
+        },
         defaults=defaults,
-      )
+      )      
 
       if lineage_key and hist_td.lineage_key != lineage_key:
         hist_td.lineage_key = lineage_key
-        hist_td.save(update_fields=["lineage_key"])
+        self._save_instance(hist_td, update_fields=["lineage_key"])
 
     else:
       # Hist dataset exists for this lineage -> keep name + lineage in sync
@@ -881,7 +1021,7 @@ class TargetGenerationService:
         hist_td.is_system_managed = True
         changed = True
       if changed:
-        hist_td.save()
+        self._save_instance(hist_td)
 
     # ------------------------------------------------------------
     # Guardrail: hist former_names must never contain non-hist names.
@@ -891,7 +1031,7 @@ class TargetGenerationService:
     fn_clean = [n for n in fn if isinstance(n, str) and n.strip().lower().endswith("_hist")]
     if fn_clean != fn:
       hist_td.former_names = fn_clean
-      hist_td.save(update_fields=["former_names"])
+      self._save_instance(hist_td, update_fields=["former_names"])
 
     # Remove any reference components that point to hist columns,
     # otherwise PROTECT will block deleting those columns.
@@ -1053,7 +1193,7 @@ class TargetGenerationService:
         # Keep as-is (including possible "current name" duplicates), planner can dedupe.
         kwargs["former_names"] = deepcopy(cleaned)
 
-      col = TargetColumn.objects.create(**kwargs)
+      col = self._create_instance(TargetColumn, **kwargs)
       next_ord += 1
       return col
 
@@ -1127,7 +1267,8 @@ class TargetGenerationService:
         system_role=role,
         former_names=rc_former_names,
       )
-      TargetColumnInput.objects.create(
+      self._create_instance(
+        TargetColumnInput,
         target_column=hist_col,
         upstream_target_column=rc_col,
       )
@@ -1145,7 +1286,8 @@ class TargetGenerationService:
       created = []
       for o in preserve_orphans:
         max_used += 1
-        col = TargetColumn.objects.create(
+        col = self._create_instance(
+          TargetColumn,
           target_dataset=hist_td,
           target_column_name=o["target_column_name"],
           ordinal_position=max_used,
@@ -1267,9 +1409,12 @@ class TargetGenerationService:
         )
 
       if stage_ds is not None:
-        TargetDatasetInput.objects.update_or_create(
-          target_dataset=target_dataset_obj,
-          upstream_target_dataset=stage_ds,
+        self._update_or_create_instance(
+          TargetDatasetInput,
+          lookup={
+            "target_dataset": target_dataset_obj,
+            "upstream_target_dataset": stage_ds,
+          },
           defaults={
             "source_dataset": None,
             "role": self._resolve_role_for_source_dataset(representative),
@@ -1315,18 +1460,24 @@ class TargetGenerationService:
             )
 
         if raw_ds is not None:
-          TargetDatasetInput.objects.update_or_create(
-            target_dataset=target_dataset_obj,
-            upstream_target_dataset=raw_ds,
+          self._update_or_create_instance(
+            TargetDatasetInput,
+            lookup={
+              "target_dataset": target_dataset_obj,
+              "upstream_target_dataset": raw_ds,
+            },
             defaults={
               "source_dataset": None,
               "role": role,
             },
           )
         else:
-          TargetDatasetInput.objects.update_or_create(
-            target_dataset=target_dataset_obj,
-            source_dataset=src_ds,
+          self._update_or_create_instance(
+            TargetDatasetInput,
+            lookup={
+              "target_dataset": target_dataset_obj,
+              "source_dataset": src_ds,
+            },
             defaults={"role": role},
           )
       return
@@ -1335,9 +1486,12 @@ class TargetGenerationService:
     from metadata.models import TargetDatasetInput as TDI
     for src_ds in src_list:
       role = self._resolve_role_for_source_dataset(src_ds)
-      TDI.objects.update_or_create(
-        target_dataset=target_dataset_obj,
-        source_dataset=src_ds,
+      self._update_or_create_instance(
+        TDI,
+        lookup={
+          "target_dataset": target_dataset_obj,
+          "source_dataset": src_ds,
+        },
         defaults={"role": role},
       )
 
@@ -1530,14 +1684,15 @@ class TargetGenerationService:
           update_fields.append("target_column_name")
 
         if update_fields:
-          target_col_obj.save(update_fields=update_fields)
+          self._save_instance(target_col_obj, update_fields=update_fields)
 
       else:
         # New column
         if is_sys_managed_schema:
           temp_base += 1
           ord_val = temp_base
-          target_col_obj = TargetColumn.objects.create(
+          target_col_obj = self._create_instance(
+            TargetColumn,
             target_dataset=target_dataset_obj,
             target_column_name=col_draft.target_column_name,
             ordinal_position=ord_val,
@@ -1555,9 +1710,12 @@ class TargetGenerationService:
           )
         else:
           ord_val = col_draft.ordinal_position or 1
-          target_col_obj, _ = TargetColumn.objects.update_or_create(
-            target_dataset=target_dataset_obj,
-            target_column_name=col_draft.target_column_name,
+          target_col_obj, _ = self._update_or_create_instance(
+            TargetColumn,
+            lookup={
+              "target_dataset": target_dataset_obj,
+              "target_column_name": col_draft.target_column_name,
+            },
             defaults={
               "ordinal_position": ord_val,
               "datatype": col_draft.datatype,
@@ -1582,10 +1740,13 @@ class TargetGenerationService:
           upstream_target_column__isnull=False,
         ).delete()
         if src_col_id:
-          TargetColumnInput.objects.update_or_create(
-            target_column=target_col_obj,
-            source_column_id=src_col_id,
-            upstream_target_column=None,
+          self._update_or_create_instance(
+            TargetColumnInput,
+            lookup={
+              "target_column": target_col_obj,
+              "source_column_id": src_col_id,
+              "upstream_target_column": None,
+            },
             defaults={},
           )
 
@@ -1595,22 +1756,29 @@ class TargetGenerationService:
             target_column=target_col_obj,
             source_column__isnull=False,
           ).delete()
-          TargetColumnInput.objects.update_or_create(
-            target_column=target_col_obj,
-            upstream_target_column=upstream_col,
-            source_column=None,
+          self._update_or_create_instance(
+            TargetColumnInput,
+            lookup={
+              "target_column": target_col_obj,
+              "upstream_target_column": upstream_col,
+              "source_column": None,
+            },
             defaults={},
           )
+
         else:
           TargetColumnInput.objects.filter(
             target_column=target_col_obj,
             upstream_target_column__isnull=False,
           ).delete()
           if src_col_id:
-            TargetColumnInput.objects.update_or_create(
-              target_column=target_col_obj,
-              source_column_id=src_col_id,
-              upstream_target_column=None,
+            self._update_or_create_instance(
+              TargetColumnInput,
+              lookup={
+                "target_column": target_col_obj,
+                "source_column_id": src_col_id,
+                "upstream_target_column": None,
+              },
               defaults={},
             )
 
@@ -1620,10 +1788,13 @@ class TargetGenerationService:
           source_column__isnull=False,
         ).delete()
         if upstream_col is not None:
-          TargetColumnInput.objects.update_or_create(
-            target_column=target_col_obj,
-            upstream_target_column=upstream_col,
-            source_column=None,
+          self._update_or_create_instance(
+            TargetColumnInput,
+            lookup={
+              "target_column": target_col_obj,
+              "upstream_target_column": upstream_col,
+              "source_column": None,
+            },
             defaults={},
           )
 
@@ -1634,10 +1805,13 @@ class TargetGenerationService:
           upstream_target_column__isnull=False,
         ).delete()
         if src_col_id:
-          TargetColumnInput.objects.update_or_create(
-            target_column=target_col_obj,
-            source_column_id=src_col_id,
-            upstream_target_column=None,
+          self._update_or_create_instance(
+            TargetColumnInput,
+            lookup={
+              "target_column": target_col_obj,
+              "source_column_id": src_col_id,
+              "upstream_target_column": None,
+            },
             defaults={},
           )
 
@@ -1664,13 +1838,13 @@ class TargetGenerationService:
       # Pass 1: move everything into a safe high range (no collisions possible)
       for idx, col in enumerate(ordered_cols, start=1):
         col.ordinal_position = safe_base + idx
-        col.save(update_fields=["ordinal_position"])
+        self._save_instance(col, update_fields=["ordinal_position"])
 
       # Pass 2: assign final dense ordinals 1..N
       for idx, col in enumerate(ordered_cols, start=1):
         if col.ordinal_position != idx:
           col.ordinal_position = idx
-          col.save(update_fields=["ordinal_position"])
+          self._save_instance(col, update_fields=["ordinal_position"])
 
     return created_or_updated
 
@@ -1787,18 +1961,27 @@ class TargetGenerationService:
       # 5b) Ensure platform tech columns (load_run_id, loaded_at) exist on this dataset
       self._ensure_tech_columns(target_dataset_obj)
 
+      # 5c) Backfill missing audit attribution for already existing generated metadata
+      self._backfill_bundle_audit(target_dataset_obj)
+
       # 6) Optional: history dataset for rawcore
       if target_schema.short_name == "rawcore":
         # Only create hist dataset when historization is enabled on this dataset
         hist_td = self.ensure_hist_dataset_for_rawcore(target_dataset_obj)
 
-        TargetDatasetInput.objects.get_or_create(
-          target_dataset=hist_td,
-          upstream_target_dataset=target_dataset_obj,
-          defaults={
-            "role": "primary",
-          },
-        )
+        if hist_td is not None:
+          self._get_or_create_instance(
+            TargetDatasetInput,
+            lookup={
+              "target_dataset": hist_td,
+              "upstream_target_dataset": target_dataset_obj,
+            },
+            defaults={
+              "role": "primary",
+            },
+          )
+
+          self._backfill_bundle_audit(hist_td)
 
     return (
       f"{len(buckets)} target datasets and {total_columns} target columns generated/updated."

@@ -1,6 +1,6 @@
 """
 elevata - Metadata-driven Data Platform Framework
-Copyright © 2025 Ilona Tag
+Copyright © 2025-2026 Ilona Tag
 
 This file is part of elevata.
 
@@ -29,7 +29,7 @@ from CLI, CI/CD, or the web UI.
 
 from django.core.management.base import BaseCommand, CommandError
 
-from metadata.models import TargetSchema
+from django.contrib.auth import get_user_model
 from metadata.generation.target_generation_service import TargetGenerationService
 from metadata.generation.security import get_runtime_pepper
 
@@ -49,6 +49,13 @@ class Command(BaseCommand):
       ),
     )
     parser.add_argument(
+      "--actor-id",
+      dest="actor_id",
+      type=int,
+      required=False,
+      help="User ID to attribute system-managed generated metadata to.",
+    )
+    parser.add_argument(
       "--dry-run",
       action="store_true",
       dest="dry_run",
@@ -56,11 +63,17 @@ class Command(BaseCommand):
     )
 
   def handle(self, *args, **options):
+    actor = None
+    actor_id = options.get("actor_id")
+    if actor_id:
+      User = get_user_model()
+      actor = User.objects.filter(pk=actor_id).first()
+
     schema_short_name = options.get("schema_short_name")
     dry_run = options.get("dry_run", False)
 
     pepper = get_runtime_pepper()
-    svc = TargetGenerationService(pepper=pepper)
+    svc = TargetGenerationService(pepper=pepper, actor=actor)
 
     schemas = svc.get_target_schemas_in_scope()
     if schema_short_name:
