@@ -1,15 +1,15 @@
-# elevata
+# elevata®
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/elevata-labs/elevata/main/docs/logo.png" alt="elevata logo" width="130"/>
+  <img src="https://raw.githubusercontent.com/elevata-labs/elevata/main/docs/elevata_logo.png" alt="elevata logo" width="130"/>
 </p>
 
-**elevata** turns **metadata into deterministic, executable data architecture**.
+**elevata® is an Architecture Runtime for modern data platforms.**
 
-It defines how modern data platforms should be modeled —  
-and executes that architecture consistently across warehouses.
+It turns **metadata into deterministic, executable data architecture**.
+Architecture is defined declaratively and executed consistently across warehouses.
 
-SQL is an artifact. Architecture is metadata.
+SQL becomes an artifact. Architecture becomes metadata.
 
 ---
 
@@ -76,8 +76,7 @@ elevata models datasets, lineage, keys, and execution semantics declaratively.
 
 From this metadata, it derives deterministic logical plans and renders dialect-owned SQL.
 
-The same architecture can be executed across supported warehouses  
-without changing dataset definitions.
+The same architecture executes across supported warehouses without changing dataset definitions.
 
 > *Modern data platforms often fail not because of missing tools, but because*  
 > *architecture, lineage, and governance are encoded implicitly in SQL and pipeline code.*  
@@ -178,11 +177,12 @@ The project is published under the AGPL v3 license and open for use by any organ
 
 ---
 
-## 🧾 License & Notices
+## 🧾 License & Trademark Notice
 
 © 2025-2026 Ilona Tag — All rights reserved.  
-**elevata™** is an open-source software project for data & analytics innovation.  
-The name *elevata* is currently under trademark registration with the German Patent and Trade Mark Office (DPMA).  
+**elevata®** is an open-source software project for data & analytics innovation.  
+
+elevata® is a registered trademark in Germany.  
 Other product names, logos, and brands mentioned here are property of their respective owners.
 
 Released under the **GNU Affero General Public License v3 (AGPL-3.0)**.  

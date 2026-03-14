@@ -16,6 +16,7 @@ docs_dir: docs
 theme:
   name: material
   language: en
+  custom_dir: docs/overrides
   features:
     - navigation.instant
     - navigation.tracking
@@ -96,3 +97,6 @@ nav:
   - Project:
       - ⚙️ Main Project README: readme_ref.md
       - ⚙️ Changelog: changelog_ref.md
+
+extra:
+  trademark_notice: "elevata® is a registered trademark in Germany."

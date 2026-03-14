@@ -9,7 +9,7 @@
 
 ## 🔧 1. Motivation
 
-Modern data platforms increasingly rely on SQL-based transformation tools 
+Modern data platforms increasingly rely on SQL-based transformation tools  
 to express not only technical data processing,  
 but also business logic, execution semantics, and governance intent.
 
@@ -19,14 +19,33 @@ This tight coupling leads to:
 - fragmented governance  
 - strong dependency on external orchestration and semantic layers
 
-elevata addresses these limitations by treating **metadata — not SQL —
+elevata addresses these limitations by treating **metadata — not SQL —  
 as the primary control plane** for data platforms.
 
 ---
 
-## 🔧 2. elevata Today
+## 🔧 2. Architecture Runtime
 
-With the introduction of an explicit execution model,
+An **Architecture Runtime** executes architecture declaratively.
+
+Instead of describing architecture only in documents, an Architecture Runtime  
+renders, validates, and enforces it through executable metadata.
+
+In traditional data platforms, architecture is often expressed implicitly  
+through SQL pipelines, orchestration configuration, and BI models.
+
+elevata makes architecture explicit.
+
+Datasets, dependencies, execution semantics, and business intent are  
+defined as structured metadata and compiled into deterministic execution plans.
+
+In this sense, elevata acts as an **Architecture Runtime for modern data platforms**.
+
+---
+
+## 🔧 3. elevata Today
+
+With the introduction of an explicit execution model,  
 elevata has evolved beyond SQL generation into a **platform execution core**.
 
 Key characteristics:  
@@ -45,7 +64,7 @@ SQL is an output artifact — not the orchestration mechanism.
 
 ---
 
-## 🔧 3. Decoupling Business Logic from SQL
+## 🔧 4. Decoupling Business Logic from SQL
 
 Traditional SQL-centric pipelines embed business meaning directly into SQL:  
 - calculations are implicit  
@@ -57,7 +76,7 @@ while keeping execution deterministic and warehouse-native.
 
 ---
 
-## 🔧 4. Bizcore: Business Semantics without a Semantic Layer
+## 🔧 5. Bizcore: Business Semantics without a Semantic Layer
 
 Bizcore introduces a dedicated layer for **business meaning**.
 
@@ -82,7 +101,7 @@ Bizcore defines *what data means* — not *how queries should behave*.
 
 ---
 
-## 🔧 5. Separation of Responsibilities
+## 🔧 6. Separation of Responsibilities
 
 | Layer | Responsibility |
 |------|----------------|
@@ -98,7 +117,7 @@ This separation ensures:
 
 ---
 
-## 🔧 6. Strategic Outcome
+## 🔧 7. Strategic Outcome
 
 By combining:  
 - metadata-native execution  
@@ -112,7 +131,7 @@ but do not define execution, semantics, or governance.
 
 ---
 
-## 🔧 7. Long-Term Vision
+## 🔧 8. Long-Term Vision
 
 elevata aims to become a **metadata-native data platform engine**:  
 a system where structure, execution, governance, and business intent  
