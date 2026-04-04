@@ -19,6 +19,26 @@ TBD
 
 ---
 
+## [1.4.3] - 2026-04-04
+
+This patch release restores the correct logo asset reference in elevata's UI.
+
+The focus of this release is a complete and consistent default UI experience  
+for users cloning and starting elevata locally.
+
+---
+
+### 🛠️ Fixed
+
+#### UI Logo Asset Reference
+
+- Corrected the UI logo asset reference used by the web interface  
+- Restored the intended default UI appearance for fresh local setups  
+- Removed a visual regression that could make the interface appear incomplete  
+  despite an otherwise successful startup
+
+---
+
 ## [1.4.2] - 2026-03-11
 
 This patch release introduces deterministic audit attribution for metadata mutations  
