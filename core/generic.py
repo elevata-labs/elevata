@@ -1415,12 +1415,135 @@ class GenericCRUDView(LoginRequiredMixin, View):
       return htmx_oob_warning(
         "Cannot delete: downstream datasets depend on this (see Lineage). Remove downstream dependencies first."
       )
+    
+    def _maybe_allow_rawcore_column_delete_via_hist_orphaning(*, col, protected_objects, actor) -> bool:
+      """
+      Allow deleting a non-system-managed rawcore base TargetColumn even if it is PROTECTed
+      by system-generated TargetColumnInput links to its *_hist mirror column.
+
+      Behavior:
+        - deactivate the linked *_hist column(s) (do NOT delete)
+        - delete only the specific TargetColumnInput rows that caused the PROTECT
+        - then the caller can retry col.delete()
+
+      Safety:
+        - only applies if ALL protected_objects are TargetColumnInput rows
+          pointing from *_hist -> this base column.
+      """
+      try:
+        if col is None or col.__class__.__name__ != "TargetColumn":
+          return False
+
+        # Only user/business columns should be deletable.
+        if getattr(col, "is_system_managed", False) or getattr(col, "system_role", None):
+          return False
+
+        td = getattr(col, "target_dataset", None)
+        if td is None:
+          return False
+        schema = getattr(td, "target_schema", None)
+        if getattr(schema, "short_name", None) != "rawcore":
+          return False
+
+        ds_name = getattr(td, "target_dataset_name", "") or ""
+        if not isinstance(ds_name, str) or ds_name.endswith("_hist"):
+          return False
+
+        # If the dataset does not historize, there should be no hist-mirror dependencies.
+        if not getattr(td, "historize", False):
+          return False
+
+        protected = list(protected_objects or [])
+        if not protected:
+          return False
+
+        # Must be ONLY TargetColumnInput references (otherwise: real dependency, keep blocking).
+        if any(getattr(o, "__class__", None).__name__ != "TargetColumnInput" for o in protected):
+          return False
+
+        ids = [getattr(o, "pk", None) for o in protected if getattr(o, "pk", None)]
+        if not ids:
+          return False
+
+        TargetDataset = apps.get_model("metadata", "TargetDataset")
+        TargetColumn = apps.get_model("metadata", "TargetColumn")
+        TargetColumnInput = apps.get_model("metadata", "TargetColumnInput")
+
+        # Resolve hist dataset (prefer lineage_key, fallback to naming convention).
+        hist_td = None
+        lk = getattr(td, "lineage_key", None)
+        if lk:
+          hist_td = (
+            TargetDataset.objects
+            .filter(
+              target_schema=td.target_schema,
+              lineage_key=lk,
+              target_dataset_name__endswith="_hist",
+            )
+            .first()
+          )
+        if hist_td is None:
+          hist_td = (
+            TargetDataset.objects
+            .filter(
+              target_schema=td.target_schema,
+              target_dataset_name=f"{ds_name}_hist",
+            )
+            .first()
+          )
+        if hist_td is None:
+          return False
+
+        # Ensure the ProtectedError is ONLY about those hist-mirror inputs.
+        tci_qs = TargetColumnInput.objects.filter(pk__in=ids, upstream_target_column=col)
+        if tci_qs.count() != len(ids):
+          return False
+        tci_qs = tci_qs.filter(target_column__target_dataset=hist_td)
+        if tci_qs.count() != len(ids):
+          return False
+
+        hist_col_ids = list(tci_qs.values_list("target_column_id", flat=True))
+        if not hist_col_ids:
+          return False
+
+        # Deactivate hist columns (do not delete).
+        update_payload = {"active": False}
+        if hasattr(TargetColumn, "is_system_managed"):
+          update_payload["is_system_managed"] = True
+        if actor is not None and hasattr(TargetColumn, "updated_by_id"):
+          update_payload["updated_by"] = actor
+        TargetColumn.objects.filter(pk__in=hist_col_ids).update(**update_payload)
+
+        # Remove only the exact inputs that blocked deletion.
+        tci_qs.delete()
+        return True
+      except Exception:
+        return False
 
     try:
       obj.delete()
       html = f'<tr id="row-{obj_id}" hx-swap-oob="delete"></tr>'
       return HttpResponse(html, status=200)
     except ProtectedError as e:
+      # Special case: allow deleting a user-managed rawcore base column even if
+      # it is PROTECTed by system-generated *_hist mirror inputs.
+      try:
+        if obj.__class__.__name__ == "TargetColumn":
+          actor = get_current_user() or getattr(request, "user", None)
+          if not getattr(actor, "is_authenticated", False):
+            actor = None
+          if _maybe_allow_rawcore_column_delete_via_hist_orphaning(
+            col=obj,
+            protected_objects=getattr(e, "protected_objects", None),
+            actor=actor,
+          ):
+            # Retry after detaching the hist-mirror dependencies.
+            obj.delete()
+            html = f'<tr id="row-{obj_id}" hx-swap-oob="delete"></tr>'
+            return HttpResponse(html, status=200)
+      except Exception:
+        pass
+
       # HTMX: show a helpful feedback instead of silently failing
       msg = "Cannot delete: this record is still referenced."
       try:

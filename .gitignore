@@ -10,6 +10,7 @@
 
 # elevata
 core/.artifacts/
+core/.elevata/
 
 # Python
 __pycache__/

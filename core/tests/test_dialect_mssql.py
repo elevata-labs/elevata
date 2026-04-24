@@ -27,6 +27,7 @@ from types import SimpleNamespace
 
 from metadata.rendering.dialects.dialect_factory import get_active_dialect
 from metadata.rendering.dialects.mssql import MssqlDialect
+from metadata.ingestion.types_map import canonicalize_type, canonical_type_str
 
 
 def test_mssql_dialect_is_registered():
@@ -151,3 +152,8 @@ def test_mssql_hist_update_and_delete_use_tsql_update_from_syntax():
   )
   assert deleted.startswith("UPDATE h\n")
   assert "FROM rawcore.rc_aw_customer_hist h" in deleted
+
+def test_mssql_timestamp_maps_to_binary_rowversion():
+  # SQL Server "timestamp" is rowversion and must not be treated as a temporal type.
+  t = canonicalize_type("mssql", "timestamp")
+  assert canonical_type_str(t) == "BINARY"

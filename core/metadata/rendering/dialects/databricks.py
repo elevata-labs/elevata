@@ -389,7 +389,10 @@ class DatabricksDialect(SqlDialect):
   
   @property
   def supports_alter_column_type(self) -> bool:
-    return True
+    # Delta Lake has restrictions for in-place type changes (e.g. DATE -> TIMESTAMP)
+    # and may error at runtime. We therefore do not advertise in-place type evolution
+    # and rely on drift warnings + explicit remediation strategies.
+    return False
 
   @property
   def supports_delete_detection(self) -> bool:
@@ -612,7 +615,20 @@ class DatabricksDialect(SqlDialect):
       f"ALTER TABLE {tbl} SET TBLPROPERTIES ('delta.columnMapping.mode' = 'name');\n"
       f"ALTER TABLE {tbl} RENAME COLUMN {old_col} TO {new_col};"
     )
-  
+
+
+  def render_drop_column(self, schema: str, table: str, column: str) -> str:
+    """
+    Delta Lake: DROP COLUMN also requires Column Mapping (mode 'name') in many setups.
+    Enable best-effort right before dropping (same as RENAME COLUMN).
+    """
+    tbl = self.render_table_identifier(schema, table)
+    col = self.render_identifier(column)
+    return (
+      f"ALTER TABLE {tbl} SET TBLPROPERTIES ('delta.columnMapping.mode' = 'name');\n"
+      f"ALTER TABLE {tbl} DROP COLUMN {col};"
+    )
+
 
   # ---------------------------------------------------------------------------
   # 4. DDL helpers

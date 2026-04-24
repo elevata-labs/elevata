@@ -19,6 +19,48 @@ TBD
 
 ---
 
+## [1.5.0] - 2026-04-24
+
+This release strengthens elevata’s Architecture Runtime by making architecture drift visible,  
+scoping changes to the executed dataset set, and introducing policy-gated destructive schema operations.
+
+The focus is deterministic, explainable schema evolution across supported warehouses.
+
+---
+
+### ✨ Added
+
+#### Architecture State & Diff (scoped)
+
+- Architecture state persistence with stable fingerprinting  
+- Scoped architecture diff for the current execution order (includes related `_hist` targets)  
+- Migration plan preview for renames, adds, drops and type evolution signals  
+- Shadow compare that cross-checks migration intent vs. planned materialization DDL
+
+#### Policy-gated destructive schema operations
+
+- Base-table `DROP COLUMN` support gated by `ELEVATA_ALLOW_AUTO_DROP_COLUMNS`  
+- Optional `_hist` physical drops gated by `ELEVATA_ALLOW_AUTO_DROP_HIST_COLUMNS`  
+- Minimal CLI notice when destructive DDL is planned/executed (prevents “silent cleanup” surprises)
+
+---
+
+### 🔄 Improved
+
+- Clearer CLI output for architecture drift and migration intent  
+- More robust cross-dialect type normalization and equivalence handling  
+- Improved determinism for drift detection across warehouse-specific type representations
+
+---
+
+### 🛠️ Fixed
+
+- Multiple edge cases in schema drift planning around rename/add/drop interactions  
+- Improved correctness for historization-related schema sync scenarios  
+- Miscellaneous stability improvements in execution + materialization tooling
+
+---
+
 ## [1.4.3] - 2026-04-04
 
 This patch release restores the correct logo asset reference in elevata's UI.

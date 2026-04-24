@@ -24,6 +24,7 @@ import pytest
 
 from metadata.rendering.dialects.dialect_factory import get_active_dialect
 from metadata.rendering.dialects.databricks import DatabricksDialect
+from metadata.ingestion.types_map import canonicalize_type, canonical_type_str
 
 
 def test_databricks_dialect_is_registered():
@@ -56,3 +57,24 @@ def test_databricks_merge_renders_merge_into():
   assert "merge into" in sql.lower()
   assert "when matched" in sql.lower()
   assert "when not matched" in sql.lower()
+
+def test_databricks_timestamp_ntz_maps_to_timestamp():
+  t = canonicalize_type("databricks", "timestamp_ntz")
+  assert canonical_type_str(t) == "TIMESTAMP"
+
+
+def test_databricks_struct_maps_to_json():
+  t = canonicalize_type("databricks", "struct<a:int,b:string>")
+  assert canonical_type_str(t) == "JSON"
+
+
+def test_databricks_decimal_single_param_maps_to_precision_scale():
+  t = canonicalize_type("databricks", "decimal(12)")
+  assert canonical_type_str(t) == "DECIMAL(12,0)"
+
+
+def test_databricks_drop_column_enables_column_mapping_best_effort():
+  d = DatabricksDialect()
+  sql = d.render_drop_column("dw", "t", "old_col")
+  assert "set tblproperties" in sql.lower()
+  assert "drop column" in sql.lower()

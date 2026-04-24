@@ -22,7 +22,7 @@ Contact: <https://github.com/elevata-labs/elevata>.
 
 from __future__ import annotations
 
-import json
+import os
 from typing import Any, Optional
 
 from metadata.materialization.plan import MaterializationPlan, MaterializationStep
@@ -46,6 +46,18 @@ def _block(plan: MaterializationPlan, code: str, msg: str) -> None:
 
 def _norm_name(name: str) -> str:
   return (name or "").strip().lower()
+
+
+def _get_bool_env(name: str, default: bool) -> bool:
+  value = os.getenv(name)
+  if value is None:
+    return default
+  value = value.strip().lower()
+  if value in ("1", "true", "yes", "y", "on"):
+    return True
+  if value in ("0", "false", "no", "n", "off"):
+    return False
+  return default
 
 
 def _norm_loose(name: str) -> str:
@@ -457,6 +469,11 @@ def build_materialization_plan(*, td, introspection_engine, exec_engine=None, di
 
     # Safe auto-remediation only for widening.
     if kind == "widening":
+      # Databricks/Delta: widening type changes are not reliably supported in-place.
+      # Avoid planning DDL that may fail at runtime; keep drift as warning.
+      if dialect_name_lc == "databricks":
+        continue
+
       if getattr(dialect, "supports_alter_column_type", False) and hasattr(dialect, "render_alter_column_type"):
         ddl = dialect.render_alter_column_type(
           schema=schema_name,
@@ -630,5 +647,92 @@ def build_materialization_plan(*, td, introspection_engine, exec_engine=None, di
       reason=f"Rename rebuild temp table to original: {schema_name}.{tmp_table} -> {schema_name}.{table_name}",
     ))
 
-  # Drops are intentionally not planned now (policy-gated later).
+  # ------------------------------------------------------------------
+  # DROP COLUMN (destructive) — explicitly gated via env flag.
+  #
+  # Rules:
+  # - only when ELEVATA_ALLOW_AUTO_DROP_COLUMNS=true
+  # - never for *_hist datasets (hist keeps retired columns)
+  # - never when a rebuild is planned (DROP+CREATE handles schema)
+  # - never drop columns that are being renamed in this plan
+  # - never drop system-managed columns (extra guard)
+  # ------------------------------------------------------------------
+  try:
+    import re as _re
+
+    allow_auto_drop = _get_bool_env("ELEVATA_ALLOW_AUTO_DROP_COLUMNS", False)
+    allow_hist_drop = _get_bool_env("ELEVATA_ALLOW_AUTO_DROP_HIST_COLUMNS", False)
+
+    # Be defensive: hist datasets should never be auto-dropped, even if is_hist is not set.
+    is_hist = bool(getattr(td, "is_hist", False)) or str(table_name or "").endswith("_hist")
+
+    if allow_auto_drop and (not rebuild_planned) and ((not is_hist) or allow_hist_drop):
+
+      desired_norm = set()
+      for _c, _name, _type in desired_cols:
+        nn = _norm_name(_name)
+        if nn:
+          desired_norm.add(nn)
+
+      # Do not drop columns that are renamed in this same plan.
+      renamed_from_norm: set[str] = set()
+      for s in (plan.steps or []):
+        if getattr(s, "op", None) != "RENAME_COLUMN":
+          continue
+        reason = str(getattr(s, "reason", "") or "")
+        m = _re.search(r"Rename column\s+(.+?)\s+->", reason)
+        if m:
+          renamed_from_norm.add(_norm_name(m.group(1)))
+
+      # Extra guard: never auto-drop system-managed columns.
+      protected_norm: set[str] = set()
+      try:
+        for c in td.target_columns.all():
+          if getattr(c, "is_system_managed", False):
+            n = _norm_name(getattr(c, "target_column_name", "") or "")
+            if n:
+              protected_norm.add(n)
+      except Exception:
+        pass
+
+      for norm, a in (actual_cols_by_name or {}).items():
+        if not norm:
+          continue
+        if norm in desired_norm:
+          continue
+        if norm in renamed_from_norm:
+          continue
+        if norm in protected_norm:
+          continue
+
+        # If this is a hist dataset and hist-drops are not explicitly enabled, never drop.
+        if is_hist and (not allow_hist_drop):
+          continue
+
+        physical_name = str((a or {}).get("name") or (a or {}).get("column_name") or "").strip()
+        if not physical_name:
+          continue
+
+        drop_sql = None
+        if hasattr(dialect, "render_drop_column"):
+          drop_sql = dialect.render_drop_column(schema_name, table_name, physical_name)
+
+        if drop_sql:
+          plan.steps.append(MaterializationStep(
+            op="DROP_COLUMN",
+            sql=drop_sql,
+            # NOTE: Execution is explicitly gated by ELEVATA_ALLOW_AUTO_DROP_COLUMNS.
+            # Mark as safe so the applier will actually execute it when enabled.
+            safe=True,
+            reason=f"Column removed from metadata (auto-drop enabled): {physical_name}",
+          ))
+        else:
+          _warn(
+            plan,
+            "UNSUPPORTED_DROP_COLUMN",
+            f"Column {schema_name}.{table_name}.{physical_name} removed from metadata but dialect cannot render DROP COLUMN.",
+          )
+  except Exception as exc:
+    _warn(plan, "AUTO_DROP_COLUMNS_SKIPPED", f"Auto-drop planning skipped: {exc}")
+
   return plan

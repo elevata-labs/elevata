@@ -52,7 +52,7 @@ validated before execution.
 
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/elevata-labs/elevata/main/docs/elevata_v1_4_0.png" alt="elevata UI preview" width="700"/>
+  <img src="https://raw.githubusercontent.com/elevata-labs/elevata/main/docs/elevata_v1_5_0.png" alt="elevata UI preview" width="700"/>
   <br/>
   <em>Dataset detail view with lineage, metadata, and dialect-aware SQL previews</em>
 </p>
@@ -113,6 +113,8 @@ Execution supports full and incremental loads, historization,
 schema evolution, and structured load logging.
 
 Behavior is deterministic and observable.
+
+Schema drift is reconciled via metadata-driven materialization planning (renames, adds; destructive changes are policy-gated).
 
 ---
 

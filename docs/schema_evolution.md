@@ -256,7 +256,7 @@ This ensures:
 
 The following operations are **explicitly not automated**:
 
-- ❌ Column drops  
+- ❌ Column drops (by default)  
 - ❌ Type changes  
 - ❌ Constraint changes  
 - ❌ Implicit destructive operations
@@ -265,6 +265,15 @@ These require:
 - Explicit policies  
 - Clear user intent  
 - Future controlled rollout
+
+### 🧩 Policy-gated column drops
+
+Column drops are disabled by default and require explicit configuration:
+
+- Base tables: `ELEVATA_ALLOW_AUTO_DROP_COLUMNS=true` enables physical `DROP COLUMN` when metadata no longer contains a column  
+- `_hist` tables: physical drops additionally require `ELEVATA_ALLOW_AUTO_DROP_HIST_COLUMNS=true`  
+
+Without the hist flag, removed business columns in `_hist` are preserved as retired (inactive + detached lineage).
 
 ---
 

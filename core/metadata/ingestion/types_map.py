@@ -81,6 +81,19 @@ def _extract_params(raw: str) -> Tuple[Optional[int], Optional[int], Optional[in
     return None, prec, scale, has_max
   except ValueError:
     return None, None, None, has_max
+  
+
+def _base_type_token(t: str) -> str:
+  """
+  Return the base type token for nested/generic type strings.
+
+  Examples:
+    "struct<a:int,b:string>" -> "struct"
+    "struct(a int, b varchar)" -> "struct"
+    "decimal(12,2)" -> "decimal"
+  """
+  s = (t or "").strip().lower()
+  return s.split("(", 1)[0].split("<", 1)[0].strip()
 
 
 def _ret(datatype: str,
@@ -96,6 +109,12 @@ def _generic_fallback(t: str,
                       prec: Optional[int],
                       scale: Optional[int]) -> CanonicalTypeTuple:  
   tl = t.lower()
+  base = _base_type_token(tl)
+
+  # Semi-structured generics: avoid false matches from inner types (e.g. "...string..." inside STRUCT).
+  if base in ("struct", "map", "array", "list"):
+    return _ret(JSON)
+
   if any(x in tl for x in ["char", "text", "string"]):
     return _ret(STRING, length, None, None)
   if any(x in tl for x in ["numeric", "decimal", "number", "money", "bignumeric"]):
@@ -137,9 +156,22 @@ def map_sql_type(dialect_name: str, raw_type: object) -> CanonicalTypeTuple:
   if not isinstance(raw_type, str):
     raw_type = str(raw_type)
   t = raw_type.strip().lower()
+  base = _base_type_token(t)
 
   length, prec, scale, has_max = _extract_params(t)
   d = (dialect_name or "").lower()
+
+  # Normalize DECIMAL with single parameter: DECIMAL(12) -> precision=12, scale=0
+  # Some engines (incl. Spark/Databricks) report decimals as DECIMAL(p) without scale.
+  if (
+    any(x in t for x in ["decimal", "numeric", "number"])
+    and prec is None
+    and scale is None
+    and length is not None
+  ):
+    prec = length
+    scale = 0
+    length = None
 
   # ---------------- MSSQL ----------------
   if d == "mssql":
@@ -162,7 +194,10 @@ def map_sql_type(dialect_name: str, raw_type: object) -> CanonicalTypeTuple:
       return _ret(DECIMAL, None, prec, scale)
     if "float" in t or "real" in t:
       return _ret(FLOAT)
-    if any(x in t for x in ["datetime", "datetime2", "smalldatetime", "datetimeoffset", "timestamp"]):
+    # SQL Server "timestamp" is rowversion (binary), not a temporal type.
+    if t == "timestamp":
+      return _ret(BINARY)
+    if any(x in t for x in ["datetime", "datetime2", "smalldatetime", "datetimeoffset"]):
       return _ret(TIMESTAMP)
     if t == "date":
       return _ret(DATE)
@@ -171,6 +206,44 @@ def map_sql_type(dialect_name: str, raw_type: object) -> CanonicalTypeTuple:
     if "uniqueidentifier" in t:
       return _ret(UUID)
     if any(x in t for x in ["varbinary", "binary", "image", "rowversion"]):
+      return _ret(BINARY)
+    
+  # ---------------- Databricks (Spark SQL) ----------------
+  elif d == "databricks":
+    # Use a base type token instead of substring checks.
+    # Otherwise "struct<a:int,b:string>" would match STRING due to the inner "string".
+    # Note: `base` is computed once above via `_base_type_token(t)`.
+
+    # Semi-structured types (Spark generics)
+    if base in ("struct", "map", "array", "list"):
+      return _ret(JSON)
+    # Strings
+    if base in ("string", "varchar", "char"):
+      return _ret(STRING)
+    # Boolean
+    if base in ("boolean", "bool"):
+      return _ret(BOOLEAN)
+    # Integers
+    if base in ("bigint", "long"):
+      return _ret(BIGINT)
+    if base in ("tinyint", "smallint", "int", "integer", "byte", "short"):
+      return _ret(INTEGER)
+    # Decimals
+    if base in ("decimal", "numeric"):
+      return _ret(DECIMAL, None, prec, scale)
+    # Floats
+    if base in ("double", "float", "real"):
+      return _ret(FLOAT)
+    # Dates & times
+    if base == "date":
+      return _ret(DATE)
+    # Spark/Databricks variants: timestamp_ntz, timestamp_ltz, etc.
+    if base.startswith("timestamp") or base == "datetime":
+      return _ret(TIMESTAMP)
+    if base.startswith("time"):
+      return _ret(TIME)
+    # Binary
+    if base in ("binary", "varbinary"):
       return _ret(BINARY)
 
   # -------------- PostgreSQL --------------
@@ -325,7 +398,12 @@ def map_sql_type(dialect_name: str, raw_type: object) -> CanonicalTypeTuple:
 
   # ---------------- DuckDB ----------------
   elif d == "duckdb":
-    if any(x in t for x in ["varchar", "char", "text"]):
+    # DuckDB supports nested types like STRUCT(...), MAP(...), LIST(...).
+    # Use base token to avoid misclassifying due to inner "varchar"/"int" substrings.
+    if base in ("struct", "map", "list", "array"):
+      return _ret(JSON)
+
+    if base in ("varchar", "char", "text"):
       L = length if (length and any(x in t for x in ["char", "varchar"])) else None
       return _ret(STRING, L)
     if any(x in t for x in ["boolean", "bool"]):
@@ -341,10 +419,10 @@ def map_sql_type(dialect_name: str, raw_type: object) -> CanonicalTypeTuple:
       return _ret(FLOAT)
     if t == "date":
       return _ret(DATE)
-    if t.startswith("time"):
-      return _ret(TIME)
     if any(x in t for x in ["timestamp", "timestamptz"]):
       return _ret(TIMESTAMP)
+    if t.startswith("time"):
+      return _ret(TIME)
     if "json" in t:
       return _ret(JSON)
     if any(x in t for x in ["blob", "binary", "varbinary"]):

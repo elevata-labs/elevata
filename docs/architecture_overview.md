@@ -87,7 +87,10 @@ physical target tables with metadata-defined schemas:
 - **Dataset renames** are detected via `TargetDataset.former_names → RENAME TABLE`  
 - **Column renames** are detected via `TargetColumn.former_names → RENAME COLUMN`  
 - Missing columns can be added (`ADD COLUMN`) when the dialect can render it  
-- Drops are disabled by default (policy-gated)  
+- Column drops are policy-gated and disabled by default  
+  - Base tables: `ELEVATA_ALLOW_AUTO_DROP_COLUMNS=true` enables physical `DROP COLUMN`  
+  - `_hist` tables: physical drops require `ELEVATA_ALLOW_AUTO_DROP_HIST_COLUMNS=true`  
+  - Without the hist flag, removed business columns in `_hist` are retired (inactive + detached lineage)  
 
 Important design principle:  
 The planner does not create tables. Table provisioning is handled centrally by the load runner  

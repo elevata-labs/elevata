@@ -112,6 +112,30 @@ Therefore, elevata applies a strict policy:
 Technical SCD columns (`version_*`, `load_run_id`, `loaded_at`) remain generator-managed and may be rebuilt,  
 but business-history stays analyzable and stable over time.
 
+### 🧩 Operational semantics: retire vs. physical drop
+
+elevata distinguishes between:
+
+- **Semantic removal (retire)**: a column is removed from the architecture contract, but may remain  
+  physically present as a legacy/archive field (especially in `_hist`).  
+- **Physical drop**: a destructive DDL operation that removes the column from the table schema.
+
+By default, business columns in `_hist` are **retired**, not physically dropped, to preserve history.
+
+### 🧩 Destructive schema operations (explicit opt-in)
+
+Physical drops are intentionally gated behind environment flags:
+
+- `ELEVATA_ALLOW_AUTO_DROP_COLUMNS` (default: `false`)  
+  - If enabled, elevata may emit/execute `DROP COLUMN` for **base tables** when metadata no longer  
+    contains the column (auto-cleanup of drift / manual mistakes).
+
+- `ELEVATA_ALLOW_AUTO_DROP_HIST_COLUMNS` (default: `false`)  
+  - If enabled *in addition*, elevata may also physically drop business columns from `_hist`.  
+  - This is destructive and should only be used for explicit cleanup scenarios.
+
+Note: `_hist` physical drops are **disabled by default** even when base auto-drop is enabled.
+
 ### 🧩 Guardrails:
 - Hist datasets must only rename from hist-like former names (`*_hist`)  
   to prevent accidental base → hist table renames.

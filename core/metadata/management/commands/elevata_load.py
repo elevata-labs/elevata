@@ -28,12 +28,17 @@ import time
 import logging
 import os
 import re
+import re as _re
 import uuid
 import hashlib
 from pathlib import Path
+from collections import defaultdict
 from django.utils.timezone import now
 from django.core.management.base import BaseCommand, CommandError
 from dataclasses import replace
+
+from metadata.architecture.migration_planner import MigrationPlanner
+from metadata.architecture.service import ArchitectureStateService
 
 from metadata.config.profiles import load_profile
 from metadata.config.targets import get_target_system
@@ -609,6 +614,31 @@ def run_single_target_dataset(
           stdout.write(style.ERROR(f"-- Materialization blocked: {e}"))
         for s in plan.steps:
           stdout.write(style.WARNING(f"-- Materialization step: {s.op}: {s.sql}"))
+
+      # Minimal notice for destructive DDL, so "silent" auto-cleanups don't surprise users.
+      # This keeps output compact while still surfacing critical operations.
+      if not no_print and (not debug_materialization):
+        destructive_ops = {"DROP_COLUMN", "DROP_TABLE", "DROP_TABLE_IF_EXISTS"}
+        destructive_steps = [s for s in (plan.steps or []) if getattr(s, "op", None) in destructive_ops]
+
+        if destructive_steps:
+          verb = "Executing" if execute else "Would execute"
+          items = []
+          for s in destructive_steps[:3]:
+            op = str(getattr(s, "op", "") or "")
+            sql = str(getattr(s, "sql", "") or "")
+            if op == "DROP_COLUMN":
+              m = re.search(r"\bdrop\s+column\s+([^\s;]+)", sql, flags=re.IGNORECASE)
+              col = (m.group(1) if m else "").strip().strip("`").strip('"').strip("[]")
+              items.append(f"DROP_COLUMN {col}" if col else "DROP_COLUMN")
+            else:
+              items.append(op)
+
+          more = "" if len(destructive_steps) <= 3 else f" (+{len(destructive_steps) - 3} more)"
+          stdout.write(style.WARNING(
+            f"-- Materialization: {verb} destructive DDL ({len(destructive_steps)} step(s)) "
+            f"for {dataset_key}: {', '.join(items)}{more}"
+          ))
 
       apply_materialization_plan(plan=plan, exec_engine=target_system_engine)
       # Treat "materialization provisioned table" as: any step that touches the table itself.
@@ -1269,6 +1299,13 @@ class Command(BaseCommand):
       help="Baseline batch_run_id to diff against (loaded from meta.load_run_snapshot).",
     )
 
+    parser.add_argument(
+      "--debug-migration",
+      action="store_true",
+      help="Print architecture migration plan preview derived from ArchitectureDiff.",
+    )
+
+
   def _resolve_target_dataset(self, target_name: str, schema_short: str | None) -> TargetDataset:
     """
     Resolve a TargetDataset by target_dataset_name and optional schema short_name.
@@ -1389,6 +1426,7 @@ class Command(BaseCommand):
     diff_against_snapshot: str | None = options.get("diff_against_snapshot")
     diff_print: bool = bool(options.get("diff_print", False))
     diff_against_batch_run_id: str | None = options.get("diff_against_batch_run_id")
+    debug_migration = bool(options.get("debug_migration", False))
 
     # One batch_run_id for the entire run (all datasets).
     batch_run_id = str(uuid.uuid4())
@@ -1583,6 +1621,548 @@ class Command(BaseCommand):
           fail_on_type_drift=fail_on_type_drift,
           allow_lossy_type_drift=allow_lossy_type_drift,   
         )
+ 
+      # --- Architecture State (best effort, scope-aware) ---
+      arch_service = None
+      previous_state = None
+      current_state = None
+      arch_diff = None
+      arch_error = None
+      relevant_dataset_changes = []
+      relevant_column_changes = []
+      relevant_dataset_keys = set()
+      migration_plan = None
+
+      try:
+        arch_service = ArchitectureStateService()
+
+        previous_state = arch_service.load_previous_state()
+        current_state, arch_diff = arch_service.diff_against(previous_state)
+
+        def _execution_item_dataset_key(item):
+          """
+          Return a stable dataset key for items coming from execution_order.
+
+          execution_order may contain different object shapes depending on the
+          planning path, so this helper must be defensive.
+          """
+          if isinstance(item, str):
+            return item
+
+          if hasattr(item, "dataset_key") and getattr(item, "dataset_key"):
+            return item.dataset_key
+
+          if hasattr(item, "target_schema") and hasattr(item, "target_dataset_name"):
+            schema = getattr(item.target_schema, "short_name", None)
+            if schema:
+              return f"{schema}.{item.target_dataset_name}"
+
+          if hasattr(item, "target_dataset"):
+            td = item.target_dataset
+            if hasattr(td, "target_schema") and hasattr(td, "target_dataset_name"):
+              schema = getattr(td.target_schema, "short_name", None)
+              if schema:
+                return f"{schema}.{td.target_dataset_name}"
+
+          return None
+
+        # --- compute execution scope ---
+        relevant_dataset_keys = {
+          dataset_key
+          for item in execution_order
+          for dataset_key in [_execution_item_dataset_key(item)]
+          if dataset_key
+        }
+
+        # Expand scope with related *_hist datasets (best effort)
+        def _expand_relevant_keys_with_hist(state, keys):
+          try:
+            by_key = state.datasets_by_key
+          except Exception:
+            return keys
+
+          expanded = set(keys)
+          for base_key in list(keys):
+            ds = by_key.get(base_key)
+            if ds is None:
+              continue
+            if not getattr(ds, "historize", False):
+              continue
+            if getattr(ds, "is_hist", False):
+              continue
+
+            candidates = [
+              f"{base_key}_hist",
+              f"{ds.schema_short_name}.{ds.dataset_name}_hist",
+            ]
+            for cand in candidates:
+              if cand in by_key:
+                expanded.add(cand)
+          return expanded
+
+        if current_state is not None and relevant_dataset_keys:
+          relevant_dataset_keys = _expand_relevant_keys_with_hist(current_state, relevant_dataset_keys)
+ 
+        relevant_dataset_changes = [
+          ch for ch in arch_diff.dataset_changes
+          if ch.dataset_key in relevant_dataset_keys
+        ]
+
+        relevant_column_changes = [
+          ch for ch in arch_diff.column_changes
+          if ch.dataset_key in relevant_dataset_keys
+        ]
+
+        if arch_diff is not None and previous_state is not None:
+
+          migration_plan = MigrationPlanner().plan(
+            arch_diff,
+            relevant_dataset_keys=relevant_dataset_keys,
+            architecture_state=current_state,
+            expand_related_hist=True,
+          )
+
+      except Exception as exc:
+        # Architecture State is additive only and must never break the
+        # existing load flow or tests.
+        arch_service = None
+        previous_state = None
+        current_state = None
+        arch_diff = None
+        arch_error = exc
+        relevant_dataset_changes = []
+        relevant_column_changes = []
+
+      if not no_print:
+        if arch_error is not None:
+          self.stdout.write(self.style.WARNING(
+            f"-- ARCH state skipped: {type(arch_error).__name__}: {arch_error}"
+          ))
+        elif arch_diff is not None:
+          if previous_state is None:
+            self.stdout.write(self.style.NOTICE(
+              "-- ARCH state: initialized (no previous state found)"
+            ))
+          else:
+            self.stdout.write(self.style.NOTICE(
+              f"-- ARCH state: fingerprint={current_state.fingerprint} "
+              f"has_changes={arch_diff.has_changes()} "
+              f"relevant_changes={len(relevant_dataset_changes) + len(relevant_column_changes)} "
+              f"dataset_changes={len(arch_diff.dataset_changes)} "
+              f"column_changes={len(arch_diff.column_changes)}"
+            ))
+
+            if relevant_dataset_changes:
+              for ch in relevant_dataset_changes:
+                if ch.change_type == "DATASET_RENAMED":
+                  self.stdout.write(self.style.NOTICE(
+                    f"   ~ DATASET_RENAMED: {ch.previous_dataset_name} -> {ch.dataset_key}"
+                  ))
+                else:
+                  self.stdout.write(self.style.NOTICE(
+                    f"   ~ {ch.change_type}: {ch.dataset_key}"
+                  ))
+
+            if relevant_column_changes:
+              for ch in relevant_column_changes:
+                if ch.change_type == "COLUMN_RENAMED":
+                  self.stdout.write(self.style.NOTICE(
+                    f"   ~ COLUMN_RENAMED: {ch.dataset_key}.{ch.previous_column_name} -> {ch.column_name}"
+                  ))
+                else:
+                  label = ch.change_type
+                  # Prefer a clearer label for the common "retire" case:
+                  # base column gets deleted, hist column becomes inactive (kept physically).
+                  try:
+                    if label == "COLUMN_CHANGED":
+                      prev_active = getattr(ch, "previous_active", None)
+                      if prev_active is None:
+                        prev_active = getattr(ch, "old_active", None)
+                      new_active = getattr(ch, "active", None)
+                      if new_active is None:
+                        new_active = getattr(ch, "new_active", None)
+                      if prev_active is True and new_active is False:
+                        label = "COLUMN_RETIRED"
+                  except Exception:
+                    pass
+
+                  self.stdout.write(self.style.NOTICE(
+                    f"   ~ {label}: {ch.dataset_key}.{ch.column_name}"
+                  ))
+
+        if debug_migration and migration_plan is not None:
+          self.stdout.write(self.style.NOTICE(
+            f"-- MIGRATION plan preview: actions={len(migration_plan.actions)}"
+          ))
+          if migration_plan.is_empty():
+            self.stdout.write(self.style.NOTICE("   (no migration actions)"))
+          else:
+            for line in migration_plan.to_summary_lines():
+              self.stdout.write(self.style.NOTICE(f"   {line}"))
+
+          # --- MIGRATION safety checks (debug-only, best effort) ---
+          try:
+            if migration_plan is None or not migration_plan.actions:
+              raise StopIteration
+
+            # 1) Detect which datasets in scope are full refresh (truncate before load)
+            full_refresh_keys = set()
+            if current_state is not None:
+              for ds_key in sorted(relevant_dataset_keys or set()):
+                if "." not in ds_key:
+                  continue
+                schema_short, ds_name = ds_key.split(".", 1)
+                td = (
+                  TargetDataset.objects
+                  .select_related("target_schema")
+                  .filter(target_schema__short_name=schema_short, target_dataset_name=ds_name)
+                  .first()
+                )
+                if td is None:
+                  continue
+                lp = build_load_plan(td)
+                if should_truncate_before_load(td, lp):
+                  full_refresh_keys.add(ds_key)
+
+            suppressed = []
+            for a in (migration_plan.actions or ()):
+              if getattr(a, "action_type", None) == "RENAME_COLUMN":
+                ds_key = getattr(a, "dataset_key", None)
+                if ds_key in full_refresh_keys:
+                  suppressed.append(a)
+
+            if suppressed:
+              self.stdout.write(self.style.NOTICE(
+                f"-- MIGRATION safety: suppressed_full_refresh_col_renames={len(suppressed)} "
+                "(implied by DROP+CREATE)"
+              ))
+              for a in suppressed[:10]:
+                self.stdout.write(self.style.NOTICE(
+                  f"   ~ implied_by_recreate: {a.dataset_key}.{a.previous_column_name} -> {a.column_name}"
+                ))
+              if len(suppressed) > 10:
+                self.stdout.write(self.style.NOTICE(
+                  f"   ... and {len(suppressed) - 10} more"
+                ))
+
+            # 2) Hist companion coverage (informational)
+            # If a base dataset historizes, ensure either:
+            # - the hist dataset is in scope and has corresponding rename actions, or
+            # - we at least know it's out of scope.
+            hist_pairs = []
+            if current_state is not None:
+              by_key = current_state.datasets_by_key
+              for base_key in sorted(relevant_dataset_keys or set()):
+                ds = by_key.get(base_key)
+                if ds is None:
+                  continue
+                if not getattr(ds, "historize", False) or getattr(ds, "is_hist", False):
+                  continue
+                cand = f"{ds.schema_short_name}.{ds.dataset_name}_hist"
+                if cand in by_key:
+                  hist_pairs.append((base_key, cand))
+
+            if hist_pairs:
+              # count rename actions per dataset
+              by_ds = defaultdict(int)
+              for a in (migration_plan.actions or ()):
+                dk = getattr(a, "dataset_key", None)
+                if dk:
+                  by_ds[dk] += 1
+
+              missing_hist = []
+              for base_key, hist_key in hist_pairs:
+                if hist_key in (relevant_dataset_keys or set()) and by_ds.get(hist_key, 0) == 0:
+                  missing_hist.append(hist_key)
+
+              if missing_hist:
+                self.stdout.write(self.style.WARNING(
+                  f"-- MIGRATION safety: hist datasets in scope without actions={len(missing_hist)}"
+                ))
+                for hk in missing_hist[:10]:
+                  self.stdout.write(self.style.WARNING(f"   ! missing_hist_actions: {hk}"))
+          except StopIteration:
+            # No actions -> no safety warnings.
+            pass
+          except Exception as exc:
+            self.stdout.write(self.style.WARNING(
+              f"-- MIGRATION safety skipped: {type(exc).__name__}: {exc}"
+            ))
+
+          # ------------------------------------------------------------
+          # SHADOW compare (schema ops): expected(MigrationPlan) vs actual(MaterializationPlanner)
+          # Focus: renames only (dataset + column) for now.
+          # This must never block execution; debug output only.
+          # ------------------------------------------------------------
+          try:
+            suppressed_by_full_refresh = 0
+            suppressed_add_by_full_refresh = 0
+            full_refresh_keys: set[str] = set()
+
+            def _split_dataset_key(key: str) -> tuple[str | None, str | None]:
+              if not key or "." not in key:
+                return None, None
+              a, b = key.split(".", 1)
+              return (a or None), (b or None)
+
+            def _token_for_action(a):
+              at = getattr(a, "action_type", None)
+              if at == "RENAME_DATASET":
+                prev = getattr(a, "previous_dataset_key", None)
+                cur = getattr(a, "dataset_key", None)
+                if prev and cur:
+                  return f"RENAME_DATASET {prev} -> {cur}"
+              if at == "RENAME_COLUMN":
+                ds = getattr(a, "dataset_key", None)
+                prev = getattr(a, "previous_column_name", None)
+                cur = getattr(a, "column_name", None)
+                if ds and prev and cur:
+                  return f"RENAME_COLUMN {ds}.{prev} -> {cur}"
+              if at == "ADD_COLUMN":
+                ds = getattr(a, "dataset_key", None)
+                col = getattr(a, "column_name", None)
+                if ds and col:
+                  return f"ADD_COLUMN {ds}.{col}"
+              if at == "DROP_COLUMN":
+                ds = getattr(a, "dataset_key", None)
+                col = getattr(a, "column_name", None)
+                if ds and col:
+                  return f"DROP_COLUMN {ds}.{col}"
+              return None            
+
+            def _parse_materialization_tokens(*, plan, schema_short: str) -> set[str]:
+              tokens: set[str] = set()
+              steps = list(getattr(plan, "steps", None) or [])
+              dataset_key = str(getattr(plan, "dataset_key", "") or "")
+
+              for s in steps:
+                op = str(getattr(s, "op", "") or "")
+                reason = str(getattr(s, "reason", "") or "")
+                sql = str(getattr(s, "sql", "") or "")
+
+                if op == "RENAME_COLUMN":
+                  # reason example:
+                  # "Rename column old_name -> new_name (former name match)"
+                  m = _re.search(r"Rename column\s+(.+?)\s+->\s+(.+?)(?:\s|\(|$)", reason)
+                  if m:
+                    old = (m.group(1) or "").strip()
+                    new = (m.group(2) or "").strip()
+                    if dataset_key and old and new:
+                      tokens.add(f"RENAME_COLUMN {dataset_key}.{old} -> {new}")
+                  continue
+
+                if op == "RENAME_DATASET":
+                  # reason example:
+                  # "Dataset rename detected via former_names: old_table -> new_table"
+                  m = _re.search(r":\s*(.+?)\s*->\s*(.+?)\s*$", reason)
+                  if m:
+                    old_tbl = (m.group(1) or "").strip()
+                    new_tbl = (m.group(2) or "").strip()
+                    if schema_short and old_tbl and new_tbl:
+                      tokens.add(f"RENAME_DATASET {schema_short}.{old_tbl} -> {schema_short}.{new_tbl}")
+                  continue
+
+                if op == "ADD_COLUMN":
+                  # reason example:
+                  # "Column <name> missing"
+                  col = None
+                  m = _re.search(r"Column\s+(.+?)\s+missing", reason)
+                  if m:
+                    col = (m.group(1) or "").strip()
+
+                  # Fallback: parse from SQL if reason text is missing/changed
+                  if not col and sql:
+                    # Supports identifiers with quotes/backticks/brackets (incl. spaces when quoted)
+                    ident = r"(`[^`]+`|\"[^\"]+\"|\[[^\]]+\]|[A-Za-z_][A-Za-z0-9_]*)"
+                    m2 = _re.search(
+                      rf"\balter\s+table\b.*?\badd\s+(?:column\s+)?(?P<col>{ident})\b",
+                      sql,
+                      flags=_re.IGNORECASE,
+                    )
+                    if m2:
+                      raw = (m2.group("col") or "").strip()
+                      col = raw.strip("`\"[]").strip()
+
+                  if dataset_key and col:
+                    tokens.add(f"ADD_COLUMN {dataset_key}.{col}")
+                  continue
+
+                if op == "DROP_COLUMN":
+                  # Prefer SQL parse: ALTER TABLE ... DROP COLUMN <col>
+                  m = _re.search(r"\bdrop\s+column\s+([A-Za-z_][A-Za-z0-9_]*)", sql, _re.IGNORECASE)
+                  if m:
+                    col = m.group(1)
+                    tokens.add(f"DROP_COLUMN {dataset_key}.{col}")
+                    continue
+                  # Fallback: reason contains "...<schema>.<table>.<col>"
+                  m2 = _re.search(r"\.([A-Za-z_][A-Za-z0-9_]*)\s*$", reason)
+                  if m2:
+                    col = m2.group(1)
+                    tokens.add(f"DROP_COLUMN {dataset_key}.{col}")
+                  continue
+
+              return tokens
+
+            expected_actions = [
+              a for a in (migration_plan.actions or ())
+              if getattr(a, "action_type", None) in ("RENAME_DATASET", "RENAME_COLUMN", "ADD_COLUMN", "DROP_COLUMN")
+            ]
+            expected_all = set(filter(None, (_token_for_action(a) for a in expected_actions)))
+
+            if expected_all:
+              # Build materialization plans for the same scope and extract rename steps.
+              mat_policy = load_materialization_policy()
+              mat_policy = replace(mat_policy, debug_plan=bool(debug_plan))
+              mat_policy = replace(mat_policy, allow_lossy_type_drift=bool(allow_lossy_type_drift))
+
+              # Introspection engine handling mirrors run_single_target_dataset:
+              # Databricks prefers exec_engine-only behavior.
+              target_sa_engine = None
+              try:
+                if (system.type or "").lower() != "databricks":
+                  target_sa_engine = engine_for_target(
+                    target_short_name=system.short_name,
+                    system_type=system.type,
+                  )
+              except Exception:
+                target_sa_engine = None
+
+              actual: set[str] = set()
+
+              for ds_key in sorted(relevant_dataset_keys or set()):
+                schema_short_local, ds_name_local = _split_dataset_key(ds_key)
+                if not schema_short_local or not ds_name_local:
+                  continue
+
+                td_shadow = (
+                  TargetDataset.objects
+                  .select_related("target_schema")
+                  .prefetch_related("target_columns")
+                  .filter(target_schema__short_name=schema_short_local, target_dataset_name=ds_name_local)
+                  .first()
+                )
+                if td_shadow is None:
+                  continue
+
+                mat = (
+                  getattr(td_shadow, "materialization_type", None)
+                  or getattr(td_shadow.target_schema, "default_materialization_type", None)
+                  or "table"
+                )
+                if mat not in ("table", "incremental"):
+                  continue
+
+                # Materialization planner is only relevant if sync is enabled for this schema.
+                if (not AUTO_PROVISION_TABLES) or (schema_short_local not in mat_policy.sync_schema_shorts):
+                  continue
+
+                # Apply the same full-refresh filtering as the real run:
+                load_plan_shadow = build_load_plan(td_shadow)
+                is_full_refresh_shadow = should_truncate_before_load(td_shadow, load_plan_shadow)
+                if is_full_refresh_shadow:
+                  # Full refresh: table will be DROP+CREATE later, so column renames are not executed as DDL steps.
+                  full_refresh_keys.add(ds_key)
+
+                plan_shadow = build_materialization_plan(
+                  td=td_shadow,
+                  introspection_engine=target_sa_engine,
+                  exec_engine=engine,
+                  dialect=dialect,
+                  policy=mat_policy,
+                )
+
+                if is_full_refresh_shadow:
+                  keep_ops = {"ENSURE_SCHEMA", "RENAME_DATASET"}
+                  plan_shadow.steps = [s for s in (plan_shadow.steps or []) if getattr(s, "op", None) in keep_ops]
+
+                if no_type_changes:
+                  drop_ops = {
+                    "ALTER_COLUMN_TYPE",
+                    "DROP_TABLE_IF_EXISTS",
+                    "CREATE_TABLE",
+                    "INSERT_SELECT",
+                    "DROP_TABLE",
+                    "RENAME_TABLE",
+                  }
+                  plan_shadow.steps = [s for s in (plan_shadow.steps or []) if getattr(s, "op", None) not in drop_ops]
+
+                actual |= _parse_materialization_tokens(
+                  plan=plan_shadow,
+                  schema_short=schema_short_local,
+                )
+
+              # Filter expected column-renames for datasets that are full-refresh in this run.
+              expected = set()
+              for a in expected_actions:
+                t = _token_for_action(a)
+                if not t:
+                  continue
+                if getattr(a, "action_type", None) == "RENAME_COLUMN":
+                  ds = getattr(a, "dataset_key", None)
+                  if ds in full_refresh_keys:
+                    suppressed_by_full_refresh += 1
+                    continue
+                if getattr(a, "action_type", None) == "ADD_COLUMN":
+                  ds = getattr(a, "dataset_key", None)
+                  if ds in full_refresh_keys:
+                    suppressed_add_by_full_refresh += 1
+                    continue
+                expected.add(t)
+
+              missing = sorted(expected - actual)
+              unexpected = sorted(actual - expected)
+
+              # Policy-aware suppression:
+              # - By default, we do NOT physically drop business columns in *_hist.
+              # - Shadow-compare should therefore not warn as "missing" when a hist DROP is expected
+              #   from MigrationPlan but intentionally not emitted by MaterializationPlanner.
+              allow_hist_drop = _get_bool_env("ELEVATA_ALLOW_AUTO_DROP_HIST_COLUMNS", False)
+              suppressed_hist_drop = []
+              if (not allow_hist_drop) and missing:
+                kept = []
+                for t in missing:
+                  if t.startswith("DROP_COLUMN "):
+                    rest = t[len("DROP_COLUMN "):].strip()
+                    if "." in rest:
+                      ds_k, _col = rest.rsplit(".", 1)
+                      if str(ds_k).endswith("_hist"):
+                        suppressed_hist_drop.append(t)
+                        continue
+                  kept.append(t)
+                missing = kept
+
+              self.stdout.write(self.style.NOTICE(
+                f"-- SHADOW compare (schema ops): expected={len(expected)} actual={len(actual)} "
+                f"missing={len(missing)} unexpected={len(unexpected)} "
+                f"suppressed_full_refresh_col_renames={suppressed_by_full_refresh} "
+                f"suppressed_full_refresh_add_columns={suppressed_add_by_full_refresh} "
+                f"suppressed_hist_drop_columns={len(suppressed_hist_drop)}"
+              ))
+
+              if missing:
+                for t in missing:
+                  self.stdout.write(self.style.WARNING(f"   ! missing_in_materialization: {t}"))
+              if suppressed_hist_drop:
+                for t in suppressed_hist_drop:
+                  self.stdout.write(self.style.NOTICE(f"   ~ hist_drop_suppressed (policy): {t}"))
+              if unexpected:
+                for t in unexpected:
+                  self.stdout.write(self.style.WARNING(f"   ! unexpected_in_materialization: {t}"))
+
+              dispose = getattr(target_sa_engine, "dispose", None)
+              if callable(dispose):
+                dispose()
+
+            else:
+              self.stdout.write(self.style.NOTICE("-- SHADOW compare (schema ops): (no actions to compare)"))
+
+          except Exception as exc:
+            # Best-effort: never block.
+            self.stdout.write(self.style.WARNING(
+              f"-- SHADOW compare skipped: {type(exc).__name__}: {exc}"
+            ))
+
+      # -----------------------------------------------------
 
       results, had_error = execute_plan(
         plan=plan,
@@ -1595,6 +2175,13 @@ class Command(BaseCommand):
         run_dataset_fn=_run_dataset_fn,
         logger=logger,
       )
+
+      # --- persist architecture state (only if no error, best effort) ---
+      if arch_service is not None and current_state is not None and not had_error:
+        try:
+          arch_service.persist_state(current_state)
+        except Exception:
+          pass
 
       # 8.0) Build + persist load_run_snapshot (best-effort)
       root_dataset_key = f"{root_td.target_schema.short_name}.{root_td.target_dataset_name}"

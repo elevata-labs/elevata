@@ -538,6 +538,16 @@ class SqlDialect(ABC):
     tbl = self.render_table_identifier(schema, table)
     col = self.render_identifier(column)
     return f"ALTER TABLE {tbl} ADD COLUMN {col} {column_type}"
+  
+
+  def render_drop_column(self, schema: str, table: str, column: str) -> str:
+    """
+    Default DROP COLUMN DDL. Dialects can override if needed.
+    WARNING: destructive; caller must gate via policy/env.
+    """
+    tbl = self.render_table_identifier(schema, table)
+    col = self.render_identifier(column)
+    return f"ALTER TABLE {tbl} DROP COLUMN {col}"
 
 
   def render_alter_column_type(
