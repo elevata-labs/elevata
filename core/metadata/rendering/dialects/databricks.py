@@ -31,7 +31,9 @@ import unicodedata
 
 from .base import BaseExecutionEngine, SqlDialect
 from metadata.ingestion.types_map import (
-  STRING, INTEGER, BIGINT, DECIMAL, FLOAT, BOOLEAN, DATE, TIME, TIMESTAMP, BINARY, UUID, JSON
+  STRING, INTEGER, BIGINT, DECIMAL, FLOAT, BOOLEAN, DATE, TIME, TIMESTAMP, BINARY, UUID, JSON,
+  canonicalize_type,
+  classify_type_drift,
 )
 from metadata.materialization.logging import LOAD_RUN_LOG_REGISTRY
 from metadata.rendering.dialects.keywords.databricks import RESERVED_KEYWORDS as DATABRICKS_RESERVED_KEYWORDS
@@ -203,7 +205,9 @@ class DatabricksExecutionEngine(BaseExecutionEngine):
   
   
   _DBX_TBLPROPS_PREFIX_RE = re.compile(
-    r"^\s*ALTER\s+TABLE\s+.+\s+SET\s+TBLPROPERTIES\s*\(\s*'delta\.columnMapping\.mode'\s*=\s*'name'\s*\)\s*$",
+    r"^\s*ALTER\s+TABLE\s+.+\s+SET\s+TBLPROPERTIES\s*\(\s*"
+    r"'delta\.(?:columnMapping\.mode'\s*=\s*'name'|enableTypeWidening'\s*=\s*'(?:true|false)')"
+    r"\s*\)\s*$",
     re.IGNORECASE,
   )
 
@@ -389,10 +393,10 @@ class DatabricksDialect(SqlDialect):
   
   @property
   def supports_alter_column_type(self) -> bool:
-    # Delta Lake has restrictions for in-place type changes (e.g. DATE -> TIMESTAMP)
-    # and may error at runtime. We therefore do not advertise in-place type evolution
-    # and rely on drift warnings + explicit remediation strategies.
-    return False
+    # Delta Lake supports a limited set of widening changes in-place.
+    # render_alter_column_type() applies an allowlist; otherwise we return ""
+    # so the planner falls back to a deterministic rebuild.
+    return True
 
   @property
   def supports_delete_detection(self) -> bool:
@@ -633,11 +637,77 @@ class DatabricksDialect(SqlDialect):
   # ---------------------------------------------------------------------------
   # 4. DDL helpers
   # ---------------------------------------------------------------------------
-  def render_alter_column_type(self, *, schema: str, table: str, column: str, new_type: str) -> str:
-    # Databricks SQL: ALTER TABLE <tbl> ALTER COLUMN <col> TYPE <type>
+  def render_alter_column_type(
+    self,
+    *,
+    schema: str,
+    table: str,
+    column: str,
+    new_type: str,
+    old_type: str | None = None,
+  ) -> str:
+    """
+    Delta type widening support is selective. We keep the planner generic and decide
+    here (dialect layer) whether to emit an in-place ALTER, or return "" to force
+    a deterministic rebuild.
+
+    Rules:
+    - Always enable Delta type widening best-effort before ALTER.
+    - DATE -> TIMESTAMP is not reliably supported in-place across UC/Delta setups
+      (and TIMESTAMP_NTZ may require table feature enablement). We therefore
+      force rebuild for this drift by returning "".
+    - DECIMAL widening must satisfy: (p_new - p_old) >= (s_new - s_old) >= 0
+      otherwise fallback to rebuild.
+    """
+    if not new_type:
+      return ""
+    if not old_type:
+      # Fail closed: without actual type we cannot safely decide.
+      return ""
+
+    desired_can = canonicalize_type("databricks", str(new_type))
+    actual_can = canonicalize_type("databricks", str(old_type))
+    kind, _reason = classify_type_drift(desired=desired_can, actual=actual_can)
+    if kind != "widening":
+      # Fail closed: only widening is auto-remediated.
+      return ""
+
+    a_dt, _a_ml, a_p, a_s = actual_can
+    d_dt, _d_ml, d_p, d_s = desired_can
+    a_dt_u = (a_dt or "").upper()
+    d_dt_u = (d_dt or "").upper()
+
+    # Allowlist: only emit in-place ALTER for widenings we can validate here.
+    supported = False
+    target_type = str(new_type)
+
+    # DATE -> TIMESTAMP: force rebuild (avoid UC table feature gating and runtime variance)
+    if a_dt_u == DATE and d_dt_u == TIMESTAMP:
+      return ""
+
+    # DECIMAL widening: enforce Delta rule
+    if a_dt_u == DECIMAL and d_dt_u == DECIMAL:
+      if a_p is None or a_s is None or d_p is None or d_s is None:
+        return ""
+      k1 = int(d_p) - int(a_p)
+      k2 = int(d_s) - int(a_s)
+      if not (k1 >= k2 >= 0):
+        return ""
+      supported = True
+
+    # INTEGER -> BIGINT widening
+    if a_dt_u == INTEGER and d_dt_u == BIGINT:
+      supported = True
+
+    if not supported:
+      return ""
+
     tbl = self.render_table_identifier(schema, table)
-    col = self.render_identifier(column)
-    return f"ALTER TABLE {tbl} ALTER COLUMN {col} TYPE {new_type}"
+    col_sql = self.render_identifier(column)
+    return (
+      f"ALTER TABLE {tbl} SET TBLPROPERTIES ('delta.enableTypeWidening' = 'true');\n"
+      f"ALTER TABLE {tbl} ALTER COLUMN {col_sql} TYPE {target_type};"
+    )
 
 
   # ---------------------------------------------------------------------------

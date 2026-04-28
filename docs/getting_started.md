@@ -11,8 +11,8 @@ Before you start, make sure the following are available:
 
 | Requirement | Recommended Version | Notes |
 |--------------|---------------------|--------|
-| **Python**   | 3.11                | Required for full feature support |
-| **PostgreSQL** | 14+               | Used as elevata metadata repository (SQLite works fine for local use) |
+| **Python**   | 3.14                | Recommended. Supported: Python 3.11+ |  
+| **PostgreSQL** | 14+               | Used as elevata metadata repository (SQLite works fine for local use) |  
 | **Git**      | any recent version  | For cloning and version control |
 
 Optional but helpful:  

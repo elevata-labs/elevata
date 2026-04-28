@@ -345,7 +345,7 @@ td .ec-chip + .ec-chip{margin-left:.35rem}
   border-left: 1px solid rgba(0,0,0,0.05);
 }
 .actions-cell .btn {
-  margin-left: 2px;
+  margin-left: 0;
 }
 
 /* Keep actions and badges on one line, right-aligned */
@@ -361,6 +361,27 @@ td .ec-actions{
 
 /* Prevent the Bootstrap btn-group from stretching/wrapping */
 td .btn-group{ flex: none; }
+
+/* --- Clean, consistent dividers inside Actions button groups ----------------
+   Bootstrap collapses borders in btn-groups (negative margins + z-index).
+   When mixing filled (btn-success) + outline + disabled buttons, the seams can
+   look inconsistent. We render a deterministic grey divider between buttons.
+*/
+.actions-cell .btn-group > .btn {
+  position: relative;
+  box-shadow: none; /* ensure no seam artifacts */
+}
+
+.actions-cell .btn-group > .btn:not(:first-child)::before {
+  content: "";
+  position: absolute;
+  left: -1px;
+  top: -1px;
+  bottom: -1px;
+  width: 1px;
+  background: var(--elevata-border-grey);
+  pointer-events: none;
+}
 
 /* Limit width for long text columns (e.g., Description, Remark) */
 .table td.truncate {
@@ -472,6 +493,12 @@ th i.bi-tags:hover {
 /* Integration toggle active state */
 .btn-success.text-white {
   box-shadow: 0 0 0.25rem rgba(25, 135, 84, 0.4);
+}
+
+/* Clean seams in action button groups: avoid shadow + normalize divider color */
+.actions-cell .btn-group .btn-success.text-white {
+  box-shadow: none;
+  border-right-color: var(--elevata-border-grey);
 }
 
 /* Optional hover feedback for toggles */

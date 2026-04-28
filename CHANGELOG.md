@@ -19,6 +19,28 @@ TBD
 
 ---
 
+## [1.5.1] - 2026-04-28
+
+This patch release improves developer experience and UI consistency.  
+It adds safe test isolation (preventing accidental writes to the metadata DB),  
+updates the recommended Python version, and polishes list view actions.
+
+### 🔄 Improved
+
+- Recommended Python version updated to **3.14** (supported: **Python 3.11+**)
+- Safer test runner setup:
+  - `pytest-django` added to base requirements
+  - test settings enforce isolated DB behavior (SQLite tests run in-memory)
+  - `runtests.py` now uses test settings by default and fails fast if `pytest-django` is missing
+
+### 🛠️ Fixed
+
+- UI list actions: consistent button group dividers across mixed button styles (solid/outline/disabled)
+- SourceDataset list: Import action now renders consistently (disabled placeholder when unsupported), avoiding visual “jitter”
+- Reduced pytest warning noise by avoiding premature plugin imports
+
+---
+
 ## [1.5.0] - 2026-04-24
 
 This release strengthens elevata’s Architecture Runtime by making architecture drift visible,  

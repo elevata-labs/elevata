@@ -519,7 +519,7 @@ def _render_keywords_module(*, dialect: str, keywords: set[str], source: str) ->
   lines: list[str] = []
   lines.append('"""')
 
-  current_year = datetime.utcnow().year
+  current_year = datetime.datetime.now(datetime.UTC).year
   lines.append("elevata – Metadata-driven Data Platform Framework")
   lines.append(f"Copyright © 2025-{current_year} Ilona Tag")
   lines.append("SPDX-License-Identifier: AGPL-3.0-only")

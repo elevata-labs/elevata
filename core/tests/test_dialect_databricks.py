@@ -78,3 +78,28 @@ def test_databricks_drop_column_enables_column_mapping_best_effort():
   sql = d.render_drop_column("dw", "t", "old_col")
   assert "set tblproperties" in sql.lower()
   assert "drop column" in sql.lower()
+
+
+def test_databricks_alter_column_type_date_to_timestamp_forces_rebuild():
+  d = DatabricksDialect()
+  sql = d.render_alter_column_type(
+    schema="dw",
+    table="t",
+    column="ship_date",
+    new_type="TIMESTAMP",
+    old_type="DATE",
+  )
+  assert sql == ""
+
+
+def test_databricks_alter_column_type_invalid_decimal_widening_rule_forces_rebuild():
+  d = DatabricksDialect()
+  # Delta requires: (p_new - p_old) >= (s_new - s_old) >= 0
+  sql = d.render_alter_column_type(
+    schema="dw",
+    table="t",
+    column="amount",
+    new_type="DECIMAL(19,4)",
+    old_type="DECIMAL(18,2)",
+  )
+  assert sql == ""

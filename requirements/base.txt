@@ -9,6 +9,7 @@
 # ======================================================
 
 pytest
+pytest-django
 django
 django-crum
 python-dotenv

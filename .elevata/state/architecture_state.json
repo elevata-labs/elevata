@@ -1,0 +1,6974 @@
+{
+  "datasets": [
+    {
+      "dataset_key": "bizcore.bc_dim_customer",
+      "schema_short_name": "bizcore",
+      "dataset_name": "bc_dim_customer",
+      "materialization_type": null,
+      "incremental_strategy": "full",
+      "historize": false,
+      "is_hist": false,
+      "active": true,
+      "former_names": [
+        "bc_dim_customer",
+        "bc_dim_customers"
+      ],
+      "columns": [
+        {
+          "column_name": "bc_dim_customer_key",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": false,
+          "system_role": ""
+        },
+        {
+          "column_name": "customer_no",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": false,
+          "system_role": ""
+        },
+        {
+          "column_name": "title_name",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": false,
+          "system_role": ""
+        },
+        {
+          "column_name": "customer_row_no",
+          "datatype": "INTEGER",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": false,
+          "system_role": ""
+        }
+      ]
+    },
+    {
+      "dataset_key": "bizcore.bc_dim_customer_union",
+      "schema_short_name": "bizcore",
+      "dataset_name": "bc_dim_customer_union",
+      "materialization_type": null,
+      "incremental_strategy": "full",
+      "historize": true,
+      "is_hist": false,
+      "active": true,
+      "former_names": [],
+      "columns": [
+        {
+          "column_name": "bc_dim_customer_key",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": false,
+          "system_role": ""
+        }
+      ]
+    },
+    {
+      "dataset_key": "bizcore.bc_dim_product",
+      "schema_short_name": "bizcore",
+      "dataset_name": "bc_dim_product",
+      "materialization_type": null,
+      "incremental_strategy": "full",
+      "historize": true,
+      "is_hist": false,
+      "active": true,
+      "former_names": [],
+      "columns": [
+        {
+          "column_name": "bc_dim_product_key",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": false,
+          "system_role": ""
+        },
+        {
+          "column_name": "product_no",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": false,
+          "system_role": ""
+        },
+        {
+          "column_name": "product_name",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": false,
+          "system_role": ""
+        }
+      ]
+    },
+    {
+      "dataset_key": "bizcore.bc_fact_customer_order",
+      "schema_short_name": "bizcore",
+      "dataset_name": "bc_fact_customer_order",
+      "materialization_type": null,
+      "incremental_strategy": "full",
+      "historize": false,
+      "is_hist": false,
+      "active": true,
+      "former_names": [],
+      "columns": [
+        {
+          "column_name": "bc_dim_customer_key",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": false,
+          "system_role": ""
+        },
+        {
+          "column_name": "turnover_amt",
+          "datatype": "DECIMAL",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": false,
+          "system_role": ""
+        },
+        {
+          "column_name": "turnover_avg_amt",
+          "datatype": "DECIMAL",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": false,
+          "system_role": ""
+        }
+      ]
+    },
+    {
+      "dataset_key": "raw.raw_aw1_customer",
+      "schema_short_name": "raw",
+      "dataset_name": "raw_aw1_customer",
+      "materialization_type": null,
+      "incremental_strategy": "full",
+      "historize": false,
+      "is_hist": false,
+      "active": true,
+      "former_names": [],
+      "columns": [
+        {
+          "column_name": "customerid",
+          "datatype": "INTEGER",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "business_key"
+        },
+        {
+          "column_name": "personid",
+          "datatype": "INTEGER",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "accountnumber",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "load_run_id",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "load_run_id"
+        },
+        {
+          "column_name": "loaded_at",
+          "datatype": "TIMESTAMP",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "loaded_at"
+        },
+        {
+          "column_name": "payload",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "payload"
+        }
+      ]
+    },
+    {
+      "dataset_key": "raw.raw_aw1_person",
+      "schema_short_name": "raw",
+      "dataset_name": "raw_aw1_person",
+      "materialization_type": null,
+      "incremental_strategy": "full",
+      "historize": false,
+      "is_hist": false,
+      "active": true,
+      "former_names": [],
+      "columns": [
+        {
+          "column_name": "businessentityid",
+          "datatype": "INTEGER",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "business_key"
+        },
+        {
+          "column_name": "persontype",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "title",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "firstname",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "lastname",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "demographics",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "load_run_id",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "load_run_id"
+        },
+        {
+          "column_name": "loaded_at",
+          "datatype": "TIMESTAMP",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "loaded_at"
+        },
+        {
+          "column_name": "payload",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "payload"
+        }
+      ]
+    },
+    {
+      "dataset_key": "raw.raw_aw1_product",
+      "schema_short_name": "raw",
+      "dataset_name": "raw_aw1_product",
+      "materialization_type": null,
+      "incremental_strategy": "full",
+      "historize": false,
+      "is_hist": false,
+      "active": true,
+      "former_names": [],
+      "columns": [
+        {
+          "column_name": "productid",
+          "datatype": "INTEGER",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "business_key"
+        },
+        {
+          "column_name": "name",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "productnumber",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "makeflag",
+          "datatype": "BOOLEAN",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "finishedgoodsflag",
+          "datatype": "BOOLEAN",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "color",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "productmodelid",
+          "datatype": "INTEGER",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "load_run_id",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "load_run_id"
+        },
+        {
+          "column_name": "loaded_at",
+          "datatype": "TIMESTAMP",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "loaded_at"
+        },
+        {
+          "column_name": "payload",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "payload"
+        }
+      ]
+    },
+    {
+      "dataset_key": "raw.raw_aw1_productmodel",
+      "schema_short_name": "raw",
+      "dataset_name": "raw_aw1_productmodel",
+      "materialization_type": null,
+      "incremental_strategy": "full",
+      "historize": false,
+      "is_hist": false,
+      "active": true,
+      "former_names": [],
+      "columns": [
+        {
+          "column_name": "productmodelid",
+          "datatype": "INTEGER",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "business_key"
+        },
+        {
+          "column_name": "name",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "catalogdescription",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "instructions",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "load_run_id",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "load_run_id"
+        },
+        {
+          "column_name": "loaded_at",
+          "datatype": "TIMESTAMP",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "loaded_at"
+        },
+        {
+          "column_name": "payload",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "payload"
+        }
+      ]
+    },
+    {
+      "dataset_key": "raw.raw_aw1_salesorderheader",
+      "schema_short_name": "raw",
+      "dataset_name": "raw_aw1_salesorderheader",
+      "materialization_type": null,
+      "incremental_strategy": "full",
+      "historize": false,
+      "is_hist": false,
+      "active": true,
+      "former_names": [],
+      "columns": [
+        {
+          "column_name": "salesorderid",
+          "datatype": "INTEGER",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "business_key"
+        },
+        {
+          "column_name": "orderdate",
+          "datatype": "TIMESTAMP",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "duedate",
+          "datatype": "TIMESTAMP",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "shipdate",
+          "datatype": "TIMESTAMP",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "customerid",
+          "datatype": "INTEGER",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "subtotal",
+          "datatype": "DECIMAL",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "taxamt",
+          "datatype": "DECIMAL",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "modifieddate",
+          "datatype": "TIMESTAMP",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "load_run_id",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "load_run_id"
+        },
+        {
+          "column_name": "loaded_at",
+          "datatype": "TIMESTAMP",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "loaded_at"
+        },
+        {
+          "column_name": "payload",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "payload"
+        }
+      ]
+    },
+    {
+      "dataset_key": "raw.raw_aw2_person",
+      "schema_short_name": "raw",
+      "dataset_name": "raw_aw2_person",
+      "materialization_type": null,
+      "incremental_strategy": "full",
+      "historize": false,
+      "is_hist": false,
+      "active": true,
+      "former_names": [],
+      "columns": [
+        {
+          "column_name": "businessentityid",
+          "datatype": "INTEGER",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "business_key"
+        },
+        {
+          "column_name": "firstname",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "middlename",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "lastname",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "demographics",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "load_run_id",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "load_run_id"
+        },
+        {
+          "column_name": "loaded_at",
+          "datatype": "TIMESTAMP",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "loaded_at"
+        },
+        {
+          "column_name": "payload",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "payload"
+        }
+      ]
+    },
+    {
+      "dataset_key": "raw.raw_csv_orders",
+      "schema_short_name": "raw",
+      "dataset_name": "raw_csv_orders",
+      "materialization_type": null,
+      "incremental_strategy": "full",
+      "historize": false,
+      "is_hist": false,
+      "active": true,
+      "former_names": [],
+      "columns": [
+        {
+          "column_name": "order_id",
+          "datatype": "INTEGER",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "business_key"
+        },
+        {
+          "column_name": "customer_id",
+          "datatype": "INTEGER",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "order_date",
+          "datatype": "DATE",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "status",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "total_amount",
+          "datatype": "DECIMAL",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "payload",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "payload"
+        },
+        {
+          "column_name": "load_run_id",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "load_run_id"
+        },
+        {
+          "column_name": "loaded_at",
+          "datatype": "TIMESTAMP",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "loaded_at"
+        }
+      ]
+    },
+    {
+      "dataset_key": "raw.raw_csv_orders2",
+      "schema_short_name": "raw",
+      "dataset_name": "raw_csv_orders2",
+      "materialization_type": null,
+      "incremental_strategy": "full",
+      "historize": false,
+      "is_hist": false,
+      "active": true,
+      "former_names": [],
+      "columns": [
+        {
+          "column_name": "order_id",
+          "datatype": "INTEGER",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "business_key"
+        },
+        {
+          "column_name": "customer_id",
+          "datatype": "INTEGER",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "order_date",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "status",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "total_amount",
+          "datatype": "DECIMAL",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "payload",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "payload"
+        },
+        {
+          "column_name": "load_run_id",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "load_run_id"
+        },
+        {
+          "column_name": "loaded_at",
+          "datatype": "TIMESTAMP",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "loaded_at"
+        }
+      ]
+    },
+    {
+      "dataset_key": "raw.raw_csv_products",
+      "schema_short_name": "raw",
+      "dataset_name": "raw_csv_products",
+      "materialization_type": null,
+      "incremental_strategy": "full",
+      "historize": false,
+      "is_hist": false,
+      "active": true,
+      "former_names": [],
+      "columns": [
+        {
+          "column_name": "availability",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "brand",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "category",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "color",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "currency",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "description",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "ean",
+          "datatype": "BIGINT",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "index",
+          "datatype": "INTEGER",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "internal_id",
+          "datatype": "INTEGER",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "name",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "price",
+          "datatype": "INTEGER",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "size",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "stock",
+          "datatype": "INTEGER",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "payload",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "payload"
+        },
+        {
+          "column_name": "load_run_id",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "load_run_id"
+        },
+        {
+          "column_name": "loaded_at",
+          "datatype": "TIMESTAMP",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "loaded_at"
+        }
+      ]
+    },
+    {
+      "dataset_key": "raw.raw_customer",
+      "schema_short_name": "raw",
+      "dataset_name": "raw_customer",
+      "materialization_type": null,
+      "incremental_strategy": "full",
+      "historize": true,
+      "is_hist": false,
+      "active": true,
+      "former_names": [],
+      "columns": []
+    },
+    {
+      "dataset_key": "raw.raw_json_orders",
+      "schema_short_name": "raw",
+      "dataset_name": "raw_json_orders",
+      "materialization_type": null,
+      "incremental_strategy": "full",
+      "historize": false,
+      "is_hist": false,
+      "active": true,
+      "former_names": [],
+      "columns": [
+        {
+          "column_name": "order_id",
+          "datatype": "INTEGER",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "business_key"
+        },
+        {
+          "column_name": "customer_id",
+          "datatype": "INTEGER",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "order_date",
+          "datatype": "DATE",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "status",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "total_amount",
+          "datatype": "FLOAT",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "payload",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "payload"
+        },
+        {
+          "column_name": "load_run_id",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "load_run_id"
+        },
+        {
+          "column_name": "loaded_at",
+          "datatype": "TIMESTAMP",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "loaded_at"
+        }
+      ]
+    },
+    {
+      "dataset_key": "raw.raw_jsonl_orders",
+      "schema_short_name": "raw",
+      "dataset_name": "raw_jsonl_orders",
+      "materialization_type": null,
+      "incremental_strategy": "full",
+      "historize": false,
+      "is_hist": false,
+      "active": true,
+      "former_names": [],
+      "columns": [
+        {
+          "column_name": "order_id",
+          "datatype": "INTEGER",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "business_key"
+        },
+        {
+          "column_name": "customer_id",
+          "datatype": "INTEGER",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "order_date",
+          "datatype": "DATE",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "status",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "total_amount",
+          "datatype": "FLOAT",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "payload",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "payload"
+        },
+        {
+          "column_name": "load_run_id",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "load_run_id"
+        },
+        {
+          "column_name": "loaded_at",
+          "datatype": "TIMESTAMP",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "loaded_at"
+        }
+      ]
+    },
+    {
+      "dataset_key": "raw.raw_jsonph_posts",
+      "schema_short_name": "raw",
+      "dataset_name": "raw_jsonph_posts",
+      "materialization_type": null,
+      "incremental_strategy": "full",
+      "historize": false,
+      "is_hist": false,
+      "active": true,
+      "former_names": [],
+      "columns": [
+        {
+          "column_name": "id",
+          "datatype": "INTEGER",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "business_key"
+        },
+        {
+          "column_name": "userid",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "title",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "body",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "payload",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "payload"
+        },
+        {
+          "column_name": "load_run_id",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "load_run_id"
+        },
+        {
+          "column_name": "loaded_at",
+          "datatype": "TIMESTAMP",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "loaded_at"
+        }
+      ]
+    },
+    {
+      "dataset_key": "raw.raw_pqt_test_big",
+      "schema_short_name": "raw",
+      "dataset_name": "raw_pqt_test_big",
+      "materialization_type": null,
+      "incremental_strategy": "full",
+      "historize": false,
+      "is_hist": false,
+      "active": true,
+      "former_names": [],
+      "columns": [
+        {
+          "column_name": "id",
+          "datatype": "INTEGER",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "business_key"
+        },
+        {
+          "column_name": "amount",
+          "datatype": "FLOAT",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "category",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "created_at",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "payload",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "payload"
+        },
+        {
+          "column_name": "load_run_id",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "load_run_id"
+        },
+        {
+          "column_name": "loaded_at",
+          "datatype": "TIMESTAMP",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "loaded_at"
+        }
+      ]
+    },
+    {
+      "dataset_key": "raw.raw_xls_orders",
+      "schema_short_name": "raw",
+      "dataset_name": "raw_xls_orders",
+      "materialization_type": null,
+      "incremental_strategy": "full",
+      "historize": false,
+      "is_hist": false,
+      "active": true,
+      "former_names": [],
+      "columns": [
+        {
+          "column_name": "order_id",
+          "datatype": "INTEGER",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "business_key"
+        },
+        {
+          "column_name": "customer_id",
+          "datatype": "INTEGER",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "order_date",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "status",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "total_amount",
+          "datatype": "DECIMAL",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "payload",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "payload"
+        },
+        {
+          "column_name": "load_run_id",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "load_run_id"
+        },
+        {
+          "column_name": "loaded_at",
+          "datatype": "TIMESTAMP",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "loaded_at"
+        }
+      ]
+    },
+    {
+      "dataset_key": "rawcore.rawcore_child",
+      "schema_short_name": "rawcore",
+      "dataset_name": "rawcore_child",
+      "materialization_type": null,
+      "incremental_strategy": "full",
+      "historize": true,
+      "is_hist": false,
+      "active": true,
+      "former_names": [],
+      "columns": [
+        {
+          "column_name": "child_bk1",
+          "datatype": "",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": false,
+          "system_role": ""
+        },
+        {
+          "column_name": "child_bk2",
+          "datatype": "",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": false,
+          "system_role": ""
+        },
+        {
+          "column_name": "rawcore_parent_key",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": "fk:16",
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "foreign_key"
+        }
+      ]
+    },
+    {
+      "dataset_key": "rawcore.rawcore_parent",
+      "schema_short_name": "rawcore",
+      "dataset_name": "rawcore_parent",
+      "materialization_type": null,
+      "incremental_strategy": "full",
+      "historize": true,
+      "is_hist": false,
+      "active": true,
+      "former_names": [],
+      "columns": [
+        {
+          "column_name": "bk1",
+          "datatype": "",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": false,
+          "system_role": "business_key"
+        },
+        {
+          "column_name": "bk2",
+          "datatype": "",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": false,
+          "system_role": "business_key"
+        },
+        {
+          "column_name": "parent_key",
+          "datatype": "",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": false,
+          "system_role": "surrogate_key"
+        }
+      ]
+    },
+    {
+      "dataset_key": "rawcore.rawcore_parent_hist",
+      "schema_short_name": "rawcore",
+      "dataset_name": "rawcore_parent_hist",
+      "materialization_type": null,
+      "incremental_strategy": "historize",
+      "historize": false,
+      "is_hist": true,
+      "active": true,
+      "former_names": [],
+      "columns": [
+        {
+          "column_name": "rawcore_parent_hist_key",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "surrogate_key"
+        },
+        {
+          "column_name": "bk1",
+          "datatype": "",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "business_key"
+        },
+        {
+          "column_name": "bk2",
+          "datatype": "",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "business_key"
+        },
+        {
+          "column_name": "parent_key",
+          "datatype": "",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "entity_key"
+        },
+        {
+          "column_name": "load_run_id",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "load_run_id"
+        },
+        {
+          "column_name": "loaded_at",
+          "datatype": "TIMESTAMP",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "loaded_at"
+        },
+        {
+          "column_name": "version_started_at",
+          "datatype": "TIMESTAMP",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "version_started_at"
+        },
+        {
+          "column_name": "version_ended_at",
+          "datatype": "TIMESTAMP",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "version_ended_at"
+        },
+        {
+          "column_name": "version_state",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "version_state"
+        }
+      ]
+    },
+    {
+      "dataset_key": "rawcore.rc_aw_customer",
+      "schema_short_name": "rawcore",
+      "dataset_name": "rc_aw_customer",
+      "materialization_type": null,
+      "incremental_strategy": "full",
+      "historize": true,
+      "is_hist": false,
+      "active": true,
+      "former_names": [],
+      "columns": [
+        {
+          "column_name": "rc_aw_customer_key",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "surrogate_key"
+        },
+        {
+          "column_name": "customer_id",
+          "datatype": "INTEGER",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [
+            "customerid"
+          ],
+          "is_system_managed": true,
+          "system_role": "business_key"
+        },
+        {
+          "column_name": "person_id",
+          "datatype": "INTEGER",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [
+            "personid"
+          ],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "account_no",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [
+            "accountnumber"
+          ],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "row_hash",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "row_hash"
+        },
+        {
+          "column_name": "load_run_id",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "load_run_id"
+        },
+        {
+          "column_name": "loaded_at",
+          "datatype": "TIMESTAMP",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "loaded_at"
+        },
+        {
+          "column_name": "source_identity_id",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": false,
+          "system_role": ""
+        },
+        {
+          "column_name": "rc_aw_person_key",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": "fk:1",
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "foreign_key"
+        }
+      ]
+    },
+    {
+      "dataset_key": "rawcore.rc_aw_customer_hist",
+      "schema_short_name": "rawcore",
+      "dataset_name": "rc_aw_customer_hist",
+      "materialization_type": null,
+      "incremental_strategy": "historize",
+      "historize": false,
+      "is_hist": true,
+      "active": true,
+      "former_names": [],
+      "columns": [
+        {
+          "column_name": "rc_aw_customer_hist_key",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "surrogate_key"
+        },
+        {
+          "column_name": "rc_aw_customer_key",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "entity_key"
+        },
+        {
+          "column_name": "customer_id",
+          "datatype": "INTEGER",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [
+            "customerid"
+          ],
+          "is_system_managed": true,
+          "system_role": "business_key"
+        },
+        {
+          "column_name": "person_id",
+          "datatype": "INTEGER",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [
+            "personid"
+          ],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "account_no",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [
+            "accountnumber"
+          ],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "row_hash",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "row_hash"
+        },
+        {
+          "column_name": "source_identity_id",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "rc_aw_person_key",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "foreign_key"
+        },
+        {
+          "column_name": "load_run_id",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "load_run_id"
+        },
+        {
+          "column_name": "loaded_at",
+          "datatype": "TIMESTAMP",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "loaded_at"
+        },
+        {
+          "column_name": "version_started_at",
+          "datatype": "TIMESTAMP",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "version_started_at"
+        },
+        {
+          "column_name": "version_ended_at",
+          "datatype": "TIMESTAMP",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "version_ended_at"
+        },
+        {
+          "column_name": "version_state",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "version_state"
+        }
+      ]
+    },
+    {
+      "dataset_key": "rawcore.rc_aw_person",
+      "schema_short_name": "rawcore",
+      "dataset_name": "rc_aw_person",
+      "materialization_type": null,
+      "incremental_strategy": "full",
+      "historize": true,
+      "is_hist": false,
+      "active": true,
+      "former_names": [],
+      "columns": [
+        {
+          "column_name": "rc_aw_person_key",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "surrogate_key"
+        },
+        {
+          "column_name": "source_identity_id",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [
+            "source_identity_id",
+            "person_id"
+          ],
+          "is_system_managed": true,
+          "system_role": "business_key"
+        },
+        {
+          "column_name": "person_id",
+          "datatype": "INTEGER",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [
+            "businessentityid"
+          ],
+          "is_system_managed": true,
+          "system_role": "business_key"
+        },
+        {
+          "column_name": "person_type_code",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [
+            "persontype",
+            "person_type"
+          ],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "title_name",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [
+            "title"
+          ],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "first_name",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [
+            "firstname"
+          ],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "last_name",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [
+            "lastname"
+          ],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "demographics_txt",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [
+            "demographics"
+          ],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "row_hash",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "row_hash"
+        },
+        {
+          "column_name": "load_run_id",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "load_run_id"
+        },
+        {
+          "column_name": "loaded_at",
+          "datatype": "TIMESTAMP",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "loaded_at"
+        }
+      ]
+    },
+    {
+      "dataset_key": "rawcore.rc_aw_person_hist",
+      "schema_short_name": "rawcore",
+      "dataset_name": "rc_aw_person_hist",
+      "materialization_type": null,
+      "incremental_strategy": "historize",
+      "historize": false,
+      "is_hist": true,
+      "active": true,
+      "former_names": [],
+      "columns": [
+        {
+          "column_name": "rc_aw_person_hist_key",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "surrogate_key"
+        },
+        {
+          "column_name": "rc_aw_person_key",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "entity_key"
+        },
+        {
+          "column_name": "source_identity_id",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [
+            "source_identity_id",
+            "person_id"
+          ],
+          "is_system_managed": true,
+          "system_role": "business_key"
+        },
+        {
+          "column_name": "person_id",
+          "datatype": "INTEGER",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [
+            "businessentityid"
+          ],
+          "is_system_managed": true,
+          "system_role": "business_key"
+        },
+        {
+          "column_name": "person_type_code",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [
+            "persontype",
+            "person_type"
+          ],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "title_name",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [
+            "title"
+          ],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "first_name",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [
+            "firstname"
+          ],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "last_name",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [
+            "lastname"
+          ],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "demographics_txt",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [
+            "demographics"
+          ],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "row_hash",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "row_hash"
+        },
+        {
+          "column_name": "load_run_id",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "load_run_id"
+        },
+        {
+          "column_name": "loaded_at",
+          "datatype": "TIMESTAMP",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "loaded_at"
+        },
+        {
+          "column_name": "version_started_at",
+          "datatype": "TIMESTAMP",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "version_started_at"
+        },
+        {
+          "column_name": "version_ended_at",
+          "datatype": "TIMESTAMP",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "version_ended_at"
+        },
+        {
+          "column_name": "version_state",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "version_state"
+        }
+      ]
+    },
+    {
+      "dataset_key": "rawcore.rc_aw_product",
+      "schema_short_name": "rawcore",
+      "dataset_name": "rc_aw_product",
+      "materialization_type": null,
+      "incremental_strategy": "full",
+      "historize": true,
+      "is_hist": false,
+      "active": true,
+      "former_names": [
+        "rc_aw_product",
+        "rc_aw_prod"
+      ],
+      "columns": [
+        {
+          "column_name": "rc_aw_product_key",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [
+            "rc_aw_product_key",
+            "rc_aw_prod_key"
+          ],
+          "is_system_managed": true,
+          "system_role": "surrogate_key"
+        },
+        {
+          "column_name": "product_id",
+          "datatype": "INTEGER",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [
+            "productid",
+            "produc_tid"
+          ],
+          "is_system_managed": true,
+          "system_role": "business_key"
+        },
+        {
+          "column_name": "product_name",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [
+            "name"
+          ],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "product_no",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [
+            "productnumber"
+          ],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "make_flag",
+          "datatype": "BOOLEAN",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [
+            "makeflag"
+          ],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "finished_goods_flag",
+          "datatype": "BOOLEAN",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [
+            "finishedgoodsflag"
+          ],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "color_desc",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [
+            "color",
+            "color_name",
+            "color_desc",
+            "colour_desc"
+          ],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "product_model_id",
+          "datatype": "INTEGER",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [
+            "productmodelid"
+          ],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "row_hash",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "row_hash"
+        },
+        {
+          "column_name": "load_run_id",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "load_run_id"
+        },
+        {
+          "column_name": "loaded_at",
+          "datatype": "TIMESTAMP",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "loaded_at"
+        },
+        {
+          "column_name": "rc_aw_product_model_key",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": "fk:15",
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "foreign_key"
+        },
+        {
+          "column_name": "product_desc",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": false,
+          "system_role": ""
+        }
+      ]
+    },
+    {
+      "dataset_key": "rawcore.rc_aw_product_hist",
+      "schema_short_name": "rawcore",
+      "dataset_name": "rc_aw_product_hist",
+      "materialization_type": null,
+      "incremental_strategy": "historize",
+      "historize": false,
+      "is_hist": true,
+      "active": true,
+      "former_names": [
+        "rc_aw_product_hist",
+        "rc_aw_prod_hist"
+      ],
+      "columns": [
+        {
+          "column_name": "rc_aw_product_hist_key",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [
+            "rc_aw_product_hist_key",
+            "rc_aw_prod_hist_key"
+          ],
+          "is_system_managed": true,
+          "system_role": "surrogate_key"
+        },
+        {
+          "column_name": "rc_aw_product_key",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [
+            "rc_aw_product_key",
+            "rc_aw_prod_key"
+          ],
+          "is_system_managed": true,
+          "system_role": "entity_key"
+        },
+        {
+          "column_name": "product_id",
+          "datatype": "INTEGER",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [
+            "productid",
+            "produc_tid"
+          ],
+          "is_system_managed": true,
+          "system_role": "business_key"
+        },
+        {
+          "column_name": "product_name",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [
+            "name"
+          ],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "product_no",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [
+            "productnumber"
+          ],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "make_flag",
+          "datatype": "BOOLEAN",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [
+            "makeflag"
+          ],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "finished_goods_flag",
+          "datatype": "BOOLEAN",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [
+            "finishedgoodsflag"
+          ],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "color_desc",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [
+            "color",
+            "color_name",
+            "color_desc",
+            "colour_desc"
+          ],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "product_model_id",
+          "datatype": "INTEGER",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [
+            "productmodelid"
+          ],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "row_hash",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "row_hash"
+        },
+        {
+          "column_name": "rc_aw_product_model_key",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "foreign_key"
+        },
+        {
+          "column_name": "product_desc",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "load_run_id",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "load_run_id"
+        },
+        {
+          "column_name": "loaded_at",
+          "datatype": "TIMESTAMP",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "loaded_at"
+        },
+        {
+          "column_name": "version_started_at",
+          "datatype": "TIMESTAMP",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "version_started_at"
+        },
+        {
+          "column_name": "version_ended_at",
+          "datatype": "TIMESTAMP",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "version_ended_at"
+        },
+        {
+          "column_name": "version_state",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "version_state"
+        }
+      ]
+    },
+    {
+      "dataset_key": "rawcore.rc_aw_product_model",
+      "schema_short_name": "rawcore",
+      "dataset_name": "rc_aw_product_model",
+      "materialization_type": null,
+      "incremental_strategy": "full",
+      "historize": true,
+      "is_hist": false,
+      "active": true,
+      "former_names": [
+        "rc_aw_productmodel"
+      ],
+      "columns": [
+        {
+          "column_name": "rc_aw_product_model_key",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [
+            "rc_aw_productmodel_key"
+          ],
+          "is_system_managed": true,
+          "system_role": "surrogate_key"
+        },
+        {
+          "column_name": "product_model_id",
+          "datatype": "INTEGER",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [
+            "productmodelid"
+          ],
+          "is_system_managed": true,
+          "system_role": "business_key"
+        },
+        {
+          "column_name": "product_model_name",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [
+            "name"
+          ],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "catalog_desc",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [
+            "catalogdescription"
+          ],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "instructions_txt",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [
+            "instructions"
+          ],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "row_hash",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "row_hash"
+        },
+        {
+          "column_name": "load_run_id",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "load_run_id"
+        },
+        {
+          "column_name": "loaded_at",
+          "datatype": "TIMESTAMP",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "loaded_at"
+        }
+      ]
+    },
+    {
+      "dataset_key": "rawcore.rc_aw_product_model_hist",
+      "schema_short_name": "rawcore",
+      "dataset_name": "rc_aw_product_model_hist",
+      "materialization_type": null,
+      "incremental_strategy": "historize",
+      "historize": false,
+      "is_hist": true,
+      "active": true,
+      "former_names": [],
+      "columns": [
+        {
+          "column_name": "rc_aw_product_model_hist_key",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "surrogate_key"
+        },
+        {
+          "column_name": "rc_aw_product_model_key",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [
+            "rc_aw_productmodel_key"
+          ],
+          "is_system_managed": true,
+          "system_role": "entity_key"
+        },
+        {
+          "column_name": "product_model_id",
+          "datatype": "INTEGER",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [
+            "productmodelid"
+          ],
+          "is_system_managed": true,
+          "system_role": "business_key"
+        },
+        {
+          "column_name": "product_model_name",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [
+            "name"
+          ],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "catalog_desc",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [
+            "catalogdescription"
+          ],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "instructions_txt",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [
+            "instructions"
+          ],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "row_hash",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "row_hash"
+        },
+        {
+          "column_name": "load_run_id",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "load_run_id"
+        },
+        {
+          "column_name": "loaded_at",
+          "datatype": "TIMESTAMP",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "loaded_at"
+        },
+        {
+          "column_name": "version_started_at",
+          "datatype": "TIMESTAMP",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "version_started_at"
+        },
+        {
+          "column_name": "version_ended_at",
+          "datatype": "TIMESTAMP",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "version_ended_at"
+        },
+        {
+          "column_name": "version_state",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "version_state"
+        }
+      ]
+    },
+    {
+      "dataset_key": "rawcore.rc_aw_sales_order",
+      "schema_short_name": "rawcore",
+      "dataset_name": "rc_aw_sales_order",
+      "materialization_type": null,
+      "incremental_strategy": "merge",
+      "historize": true,
+      "is_hist": false,
+      "active": true,
+      "former_names": [
+        "rc_aw_salesorderheader"
+      ],
+      "columns": [
+        {
+          "column_name": "rc_aw_sales_order_key",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [
+            "rc_aw_salesorderheader_key"
+          ],
+          "is_system_managed": true,
+          "system_role": "surrogate_key"
+        },
+        {
+          "column_name": "sales_order_id",
+          "datatype": "INTEGER",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [
+            "salesorderid"
+          ],
+          "is_system_managed": true,
+          "system_role": "business_key"
+        },
+        {
+          "column_name": "order_date",
+          "datatype": "TIMESTAMP",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [
+            "orderdate"
+          ],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "due_date",
+          "datatype": "TIMESTAMP",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [
+            "duedate"
+          ],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "ship_date",
+          "datatype": "TIMESTAMP",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [
+            "shipdate",
+            "ship_date",
+            "shipping_date"
+          ],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "customer_id",
+          "datatype": "INTEGER",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [
+            "customerid"
+          ],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "subtotal_amt",
+          "datatype": "DECIMAL",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [
+            "subtotal"
+          ],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "tax_amt",
+          "datatype": "DECIMAL",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [
+            "taxamt"
+          ],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "modified_date",
+          "datatype": "TIMESTAMP",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [
+            "modified_date",
+            "modify_date",
+            "modifieddate"
+          ],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "row_hash",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "row_hash"
+        },
+        {
+          "column_name": "load_run_id",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "load_run_id"
+        },
+        {
+          "column_name": "loaded_at",
+          "datatype": "TIMESTAMP",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "loaded_at"
+        },
+        {
+          "column_name": "rc_aw_customer_key",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": "fk:6",
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "foreign_key"
+        }
+      ]
+    },
+    {
+      "dataset_key": "rawcore.rc_aw_sales_order_hist",
+      "schema_short_name": "rawcore",
+      "dataset_name": "rc_aw_sales_order_hist",
+      "materialization_type": null,
+      "incremental_strategy": "historize",
+      "historize": false,
+      "is_hist": true,
+      "active": true,
+      "former_names": [
+        "rc_aw_salesorderheader_hist"
+      ],
+      "columns": [
+        {
+          "column_name": "rc_aw_sales_order_hist_key",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [
+            "rc_aw_salesorderheader_hist_key"
+          ],
+          "is_system_managed": true,
+          "system_role": "surrogate_key"
+        },
+        {
+          "column_name": "rc_aw_sales_order_key",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [
+            "rc_aw_salesorderheader_key"
+          ],
+          "is_system_managed": true,
+          "system_role": "entity_key"
+        },
+        {
+          "column_name": "sales_order_id",
+          "datatype": "INTEGER",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [
+            "salesorderid"
+          ],
+          "is_system_managed": true,
+          "system_role": "business_key"
+        },
+        {
+          "column_name": "order_date",
+          "datatype": "TIMESTAMP",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [
+            "orderdate"
+          ],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "due_date",
+          "datatype": "TIMESTAMP",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [
+            "duedate"
+          ],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "ship_date",
+          "datatype": "TIMESTAMP",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [
+            "shipdate",
+            "ship_date",
+            "shipping_date"
+          ],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "customer_id",
+          "datatype": "INTEGER",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [
+            "customerid"
+          ],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "subtotal_amt",
+          "datatype": "DECIMAL",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [
+            "subtotal"
+          ],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "tax_amt",
+          "datatype": "DECIMAL",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [
+            "taxamt"
+          ],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "modified_date",
+          "datatype": "TIMESTAMP",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [
+            "modified_date",
+            "modify_date",
+            "modifieddate"
+          ],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "row_hash",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "row_hash"
+        },
+        {
+          "column_name": "rc_aw_customer_key",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "foreign_key"
+        },
+        {
+          "column_name": "load_run_id",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "load_run_id"
+        },
+        {
+          "column_name": "loaded_at",
+          "datatype": "TIMESTAMP",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "loaded_at"
+        },
+        {
+          "column_name": "version_started_at",
+          "datatype": "TIMESTAMP",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "version_started_at"
+        },
+        {
+          "column_name": "version_ended_at",
+          "datatype": "TIMESTAMP",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "version_ended_at"
+        },
+        {
+          "column_name": "version_state",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "version_state"
+        }
+      ]
+    },
+    {
+      "dataset_key": "rawcore.rc_aw_salesorderheader",
+      "schema_short_name": "rawcore",
+      "dataset_name": "rc_aw_salesorderheader",
+      "materialization_type": "incremental",
+      "incremental_strategy": "full",
+      "historize": false,
+      "is_hist": false,
+      "active": true,
+      "former_names": [],
+      "columns": []
+    },
+    {
+      "dataset_key": "rawcore.rc_csv_orders",
+      "schema_short_name": "rawcore",
+      "dataset_name": "rc_csv_orders",
+      "materialization_type": null,
+      "incremental_strategy": "full",
+      "historize": true,
+      "is_hist": false,
+      "active": true,
+      "former_names": [],
+      "columns": [
+        {
+          "column_name": "rc_csv_orders_key",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "surrogate_key"
+        },
+        {
+          "column_name": "order_id",
+          "datatype": "INTEGER",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "business_key"
+        },
+        {
+          "column_name": "customer_id",
+          "datatype": "INTEGER",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "order_date",
+          "datatype": "DATE",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "status",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "total_amount",
+          "datatype": "DECIMAL",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "row_hash",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "row_hash"
+        },
+        {
+          "column_name": "load_run_id",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "load_run_id"
+        },
+        {
+          "column_name": "loaded_at",
+          "datatype": "TIMESTAMP",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "loaded_at"
+        }
+      ]
+    },
+    {
+      "dataset_key": "rawcore.rc_csv_orders2",
+      "schema_short_name": "rawcore",
+      "dataset_name": "rc_csv_orders2",
+      "materialization_type": null,
+      "incremental_strategy": "full",
+      "historize": true,
+      "is_hist": false,
+      "active": true,
+      "former_names": [],
+      "columns": [
+        {
+          "column_name": "rc_csv_orders2_key",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "surrogate_key"
+        },
+        {
+          "column_name": "order_id",
+          "datatype": "INTEGER",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "business_key"
+        },
+        {
+          "column_name": "customer_id",
+          "datatype": "INTEGER",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "order_date",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "status",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "total_amount",
+          "datatype": "DECIMAL",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "row_hash",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "row_hash"
+        },
+        {
+          "column_name": "load_run_id",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "load_run_id"
+        },
+        {
+          "column_name": "loaded_at",
+          "datatype": "TIMESTAMP",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "loaded_at"
+        }
+      ]
+    },
+    {
+      "dataset_key": "rawcore.rc_csv_orders2_hist",
+      "schema_short_name": "rawcore",
+      "dataset_name": "rc_csv_orders2_hist",
+      "materialization_type": null,
+      "incremental_strategy": "historize",
+      "historize": false,
+      "is_hist": true,
+      "active": true,
+      "former_names": [],
+      "columns": [
+        {
+          "column_name": "rc_csv_orders2_hist_key",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "surrogate_key"
+        },
+        {
+          "column_name": "rc_csv_orders2_key",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "entity_key"
+        },
+        {
+          "column_name": "order_id",
+          "datatype": "INTEGER",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "business_key"
+        },
+        {
+          "column_name": "customer_id",
+          "datatype": "INTEGER",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "order_date",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "status",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "total_amount",
+          "datatype": "DECIMAL",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "row_hash",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "row_hash"
+        },
+        {
+          "column_name": "load_run_id",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "load_run_id"
+        },
+        {
+          "column_name": "loaded_at",
+          "datatype": "TIMESTAMP",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "loaded_at"
+        },
+        {
+          "column_name": "version_started_at",
+          "datatype": "TIMESTAMP",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "version_started_at"
+        },
+        {
+          "column_name": "version_ended_at",
+          "datatype": "TIMESTAMP",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "version_ended_at"
+        },
+        {
+          "column_name": "version_state",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "version_state"
+        }
+      ]
+    },
+    {
+      "dataset_key": "rawcore.rc_csv_orders_hist",
+      "schema_short_name": "rawcore",
+      "dataset_name": "rc_csv_orders_hist",
+      "materialization_type": null,
+      "incremental_strategy": "historize",
+      "historize": false,
+      "is_hist": true,
+      "active": true,
+      "former_names": [],
+      "columns": [
+        {
+          "column_name": "rc_csv_orders_hist_key",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "surrogate_key"
+        },
+        {
+          "column_name": "rc_csv_orders_key",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "entity_key"
+        },
+        {
+          "column_name": "order_id",
+          "datatype": "INTEGER",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "business_key"
+        },
+        {
+          "column_name": "customer_id",
+          "datatype": "INTEGER",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "order_date",
+          "datatype": "DATE",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "status",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "total_amount",
+          "datatype": "DECIMAL",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "row_hash",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "row_hash"
+        },
+        {
+          "column_name": "load_run_id",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "load_run_id"
+        },
+        {
+          "column_name": "loaded_at",
+          "datatype": "TIMESTAMP",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "loaded_at"
+        },
+        {
+          "column_name": "version_started_at",
+          "datatype": "TIMESTAMP",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "version_started_at"
+        },
+        {
+          "column_name": "version_ended_at",
+          "datatype": "TIMESTAMP",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "version_ended_at"
+        },
+        {
+          "column_name": "version_state",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "version_state"
+        }
+      ]
+    },
+    {
+      "dataset_key": "rawcore.rc_csv_products",
+      "schema_short_name": "rawcore",
+      "dataset_name": "rc_csv_products",
+      "materialization_type": null,
+      "incremental_strategy": "full",
+      "historize": true,
+      "is_hist": false,
+      "active": true,
+      "former_names": [],
+      "columns": [
+        {
+          "column_name": "rc_csv_products_key",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "surrogate_key"
+        },
+        {
+          "column_name": "availability",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "brand",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "category",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "color",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "currency",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "description",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "ean",
+          "datatype": "BIGINT",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "index",
+          "datatype": "INTEGER",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "internal_id",
+          "datatype": "INTEGER",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "name",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "price",
+          "datatype": "INTEGER",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "size",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "stock",
+          "datatype": "INTEGER",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "row_hash",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "row_hash"
+        },
+        {
+          "column_name": "load_run_id",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "load_run_id"
+        },
+        {
+          "column_name": "loaded_at",
+          "datatype": "TIMESTAMP",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "loaded_at"
+        }
+      ]
+    },
+    {
+      "dataset_key": "rawcore.rc_csv_products_hist",
+      "schema_short_name": "rawcore",
+      "dataset_name": "rc_csv_products_hist",
+      "materialization_type": null,
+      "incremental_strategy": "historize",
+      "historize": false,
+      "is_hist": true,
+      "active": true,
+      "former_names": [],
+      "columns": [
+        {
+          "column_name": "rc_csv_products_hist_key",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "surrogate_key"
+        },
+        {
+          "column_name": "rc_csv_products_key",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "entity_key"
+        },
+        {
+          "column_name": "availability",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "brand",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "category",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "color",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "currency",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "description",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "ean",
+          "datatype": "BIGINT",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "index",
+          "datatype": "INTEGER",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "internal_id",
+          "datatype": "INTEGER",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "name",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "price",
+          "datatype": "INTEGER",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "size",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "stock",
+          "datatype": "INTEGER",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "row_hash",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "row_hash"
+        },
+        {
+          "column_name": "load_run_id",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "load_run_id"
+        },
+        {
+          "column_name": "loaded_at",
+          "datatype": "TIMESTAMP",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "loaded_at"
+        },
+        {
+          "column_name": "version_started_at",
+          "datatype": "TIMESTAMP",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "version_started_at"
+        },
+        {
+          "column_name": "version_ended_at",
+          "datatype": "TIMESTAMP",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "version_ended_at"
+        },
+        {
+          "column_name": "version_state",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "version_state"
+        }
+      ]
+    },
+    {
+      "dataset_key": "rawcore.rc_customer_e9ee6137",
+      "schema_short_name": "rawcore",
+      "dataset_name": "rc_customer_e9ee6137",
+      "materialization_type": null,
+      "incremental_strategy": "full",
+      "historize": true,
+      "is_hist": false,
+      "active": true,
+      "former_names": [],
+      "columns": [
+        {
+          "column_name": "rc_customer_e9ee6137_key",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "surrogate_key"
+        },
+        {
+          "column_name": "customer_full_name",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [
+            "customer_name"
+          ],
+          "is_system_managed": true,
+          "system_role": ""
+        }
+      ]
+    },
+    {
+      "dataset_key": "rawcore.rc_customer_e9ee6137_hist",
+      "schema_short_name": "rawcore",
+      "dataset_name": "rc_customer_e9ee6137_hist",
+      "materialization_type": null,
+      "incremental_strategy": "historize",
+      "historize": false,
+      "is_hist": true,
+      "active": true,
+      "former_names": [],
+      "columns": [
+        {
+          "column_name": "rc_customer_e9ee6137_hist_key",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "surrogate_key"
+        },
+        {
+          "column_name": "rc_customer_e9ee6137_key",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "entity_key"
+        },
+        {
+          "column_name": "customer_full_name",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [
+            "customer_name"
+          ],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "load_run_id",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "load_run_id"
+        },
+        {
+          "column_name": "loaded_at",
+          "datatype": "TIMESTAMP",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "loaded_at"
+        },
+        {
+          "column_name": "version_started_at",
+          "datatype": "TIMESTAMP",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "version_started_at"
+        },
+        {
+          "column_name": "version_ended_at",
+          "datatype": "TIMESTAMP",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "version_ended_at"
+        },
+        {
+          "column_name": "version_state",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "version_state"
+        }
+      ]
+    },
+    {
+      "dataset_key": "rawcore.rc_fk_delete_e595396d",
+      "schema_short_name": "rawcore",
+      "dataset_name": "rc_fk_delete_e595396d",
+      "materialization_type": null,
+      "incremental_strategy": "full",
+      "historize": true,
+      "is_hist": false,
+      "active": true,
+      "former_names": [],
+      "columns": [
+        {
+          "column_name": "rc_fk_delete_e595396d_key",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "surrogate_key"
+        },
+        {
+          "column_name": "rc_fk_ref_e595396d_key",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": "fk:17",
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "foreign_key"
+        }
+      ]
+    },
+    {
+      "dataset_key": "rawcore.rc_fk_delete_e595396d_hist",
+      "schema_short_name": "rawcore",
+      "dataset_name": "rc_fk_delete_e595396d_hist",
+      "materialization_type": null,
+      "incremental_strategy": "historize",
+      "historize": false,
+      "is_hist": true,
+      "active": true,
+      "former_names": [],
+      "columns": [
+        {
+          "column_name": "rc_fk_delete_e595396d_hist_key",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "surrogate_key"
+        },
+        {
+          "column_name": "rc_fk_delete_e595396d_key",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "entity_key"
+        },
+        {
+          "column_name": "rc_fk_ref_e595396d_key",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "foreign_key"
+        },
+        {
+          "column_name": "load_run_id",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "load_run_id"
+        },
+        {
+          "column_name": "loaded_at",
+          "datatype": "TIMESTAMP",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "loaded_at"
+        },
+        {
+          "column_name": "version_started_at",
+          "datatype": "TIMESTAMP",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "version_started_at"
+        },
+        {
+          "column_name": "version_ended_at",
+          "datatype": "TIMESTAMP",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "version_ended_at"
+        },
+        {
+          "column_name": "version_state",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "version_state"
+        }
+      ]
+    },
+    {
+      "dataset_key": "rawcore.rc_fk_ref_e595396d",
+      "schema_short_name": "rawcore",
+      "dataset_name": "rc_fk_ref_e595396d",
+      "materialization_type": null,
+      "incremental_strategy": "full",
+      "historize": false,
+      "is_hist": false,
+      "active": true,
+      "former_names": [],
+      "columns": []
+    },
+    {
+      "dataset_key": "rawcore.rc_json_orders",
+      "schema_short_name": "rawcore",
+      "dataset_name": "rc_json_orders",
+      "materialization_type": null,
+      "incremental_strategy": "full",
+      "historize": true,
+      "is_hist": false,
+      "active": true,
+      "former_names": [],
+      "columns": [
+        {
+          "column_name": "rc_json_orders_key",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "surrogate_key"
+        },
+        {
+          "column_name": "order_id",
+          "datatype": "INTEGER",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "business_key"
+        },
+        {
+          "column_name": "customer_id",
+          "datatype": "INTEGER",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "order_date",
+          "datatype": "DATE",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "status",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "total_amount",
+          "datatype": "FLOAT",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "row_hash",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "row_hash"
+        },
+        {
+          "column_name": "load_run_id",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "load_run_id"
+        },
+        {
+          "column_name": "loaded_at",
+          "datatype": "TIMESTAMP",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "loaded_at"
+        }
+      ]
+    },
+    {
+      "dataset_key": "rawcore.rc_json_orders_hist",
+      "schema_short_name": "rawcore",
+      "dataset_name": "rc_json_orders_hist",
+      "materialization_type": null,
+      "incremental_strategy": "historize",
+      "historize": false,
+      "is_hist": true,
+      "active": true,
+      "former_names": [],
+      "columns": [
+        {
+          "column_name": "rc_json_orders_hist_key",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "surrogate_key"
+        },
+        {
+          "column_name": "rc_json_orders_key",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "entity_key"
+        },
+        {
+          "column_name": "order_id",
+          "datatype": "INTEGER",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "business_key"
+        },
+        {
+          "column_name": "customer_id",
+          "datatype": "INTEGER",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "order_date",
+          "datatype": "DATE",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "status",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "total_amount",
+          "datatype": "FLOAT",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "row_hash",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "row_hash"
+        },
+        {
+          "column_name": "load_run_id",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "load_run_id"
+        },
+        {
+          "column_name": "loaded_at",
+          "datatype": "TIMESTAMP",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "loaded_at"
+        },
+        {
+          "column_name": "version_started_at",
+          "datatype": "TIMESTAMP",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "version_started_at"
+        },
+        {
+          "column_name": "version_ended_at",
+          "datatype": "TIMESTAMP",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "version_ended_at"
+        },
+        {
+          "column_name": "version_state",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "version_state"
+        }
+      ]
+    },
+    {
+      "dataset_key": "rawcore.rc_jsonl_orders",
+      "schema_short_name": "rawcore",
+      "dataset_name": "rc_jsonl_orders",
+      "materialization_type": null,
+      "incremental_strategy": "full",
+      "historize": true,
+      "is_hist": false,
+      "active": true,
+      "former_names": [],
+      "columns": [
+        {
+          "column_name": "rc_jsonl_orders_key",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "surrogate_key"
+        },
+        {
+          "column_name": "order_id",
+          "datatype": "INTEGER",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "business_key"
+        },
+        {
+          "column_name": "customer_id",
+          "datatype": "INTEGER",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "order_date",
+          "datatype": "DATE",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "status",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "total_amount",
+          "datatype": "FLOAT",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "row_hash",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "row_hash"
+        },
+        {
+          "column_name": "load_run_id",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "load_run_id"
+        },
+        {
+          "column_name": "loaded_at",
+          "datatype": "TIMESTAMP",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "loaded_at"
+        }
+      ]
+    },
+    {
+      "dataset_key": "rawcore.rc_jsonl_orders_hist",
+      "schema_short_name": "rawcore",
+      "dataset_name": "rc_jsonl_orders_hist",
+      "materialization_type": null,
+      "incremental_strategy": "historize",
+      "historize": false,
+      "is_hist": true,
+      "active": true,
+      "former_names": [],
+      "columns": [
+        {
+          "column_name": "rc_jsonl_orders_hist_key",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "surrogate_key"
+        },
+        {
+          "column_name": "rc_jsonl_orders_key",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "entity_key"
+        },
+        {
+          "column_name": "order_id",
+          "datatype": "INTEGER",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "business_key"
+        },
+        {
+          "column_name": "customer_id",
+          "datatype": "INTEGER",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "order_date",
+          "datatype": "DATE",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "status",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "total_amount",
+          "datatype": "FLOAT",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "row_hash",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "row_hash"
+        },
+        {
+          "column_name": "load_run_id",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "load_run_id"
+        },
+        {
+          "column_name": "loaded_at",
+          "datatype": "TIMESTAMP",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "loaded_at"
+        },
+        {
+          "column_name": "version_started_at",
+          "datatype": "TIMESTAMP",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "version_started_at"
+        },
+        {
+          "column_name": "version_ended_at",
+          "datatype": "TIMESTAMP",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "version_ended_at"
+        },
+        {
+          "column_name": "version_state",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "version_state"
+        }
+      ]
+    },
+    {
+      "dataset_key": "rawcore.rc_jsonph_posts",
+      "schema_short_name": "rawcore",
+      "dataset_name": "rc_jsonph_posts",
+      "materialization_type": null,
+      "incremental_strategy": "full",
+      "historize": true,
+      "is_hist": false,
+      "active": true,
+      "former_names": [],
+      "columns": [
+        {
+          "column_name": "rc_jsonph_posts_key",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "surrogate_key"
+        },
+        {
+          "column_name": "id",
+          "datatype": "INTEGER",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "business_key"
+        },
+        {
+          "column_name": "userid",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "title",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "body",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "row_hash",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "row_hash"
+        },
+        {
+          "column_name": "load_run_id",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "load_run_id"
+        },
+        {
+          "column_name": "loaded_at",
+          "datatype": "TIMESTAMP",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "loaded_at"
+        }
+      ]
+    },
+    {
+      "dataset_key": "rawcore.rc_jsonph_posts_hist",
+      "schema_short_name": "rawcore",
+      "dataset_name": "rc_jsonph_posts_hist",
+      "materialization_type": null,
+      "incremental_strategy": "historize",
+      "historize": false,
+      "is_hist": true,
+      "active": true,
+      "former_names": [],
+      "columns": [
+        {
+          "column_name": "rc_jsonph_posts_hist_key",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "surrogate_key"
+        },
+        {
+          "column_name": "rc_jsonph_posts_key",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "entity_key"
+        },
+        {
+          "column_name": "id",
+          "datatype": "INTEGER",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "business_key"
+        },
+        {
+          "column_name": "userid",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "title",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "body",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "row_hash",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "row_hash"
+        },
+        {
+          "column_name": "load_run_id",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "load_run_id"
+        },
+        {
+          "column_name": "loaded_at",
+          "datatype": "TIMESTAMP",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "loaded_at"
+        },
+        {
+          "column_name": "version_started_at",
+          "datatype": "TIMESTAMP",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "version_started_at"
+        },
+        {
+          "column_name": "version_ended_at",
+          "datatype": "TIMESTAMP",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "version_ended_at"
+        },
+        {
+          "column_name": "version_state",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "version_state"
+        }
+      ]
+    },
+    {
+      "dataset_key": "rawcore.rc_pqt_test_big",
+      "schema_short_name": "rawcore",
+      "dataset_name": "rc_pqt_test_big",
+      "materialization_type": null,
+      "incremental_strategy": "full",
+      "historize": true,
+      "is_hist": false,
+      "active": true,
+      "former_names": [],
+      "columns": [
+        {
+          "column_name": "rc_pqt_test_big_key",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "surrogate_key"
+        },
+        {
+          "column_name": "id",
+          "datatype": "INTEGER",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "business_key"
+        },
+        {
+          "column_name": "amount",
+          "datatype": "FLOAT",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "category",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "created_at",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "row_hash",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "row_hash"
+        },
+        {
+          "column_name": "load_run_id",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "load_run_id"
+        },
+        {
+          "column_name": "loaded_at",
+          "datatype": "TIMESTAMP",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "loaded_at"
+        }
+      ]
+    },
+    {
+      "dataset_key": "rawcore.rc_pqt_test_big_hist",
+      "schema_short_name": "rawcore",
+      "dataset_name": "rc_pqt_test_big_hist",
+      "materialization_type": null,
+      "incremental_strategy": "historize",
+      "historize": false,
+      "is_hist": true,
+      "active": true,
+      "former_names": [],
+      "columns": [
+        {
+          "column_name": "rc_pqt_test_big_hist_key",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "surrogate_key"
+        },
+        {
+          "column_name": "rc_pqt_test_big_key",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "entity_key"
+        },
+        {
+          "column_name": "id",
+          "datatype": "INTEGER",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "business_key"
+        },
+        {
+          "column_name": "amount",
+          "datatype": "FLOAT",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "category",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "created_at",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "row_hash",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "row_hash"
+        },
+        {
+          "column_name": "load_run_id",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "load_run_id"
+        },
+        {
+          "column_name": "loaded_at",
+          "datatype": "TIMESTAMP",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "loaded_at"
+        },
+        {
+          "column_name": "version_started_at",
+          "datatype": "TIMESTAMP",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "version_started_at"
+        },
+        {
+          "column_name": "version_ended_at",
+          "datatype": "TIMESTAMP",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "version_ended_at"
+        },
+        {
+          "column_name": "version_state",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "version_state"
+        }
+      ]
+    },
+    {
+      "dataset_key": "rawcore.rc_xls_orders",
+      "schema_short_name": "rawcore",
+      "dataset_name": "rc_xls_orders",
+      "materialization_type": null,
+      "incremental_strategy": "full",
+      "historize": true,
+      "is_hist": false,
+      "active": true,
+      "former_names": [],
+      "columns": [
+        {
+          "column_name": "rc_xls_orders_key",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "surrogate_key"
+        },
+        {
+          "column_name": "order_id",
+          "datatype": "INTEGER",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "business_key"
+        },
+        {
+          "column_name": "customer_id",
+          "datatype": "INTEGER",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "order_date",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "status",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "total_amount",
+          "datatype": "DECIMAL",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "row_hash",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "row_hash"
+        },
+        {
+          "column_name": "load_run_id",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "load_run_id"
+        },
+        {
+          "column_name": "loaded_at",
+          "datatype": "TIMESTAMP",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "loaded_at"
+        }
+      ]
+    },
+    {
+      "dataset_key": "rawcore.rc_xls_orders_hist",
+      "schema_short_name": "rawcore",
+      "dataset_name": "rc_xls_orders_hist",
+      "materialization_type": null,
+      "incremental_strategy": "historize",
+      "historize": false,
+      "is_hist": true,
+      "active": true,
+      "former_names": [],
+      "columns": [
+        {
+          "column_name": "rc_xls_orders_hist_key",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "surrogate_key"
+        },
+        {
+          "column_name": "rc_xls_orders_key",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "entity_key"
+        },
+        {
+          "column_name": "order_id",
+          "datatype": "INTEGER",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "business_key"
+        },
+        {
+          "column_name": "customer_id",
+          "datatype": "INTEGER",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "order_date",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "status",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "total_amount",
+          "datatype": "DECIMAL",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "row_hash",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "row_hash"
+        },
+        {
+          "column_name": "load_run_id",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "load_run_id"
+        },
+        {
+          "column_name": "loaded_at",
+          "datatype": "TIMESTAMP",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "loaded_at"
+        },
+        {
+          "column_name": "version_started_at",
+          "datatype": "TIMESTAMP",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "version_started_at"
+        },
+        {
+          "column_name": "version_ended_at",
+          "datatype": "TIMESTAMP",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "version_ended_at"
+        },
+        {
+          "column_name": "version_state",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "version_state"
+        }
+      ]
+    },
+    {
+      "dataset_key": "stage.stg_aw_customer",
+      "schema_short_name": "stage",
+      "dataset_name": "stg_aw_customer",
+      "materialization_type": null,
+      "incremental_strategy": "full",
+      "historize": false,
+      "is_hist": false,
+      "active": true,
+      "former_names": [],
+      "columns": [
+        {
+          "column_name": "customerid",
+          "datatype": "INTEGER",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "business_key"
+        },
+        {
+          "column_name": "personid",
+          "datatype": "INTEGER",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "accountnumber",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "load_run_id",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "load_run_id"
+        },
+        {
+          "column_name": "loaded_at",
+          "datatype": "TIMESTAMP",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "loaded_at"
+        }
+      ]
+    },
+    {
+      "dataset_key": "stage.stg_aw_person",
+      "schema_short_name": "stage",
+      "dataset_name": "stg_aw_person",
+      "materialization_type": null,
+      "incremental_strategy": "full",
+      "historize": false,
+      "is_hist": false,
+      "active": true,
+      "former_names": [],
+      "columns": [
+        {
+          "column_name": "source_identity_id",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "business_key"
+        },
+        {
+          "column_name": "businessentityid",
+          "datatype": "INTEGER",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "business_key"
+        },
+        {
+          "column_name": "persontype",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "title",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "firstname",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "lastname",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "demographics",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "middlename",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "load_run_id",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "load_run_id"
+        },
+        {
+          "column_name": "loaded_at",
+          "datatype": "TIMESTAMP",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "loaded_at"
+        }
+      ]
+    },
+    {
+      "dataset_key": "stage.stg_aw_product",
+      "schema_short_name": "stage",
+      "dataset_name": "stg_aw_product",
+      "materialization_type": null,
+      "incremental_strategy": "full",
+      "historize": false,
+      "is_hist": false,
+      "active": true,
+      "former_names": [],
+      "columns": [
+        {
+          "column_name": "productid",
+          "datatype": "INTEGER",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "business_key"
+        },
+        {
+          "column_name": "name",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "productnumber",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "makeflag",
+          "datatype": "BOOLEAN",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "finishedgoodsflag",
+          "datatype": "BOOLEAN",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "color",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "productmodelid",
+          "datatype": "INTEGER",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "load_run_id",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "load_run_id"
+        },
+        {
+          "column_name": "loaded_at",
+          "datatype": "TIMESTAMP",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "loaded_at"
+        }
+      ]
+    },
+    {
+      "dataset_key": "stage.stg_aw_productmodel",
+      "schema_short_name": "stage",
+      "dataset_name": "stg_aw_productmodel",
+      "materialization_type": null,
+      "incremental_strategy": "full",
+      "historize": false,
+      "is_hist": false,
+      "active": true,
+      "former_names": [],
+      "columns": [
+        {
+          "column_name": "productmodelid",
+          "datatype": "INTEGER",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "business_key"
+        },
+        {
+          "column_name": "name",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "catalogdescription",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "instructions",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "load_run_id",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "load_run_id"
+        },
+        {
+          "column_name": "loaded_at",
+          "datatype": "TIMESTAMP",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "loaded_at"
+        }
+      ]
+    },
+    {
+      "dataset_key": "stage.stg_aw_salesorderheader",
+      "schema_short_name": "stage",
+      "dataset_name": "stg_aw_salesorderheader",
+      "materialization_type": null,
+      "incremental_strategy": "full",
+      "historize": false,
+      "is_hist": false,
+      "active": true,
+      "former_names": [],
+      "columns": [
+        {
+          "column_name": "salesorderid",
+          "datatype": "INTEGER",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "business_key"
+        },
+        {
+          "column_name": "orderdate",
+          "datatype": "TIMESTAMP",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "duedate",
+          "datatype": "TIMESTAMP",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "shipdate",
+          "datatype": "TIMESTAMP",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "customerid",
+          "datatype": "INTEGER",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "subtotal",
+          "datatype": "DECIMAL",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "taxamt",
+          "datatype": "DECIMAL",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "modifieddate",
+          "datatype": "TIMESTAMP",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "load_run_id",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "load_run_id"
+        },
+        {
+          "column_name": "loaded_at",
+          "datatype": "TIMESTAMP",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "loaded_at"
+        }
+      ]
+    },
+    {
+      "dataset_key": "stage.stg_child",
+      "schema_short_name": "stage",
+      "dataset_name": "stg_child",
+      "materialization_type": null,
+      "incremental_strategy": "full",
+      "historize": true,
+      "is_hist": false,
+      "active": true,
+      "former_names": [],
+      "columns": [
+        {
+          "column_name": "child_bk1",
+          "datatype": "",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": false,
+          "system_role": ""
+        },
+        {
+          "column_name": "child_bk2",
+          "datatype": "",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": false,
+          "system_role": ""
+        }
+      ]
+    },
+    {
+      "dataset_key": "stage.stg_csv_orders",
+      "schema_short_name": "stage",
+      "dataset_name": "stg_csv_orders",
+      "materialization_type": null,
+      "incremental_strategy": "full",
+      "historize": false,
+      "is_hist": false,
+      "active": true,
+      "former_names": [],
+      "columns": [
+        {
+          "column_name": "order_id",
+          "datatype": "INTEGER",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "business_key"
+        },
+        {
+          "column_name": "customer_id",
+          "datatype": "INTEGER",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "order_date",
+          "datatype": "DATE",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "status",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "total_amount",
+          "datatype": "DECIMAL",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "load_run_id",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "load_run_id"
+        },
+        {
+          "column_name": "loaded_at",
+          "datatype": "TIMESTAMP",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "loaded_at"
+        }
+      ]
+    },
+    {
+      "dataset_key": "stage.stg_csv_orders2",
+      "schema_short_name": "stage",
+      "dataset_name": "stg_csv_orders2",
+      "materialization_type": null,
+      "incremental_strategy": "full",
+      "historize": false,
+      "is_hist": false,
+      "active": true,
+      "former_names": [],
+      "columns": [
+        {
+          "column_name": "order_id",
+          "datatype": "INTEGER",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "business_key"
+        },
+        {
+          "column_name": "customer_id",
+          "datatype": "INTEGER",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "order_date",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "status",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "total_amount",
+          "datatype": "DECIMAL",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "load_run_id",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "load_run_id"
+        },
+        {
+          "column_name": "loaded_at",
+          "datatype": "TIMESTAMP",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "loaded_at"
+        }
+      ]
+    },
+    {
+      "dataset_key": "stage.stg_csv_products",
+      "schema_short_name": "stage",
+      "dataset_name": "stg_csv_products",
+      "materialization_type": null,
+      "incremental_strategy": "full",
+      "historize": false,
+      "is_hist": false,
+      "active": true,
+      "former_names": [],
+      "columns": [
+        {
+          "column_name": "availability",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "brand",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "category",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "color",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "currency",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "description",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "ean",
+          "datatype": "BIGINT",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "index",
+          "datatype": "INTEGER",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "internal_id",
+          "datatype": "INTEGER",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "name",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "price",
+          "datatype": "INTEGER",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "size",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "stock",
+          "datatype": "INTEGER",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "load_run_id",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "load_run_id"
+        },
+        {
+          "column_name": "loaded_at",
+          "datatype": "TIMESTAMP",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "loaded_at"
+        }
+      ]
+    },
+    {
+      "dataset_key": "stage.stg_customer",
+      "schema_short_name": "stage",
+      "dataset_name": "stg_customer",
+      "materialization_type": null,
+      "incremental_strategy": "full",
+      "historize": true,
+      "is_hist": false,
+      "active": true,
+      "former_names": [],
+      "columns": []
+    },
+    {
+      "dataset_key": "stage.stg_json_orders",
+      "schema_short_name": "stage",
+      "dataset_name": "stg_json_orders",
+      "materialization_type": null,
+      "incremental_strategy": "full",
+      "historize": false,
+      "is_hist": false,
+      "active": true,
+      "former_names": [],
+      "columns": [
+        {
+          "column_name": "order_id",
+          "datatype": "INTEGER",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "business_key"
+        },
+        {
+          "column_name": "customer_id",
+          "datatype": "INTEGER",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "order_date",
+          "datatype": "DATE",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "status",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "total_amount",
+          "datatype": "FLOAT",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "load_run_id",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "load_run_id"
+        },
+        {
+          "column_name": "loaded_at",
+          "datatype": "TIMESTAMP",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "loaded_at"
+        }
+      ]
+    },
+    {
+      "dataset_key": "stage.stg_jsonl_orders",
+      "schema_short_name": "stage",
+      "dataset_name": "stg_jsonl_orders",
+      "materialization_type": null,
+      "incremental_strategy": "full",
+      "historize": false,
+      "is_hist": false,
+      "active": true,
+      "former_names": [],
+      "columns": [
+        {
+          "column_name": "order_id",
+          "datatype": "INTEGER",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "business_key"
+        },
+        {
+          "column_name": "customer_id",
+          "datatype": "INTEGER",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "order_date",
+          "datatype": "DATE",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "status",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "total_amount",
+          "datatype": "FLOAT",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "load_run_id",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "load_run_id"
+        },
+        {
+          "column_name": "loaded_at",
+          "datatype": "TIMESTAMP",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "loaded_at"
+        }
+      ]
+    },
+    {
+      "dataset_key": "stage.stg_jsonph_posts",
+      "schema_short_name": "stage",
+      "dataset_name": "stg_jsonph_posts",
+      "materialization_type": null,
+      "incremental_strategy": "full",
+      "historize": false,
+      "is_hist": false,
+      "active": true,
+      "former_names": [],
+      "columns": [
+        {
+          "column_name": "id",
+          "datatype": "INTEGER",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "business_key"
+        },
+        {
+          "column_name": "userid",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "title",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "body",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "load_run_id",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "load_run_id"
+        },
+        {
+          "column_name": "loaded_at",
+          "datatype": "TIMESTAMP",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "loaded_at"
+        }
+      ]
+    },
+    {
+      "dataset_key": "stage.stg_parent",
+      "schema_short_name": "stage",
+      "dataset_name": "stg_parent",
+      "materialization_type": null,
+      "incremental_strategy": "full",
+      "historize": true,
+      "is_hist": false,
+      "active": true,
+      "former_names": [],
+      "columns": [
+        {
+          "column_name": "bk1",
+          "datatype": "",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": false,
+          "system_role": "business_key"
+        },
+        {
+          "column_name": "bk2",
+          "datatype": "",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": false,
+          "system_role": "business_key"
+        }
+      ]
+    },
+    {
+      "dataset_key": "stage.stg_pqt_test_big",
+      "schema_short_name": "stage",
+      "dataset_name": "stg_pqt_test_big",
+      "materialization_type": null,
+      "incremental_strategy": "full",
+      "historize": false,
+      "is_hist": false,
+      "active": true,
+      "former_names": [],
+      "columns": [
+        {
+          "column_name": "id",
+          "datatype": "INTEGER",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "business_key"
+        },
+        {
+          "column_name": "amount",
+          "datatype": "FLOAT",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "category",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "created_at",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "load_run_id",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "load_run_id"
+        },
+        {
+          "column_name": "loaded_at",
+          "datatype": "TIMESTAMP",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "loaded_at"
+        }
+      ]
+    },
+    {
+      "dataset_key": "stage.stg_xls_orders",
+      "schema_short_name": "stage",
+      "dataset_name": "stg_xls_orders",
+      "materialization_type": null,
+      "incremental_strategy": "full",
+      "historize": false,
+      "is_hist": false,
+      "active": true,
+      "former_names": [],
+      "columns": [
+        {
+          "column_name": "order_id",
+          "datatype": "INTEGER",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "business_key"
+        },
+        {
+          "column_name": "customer_id",
+          "datatype": "INTEGER",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "order_date",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "status",
+          "datatype": "STRING",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "total_amount",
+          "datatype": "DECIMAL",
+          "nullable": true,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": ""
+        },
+        {
+          "column_name": "load_run_id",
+          "datatype": "STRING",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "load_run_id"
+        },
+        {
+          "column_name": "loaded_at",
+          "datatype": "TIMESTAMP",
+          "nullable": false,
+          "active": true,
+          "lineage_key": null,
+          "former_names": [],
+          "is_system_managed": true,
+          "system_role": "loaded_at"
+        }
+      ]
+    }
+  ]
+}

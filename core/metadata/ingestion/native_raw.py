@@ -56,7 +56,7 @@ META_SCHEMA = "meta"
 
 
 def _now_utc():
-  return datetime.datetime.utcnow()
+  return datetime.datetime.now(datetime.UTC)
 
 
 def _read_bytes(uri: str, *, max_bytes: int = 10_000_000) -> bytes:

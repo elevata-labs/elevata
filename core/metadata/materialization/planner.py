@@ -469,17 +469,13 @@ def build_materialization_plan(*, td, introspection_engine, exec_engine=None, di
 
     # Safe auto-remediation only for widening.
     if kind == "widening":
-      # Databricks/Delta: widening type changes are not reliably supported in-place.
-      # Avoid planning DDL that may fail at runtime; keep drift as warning.
-      if dialect_name_lc == "databricks":
-        continue
-
       if getattr(dialect, "supports_alter_column_type", False) and hasattr(dialect, "render_alter_column_type"):
         ddl = dialect.render_alter_column_type(
           schema=schema_name,
           table=table_name,
           column=dc_name,
           new_type=str(dc_type),
+          old_type=at,
         )
         if ddl:
           plan.steps.append(MaterializationStep(

@@ -23,6 +23,7 @@ Contact: <https://github.com/elevata-labs/elevata>.
 import os
 import sys
 from pathlib import Path
+import importlib.util
 
 import pytest
 
@@ -30,11 +31,22 @@ import pytest
 def main(argv=None):
   """Configure Django and run pytest."""
   root = Path(__file__).resolve().parent
+  core = root / "core"
 
   if str(root) not in sys.path:
     sys.path.insert(0, str(root))
+  if str(core) not in sys.path:
+    sys.path.insert(0, str(core))
 
-  os.environ.setdefault("DJANGO_SETTINGS_MODULE", "elevata_site.settings")
+  # Safety: tests must run with pytest-django, otherwise they may touch the real DB.
+  if importlib.util.find_spec("pytest_django") is None:
+    raise SystemExit(
+      "pytest-django is required to run elevata tests safely.\n"
+      "Install it via: pip install pytest-django\n"
+    )
+
+  # Use test settings that enforce an isolated DB setup (sqlite => in-memory).
+  os.environ.setdefault("DJANGO_SETTINGS_MODULE", "elevata_site.settings_test")
 
   if argv is None:
     argv = sys.argv[1:]

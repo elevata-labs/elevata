@@ -557,10 +557,15 @@ class SqlDialect(ABC):
     table: str,
     column: str,
     new_type: str,
+    old_type: str | None = None,
   ) -> str:
     """
     Render DDL to change a column's physical type.
     Default: unsupported -> return empty string (planner must rebuild instead).
+
+    old_type:
+      Optional physical type string from introspection. Dialects may use this to decide
+      whether an in-place ALTER is safe/supported or whether the planner should rebuild.
     """
     return ""
 

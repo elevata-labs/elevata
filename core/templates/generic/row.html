@@ -161,30 +161,23 @@ because there is no *_detail route under a parent. -->
                 {% with label_off=cfg|get:"label_off" %}
                   {% with toggle_title=cfg|get:"title" %}
                     {% if toggle_field %}
-                         <!-- We attach hx-post directly to the button.
-                         We also send {"field": "<fieldname>"} so the server knows which boolean to flip.
-                         toggle_url already includes parent_pk (scoped) or not (global). -->
-                      <form class="d-inline">
-                        {% csrf_token %}
-                        {% with current_val=object|attr:toggle_field %}
-                          <button
-                            type="button"
-                            class="btn btn-sm {% if current_val %}btn-success text-white{% else %}btn-outline-secondary{% endif %}"
-                            title="{{ toggle_title }}"
-                            hx-post="{{ toggle_url }}"
-                            hx-include="closest form"
-                            hx-vals='{"field":"{{ toggle_field }}"}'
-                            hx-target="#row-{{ object.pk }}"
-                            hx-swap="outerHTML"
-                          >
-                            {% if current_val %}
-                              {{ label_on|default:"ON" }}
-                            {% else %}
-                              {{ label_off|default:"OFF" }}
-                            {% endif %}
-                          </button>
-                        {% endwith %}
-                      </form>
+                      {% with current_val=object|attr:toggle_field %}
+                        <button
+                          type="button"
+                          class="btn {% if current_val %}btn-success text-white{% else %}btn-outline-secondary{% endif %}"
+                          title="{{ toggle_title }}"
+                          hx-post="{{ toggle_url }}"
+                          hx-vals='{"field":"{{ toggle_field }}"}'
+                          hx-target="#row-{{ object.pk }}"
+                          hx-swap="outerHTML"
+                        >
+                          {% if current_val %}
+                            {{ label_on|default:"ON" }}
+                          {% else %}
+                            {{ label_off|default:"OFF" }}
+                          {% endif %}
+                        </button>
+                      {% endwith %}
                     {% endif %}
                   {% endwith %}
                 {% endwith %}
@@ -391,19 +384,25 @@ because there is no *_detail route under a parent. -->
       </button>
 
       <!-- Optional custom action: Import metadata on SourceDataset rows -->
-      {% if model_name == 'sourcedataset' and object.source_system.is_source and object.source_system.type|is_import_supported %}
-        <form class="d-inline">
-          {% csrf_token %}
+      {% if model_name == 'sourcedataset' %}
+        {% if object.source_system.is_source and object.source_system.type|is_import_supported %}
           <button
             type="button"
-            class="btn btn-outline-primary btn-sm"
+            class="btn btn-outline-primary"
             hx-post="{% url 'sourcedataset_import_metadata' object.id %}"
-            hx-include="closest form"
             hx-target="#feedback-{{ object.id }}"
             hx-swap="innerHTML">
             Import
           </button>
-        </form>
+        {% else %}
+          <button
+            type="button"
+            class="btn btn-outline-primary"
+            disabled
+            title="Import not supported for this source system">
+            Import
+          </button>
+        {% endif %}
       {% endif %}
     </div>
 
