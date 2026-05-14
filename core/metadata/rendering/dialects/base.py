@@ -485,12 +485,16 @@ class SqlDialect(ABC):
       # "name" is the desired column name (destination),
       # "source_name" is the physical source column name in the existing table (optional).
       col = self.render_identifier(name)
-      src_col_name = (c.get("source_name") or c.get("name") or "").strip()
-      if not src_col_name:
-        # fall back defensively to destination name
-        src_col_name = str(c["name"])
-      src_col = self.render_identifier(src_col_name)
-      expr = self.cast_expression(src_col, ctype) if lossy_casts else src_col
+      # If source_name is explicitly None, this is a new column -> fill with NULL.
+      src_col_name = c.get("source_name", "__missing__")
+      if src_col_name is None:
+        expr = "NULL"
+      else:
+        src_col_name = str((src_col_name if src_col_name != "__missing__" else (c.get("name") or "")) or "").strip()
+        if not src_col_name:
+          src_col_name = str(c["name"])
+        src_col = self.render_identifier(src_col_name)
+        expr = self.cast_expression(src_col, ctype) if lossy_casts else src_col
 
       # Optional lossy string shrink support (only when explicitly enabled)
       if truncate_strings:

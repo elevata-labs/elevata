@@ -28,7 +28,7 @@ Load SQL (Full · Merge · Delete Detection)
   ↓
 Target Warehouse (Raw · Stage · Rawcore)
   ↓
-Materialization Planner (Schema Drift Sync)
+Schema Evolution (MigrationPlan)
   ↓
 DDL Applier (safe DDL only)
 ```
@@ -80,26 +80,24 @@ applied across ingestion, merge, and delete detection.
 - Incremental merge: upsert logic based on natural key lineage  
 - Delete detection: anti-join removal of missing rows  
 
-### 🧩 2.7.1 Materialization & Schema Drift (Planner + Applier)
-Before executing load SQL, elevata runs a **materialization planner** to safely reconcile  
-physical target tables with metadata-defined schemas:  
+### 🧩 2.7.1 Schema Evolution (MigrationPlan + Applier)
+Before executing load SQL, elevata derives a **MigrationPlan** from the Architecture Diff  
+and translates it into deterministic schema evolution steps:
 
-- **Dataset renames** are detected via `TargetDataset.former_names → RENAME TABLE`  
-- **Column renames** are detected via `TargetColumn.former_names → RENAME COLUMN`  
-- Missing columns can be added (`ADD COLUMN`) when the dialect can render it  
+- **Dataset renames** are expressed as `RENAME TABLE`  
+- **Column renames** are expressed as `RENAME COLUMN`  
+- Missing columns may be added (`ADD COLUMN`) when supported  
 - Column drops are policy-gated and disabled by default  
   - Base tables: `ELEVATA_ALLOW_AUTO_DROP_COLUMNS=true` enables physical `DROP COLUMN`  
   - `_hist` tables: physical drops require `ELEVATA_ALLOW_AUTO_DROP_HIST_COLUMNS=true`  
   - Without the hist flag, removed business columns in `_hist` are retired (inactive + detached lineage)  
 
 Important design principle:  
-The planner does not create tables. Table provisioning is handled centrally by the load runner  
-(`ensure_target_table`) and executed via the target execution engine.  
+Schema evolution does not provision missing tables. Table provisioning is handled centrally by the load runner  
+(`ensure_target_table(...)`) and executed via the target execution engine.
 
-With these technical layers in place, elevata enables a clear transition from data engineering  
-to business-facing data products.
-
-Schema drift detection includes dialect-aware semantic equivalence rules to suppress non-actionable type differences.
+Preflight validation includes schema introspection and dialect-aware semantic equivalence rules  
+to suppress non-actionable type differences.
 
 ## 🔧 3. Bizcore — Business Semantics as Metadata
 

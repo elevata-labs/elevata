@@ -43,7 +43,7 @@ The preflight phase guarantees that execution behavior is fully predictable.
 The preflight phase performs:
 
 - schema introspection  
-- materialization planning  
+- schema evolution planning (MigrationPlan → deterministic DDL steps)  
 - type drift detection  
 - validation of blocking conditions  
 - execution safety checks

@@ -28,7 +28,6 @@ import time
 import logging
 import os
 import re
-import re as _re
 import uuid
 import hashlib
 from pathlib import Path
@@ -75,6 +74,8 @@ from metadata.materialization.planner import build_materialization_plan
 from metadata.materialization.applier import apply_materialization_plan
 from metadata.materialization.logging import LOAD_RUN_SNAPSHOT_REGISTRY, build_load_run_log_row, ensure_load_run_log_table
 from metadata.materialization.schema import ensure_target_schema
+from metadata.materialization.migration_executor import build_materialization_from_migration_plan
+
 from metadata.ingestion.connectors import engine_for_target
 
 logger = logging.getLogger(__name__)
@@ -139,6 +140,31 @@ def _get_bool_env(name: str, default: bool) -> bool:
   if value in ("0", "false", "no", "n", "off"):
     return False
   return default
+
+
+def _get_arch_mode_env(default: str = "off") -> str:
+  """
+  Architecture guard mode (env-driven).
+
+  Values:
+    - off: disable guard (default)
+    - compare: print migration plan preview + run shadow compare (best-effort)
+    - enforce: like compare, but fail execute-runs when shadow compare finds mismatches
+
+  This is intentionally env-driven so CI/Prod can switch modes without changing
+  every CLI invocation.
+  """
+  v = (os.getenv("ELEVATA_ARCH_MODE") or "").strip().lower()
+  if not v:
+    return default
+  if v in ("off", "0", "false", "no"):
+    return "off"
+  if v in ("compare", "plan", "preview", "debug"):
+    return "compare"
+  if v in ("enforce", "strict", "block"):
+    return "enforce"
+  return default
+
 
 AUTO_PROVISION_SCHEMAS = _get_bool_env("ELEVATA_AUTO_PROVISION_SCHEMAS", True)
 AUTO_PROVISION_TABLES = _get_bool_env("ELEVATA_AUTO_PROVISION_TABLES", True)
@@ -316,6 +342,7 @@ def _plan_did_provision(plan) -> bool:
   # ENSURE_SCHEMA is intentionally ignored (schema DDL only)
   return any(getattr(s, "op", None) not in (None, "ENSURE_SCHEMA") for s in steps)
 
+
 # NOTE:
 # This function intentionally encapsulates the full lifecycle of a single dataset execution
 # (rendering, execution, logging, result normalization).
@@ -340,7 +367,8 @@ def run_single_target_dataset(
   attempt_no: int = 1,
   no_type_changes: bool = False,
   fail_on_type_drift: bool = False,
-  allow_lossy_type_drift: bool = False,
+  allow_type_alter: bool = False,
+  migration_plan=None,
 ) -> dict[str, object]:
   """
   Execute or render exactly one dataset.
@@ -460,9 +488,20 @@ def run_single_target_dataset(
   if execute and mat in ("table", "incremental"):
     mat_policy = load_materialization_policy()
     mat_policy = replace(mat_policy, debug_plan=bool(debug_plan))
-    mat_policy = replace(mat_policy, allow_lossy_type_drift=bool(allow_lossy_type_drift))
+    # CLI can only enable; never override env/policy from True -> False.
+    if allow_type_alter:
+      mat_policy = replace(mat_policy, allow_type_alter=True)
 
     if AUTO_PROVISION_TABLES and schema_short in mat_policy.sync_schema_shorts:
+      # Strict mode: schema ops must be driven by MigrationPlan intent.
+      # We allow "ensure exists" later (ensure_target_table), but we do not allow
+      # planner-derived schema evolution without an explicit migration_plan.
+      if migration_plan is None:
+        raise CommandError(
+          f"Internal error: missing migration_plan for deterministic materialization ({dataset_key}). "
+          "Schema evolution must be driven by Architecture MigrationPlan."
+        )
+
       # Introspection: Databricks should prefer exec_engine-based introspection
       # to respect Unity Catalog session context (USE CATALOG).
       target_sa_engine = None
@@ -498,6 +537,31 @@ def run_single_target_dataset(
         policy=mat_policy,
       )
 
+      # Schema evolution steps follow MigrationPlan intent (dialect renders SQL).
+      mig_res = build_materialization_from_migration_plan(
+        td=td,
+        dataset_key=dataset_key,
+        migration_plan=migration_plan,
+        dialect=dialect,
+        policy=mat_policy,
+        introspection_engine=target_sa_engine,
+        exec_engine=target_system_engine,
+        is_full_refresh=is_full_refresh,
+      )
+      ensure_steps = [s for s in (getattr(plan, "steps", None) or []) if getattr(s, "op", None) == "ENSURE_SCHEMA"]
+      plan.steps = ensure_steps + list(mig_res.steps or [])
+      if mig_res.warnings:
+        plan.warnings = list(getattr(plan, "warnings", None) or []) + list(mig_res.warnings)
+      if mig_res.blocking_errors:
+        plan.blocking_errors = list(getattr(plan, "blocking_errors", None) or []) + list(mig_res.blocking_errors)
+      if mig_res.requires_rebuild:
+        try:
+          setattr(plan, "requires_rebuild", True)
+        except Exception:
+          pass
+
+      effective_allow_type_alter = bool(getattr(mat_policy, "allow_type_alter", False))
+
       # Full refresh will DROP+CREATE later (recreate), so column-level DDL is redundant and can be risky
       # across dialects (e.g., SQL Server does not support "ADD COLUMN").
       # Keep only schema ensure + dataset rename (rename helps us target the right object name).
@@ -527,7 +591,7 @@ def run_single_target_dataset(
       type_drift_warnings_for_block = [] if is_full_refresh else type_drift_warnings
 
       # If type changes are disabled, do not execute ALTER/rebuild steps.
-      # We block deterministically on any drift (unless overridden via allow-lossy flag).
+      # We block deterministically on any drift.
       if no_type_changes:
         # Remove type-evolution DDL steps from the plan to guarantee no changes happen.
         # This covers ALTER_COLUMN_TYPE and the rebuild ops planned for widening in the planner.
@@ -541,7 +605,7 @@ def run_single_target_dataset(
         }
         plan.steps = [s for s in (plan.steps or []) if getattr(s, "op", None) not in drop_ops]
 
-        if type_drift_warnings_for_block and not allow_lossy_type_drift:
+        if type_drift_warnings_for_block:
           raise CommandError(
             f"Preflight blocked for {dataset_key}: type drift detected but schema evolution is disabled "
             f"(--no-type-changes). Remove --no-type-changes to allow safe widening remediation."
@@ -549,12 +613,12 @@ def run_single_target_dataset(
 
       # Decide whether to block deterministically.
       # - fail_on_type_drift: blocks on ANY drift
-      # - default: block on narrowing/incompatible drift (unless allow_lossy_type_drift)
+      # - default: block on narrowing/incompatible drift (unless allow_type_alter)
       if type_drift_warnings_for_block:
         if fail_on_type_drift:
           raise CommandError(f"Preflight blocked for {dataset_key}: type drift detected (--fail-on-type-drift).")
 
-        if not allow_lossy_type_drift:
+        if not effective_allow_type_alter:
           lossy = []
           for w in type_drift_warnings_for_block:
             s = str(w)
@@ -565,17 +629,18 @@ def run_single_target_dataset(
           if lossy:
             raise CommandError(
               f"Preflight blocked for {dataset_key}: narrowing/incompatible type drift detected. "
-              "Apply schema evolution (ALTER/rebuild) or override with --allow-lossy-type-drift."
+              "Apply schema evolution (ALTER/rebuild) or override with --allow-type-alter "
+              "(or set ELEVATA_ALLOW_TYPE_ALTER=true)."
             )
 
       # ------------------------------------------------------------------
-      # allow-lossy-type-drift override:
+      # allow-type-alter override:
       # The planner marks narrowing/incompatible drift as blocking (UNSAFE_TYPE_DRIFT).
-      # If the user explicitly allows lossy drift, do not block on those findings.
+      # If the user explicitly allows unsafe drift, do not block on those findings.
       # The database may still reject the DDL (e.g., VARCHAR length shrink), which
       # will surface as an execution error instead of a preflight block.
       # ------------------------------------------------------------------
-      if allow_lossy_type_drift and plan.blocking_errors:
+      if effective_allow_type_alter and plan.blocking_errors:
         plan.blocking_errors = [
           e for e in (plan.blocking_errors or [])
           if not str(e).startswith("UNSAFE_TYPE_DRIFT:")
@@ -686,6 +751,30 @@ def run_single_target_dataset(
               policy=mat_policy,
             )
 
+            if migration_plan is not None:
+              hist_key = f"{hist_td.target_schema.short_name}.{hist_td.target_dataset_name}"
+              mig_res = build_materialization_from_migration_plan(
+                td=hist_td,
+                dataset_key=hist_key,
+                migration_plan=migration_plan,
+                dialect=dialect,
+                policy=mat_policy,
+                introspection_engine=target_sa_engine,
+                exec_engine=target_system_engine,
+                is_full_refresh=False,
+              )
+              ensure_steps = [s for s in (getattr(hist_plan, "steps", None) or []) if getattr(s, "op", None) == "ENSURE_SCHEMA"]
+              hist_plan.steps = ensure_steps + list(mig_res.steps or [])
+              if mig_res.warnings:
+                hist_plan.warnings = list(getattr(hist_plan, "warnings", None) or []) + list(mig_res.warnings)
+              if mig_res.blocking_errors:
+                hist_plan.blocking_errors = list(getattr(hist_plan, "blocking_errors", None) or []) + list(mig_res.blocking_errors)
+              if mig_res.requires_rebuild:
+                try:
+                  setattr(hist_plan, "requires_rebuild", True)
+                except Exception:
+                  pass
+
             # Apply the same type-change disabling policy to hist plans as well.
             if no_type_changes:
               drop_ops = {
@@ -701,17 +790,17 @@ def run_single_target_dataset(
                 if getattr(s, "op", None) not in drop_ops
               ]
 
-              if debug_materialization and not no_print:
-                stdout.write(style.NOTICE(
-                  f"-- Hist materialization debug: dataset=rawcore.{hist_td.target_dataset_name} "
-                  f"steps={len(hist_plan.steps)} warnings={len(hist_plan.warnings)} blocking={len(hist_plan.blocking_errors)}"
-                ))
-                for w in hist_plan.warnings:
-                  stdout.write(style.WARNING(f"-- Hist materialization warning: {w}"))
-                for e in hist_plan.blocking_errors:
-                  stdout.write(style.ERROR(f"-- Hist materialization blocked: {e}"))
-                for s in hist_plan.steps:
-                  stdout.write(style.WARNING(f"-- Hist materialization step: {s.op}: {s.sql}"))
+            if debug_materialization and not no_print:
+              stdout.write(style.NOTICE(
+                f"-- Hist materialization debug: dataset=rawcore.{hist_td.target_dataset_name} "
+                f"steps={len(hist_plan.steps)} warnings={len(hist_plan.warnings)} blocking={len(hist_plan.blocking_errors)}"
+              ))
+              for w in hist_plan.warnings:
+                stdout.write(style.WARNING(f"-- Hist materialization warning: {w}"))
+              for e in hist_plan.blocking_errors:
+                stdout.write(style.ERROR(f"-- Hist materialization blocked: {e}"))
+              for s in hist_plan.steps:
+                stdout.write(style.WARNING(f"-- Hist materialization step: {s.op}: {s.sql}"))
 
             # Always apply hist sync (best-effort), regardless of no_type_changes.
             apply_materialization_plan(plan=hist_plan, exec_engine=target_system_engine)
@@ -1225,9 +1314,12 @@ class Command(BaseCommand):
     )
 
     parser.add_argument(
-      "--allow-lossy-type-drift",
+      "--allow-type-alter",
       action="store_true",
-      help="Allow narrowing/incompatible type drift to proceed (not recommended).",
+      help=(
+        "Allow narrowing/incompatible type drift to proceed via deterministic rebuild "
+        "(unsafe; not recommended)."
+      ),
     )
 
     parser.add_argument(
@@ -1302,7 +1394,10 @@ class Command(BaseCommand):
     parser.add_argument(
       "--debug-migration",
       action="store_true",
-      help="Print architecture migration plan preview derived from ArchitectureDiff.",
+      help=(
+        "Print architecture migration plan preview derived from ArchitectureDiff "
+        "(alias for ELEVATA_ARCH_MODE=compare)."
+      ),
     )
 
 
@@ -1419,7 +1514,7 @@ class Command(BaseCommand):
     no_plan_guard = bool(options.get("no_plan_guard"))
     no_type_changes = bool(options.get("no_type_changes"))
     fail_on_type_drift = bool(options.get("fail_on_type_drift"))
-    allow_lossy_type_drift = bool(options.get("allow_lossy_type_drift"))
+    allow_type_alter = bool(options.get("allow_type_alter"))
     debug_execution: bool = bool(options.get("debug_execution", False))
     write_execution_snapshot: bool = bool(options.get("write_execution_snapshot", False))
     execution_snapshot_dir: str = str(options.get("execution_snapshot_dir") or ".elevata/execution_snapshots")
@@ -1427,6 +1522,11 @@ class Command(BaseCommand):
     diff_print: bool = bool(options.get("diff_print", False))
     diff_against_batch_run_id: str | None = options.get("diff_against_batch_run_id")
     debug_migration = bool(options.get("debug_migration", False))
+
+    arch_mode = _get_arch_mode_env(default="off")
+    # Keep CLI behavior: --debug-migration acts as an alias for compare-mode.
+    if debug_migration and arch_mode == "off":
+      arch_mode = "compare"
 
     # One batch_run_id for the entire run (all datasets).
     batch_run_id = str(uuid.uuid4())
@@ -1619,7 +1719,8 @@ class Command(BaseCommand):
           attempt_no=attempt_no,
           no_type_changes=no_type_changes,
           fail_on_type_drift=fail_on_type_drift,
-          allow_lossy_type_drift=allow_lossy_type_drift,   
+          allow_type_alter=allow_type_alter,
+          migration_plan=migration_plan,
         )
  
       # --- Architecture State (best effort, scope-aware) ---
@@ -1733,7 +1834,10 @@ class Command(BaseCommand):
         relevant_dataset_changes = []
         relevant_column_changes = []
 
-      if not no_print:
+      # In enforce mode, shadow compare is an execution guard, not just output.
+      # It must run even with --no-print; otherwise execute_plan() can continue
+      # and fail later inside materialization instead of blocking deterministically.
+      if (not no_print) or (arch_mode == "enforce" and execute):
         if arch_error is not None:
           self.stdout.write(self.style.WARNING(
             f"-- ARCH state skipped: {type(arch_error).__name__}: {arch_error}"
@@ -1790,7 +1894,7 @@ class Command(BaseCommand):
                     f"   ~ {label}: {ch.dataset_key}.{ch.column_name}"
                   ))
 
-        if debug_migration and migration_plan is not None:
+        if (debug_migration or arch_mode != "off") and migration_plan is not None:
           self.stdout.write(self.style.NOTICE(
             f"-- MIGRATION plan preview: actions={len(migration_plan.actions)}"
           ))
@@ -1891,8 +1995,8 @@ class Command(BaseCommand):
 
           # ------------------------------------------------------------
           # SHADOW compare (schema ops): expected(MigrationPlan) vs actual(MaterializationPlanner)
-          # Focus: renames only (dataset + column) for now.
-          # This must never block execution; debug output only.
+          # Scope: schema-level operations (rename/add/drop/alter/rebuild) as tokens (NOT SQL).
+          # This is best-effort. In enforce-mode, mismatches block execute-runs.
           # ------------------------------------------------------------
           try:
             suppressed_by_full_refresh = 0
@@ -1904,6 +2008,55 @@ class Command(BaseCommand):
                 return None, None
               a, b = key.split(".", 1)
               return (a or None), (b or None)
+            
+            def _tok(op: str, **kwargs) -> str:
+              """
+              Stable, non-SQL token for shadow-compare.
+              We use JSON to avoid confusing these compare-tokens with executable SQL.
+              """
+              payload: dict[str, Any] = {"op": op}
+              for k, v in (kwargs or {}).items():
+                if v is not None:
+                  payload[k] = v
+              return json.dumps(payload, sort_keys=True, separators=(",", ":"))
+
+            def _tok_parse(token: str) -> dict[str, Any] | None:
+              try:
+                v = json.loads(token)
+                if isinstance(v, dict) and v.get("op"):
+                  return v
+              except Exception:
+                return None
+              return None
+            
+            def _tok_pretty(token: str) -> str:
+              """
+              Human-friendly representation for shadow-compare tokens.
+              Keep token computation stable (JSON), but render log output compact.
+              """
+              p = _tok_parse(token)
+              if not p:
+                return token
+
+              op = str(p.get("op") or "").strip()
+              ds = p.get("ds")
+              col = p.get("col")
+              prev = p.get("prev")
+              cur = p.get("cur")
+
+              parts: list[str] = []
+              if op:
+                parts.append(f"op={op}")
+              if ds:
+                parts.append(f"ds={ds}")
+              if col:
+                parts.append(f"col={col}")
+              if prev:
+                parts.append(f"prev={prev}")
+              if cur:
+                parts.append(f"cur={cur}")
+
+              return " ".join(parts) if parts else token
 
             def _token_for_action(a):
               at = getattr(a, "action_type", None)
@@ -1911,23 +2064,32 @@ class Command(BaseCommand):
                 prev = getattr(a, "previous_dataset_key", None)
                 cur = getattr(a, "dataset_key", None)
                 if prev and cur:
-                  return f"RENAME_DATASET {prev} -> {cur}"
+                  return _tok("RENAME_DATASET", prev=prev, cur=cur)
               if at == "RENAME_COLUMN":
                 ds = getattr(a, "dataset_key", None)
                 prev = getattr(a, "previous_column_name", None)
                 cur = getattr(a, "column_name", None)
                 if ds and prev and cur:
-                  return f"RENAME_COLUMN {ds}.{prev} -> {cur}"
+                  return _tok("RENAME_COLUMN", ds=ds, prev=prev, cur=cur)
               if at == "ADD_COLUMN":
                 ds = getattr(a, "dataset_key", None)
                 col = getattr(a, "column_name", None)
                 if ds and col:
-                  return f"ADD_COLUMN {ds}.{col}"
+                  return _tok("ADD_COLUMN", ds=ds, col=col)
               if at == "DROP_COLUMN":
                 ds = getattr(a, "dataset_key", None)
                 col = getattr(a, "column_name", None)
                 if ds and col:
-                  return f"DROP_COLUMN {ds}.{col}"
+                  return _tok("DROP_COLUMN", ds=ds, col=col)
+              if at == "ALTER_COLUMN":
+                ds = getattr(a, "dataset_key", None)
+                col = getattr(a, "column_name", None)
+                if ds and col:
+                  return _tok("ALTER_COLUMN", ds=ds, col=col)
+              if at == "REBUILD_DATASET":
+                ds = getattr(a, "dataset_key", None)
+                if ds:
+                  return _tok("REBUILD_DATASET", ds=ds)
               return None            
 
             def _parse_materialization_tokens(*, plan, schema_short: str) -> set[str]:
@@ -1943,30 +2105,34 @@ class Command(BaseCommand):
                 if op == "RENAME_COLUMN":
                   # reason example:
                   # "Rename column old_name -> new_name (former name match)"
-                  m = _re.search(r"Rename column\s+(.+?)\s+->\s+(.+?)(?:\s|\(|$)", reason)
+                  m = re.search(r"Rename column\s+(.+?)\s+->\s+(.+?)(?:\s|\(|$)", reason)
                   if m:
                     old = (m.group(1) or "").strip()
                     new = (m.group(2) or "").strip()
                     if dataset_key and old and new:
-                      tokens.add(f"RENAME_COLUMN {dataset_key}.{old} -> {new}")
+                      tokens.add(_tok("RENAME_COLUMN", ds=dataset_key, prev=old, cur=new))
                   continue
 
                 if op == "RENAME_DATASET":
                   # reason example:
                   # "Dataset rename detected via former_names: old_table -> new_table"
-                  m = _re.search(r":\s*(.+?)\s*->\s*(.+?)\s*$", reason)
+                  m = re.search(r":\s*(.+?)\s*->\s*(.+?)\s*$", reason)
                   if m:
                     old_tbl = (m.group(1) or "").strip()
                     new_tbl = (m.group(2) or "").strip()
                     if schema_short and old_tbl and new_tbl:
-                      tokens.add(f"RENAME_DATASET {schema_short}.{old_tbl} -> {schema_short}.{new_tbl}")
+                      tokens.add(_tok(
+                        "RENAME_DATASET",
+                        prev=f"{schema_short}.{old_tbl}",
+                        cur=f"{schema_short}.{new_tbl}",
+                      ))
                   continue
 
                 if op == "ADD_COLUMN":
                   # reason example:
                   # "Column <name> missing"
                   col = None
-                  m = _re.search(r"Column\s+(.+?)\s+missing", reason)
+                  m = re.search(r"Column\s+(.+?)\s+missing", reason)
                   if m:
                     col = (m.group(1) or "").strip()
 
@@ -1974,46 +2140,63 @@ class Command(BaseCommand):
                   if not col and sql:
                     # Supports identifiers with quotes/backticks/brackets (incl. spaces when quoted)
                     ident = r"(`[^`]+`|\"[^\"]+\"|\[[^\]]+\]|[A-Za-z_][A-Za-z0-9_]*)"
-                    m2 = _re.search(
+                    m2 = re.search(
                       rf"\balter\s+table\b.*?\badd\s+(?:column\s+)?(?P<col>{ident})\b",
                       sql,
-                      flags=_re.IGNORECASE,
+                      flags=re.IGNORECASE,
                     )
                     if m2:
                       raw = (m2.group("col") or "").strip()
                       col = raw.strip("`\"[]").strip()
 
                   if dataset_key and col:
-                    tokens.add(f"ADD_COLUMN {dataset_key}.{col}")
+                    tokens.add(_tok("ADD_COLUMN", ds=dataset_key, col=col))
+                  continue
+
+                if op == "ALTER_COLUMN_TYPE":
+                  # Map to a stable token: ALTER_COLUMN <ds>.<col>
+                  col = None
+                  m = re.search(r"\balter\s+(.+?)\s+to\b", reason, flags=re.IGNORECASE)
+                  if m:
+                    col = (m.group(1) or "").strip()
+                  if dataset_key and col:
+                    tokens.add(_tok("ALTER_COLUMN", ds=dataset_key, col=col))
                   continue
 
                 if op == "DROP_COLUMN":
                   # Prefer SQL parse: ALTER TABLE ... DROP COLUMN <col>
-                  m = _re.search(r"\bdrop\s+column\s+([A-Za-z_][A-Za-z0-9_]*)", sql, _re.IGNORECASE)
+                  m = re.search(r"\bdrop\s+column\s+([A-Za-z_][A-Za-z0-9_]*)", sql, flags=re.IGNORECASE)
                   if m:
                     col = m.group(1)
-                    tokens.add(f"DROP_COLUMN {dataset_key}.{col}")
+                    tokens.add(_tok("DROP_COLUMN", ds=dataset_key, col=col))
                     continue
                   # Fallback: reason contains "...<schema>.<table>.<col>"
-                  m2 = _re.search(r"\.([A-Za-z_][A-Za-z0-9_]*)\s*$", reason)
+                  m2 = re.search(r"\.([A-Za-z_][A-Za-z0-9_]*)\s*$", reason)
                   if m2:
                     col = m2.group(1)
-                    tokens.add(f"DROP_COLUMN {dataset_key}.{col}")
+                    tokens.add(_tok("DROP_COLUMN", ds=dataset_key, col=col))
                   continue
+
+              if getattr(plan, "requires_rebuild", False) and dataset_key:
+                tokens.add(_tok("REBUILD_DATASET", ds=dataset_key))
 
               return tokens
 
             expected_actions = [
               a for a in (migration_plan.actions or ())
-              if getattr(a, "action_type", None) in ("RENAME_DATASET", "RENAME_COLUMN", "ADD_COLUMN", "DROP_COLUMN")
+              if getattr(a, "action_type", None) in ("RENAME_DATASET", "RENAME_COLUMN", "ADD_COLUMN", "DROP_COLUMN", "ALTER_COLUMN", "REBUILD_DATASET")
             ]
-            expected_all = set(filter(None, (_token_for_action(a) for a in expected_actions)))
 
-            if expected_all:
+            # Only compare when the migration plan contains schema-op actions.
+            # Otherwise we would report planner-driven drift as "unexpected" even though
+            # there's nothing to compare against.
+            if expected_actions:
               # Build materialization plans for the same scope and extract rename steps.
               mat_policy = load_materialization_policy()
               mat_policy = replace(mat_policy, debug_plan=bool(debug_plan))
-              mat_policy = replace(mat_policy, allow_lossy_type_drift=bool(allow_lossy_type_drift))
+              # CLI can only enable; never override env/policy from True -> False.
+              if allow_type_alter:
+                mat_policy = replace(mat_policy, allow_type_alter=True)
 
               # Introspection engine handling mirrors run_single_target_dataset:
               # Databricks prefers exec_engine-only behavior.
@@ -2028,6 +2211,7 @@ class Command(BaseCommand):
                 target_sa_engine = None
 
               actual: set[str] = set()
+              type_drift_kind_by_ds_col: dict[tuple[str, str], str] = {}
 
               for ds_key in sorted(relevant_dataset_keys or set()):
                 schema_short_local, ds_name_local = _split_dataset_key(ds_key)
@@ -2071,6 +2255,37 @@ class Command(BaseCommand):
                   policy=mat_policy,
                 )
 
+                # Collect TYPE_DRIFT hints so "missing_in_materialization" can explain itself.
+                # Example warning:
+                #   TYPE_DRIFT: kind=narrowing reason=... col=rawcore.tbl.col desired=... actual=...
+                for w in (getattr(plan_shadow, "warnings", None) or []):
+                  s = str(w)
+                  if not s.startswith("TYPE_DRIFT:"):
+                    continue
+                  m_kind = re.search(r"\bkind=([a-z_]+)\b", s, flags=re.IGNORECASE)
+                  m_col = re.search(r"\bcol=([^\s]+)\b", s)
+                  kind = (m_kind.group(1) if m_kind else "").strip().lower()
+                  col_path = (m_col.group(1) if m_col else "").strip()
+                  if kind and col_path and "." in col_path:
+                    ds_k, col_name = col_path.rsplit(".", 1)
+                    type_drift_kind_by_ds_col[(ds_k, col_name)] = kind
+
+                # Shadow-compare must mirror the *actual* schema steps we execute:
+                # derive steps from MigrationPlan intent (same as run_single_target_dataset).
+                if migration_plan is not None:
+                  mig_res = build_materialization_from_migration_plan(
+                    td=td_shadow,
+                    dataset_key=ds_key,
+                    migration_plan=migration_plan,
+                    dialect=dialect,
+                    policy=mat_policy,
+                    introspection_engine=target_sa_engine,
+                    exec_engine=engine,
+                    is_full_refresh=is_full_refresh_shadow,
+                  )
+                  ensure_steps = [s for s in (getattr(plan_shadow, "steps", None) or []) if getattr(s, "op", None) == "ENSURE_SCHEMA"]
+                  plan_shadow.steps = ensure_steps + list(mig_res.steps or [])
+
                 if is_full_refresh_shadow:
                   keep_ops = {"ENSURE_SCHEMA", "RENAME_DATASET"}
                   plan_shadow.steps = [s for s in (plan_shadow.steps or []) if getattr(s, "op", None) in keep_ops]
@@ -2112,6 +2327,44 @@ class Command(BaseCommand):
               missing = sorted(expected - actual)
               unexpected = sorted(actual - expected)
 
+              # Rebuild implies all column-level schema ops for that dataset are covered by DROP+CREATE.
+              # We treat expected column ops as satisfied when the materialization planner chooses rebuild.
+              rebuild_ds = set()
+              for t in actual:
+                p = _tok_parse(t)
+                if p and p.get("op") == "REBUILD_DATASET" and p.get("ds"):
+                  rebuild_ds.add(str(p["ds"]))
+
+              # If the planner chose rebuild, treat expected column-level ops as satisfied.
+              if rebuild_ds and missing:
+                kept_missing = []
+                for t in missing:
+                  p = _tok_parse(t) or {}
+                  if p.get("op") in ("RENAME_COLUMN", "ADD_COLUMN", "DROP_COLUMN", "ALTER_COLUMN"):
+                    ds_k = str(p.get("ds") or "")
+                    if ds_k and ds_k in rebuild_ds:
+                      continue
+                  kept_missing.append(t)
+                missing = kept_missing
+
+              # A rebuild is an acceptable remediation for column-level ops; don't treat it as unexpected
+              # if we expected any column-level changes for that dataset.
+              if rebuild_ds and unexpected:
+                expected_ds_with_column_ops = set()
+                for t in expected:
+                  p = _tok_parse(t) or {}
+                  if p.get("op") in ("RENAME_COLUMN", "ADD_COLUMN", "DROP_COLUMN", "ALTER_COLUMN"):
+                    ds_k = str(p.get("ds") or "")
+                    if ds_k:
+                      expected_ds_with_column_ops.add(ds_k)
+                unexpected = [
+                  t for t in unexpected
+                  if not (
+                    (_tok_parse(t) or {}).get("op") == "REBUILD_DATASET"
+                    and str((_tok_parse(t) or {}).get("ds") or "") in expected_ds_with_column_ops
+                  )
+                ]
+
               # Policy-aware suppression:
               # - By default, we do NOT physically drop business columns in *_hist.
               # - Shadow-compare should therefore not warn as "missing" when a hist DROP is expected
@@ -2121,13 +2374,12 @@ class Command(BaseCommand):
               if (not allow_hist_drop) and missing:
                 kept = []
                 for t in missing:
-                  if t.startswith("DROP_COLUMN "):
-                    rest = t[len("DROP_COLUMN "):].strip()
-                    if "." in rest:
-                      ds_k, _col = rest.rsplit(".", 1)
-                      if str(ds_k).endswith("_hist"):
-                        suppressed_hist_drop.append(t)
-                        continue
+                  p = _tok_parse(t) or {}
+                  if p.get("op") == "DROP_COLUMN":
+                    ds_k = str(p.get("ds") or "")
+                    if ds_k.endswith("_hist"):
+                      suppressed_hist_drop.append(t)
+                      continue
                   kept.append(t)
                 missing = kept
 
@@ -2139,15 +2391,45 @@ class Command(BaseCommand):
                 f"suppressed_hist_drop_columns={len(suppressed_hist_drop)}"
               ))
 
+              def _missing_note(token: str) -> str:
+                p = _tok_parse(token) or {}
+                op = str(p.get("op") or "")
+                ds = str(p.get("ds") or "")
+                col = str(p.get("col") or "")
+                if op != "ALTER_COLUMN" or not ds or not col:
+                  return ""
+                if no_type_changes:
+                  return " (type changes disabled via --no-type-changes)"
+                kind = type_drift_kind_by_ds_col.get((ds, col))
+                if kind in ("narrowing", "incompatible"):
+                  return f" (materialization skipped: unsafe type drift ({kind}) -> preflight blocks)"
+                if kind:
+                  return f" (materialization skipped: type drift ({kind}))"
+                return ""
+
               if missing:
                 for t in missing:
-                  self.stdout.write(self.style.WARNING(f"   ! missing_in_materialization: {t}"))
+                  self.stdout.write(self.style.WARNING(
+                    f"   ! missing_in_materialization: {_tok_pretty(t)}{_missing_note(t)}"
+                  ))
               if suppressed_hist_drop:
                 for t in suppressed_hist_drop:
-                  self.stdout.write(self.style.NOTICE(f"   ~ hist_drop_suppressed (policy): {t}"))
+                  self.stdout.write(self.style.NOTICE(
+                    f"   ~ hist_drop_suppressed (policy): {_tok_pretty(t)}"
+                  ))
               if unexpected:
                 for t in unexpected:
-                  self.stdout.write(self.style.WARNING(f"   ! unexpected_in_materialization: {t}"))
+                  self.stdout.write(self.style.WARNING(
+                    f"   ! unexpected_in_materialization: {_tok_pretty(t)}"
+                  ))
+
+              shadow_failed = bool(missing or unexpected)
+              if shadow_failed and arch_mode == "enforce" and execute:
+                raise CommandError(
+                  "Architecture guard blocked execution: schema-op shadow compare mismatch "
+                  f"(missing={len(missing)}, unexpected={len(unexpected)}). "
+                  "Set ELEVATA_ARCH_MODE=compare to inspect details without blocking."
+                )
 
               dispose = getattr(target_sa_engine, "dispose", None)
               if callable(dispose):
@@ -2157,7 +2439,10 @@ class Command(BaseCommand):
               self.stdout.write(self.style.NOTICE("-- SHADOW compare (schema ops): (no actions to compare)"))
 
           except Exception as exc:
-            # Best-effort: never block.
+            # Best-effort by default. In enforce-mode we block execute-runs if the
+            # compare could not be performed.
+            if arch_mode == "enforce" and execute:
+              raise
             self.stdout.write(self.style.WARNING(
               f"-- SHADOW compare skipped: {type(exc).__name__}: {exc}"
             ))
@@ -2176,8 +2461,18 @@ class Command(BaseCommand):
         logger=logger,
       )
 
-      # --- persist architecture state (only if no error, best effort) ---
-      if arch_service is not None and current_state is not None and not had_error:
+      # --- persist architecture state (best effort) ---
+      # Default: persist only after a successful execute-run.
+      # Rationale: architecture_state.json represents the last *applied* architecture.
+      # Persisting after a dry-run would advance the baseline even though no physical
+      # remediation was executed.
+      persist_on_dry_run = _get_bool_env("ELEVATA_PERSIST_ARCH_STATE_ON_DRY_RUN", False)
+      if (
+        arch_service is not None
+        and current_state is not None
+        and not had_error
+        and (execute or persist_on_dry_run)
+      ):
         try:
           arch_service.persist_state(current_state)
         except Exception:
@@ -2423,7 +2718,7 @@ class Command(BaseCommand):
           if status_lc == "blocked" and kind_lc == "preflight":
             if msg and "UNSAFE_TYPE_DRIFT" in msg:
               self.stdout.write(
-                "     hint: use --allow-lossy-type-drift to allow explicit narrowing/rebuild"
+                "     hint: use --allow-type-alter to allow explicit narrowing/rebuild"
               )          
 
         self.stdout.write("")
@@ -2459,39 +2754,61 @@ class Command(BaseCommand):
         },
       )
 
+      def _first_failure_detail(results: list[dict[str, object]] | None) -> str | None:
+        """
+        Return a compact, user-facing detail string for the first failing result.
+        This makes CLI errors actionable and keeps tests stable (guardrails assert on this).
+        """
+        for r in (results or []):
+          status = str((r or {}).get("status") or "").lower()
+          kind = str((r or {}).get("kind") or "").lower()
+          if status in ("error", "exception") or (status == "blocked" and kind == "preflight"):
+            ds = str((r or {}).get("dataset") or "").strip()
+            msg = str((r or {}).get("message") or "").strip()
+            if msg:
+              return f"{ds}: {msg}" if ds else msg
+        return None
+
       # If we stopped early due to error and continue_on_error is False, re-raise now
       if had_error and not continue_on_error:
         statuses = [str((r or {}).get("status") or "") for r in (results or [])]
         kinds = [str((r or {}).get("kind") or "") for r in (results or [])]
         has_exception = any(s in ("error", "exception") for s in statuses)
         has_preflight_block = any((s == "blocked" and k == "preflight") for s, k in zip(statuses, kinds))
+        detail = _first_failure_detail(results)
 
         if has_exception:
+          if detail:
+            raise CommandError(f"Load execution failed: {detail}")
           raise CommandError("Load execution failed. See execution summary above for details.")
+
         if has_preflight_block:
+          if detail:
+            raise CommandError(f"Load blocked by preflight checks: {detail}")
           raise CommandError("Load blocked by preflight checks. See execution summary above for details.")
-        raise CommandError("Load execution failed. See execution summary above for details.")      
+        if detail:
+          raise CommandError(f"Load execution failed: {detail}")
+        raise CommandError("Load execution failed. See execution summary above for details.")   
 
       if had_error:
         statuses = [str((r or {}).get("status") or "") for r in (results or [])]
         kinds = [str((r or {}).get("kind") or "") for r in (results or [])]
         has_exception = any(s in ("error", "exception") for s in statuses)
         has_preflight_block = any((s == "blocked" and k == "preflight") for s, k in zip(statuses, kinds))
+        detail = _first_failure_detail(results)
 
         if has_exception:
-          raise CommandError(
-            "One or more datasets failed during execution. "
-            "See execution summary above for details."
-          )
+          if detail:
+            raise CommandError(f"One or more datasets failed during execution: {detail}")
+          raise CommandError("One or more datasets failed during execution. See execution summary above for details.")
+
         if has_preflight_block:
-          raise CommandError(
-            "One or more datasets were blocked by preflight checks. "
-            "See execution summary above for details."
-          )
-        raise CommandError(
-          "One or more datasets failed during execution. "
-          "See execution summary above for details."
-        )      
+          if detail:
+            raise CommandError(f"One or more datasets were blocked by preflight checks: {detail}")
+          raise CommandError("One or more datasets were blocked by preflight checks. See execution summary above for details.")
+        if detail:
+          raise CommandError(f"One or more datasets failed during execution: {detail}")
+        raise CommandError("One or more datasets failed during execution. See execution summary above for details.")    
 
     finally:
       # Always close the execution engine if it supports close()

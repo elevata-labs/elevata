@@ -35,7 +35,9 @@ class MigrationPlanner:
   """
   Derive a semantic MigrationPlan from an ArchitectureDiff.
 
-  Patch A: preview-only. No execution is wired to this plan yet.
+  The resulting plan represents architecture-level change intent and is used by
+  the load runner to preview, validate, shadow-compare, and drive deterministic
+  materialization.
   """
 
   def plan(
@@ -131,6 +133,34 @@ class MigrationPlanner:
           reason="Architecture diff detected removed column.",
         ))
       elif ch.change_type == "COLUMN_CHANGED":
+        details = getattr(ch, "details", None) or {}
+        changed_fields = list(details.get("changed_fields") or [])
+        prev = dict(details.get("previous") or {})
+        cur = dict(details.get("current") or {})
+
+        # Retire/unretire is metadata-only (no automatic DDL)
+        if changed_fields == ["active"]:
+          prev_active = prev.get("active")
+          cur_active = cur.get("active")
+          if prev_active is True and cur_active is False:
+            actions.append(MigrationAction(
+              action_type="RETIRE_COLUMN",
+              strategy="METADATA_ONLY",
+              dataset_key=ch.dataset_key,
+              column_name=ch.column_name,
+              reason="Column was retired (active True -> False).",
+            ))
+            continue
+          if prev_active is False and cur_active is True:
+            actions.append(MigrationAction(
+              action_type="UNRETIRE_COLUMN",
+              strategy="METADATA_ONLY",
+              dataset_key=ch.dataset_key,
+              column_name=ch.column_name,
+              reason="Column was unretired (active False -> True).",
+            ))
+            continue
+
         actions.append(MigrationAction(
           action_type="ALTER_COLUMN",
           strategy="ALTER_TABLE",

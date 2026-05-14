@@ -144,7 +144,7 @@ This ensures that:
 - existing FK columns are reused instead of duplicated  
 - multiple references per child dataset are handled safely
 
-Physical FK column renames are emitted via the materialization planner  
+Physical FK column renames are emitted via schema evolution (MigrationPlan-driven)  
 using `RENAME COLUMN`, preserving data and lineage.
 
 ---
@@ -227,21 +227,21 @@ The Logical Plan and AST guarantee correctness; the dialect guarantees syntactic
 
 ---
 
-## 🔧 8.5 Schema Drift & Renames (Materialization Planner)
+## 🔧 8.5 Schema Evolution & Renames (MigrationPlan)
 
 elevata supports safe schema evolution driven by metadata:  
 
 - `TargetDataset.former_names` tracks previous physical table names  
-  → planner emits `RENAME TABLE` when the new table name is missing but a former name exists.
+  → schema evolution emits `RENAME TABLE` when the new table name is missing but a former name exists.
 
 - `TargetColumn.former_names` tracks previous physical column names  
-  → planner emits `RENAME COLUMN` when the desired column is missing but a former name exists.
+  → schema evolution emits `RENAME COLUMN` when the desired column is missing but a former name exists.
 
 - For historization tables (`*_hist`), schema sync is derived from the corresponding base dataset.  
   Column renames are therefore expected to be reflected in the hist metadata as well,  
-  so the planner can rename instead of adding duplicate columns.
+  so schema evolution can rename instead of adding duplicate columns.
 
-The planner never provisions missing tables. Provisioning is handled by the load runner  
+Schema evolution never provisions missing tables. Provisioning is handled by the load runner  
 via `ensure_target_table(...)` before executing DML.
 
 ---

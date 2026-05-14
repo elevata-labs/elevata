@@ -47,12 +47,12 @@ It models datasets, lineage, governance, and execution semantics declaratively.
 From these definitions, elevata derives deterministic logical plans, renders dialect-owned SQL,  
 and executes warehouse-native pipelines.
 
-Schema evolution, incremental loads and historization are
-validated before execution.
+Schema evolution, incremental loads and historization are planned,  
+validated, and applied deterministically before execution.
 
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/elevata-labs/elevata/main/docs/elevata_v1_5_0.png" alt="elevata UI preview" width="700"/>
+  <img src="https://raw.githubusercontent.com/elevata-labs/elevata/main/docs/elevata_v1_6_0.png" alt="elevata UI preview" width="700"/>
   <br/>
   <em>Dataset detail view with lineage, metadata, and dialect-aware SQL previews</em>
 </p>
@@ -114,7 +114,9 @@ schema evolution, and structured load logging.
 
 Behavior is deterministic and observable.
 
-Schema drift is reconciled via metadata-driven materialization planning (renames, adds; destructive changes are policy-gated).
+Schema drift is reconciled through Architecture MigrationPlan-driven materialization:  
+renames, adds, type evolution and controlled rebuilds are derived from architecture state,  
+while destructive changes remain explicitly policy-gated.
 
 ---
 

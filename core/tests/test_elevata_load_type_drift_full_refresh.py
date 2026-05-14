@@ -1,6 +1,6 @@
 """
 elevata - Metadata-driven Data Platform Framework
-Copyright © 202-2026 Ilona Tag
+Copyright © 2025-2026 Ilona Tag
 
 This file is part of elevata.
 
@@ -21,6 +21,7 @@ Contact: <https://github.com/elevata-labs/elevata>.
 """
 
 import types
+from types import SimpleNamespace
 import pytest
 
 import metadata.management.commands.elevata_load as elevata_load
@@ -173,8 +174,9 @@ def test_type_drift_does_not_block_when_full_refresh(monkeypatch):
     attempt_no=1,
     # Critical: even strict mode must not block on full refresh.
     fail_on_type_drift=True,
-    allow_lossy_type_drift=False,
+    allow_type_alter=False,
     no_type_changes=True,
+    migration_plan=SimpleNamespace(actions=[]),
   )
 
   assert result["status"] in ("success", "error")  # We only assert "no CommandError"

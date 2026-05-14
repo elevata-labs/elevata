@@ -86,13 +86,13 @@ Column renames are managed via:
 - `TargetColumn.former_names`  
 
 #### 🔎 Behavior
-- Planner emits `RENAME COLUMN`  
+- Schema evolution emits `RENAME COLUMN` (derived from `former_names` and MigrationPlan intent)  
 - No duplicate columns are created  
 - Former names are preserved for future renames
 
 #### 🔎 Duplicate Detection
 If both the desired column name **and** a former name exist physically,  
-the planner will:
+the runtime will:
 
 - Emit a warning  
 - Skip automatic changes  
@@ -114,7 +114,7 @@ base datasets.
 This is enforced by:  
 - Lineage-based dataset lookup  
 - Guardrails on `former_names`  
-- Defensive planner logic
+- Deterministic guard logic
 
 ### 🧩 Type Drift & Semantic Equivalence
 
@@ -131,23 +131,23 @@ Examples include:
 - `timestamp` ↔ `timestamptz` (PostgreSQL)  
 - `varchar(n)` ↔ `varchar` (DuckDB)
 
-These equivalence rules are applied during **schema drift detection**  
-and are intentionally **dialect-aware but planner-enforced**.
+These equivalence rules are applied during **preflight schema drift detection**  
+and are intentionally **dialect-aware**.
 
 #### 🔎 Design rationale
 
-- elevata does not perform automatic type alterations  
-- minor vendor-specific type spelling differences should not cause noise  
-- semantic equivalence is used to reduce false-positive drift warnings
+- safe widening should not create noise  
+- vendor-specific type spellings should not create drift churn  
+- semantic equivalence reduces false-positive drift warnings
 
-Type equivalence affects **drift detection only**.  
-It does not influence SQL rendering or physical DDL generation.
+Type equivalence is used for drift classification and noise reduction.  
+Physical DDL is always rendered by the dialect and executed only when schema evolution intent requires it.
 
 ---
 
 ## 🔧 Type Drift Detection and Evolution
 
-elevata includes deterministic type drift detection as part of the materialization planning phase.
+elevata includes deterministic type drift detection as part of preflight validation.
 
 Type drift occurs when the physical column datatype differs from the datatype defined in metadata.
 
@@ -243,7 +243,7 @@ Blocking occurs during preflight, before any SQL execution.
 Schema evolution is fully compatible with incremental execution:
 
 - Missing tables are auto-provisioned before MERGE  
-- Planner distinguishes schema creation from table provisioning  
+- The runtime distinguishes schema creation from table provisioning  
 - Incremental MERGE never runs against a non-existent table
 
 This ensures:  
@@ -257,7 +257,7 @@ This ensures:
 The following operations are **explicitly not automated**:
 
 - ❌ Column drops (by default)  
-- ❌ Type changes  
+- ❌ Unsafe type narrowing/incompatible changes (unless explicitly allowed)  
 - ❌ Constraint changes  
 - ❌ Implicit destructive operations
 
@@ -265,6 +265,9 @@ These require:
 - Explicit policies  
 - Clear user intent  
 - Future controlled rollout
+
+Unsafe type drift can be explicitly allowed via `ELEVATA_ALLOW_TYPE_ALTER=true`  
+(or `--allow-type-alter`) and is then executed via dialect-supported ALTER or deterministic rebuild.
 
 ### 🧩 Policy-gated column drops
 
@@ -281,7 +284,7 @@ Without the hist flag, removed business columns in `_hist` are preserved as reti
 
 1. Rename column in metadata UI or API  
 2. Previous name is added to `former_names`  
-3. Materialization planner detects rename  
+3. Schema evolution detects rename  
 4. Physical schema is updated safely  
 5. `_hist` table is kept in sync automatically
 

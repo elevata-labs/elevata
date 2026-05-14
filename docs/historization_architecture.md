@@ -80,7 +80,7 @@ To avoid accidental duplication when columns are renamed, elevata relies on
 
 - Base dataset column rename updates `TargetColumn.former_names`  
 - Hist dataset metadata must retain corresponding former names as well  
-  so that materialization planning can emit `RENAME COLUMN` instead of `ADD COLUMN`.
+  so that schema evolution can emit `RENAME COLUMN` instead of `ADD COLUMN`.
 
 ### 🧩 Orphan preservation (schema drift)
 

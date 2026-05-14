@@ -19,6 +19,71 @@ TBD
 
 ---
 
+## [1.6.0] - 2026-05-14
+
+This release completes the cutover to **Architecture-driven Materialization**.  
+Schema evolution is now driven by Architecture State → Architecture Diff → MigrationPlan,  
+and the resulting materialization steps are applied deterministically before load SQL execution.
+
+The focus is turning architecture from an observable plan into an executable runtime contract.
+
+---
+
+### ✨ Added
+
+#### Architecture-driven Materialization
+
+- MigrationPlan is now the authoritative schema-evolution intent for materialization  
+- Materialization steps are derived from architecture changes instead of planner-side drift heuristics  
+- Deterministic execution path for:  
+  - dataset renames  
+  - column renames  
+  - additive schema changes  
+  - type evolution  
+  - rebuild-based remediation where required  
+- Shadow compare can enforce consistency between architecture intent and planned materialization DDL
+
+#### Controlled rebuild execution
+
+- Deterministic rebuild flows can now execute all required steps when policy allows them:  
+  - temporary table cleanup  
+  - temporary table creation  
+  - backfill via `INSERT ... SELECT`  
+  - source table replacement  
+  - final table rename  
+- Rebuild steps remain policy-aware and are only applied after preflight validation
+
+---
+
+### 🔄 Improved
+
+- `elevata_load` now requires Architecture MigrationPlan intent for deterministic materialization paths  
+- Preflight behavior is stricter and more explainable before DDL or DML execution starts  
+- Destructive schema operations are now executable only after explicit policy approval  
+- `_hist` physical drops remain separately gated via `ELEVATA_ALLOW_AUTO_DROP_HIST_COLUMNS`  
+- Full-refresh materialization suppresses redundant column-level DDL while preserving dataset rename intent  
+- Architecture guard enforcement now runs even with `--no-print`, preventing execution from bypassing shadow-compare blocking
+
+---
+
+### 🛠️ Fixed
+
+- Prevented destructive-but-approved materialization steps from being silently skipped by the applier  
+- Fixed enforcement behavior where `--no-print` could suppress Architecture guard execution  
+- Stabilized MaterializationPolicy compatibility for direct test and caller instantiation  
+- Cleaned up outdated preview-only wording around MigrationPlan semantics
+
+---
+
+### 🔒 Governance & Determinism
+
+- Architecture is now the source of truth for schema evolution intent  
+- Materialization is no longer driven by implicit planner-side schema changes  
+- Policy gates remain explicit for destructive operations  
+- Execution blocks before applying schema changes when architecture intent and materialization output diverge
+
+---
+
 ## [1.5.1] - 2026-04-28
 
 This patch release improves developer experience and UI consistency.  

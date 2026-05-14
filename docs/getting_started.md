@@ -61,6 +61,11 @@ DB_ENGINE=sqlite # or postgres
 
 # Pepper value for deterministic surrogate keys
 SEC_DEV_PEPPER=supersecretpeppervalue
+
+# Schema evolution guardrails (optional defaults)
+ELEVATA_ALLOW_TYPE_ALTER=false
+ELEVATA_ALLOW_AUTO_DROP_COLUMNS=false
+ELEVATA_ALLOW_AUTO_DROP_HIST_COLUMNS=false
 ```
 
 Install the target backend you want to execute against:

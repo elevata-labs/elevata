@@ -72,9 +72,9 @@ During planning, elevata:
 
 - introspects the existing table structure  
 - compares desired and actual schemas  
-- generates a MaterializationPlan  
+- derives deterministic schema evolution steps from the Architecture MigrationPlan  
 - classifies schema differences  
-- determines required DDL steps
+- produces deterministic drift findings and validates schema evolution intent (MigrationPlan)
 
 The plan contains:
 
@@ -88,8 +88,8 @@ No changes are applied during this phase.
 
 Only after successful preflight validation:
 
-- safe materialization steps are executed  
-- schema changes are applied  
+- deterministic schema evolution steps (derived from the Architecture MigrationPlan) are executed  
+- schema changes are applied via dialect-rendered DDL  
 - execution continues to load SQL
 
 This separation ensures deterministic execution behavior across platforms.
@@ -101,6 +101,9 @@ For rawcore datasets with historization enabled:
 - base dataset materialization is planned first
 - corresponding `_hist` dataset schema is synchronized afterwards
 - synchronization is best-effort and does not block base execution
+
+The `_hist` synchronization uses the same schema evolution intent (MigrationPlan)  
+so base and history schemas stay consistent and lineage-safe.
 
 ---
 

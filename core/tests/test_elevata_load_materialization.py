@@ -23,6 +23,7 @@ Contact: <https://github.com/elevata-labs/elevata>.
 from __future__ import annotations
 
 import types
+from types import SimpleNamespace
 import pytest
 
 from metadata.materialization.plan import MaterializationPlan, MaterializationStep
@@ -207,6 +208,7 @@ def test_incremental_merge_calls_ensure_target_table_when_plan_only_ensures_sche
     batch_run_id="batch",
     load_run_id="load",
     load_plan_override=None,
+    migration_plan=SimpleNamespace(actions=[]),
   )
 
   assert res["status"] == "success"

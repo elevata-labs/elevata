@@ -511,7 +511,8 @@ def build_materialization_plan(*, td, introspection_engine, exec_engine=None, di
 
     # Narrowing/incompatible drift: blocked by default, but can be remediated via
     # deterministic rebuild when explicitly allowed.
-    allow_lossy = bool(getattr(policy, "allow_lossy_type_drift", False))
+    allow_lossy = bool(getattr(policy, "allow_type_alter", False))
+
     if kind in ("narrowing", "incompatible") and allow_lossy:
       supports_rebuild = (
         hasattr(dialect, "render_drop_table_if_exists") and

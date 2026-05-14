@@ -249,6 +249,9 @@ def diff_architecture_states(
     prev_ds_fp = getattr(prev_ds, "dataset_fingerprint", prev_ds.fingerprint)
     curr_ds_fp = getattr(curr_ds, "dataset_fingerprint", curr_ds.fingerprint)
 
+    prev_payload = _normalize_dataset_payload(prev_ds.fingerprint_payload())
+    curr_payload = _normalize_dataset_payload(curr_ds.fingerprint_payload())
+
     if prev_ds_fp != curr_ds_fp and not dataset_renamed:
       dataset_changes.append(
         DatasetChange(
@@ -258,6 +261,12 @@ def diff_architecture_states(
           details={
             "previous_fingerprint": prev_ds_fp,
             "current_fingerprint": curr_ds_fp,
+            "changed_fields": sorted(
+              k for k in set(prev_payload.keys()) | set(curr_payload.keys())
+              if prev_payload.get(k) != curr_payload.get(k)
+            ),
+            "previous": prev_payload,
+            "current": curr_payload,
           },
         )
       )
@@ -331,10 +340,12 @@ def _diff_dataset_columns(
             dataset_key=current.dataset_key,
             change_type="COLUMN_CHANGED",
             column_name=curr_col.column_name,
-            details={
-              "previous_fingerprint": prev_col.fingerprint,
-              "current_fingerprint": curr_col.fingerprint,
-            },
+            details=_build_change_details(
+              prev=comparable_prev_payload,
+              cur=comparable_curr_payload,
+              prev_fp=prev_col.fingerprint,
+              cur_fp=curr_col.fingerprint,
+            ),
           )
         )
 
@@ -485,6 +496,58 @@ def _normalize_column_payload(payload: dict[str, Any]) -> dict[str, Any]:
   if normalized.get("system_role") is None:
     normalized["system_role"] = ""
   return normalized
+
+
+def _normalize_dataset_payload(payload: dict[str, Any]) -> dict[str, Any]:
+  """
+  Normalize dataset payload fields that may vary in representation but not meaning.
+  """
+  normalized = dict(payload)
+  normalized["former_names"] = tuple(sorted(_as_str_tuple(payload.get("former_names"))))
+  return normalized
+
+
+def _build_change_details(
+  *,
+  prev: dict[str, Any],
+  cur: dict[str, Any],
+  prev_fp: str,
+  cur_fp: str,
+) -> dict[str, Any]:
+  """
+  Build a structured diff payload for changed objects.
+
+  We keep this intentionally small and explicit so downstream components
+  (e.g. MigrationPlanner) can reason about what changed without parsing
+  fingerprint hashes.
+  """
+  changed_fields: list[str] = []
+  keys = sorted(set(prev.keys()) | set(cur.keys()))
+  for k in keys:
+    if prev.get(k) != cur.get(k):
+      changed_fields.append(k)
+
+  # Only expose a projected payload to keep logs stable and readable.
+  # If we need more fields later, extend this projection explicitly.
+  projection_keys = (
+    "column_name",
+    "datatype",
+    "nullable",
+    "active",
+    "lineage_key",
+    "is_system_managed",
+    "system_role",
+  )
+  prev_proj = {k: prev.get(k) for k in projection_keys if k in prev}
+  cur_proj = {k: cur.get(k) for k in projection_keys if k in cur}
+
+  return {
+    "previous_fingerprint": prev_fp,
+    "current_fingerprint": cur_fp,
+    "changed_fields": changed_fields,
+    "previous": prev_proj,
+    "current": cur_proj,
+  }
 
 
 def _index_columns(columns: list[ColumnState]) -> dict[str, ColumnState]:

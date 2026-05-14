@@ -35,6 +35,8 @@ MigrationActionType = Literal[
   "DROP_COLUMN",
   "ALTER_COLUMN",
   "REBUILD_DATASET",
+  "RETIRE_COLUMN",
+  "UNRETIRE_COLUMN",
 ]
 
 
@@ -46,6 +48,7 @@ MigrationStrategy = Literal[
   "ALTER_TABLE",
   "REBUILD",
   "UNKNOWN",
+  "METADATA_ONLY",
 ]
 
 
@@ -54,7 +57,8 @@ class MigrationAction:
   """
   A semantic migration action derived from ArchitectureDiff.
 
-  This is a preview-only structure in Patch A. It does not execute anything.
+  Migration actions are architecture-level intent used for preview,
+  shadow comparison, and deterministic materialization planning.
   """
   action_type: MigrationActionType
   strategy: MigrationStrategy
@@ -83,6 +87,10 @@ class MigrationAction:
       return f"+ ADD_COLUMN ({self.strategy}): {self.dataset_key}.{self.column_name}"
     if self.action_type == "DROP_COLUMN":
       return f"- DROP_COLUMN ({self.strategy}): {self.dataset_key}.{self.column_name}"
+    if self.action_type == "RETIRE_COLUMN":
+      return f"~ RETIRE_COLUMN ({self.strategy}): {self.dataset_key}.{self.column_name}"
+    if self.action_type == "UNRETIRE_COLUMN":
+      return f"~ UNRETIRE_COLUMN ({self.strategy}): {self.dataset_key}.{self.column_name}"
     if self.action_type == "ALTER_COLUMN":
       return f"~ ALTER_COLUMN ({self.strategy}): {self.dataset_key}.{self.column_name}"
     if self.action_type == "REBUILD_DATASET":
@@ -93,7 +101,10 @@ class MigrationAction:
 @dataclass(frozen=True)
 class MigrationPlan:
   """
-  A preview-only plan consisting of semantic migration actions.
+  Semantic architecture migration plan consisting of ordered migration actions.
+
+  The plan is used both for CLI preview and as the authoritative schema-evolution
+  intent for deterministic materialization.
   """
   actions: tuple[MigrationAction, ...] = ()
 

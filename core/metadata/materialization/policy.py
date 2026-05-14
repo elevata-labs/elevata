@@ -1,6 +1,6 @@
 """
 elevata - Metadata-driven Data Platform Framework
-Copyright © 2025 Ilona Tag
+Copyright © 2025-2026 Ilona Tag
 
 This file is part of elevata.
 
@@ -34,22 +34,27 @@ class MaterializationPolicy:
   # Safety: never auto-drop by default.
   allow_auto_drop_columns: bool
 
-  # type changes are warnings/blocks only (no ALTER).
+  # Allow "unsafe" schema type evolution (narrowing/incompatible drift) via deterministic rebuild.
+  # Safe widening is handled separately and does not require this flag.
   allow_type_alter: bool
+
+  # Safety: never physically drop *_hist columns by default.
+  # This must be enabled in addition to allow_auto_drop_columns because
+  # history tables preserve long-lived audit semantics.
+  allow_auto_drop_hist_columns: bool = False
 
   # Debug output for planner introspection and decisions.
   debug_plan: bool = False
 
-  # by default, don't allow narrowing datatype changes
-  allow_lossy_type_drift: bool = False,
-
 
 def load_materialization_policy() -> MaterializationPolicy:
   allow_drop = os.getenv("ELEVATA_ALLOW_AUTO_DROP_COLUMNS", "false").lower() in ("1", "true", "yes")
+  allow_hist_drop = os.getenv("ELEVATA_ALLOW_AUTO_DROP_HIST_COLUMNS", "false").lower() in ("1", "true", "yes")
   allow_alter = os.getenv("ELEVATA_ALLOW_TYPE_ALTER", "false").lower() in ("1", "true", "yes")
 
   return MaterializationPolicy(
     sync_schema_shorts={"rawcore", "bizcore"},
     allow_auto_drop_columns=allow_drop,
+    allow_auto_drop_hist_columns=allow_hist_drop,
     allow_type_alter=allow_alter,
   )
