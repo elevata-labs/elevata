@@ -1,0 +1,2338 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Declarative Data Architecture & Metadata Framework">
+      
+      
+        <meta name="author" content="Ilona Tag">
+      
+      
+      
+        <link rel="prev" href="../health_check/">
+      
+      
+        <link rel="next" href="../tests/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>⚙️ Source Backends - elevata</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../styles/elevata-theme.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="custom" data-md-color-accent="custom">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#supported-source-backends" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="elevata" class="md-header__button md-logo" aria-label="elevata" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            elevata
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              ⚙️ Source Backends
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m17.75 4.09-2.53 1.94.91 3.06-2.63-1.81-2.63 1.81.91-3.06-2.53-1.94L12.44 4l1.06-3 1.06 3zm3.5 6.91-1.64 1.25.59 1.98-1.7-1.17-1.7 1.17.59-1.98L15.75 11l2.06-.05L18.5 9l.69 1.95zm-2.28 4.95c.83-.08 1.72 1.1 1.19 1.85-.32.45-.66.87-1.08 1.27C15.17 23 8.84 23 4.94 19.07c-3.91-3.9-3.91-10.24 0-14.14.4-.4.82-.76 1.27-1.08.75-.53 1.93.36 1.85 1.19-.27 2.86.69 5.83 2.89 8.02a9.96 9.96 0 0 0 8.02 2.89m-1.64 2.02a12.08 12.08 0 0 1-7.8-3.47c-2.17-2.19-3.33-5-3.49-7.82-2.81 3.14-2.7 7.96.31 10.98 3.02 3.01 7.84 3.12 10.98.31"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 7a5 5 0 0 1 5 5 5 5 0 0 1-5 5 5 5 0 0 1-5-5 5 5 0 0 1 5-5m0 2a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3m0-7 2.39 3.42C13.65 5.15 12.84 5 12 5s-1.65.15-2.39.42zM3.34 7l4.16-.35A7.2 7.2 0 0 0 5.94 8.5c-.44.74-.69 1.5-.83 2.29zm.02 10 1.76-3.77a7.131 7.131 0 0 0 2.38 4.14zM20.65 7l-1.77 3.79a7.02 7.02 0 0 0-2.38-4.15zm-.01 10-4.14.36c.59-.51 1.12-1.14 1.54-1.86.42-.73.69-1.5.83-2.29zM12 22l-2.41-3.44c.74.27 1.55.44 2.41.44.82 0 1.63-.17 2.37-.44z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+  
+
+<nav class="md-nav md-nav--primary md-nav--integrated" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="elevata" class="md-nav__button md-logo" aria-label="elevata" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    elevata
+  </label>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../getting_started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ Getting Started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../secure_metadata_connectivity/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ Secure Metadata Connectivity
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Metadata Model & Generation
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Metadata Model & Generation
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../generation_logic/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ Generation Logic
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../incremental_load/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ Incremental Load Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../load_sql_architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ Load SQL Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../historization_architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ Historization Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../schema_evolution/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ Schema Evolution
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SQL Rendering & Dialects
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    SQL Rendering & Dialects
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../sql_rendering_conventions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ SQL Rendering Conventions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dialect_system/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ Dialect System
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../target_backends/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ Target Backends
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Execution & Observability
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Execution & Observability
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../load_execution_architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ Load Execution & Orchestration Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../architecture_control_plane/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ Architecture Control Plane
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Concepts
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Concepts
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../architecture_overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ Architecture Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../query_builder_and_query_tree/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ Query Builder & Query Tree
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../determinism_and_execution_semantics/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ Determinism & Execution Semantics
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../logical_plan/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ Lineage Model & Logical Plan
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../expression_dsl_and_ast/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ Expression DSL & AST
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../hashing_architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ Hashing Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../sql_preview_pipeline/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ SQL Preview & Rendering Pipeline
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../bizcore/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ Bizcore — Business Semantics Layer
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../health_check/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ Metadata Health Check
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Source Integration
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Source Integration
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ Source Backends
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ Source Backends
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-general-pattern-sqlalchemy-backed-systems" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🔧 1. General Pattern (SQLAlchemy-backed systems)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-fully-supported-backends" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🔧 2. Fully Supported Backends
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-connection-notes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🔧 3. Connection Notes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-beta-dialects-reflection-may-be-limited" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🔧 4. Beta Dialects (Reflection may be limited)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-file-based-sources-raw-ingestion" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🔧 5. File-based Sources (RAW Ingestion)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="🔧 5. File-based Sources (RAW Ingestion)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#supported-file-types" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🧩 Supported File Types
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#sourcedatasetingestion_config-file" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🧩 SourceDataset.ingestion_config (File)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="🧩 SourceDataset.ingestion_config (File)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#required-fields" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🔎 Required fields
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#environment-variable-expansion" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🔎 Environment variable expansion
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#env-expectations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🧩 .env expectations
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="🧩 .env expectations">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#optional-fields" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🔎 Optional fields
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#csv-specific-notes-systemtype-csv" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🧩 CSV-specific notes (System.type = "csv")
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#json-specific-notes-systemtype-json" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🧩 JSON-specific notes (System.type = "json")
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#jsonl-specific-notes-systemtype-jsonl" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🧩 JSONL-specific notes (System.type = "jsonl")
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#parquet-specific-notes-systemtype-parquet" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🧩 Parquet-specific notes (System.type = "parquet")
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#excel-specific-options-systemtype-excel" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🧩 Excel-specific Options (System.type = "excel")
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-rest-sources-raw-ingestion" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🔧 6. REST Sources (RAW Ingestion)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="🔧 6. REST Sources (RAW Ingestion)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#system-level-rest-connection-secret" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🧩 System-level REST connection (secret)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#env-expectations_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🧩 .env expectations
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#sourcedatasetingestion_config-rest" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🧩 SourceDataset.ingestion_config (REST)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="🧩 SourceDataset.ingestion_config (REST)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#required-fields_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🔎 Required fields
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#optional-fields_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🔎 Optional fields
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#pagination-page-based" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🔎 Pagination (page-based)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#incremental-scoping-cursor-since" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🔎 Incremental scoping (cursor / since)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_8" >
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing & Quality
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Testing & Quality
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tests/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ Test Setup & Guidelines
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_9" >
+        
+          
+          <label class="md-nav__link" for="__nav_9" id="__nav_9_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Strategy & Architecture
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_9_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_9">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Strategy & Architecture
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../strategy/elevata_platform_strategy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ elevata Platform Strategy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_10" >
+        
+          
+          <label class="md-nav__link" for="__nav_10" id="__nav_10_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Project
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_10_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_10">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Project
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../readme_ref/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ Main Project README
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../changelog_ref/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ Changelog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+
+<h1 id="supported-source-backends">⚙️ Supported Source Backends<a class="headerlink" href="#supported-source-backends" title="Permanent link">&para;</a></h1>
+<p>This document provides an overview of supported database platforms, tested SQLAlchemy dialects,<br />
+and connection examples for <strong>elevata</strong>.</p>
+<p>It describes how elevata connects to external systems for schema discovery, metadata introspection,<br />
+and optional federated access at the Stage layer.<br />
+Execution semantics are defined separately.</p>
+<p>It also documents non-relational ingestion sources (Files and REST) and how to configure them via
+<code>SourceDataset.ingestion_config</code>.</p>
+<hr />
+<h2 id="1-general-pattern-sqlalchemy-backed-systems">🔧 1. General Pattern (SQLAlchemy-backed systems)<a class="headerlink" href="#1-general-pattern-sqlalchemy-backed-systems" title="Permanent link">&para;</a></h2>
+<p>All SQL database connections use the standard <strong>SQLAlchemy URI</strong> format:</p>
+<pre><code class="language-text">dialect[+driver]://username:password@host:port/database[?params]
+</code></pre>
+<p>Example:</p>
+<pre><code class="language-text">mssql+pyodbc://user:pwd@server,1433/db?driver=ODBC%20Driver%2018%20for%20SQL%20Server
+</code></pre>
+<p>In your <code>.env</code>, define these values using the <strong>elevata secret convention</strong>:</p>
+<pre><code class="language-text">SEC_&lt;ENVIRONMENT&gt;_CONN_&lt;TYPE&gt;_&lt;SHORTNAME&gt;=&lt;SQLAlchemy URI&gt;
+</code></pre>
+<p>Example:</p>
+<pre><code class="language-text">SEC_DEV_CONN_MSSQL_SAP=mssql+pyodbc://user:pwd@sql01,1433/SAPDB?driver=ODBC%20Driver%2018%20for%20SQL%20Server
+</code></pre>
+<hr />
+<h2 id="2-fully-supported-backends">🔧 2. Fully Supported Backends<a class="headerlink" href="#2-fully-supported-backends" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Type</th>
+<th>Label</th>
+<th>Driver / Package</th>
+<th>Reflection Support</th>
+<th>Example URI</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>bigquery</code></td>
+<td>Google BigQuery</td>
+<td><code>pybigquery</code></td>
+<td>✅ Columns only</td>
+<td><code>bigquery://project-id</code></td>
+</tr>
+<tr>
+<td><code>databricks</code></td>
+<td>Databricks SQL (beta)</td>
+<td><code>sqlalchemy-databricks</code></td>
+<td>⚠️ Columns only</td>
+<td><code>databricks://token:&lt;TOKEN&gt;@&lt;host&gt;?http_path=/sql/1.0/warehouses/&lt;id&gt;</code></td>
+</tr>
+<tr>
+<td><code>duckdb</code></td>
+<td>DuckDB</td>
+<td><code>duckdb-engine</code></td>
+<td>✅ Full</td>
+<td><code>duckdb:///C:/data/local.duckdb</code></td>
+</tr>
+<tr>
+<td><code>mssql</code></td>
+<td>Microsoft SQL Server</td>
+<td><code>pyodbc</code></td>
+<td>✅ Full</td>
+<td><code>mssql+pyodbc://user:pwd@host,1433/db?driver=ODBC%20Driver%2018%20for%20SQL%20Server</code></td>
+</tr>
+<tr>
+<td><code>mysql</code></td>
+<td>MySQL / MariaDB</td>
+<td><code>mysqlclient</code> or <code>pymysql</code></td>
+<td>✅ Full</td>
+<td><code>mysql+pymysql://user:pwd@localhost:3306/db</code></td>
+</tr>
+<tr>
+<td><code>oracle</code></td>
+<td>Oracle</td>
+<td><code>python-oracledb</code></td>
+<td>✅ Columns &amp; PKs</td>
+<td><code>oracle+oracledb://user:pwd@host:1521/servicename</code></td>
+</tr>
+<tr>
+<td><code>postgres</code> / <code>postgresql</code></td>
+<td>PostgreSQL</td>
+<td><code>psycopg2</code></td>
+<td>✅ Full</td>
+<td><code>postgresql+psycopg2://user:pwd@localhost:5432/dbname</code></td>
+</tr>
+<tr>
+<td><code>redshift</code></td>
+<td>Amazon Redshift</td>
+<td><code>sqlalchemy-redshift</code></td>
+<td>✅ Columns only</td>
+<td><code>redshift+psycopg2://user:pwd@redshift:5439/dev</code></td>
+</tr>
+<tr>
+<td><code>snowflake</code></td>
+<td>Snowflake</td>
+<td><code>snowflake-sqlalchemy</code></td>
+<td>✅ Columns only</td>
+<td><code>snowflake://user:pwd@account/DB/SCHEMA?warehouse=WH</code></td>
+</tr>
+<tr>
+<td><code>sqlite</code></td>
+<td>SQLite</td>
+<td>built-in</td>
+<td>✅ Full</td>
+<td><code>sqlite:///C:/data/dev.db</code></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="3-connection-notes">🔧 3. Connection Notes<a class="headerlink" href="#3-connection-notes" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Use <strong>URL-encoded driver names</strong> (e.g. <code>ODBC%20Driver%2018%20for%20SQL%20Server</code>).</li>
+<li>Backslashes in paths should be replaced by slashes (<code>C:/path/file.db</code>).</li>
+<li>SSL parameters and special driver arguments can be appended via query params.</li>
+<li>For cloud systems (e.g. Snowflake, BigQuery, Databricks), credentials and tokens can be stored<br />
+in <code>.env</code> or a vault.  </li>
+<li>For BigQuery, SQLAlchemy-based reflection is used for schema and column discovery.<br />
+Execution as a target backend is described separately.</li>
+</ul>
+<hr />
+<h2 id="4-beta-dialects-reflection-may-be-limited">🔧 4. Beta Dialects (Reflection may be limited)<a class="headerlink" href="#4-beta-dialects-reflection-may-be-limited" title="Permanent link">&para;</a></h2>
+<ul>
+<li><code>trino</code> / <code>presto</code>  </li>
+<li><code>clickhouse</code>  </li>
+<li><code>teradata</code>  </li>
+<li><code>db2</code>  </li>
+<li><code>hana</code></li>
+</ul>
+<p>You can register these manually under <code>System.type</code> if you want to experiment — elevata will attempt a<br />
+generic reflection where possible, but may not retrieve primary or foreign key details.</p>
+<hr />
+<h2 id="5-file-based-sources-raw-ingestion">🔧 5. File-based Sources (RAW Ingestion)<a class="headerlink" href="#5-file-based-sources-raw-ingestion" title="Permanent link">&para;</a></h2>
+<p>elevata supports file-based sources for native RAW ingestion. The file type is determined via <code>System.type</code>.</p>
+<h3 id="supported-file-types">🧩 Supported File Types<a class="headerlink" href="#supported-file-types" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th><code>System.type</code></th>
+<th>Format</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>csv</code></td>
+<td>CSV with header row</td>
+<td>Header row is used as column names</td>
+</tr>
+<tr>
+<td><code>json</code></td>
+<td>JSON array of objects (<code>[{...}, {...}]</code>)</td>
+<td>Each element must be an object</td>
+</tr>
+<tr>
+<td><code>jsonl</code></td>
+<td>Newline-delimited JSON (<code>{"a":1} {"a":2}</code>)</td>
+<td>One object per line</td>
+</tr>
+<tr>
+<td><code>parquet</code></td>
+<td>Parquet</td>
+<td>Currently: <strong>local path</strong> or <code>file://</code></td>
+</tr>
+<tr>
+<td><code>excel</code></td>
+<td>Excel (<code>.xlsx</code>, <code>.xlsm</code>)</td>
+<td>Sheet and header configurable</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>RAW landing is <strong>always Full Replace</strong>: Drop/Create/Truncate/Insert.</p>
+</blockquote>
+<p>RAW tables are system-managed landing zones and always include technical columns such as:<br />
+- <code>load_run_id</code><br />
+- <code>loaded_at</code><br />
+- <code>payload</code> (preserved JSON object for the original record)</p>
+<h3 id="sourcedatasetingestion_config-file">🧩 <code>SourceDataset.ingestion_config</code> (File)<a class="headerlink" href="#sourcedatasetingestion_config-file" title="Permanent link">&para;</a></h3>
+<h4 id="required-fields">🔎 Required fields<a class="headerlink" href="#required-fields" title="Permanent link">&para;</a></h4>
+<pre><code class="language-json">{
+  &quot;uri&quot;: &quot;file:///data/orders.parquet&quot;
+}
+</code></pre>
+<ul>
+<li><strong><code>uri</code></strong> <em>(string, required)</em><br />
+  Path or URI to the file.</li>
+</ul>
+<p>Supported:
+  - <code>file:///...</code> (recommended)<br />
+  - local paths (e.g. <code>/data/orders.csv</code>, <code>C:/data/orders.xlsx</code>)<br />
+  - <code>http(s)://...</code> for CSV/JSON/JSONL/Excel (Parquet currently not supported over HTTP)</p>
+<blockquote>
+<p><strong>Local paths vs. file URIs</strong></p>
+<p>The <code>uri</code> field accepts both plain local paths and <code>file://</code> URIs.</p>
+<p>Valid examples:</p>
+<ul>
+<li>Linux / macOS:  </li>
+<li><code>/data/orders.csv</code>  </li>
+<li>
+<p><code>file:///data/orders.csv</code></p>
+</li>
+<li>
+<p>Windows:  </p>
+</li>
+<li><code>C:/data/orders.xlsx</code>  </li>
+<li><code>file:///C:/data/orders.xlsx</code></li>
+</ul>
+<p>Using <code>file:///</code> is recommended for portability and clarity in configuration files, but it is not strictly required.</p>
+<p>Backslashes (<code>\</code>) should be avoided. Use forward slashes (<code>/</code>) instead.</p>
+</blockquote>
+<h4 id="environment-variable-expansion">🔎 Environment variable expansion<a class="headerlink" href="#environment-variable-expansion" title="Permanent link">&para;</a></h4>
+<p><code>uri</code> supports environment variable expansion using the <code>${VAR_NAME}</code> syntax.</p>
+<p>Example:</p>
+<pre><code class="language-json">{
+  &quot;uri&quot;: &quot;${ELEVATA_INGEST_ROOT}/finance/orders.xlsx&quot;
+}
+</code></pre>
+<h3 id="env-expectations">🧩 <code>.env</code> expectations<a class="headerlink" href="#env-expectations" title="Permanent link">&para;</a></h3>
+<p>Recommended pattern:</p>
+<pre><code class="language-text">ELEVATA_INGEST_ROOT=/mnt/dev/inbox
+</code></pre>
+<p>Then reference it in metadata:</p>
+<pre><code class="language-json">{
+  &quot;uri&quot;: &quot;${ELEVATA_INGEST_ROOT}/finance/orders.xlsx&quot;
+}
+</code></pre>
+<p>This allows using the same metadata across dev/test/prod while switching file roots via <code>.env</code>.</p>
+<h4 id="optional-fields">🔎 Optional fields<a class="headerlink" href="#optional-fields" title="Permanent link">&para;</a></h4>
+<pre><code class="language-json">{
+  &quot;uri&quot;: &quot;https://example.com/download?id=123&quot;,
+  &quot;file_type&quot;: &quot;jsonl&quot;
+}
+</code></pre>
+<ul>
+<li><strong><code>file_type</code></strong> <em>(string, optional)</em><br />
+  Overrides detection based on file suffix. Useful if the URL does not contain a file extension (e.g. presigned URLs).</li>
+</ul>
+<p>Allowed values: <code>csv | json | jsonl | parquet | excel</code></p>
+<p><strong>Important:</strong> If set, <code>file_type</code> must match <code>System.type</code> (to avoid inconsistent configuration).</p>
+<p>Detection rules (if <code>file_type</code> is not set):<br />
+- <code>.csv</code> → CSV<br />
+- <code>.json</code> → JSON array<br />
+- <code>.jsonl</code> / <code>.ndjson</code> → JSON Lines<br />
+- <code>.parquet</code> → Parquet<br />
+- <code>.xlsx</code> / <code>.xlsm</code> → Excel</p>
+<h3 id="csv-specific-notes-systemtype-csv">🧩 CSV-specific notes (<code>System.type = "csv"</code>)<a class="headerlink" href="#csv-specific-notes-systemtype-csv" title="Permanent link">&para;</a></h3>
+<ul>
+<li>CSV must have a header row.  </li>
+<li>Values are read as strings; type inference happens via auto-import / column profiling.</li>
+</ul>
+<pre><code class="language-json">{
+  &quot;uri&quot;: &quot;file:///data/orders.csv&quot;,
+  &quot;delimiter&quot;: &quot;;&quot;,
+  &quot;quotechar&quot;: &quot;\&quot;&quot;,
+  &quot;encoding&quot;: &quot;utf-8-sig&quot;
+}
+</code></pre>
+<ul>
+<li>
+<p><strong><code>delimiter</code></strong> <em>(string, optional, default: ,)</em><br />
+Column separator character.<br />
+Common in German Excel exports: <code>;</code>.</p>
+</li>
+<li>
+<p><strong><code>quotechar</code></strong> <em>(string, optional, default: \")</em><br />
+Character used to quote fields containing delimiters or line breaks.<br />
+Standard CSV uses double quotes (<code>"</code>).</p>
+</li>
+<li>
+<p><strong><code>encoding</code></strong> <em>(string, optional, default: utf-8)</em><br />
+Character encoding used when decoding the file.<br />
+Useful values:</p>
+</li>
+<li>utf-8  </li>
+<li>utf-8-sig (common for Excel exports on Windows)  </li>
+<li>cp1252 (legacy Windows encoding)</li>
+</ul>
+<p>If not specified, elevata assumes UTF-8 encoding and standard CSV quoting.</p>
+<h3 id="json-specific-notes-systemtype-json">🧩 JSON-specific notes (<code>System.type = "json"</code>)<a class="headerlink" href="#json-specific-notes-systemtype-json" title="Permanent link">&para;</a></h3>
+<ul>
+<li>The file must contain a JSON array of objects.  </li>
+<li>Non-object elements are ignored.</li>
+</ul>
+<h3 id="jsonl-specific-notes-systemtype-jsonl">🧩 JSONL-specific notes (<code>System.type = "jsonl"</code>)<a class="headerlink" href="#jsonl-specific-notes-systemtype-jsonl" title="Permanent link">&para;</a></h3>
+<ul>
+<li>One JSON object per line.  </li>
+<li>Empty lines are ignored.</li>
+</ul>
+<h3 id="parquet-specific-notes-systemtype-parquet">🧩 Parquet-specific notes (<code>System.type = "parquet"</code>)<a class="headerlink" href="#parquet-specific-notes-systemtype-parquet" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Parquet ingestion is <strong>chunked</strong> for memory safety.  </li>
+<li>Currently supported locations: local path or <code>file://</code> URI.</li>
+</ul>
+<h3 id="excel-specific-options-systemtype-excel">🧩 Excel-specific Options (<code>System.type = "excel"</code>)<a class="headerlink" href="#excel-specific-options-systemtype-excel" title="Permanent link">&para;</a></h3>
+<pre><code class="language-json">{
+  &quot;uri&quot;: &quot;file:///data/orders.xlsx&quot;,
+  &quot;sheet_name&quot;: &quot;Orders&quot;,
+  &quot;header_row&quot;: 1,
+  &quot;max_rows&quot;: 50000
+}
+</code></pre>
+<ul>
+<li>
+<p><strong><code>sheet_name</code></strong> <em>(string, optional)</em><br />
+  Name of the worksheet. If not set, the first sheet is used.</p>
+</li>
+<li>
+<p><strong><code>sheet_index</code></strong> <em>(int, optional)</em><br />
+  0-based sheet index (alternative to <code>sheet_name</code>).</p>
+</li>
+<li>
+<p><strong><code>header_row</code></strong> <em>(int, optional, default: 1)</em><br />
+  1-based row number containing the header.</p>
+</li>
+<li>
+<p><strong><code>max_rows</code></strong> <em>(int, optional)</em><br />
+  Limits the number of data rows read (after the header).</p>
+</li>
+</ul>
+<hr />
+<h2 id="6-rest-sources-raw-ingestion">🔧 6. REST Sources (RAW Ingestion)<a class="headerlink" href="#6-rest-sources-raw-ingestion" title="Permanent link">&para;</a></h2>
+<p>For REST APIs, use <code>System.type = "rest"</code>.</p>
+<p>REST ingestion configuration is split into:</p>
+<ul>
+<li>
+<p><strong>System-level REST connection</strong> (environment-specific):<br />
+<code>base_url</code> and default headers</p>
+</li>
+<li>
+<p><strong>Dataset-level ingestion_config</strong> (dataset-specific):<br />
+<code>path</code>, record extraction, pagination, cursor rules</p>
+</li>
+</ul>
+<p>This keeps metadata stable across dev/test/prod while allowing endpoint switches via secrets.</p>
+<p>Important: <code>base_url</code> is environment-/system-level configuration and must be provided via secrets<br />
+(e.g. <code>.env</code> or vault). It should not be duplicated per dataset.</p>
+<h3 id="system-level-rest-connection-secret">🧩 System-level REST connection (secret)<a class="headerlink" href="#system-level-rest-connection-secret" title="Permanent link">&para;</a></h3>
+<p>REST systems resolve connection details via the profile-aware secret reference:</p>
+<pre><code class="language-text">sec/{profile}/conn/rest/{short_name}
+</code></pre>
+<p>The resolved secret must provide at least:</p>
+<ul>
+<li><code>base_url</code> <em>(string, required)</em></li>
+</ul>
+<p>Optional:</p>
+<ul>
+<li><code>headers</code> <em>(object)</em>: default headers included with every request</li>
+<li><code>query</code> <em>(object)</em>: fixed query parameters included with every request</li>
+</ul>
+<p>Example secret JSON:</p>
+<pre><code class="language-json">{
+  &quot;base_url&quot;: &quot;https://jsonplaceholder.typicode.com&quot;,
+  &quot;headers&quot;: {&quot;Authorization&quot;: &quot;Bearer &lt;TOKEN&gt;&quot;},
+  &quot;query&quot;: {&quot;locale&quot;: &quot;en_US&quot;}
+}
+</code></pre>
+<h3 id="env-expectations_1">🧩 <code>.env</code> expectations<a class="headerlink" href="#env-expectations_1" title="Permanent link">&para;</a></h3>
+<p>In local development, this is typically backed by <code>.env</code> values using the same convention as SQL connection strings.</p>
+<p>Example (conceptual) <code>.env</code> entry:</p>
+<pre><code class="language-text">SEC_DEV_CONN_REST_JSONPH={&quot;base_url&quot;:&quot;https://jsonplaceholder.typicode.com&quot;}
+</code></pre>
+<p>Optional default headers and fixed query params may be provided as well:</p>
+<pre><code class="language-text">SEC_DEV_CONN_REST_REQRES={&quot;base_url&quot;:&quot;https://reqres.in&quot;,&quot;headers&quot;:{&quot;Authorization&quot;:&quot;Bearer &lt;TOKEN&gt;&quot;},&quot;query&quot;:{&quot;locale&quot;:&quot;en_US&quot;}}
+</code></pre>
+<blockquote>
+<p>Note: The exact <code>.env</code> representation depends on your secret provider.<br />
+The important contract is that resolving the secret yields a JSON object containing at least <code>base_url</code>.</p>
+</blockquote>
+<h3 id="sourcedatasetingestion_config-rest">🧩 <code>SourceDataset.ingestion_config</code> (REST)<a class="headerlink" href="#sourcedatasetingestion_config-rest" title="Permanent link">&para;</a></h3>
+<h4 id="required-fields_1">🔎 Required fields<a class="headerlink" href="#required-fields_1" title="Permanent link">&para;</a></h4>
+<pre><code class="language-json">{
+  &quot;path&quot;: &quot;/posts&quot;
+}
+</code></pre>
+<ul>
+<li><strong><code>path</code></strong> <em>(string, required)</em><br />
+  Endpoint path relative to the system <code>base_url</code>.</li>
+</ul>
+<h4 id="optional-fields_1">🔎 Optional fields<a class="headerlink" href="#optional-fields_1" title="Permanent link">&para;</a></h4>
+<pre><code class="language-json">{
+  &quot;path&quot;: &quot;/api/users&quot;,
+  &quot;method&quot;: &quot;GET&quot;,
+  &quot;headers&quot;: {&quot;X-Debug&quot;: &quot;1&quot;},
+  &quot;params&quot;: {&quot;limit&quot;: 100},
+  &quot;record_path&quot;: &quot;data&quot;
+}
+</code></pre>
+<ul>
+<li>
+<p><strong><code>method</code></strong> <em>(string, optional, default: <code>GET</code>)</em><br />
+  HTTP method.</p>
+</li>
+<li>
+<p><strong><code>headers</code></strong> <em>(object, optional)</em><br />
+  Request headers added on top of system default headers.</p>
+</li>
+<li>
+<p><strong><code>params</code></strong> <em>(object, optional)</em><br />
+  Request query parameters added on top of system fixed query parameters.</p>
+</li>
+<li>
+<p><strong><code>record_path</code></strong> <em>(string, optional)</em><br />
+  Dotted path to the list of records inside the JSON response (e.g. <code>data.items</code>).
+  If omitted, the response must be a JSON array.</p>
+</li>
+</ul>
+<h4 id="pagination-page-based">🔎 Pagination (page-based)<a class="headerlink" href="#pagination-page-based" title="Permanent link">&para;</a></h4>
+<pre><code class="language-json">{
+  &quot;path&quot;: &quot;/api/users&quot;,
+  &quot;page_param&quot;: &quot;page&quot;,
+  &quot;page_size_param&quot;: &quot;per_page&quot;,
+  &quot;page_size&quot;: 6,
+  &quot;record_path&quot;: &quot;data&quot;
+}
+</code></pre>
+<ul>
+<li>
+<p><strong><code>page_param</code></strong> <em>(string, optional)</em><br />
+  Name of the page parameter.</p>
+</li>
+<li>
+<p><strong><code>page_size_param</code></strong> <em>(string, optional)</em><br />
+  Name of the page size parameter.</p>
+</li>
+<li>
+<p><strong><code>page_size</code></strong> <em>(int, optional)</em><br />
+  Requested page size.</p>
+</li>
+</ul>
+<h4 id="incremental-scoping-cursor-since">🔎 Incremental scoping (cursor / since)<a class="headerlink" href="#incremental-scoping-cursor-since" title="Permanent link">&para;</a></h4>
+<blockquote>
+<p>Note: RAW remains <strong>Full Replace</strong>. Cursor configuration affects only the <strong>extraction scope</strong>.</p>
+</blockquote>
+<pre><code class="language-json">{
+  &quot;path&quot;: &quot;/events&quot;,
+  &quot;since_param&quot;: &quot;since&quot;,
+  &quot;cursor_field&quot;: &quot;updated_at&quot;,
+  &quot;record_path&quot;: &quot;items&quot;
+}
+</code></pre>
+<ul>
+<li>
+<p><strong><code>since_param</code></strong> <em>(string, optional)</em><br />
+  Query parameter receiving the delta cutoff value.</p>
+</li>
+<li>
+<p><strong><code>cursor_field</code></strong> <em>(string, optional)</em><br />
+  Field name used to derive a cursor/max timestamp.</p>
+</li>
+</ul>
+<hr />
+<p>© 2025-2026 elevata Labs — Internal Technical Documentation</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+  <script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div>
+        © 2025-2026 elevata project · elevata® is a registered trademark in Germany.
+      </div>
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.instant", "navigation.tracking", "content.code.copy", "content.tabs.link", "toc.integrate"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

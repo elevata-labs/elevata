@@ -37,6 +37,13 @@ This flow represents the central principle of elevata:
 
 > **Metadata → Logical Plan → Dialect-aware SQL → Warehouse**
 
+The Architecture Control Plane provides read-only review and comparison
+artifacts around the same architecture state:
+
+```text 
+Architecture State → Architecture Diff → MigrationPlan → Policy Decisions
+```
+
 ---
 
 ## 🔧 2. Architecture Layers
@@ -98,6 +105,36 @@ Schema evolution does not provision missing tables. Table provisioning is handle
 
 Preflight validation includes schema introspection and dialect-aware semantic equivalence rules  
 to suppress non-actionable type differences.
+
+### 🧩 2.7.2 Architecture Control Plane
+
+The Architecture Control Plane makes metadata-defined architecture reviewable  
+before load execution applies schema or data changes.
+
+It provides deterministic artifacts for:
+
+- Architecture State  
+- Architecture Change Reports  
+- Architecture Promotion Reports  
+- policy decisions  
+- report fingerprints
+
+The control plane is read-only. It does not execute SQL and does not apply DDL.
+
+Command responsibilities:
+
+| Command | Responsibility |
+|---|---|
+| elevata_state | Render the metadata-defined architecture state |
+| elevata_plan | Render architecture change intent and policy decisions |
+| elevata_promote | Compare two architecture state artifacts |
+| elevata_load | Execute loads with preflight and guard checks |
+
+Architecture reports use the same semantic path as execution:
+
+```text 
+Architecture State → Architecture Diff → MigrationPlan → Policy Decisions
+```
 
 ## 🔧 3. Bizcore — Business Semantics as Metadata
 

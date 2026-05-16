@@ -1,0 +1,3020 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Declarative Data Architecture & Metadata Framework">
+      
+      
+        <meta name="author" content="Ilona Tag">
+      
+      
+      
+        <link rel="prev" href="../readme_ref/">
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>⚙️ Changelog - elevata</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../styles/elevata-theme.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="custom" data-md-color-accent="custom">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#changelog" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="elevata" class="md-header__button md-logo" aria-label="elevata" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            elevata
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              ⚙️ Changelog
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m17.75 4.09-2.53 1.94.91 3.06-2.63-1.81-2.63 1.81.91-3.06-2.53-1.94L12.44 4l1.06-3 1.06 3zm3.5 6.91-1.64 1.25.59 1.98-1.7-1.17-1.7 1.17.59-1.98L15.75 11l2.06-.05L18.5 9l.69 1.95zm-2.28 4.95c.83-.08 1.72 1.1 1.19 1.85-.32.45-.66.87-1.08 1.27C15.17 23 8.84 23 4.94 19.07c-3.91-3.9-3.91-10.24 0-14.14.4-.4.82-.76 1.27-1.08.75-.53 1.93.36 1.85 1.19-.27 2.86.69 5.83 2.89 8.02a9.96 9.96 0 0 0 8.02 2.89m-1.64 2.02a12.08 12.08 0 0 1-7.8-3.47c-2.17-2.19-3.33-5-3.49-7.82-2.81 3.14-2.7 7.96.31 10.98 3.02 3.01 7.84 3.12 10.98.31"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 7a5 5 0 0 1 5 5 5 5 0 0 1-5 5 5 5 0 0 1-5-5 5 5 0 0 1 5-5m0 2a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3m0-7 2.39 3.42C13.65 5.15 12.84 5 12 5s-1.65.15-2.39.42zM3.34 7l4.16-.35A7.2 7.2 0 0 0 5.94 8.5c-.44.74-.69 1.5-.83 2.29zm.02 10 1.76-3.77a7.131 7.131 0 0 0 2.38 4.14zM20.65 7l-1.77 3.79a7.02 7.02 0 0 0-2.38-4.15zm-.01 10-4.14.36c.59-.51 1.12-1.14 1.54-1.86.42-.73.69-1.5.83-2.29zM12 22l-2.41-3.44c.74.27 1.55.44 2.41.44.82 0 1.63-.17 2.37-.44z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+  
+
+<nav class="md-nav md-nav--primary md-nav--integrated" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="elevata" class="md-nav__button md-logo" aria-label="elevata" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    elevata
+  </label>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../getting_started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ Getting Started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../secure_metadata_connectivity/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ Secure Metadata Connectivity
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Metadata Model & Generation
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Metadata Model & Generation
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../generation_logic/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ Generation Logic
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../incremental_load/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ Incremental Load Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../load_sql_architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ Load SQL Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../historization_architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ Historization Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../schema_evolution/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ Schema Evolution
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SQL Rendering & Dialects
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    SQL Rendering & Dialects
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../sql_rendering_conventions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ SQL Rendering Conventions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dialect_system/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ Dialect System
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../target_backends/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ Target Backends
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Execution & Observability
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Execution & Observability
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../load_execution_architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ Load Execution & Orchestration Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../architecture_control_plane/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ Architecture Control Plane
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Concepts
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Concepts
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../architecture_overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ Architecture Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../query_builder_and_query_tree/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ Query Builder & Query Tree
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../determinism_and_execution_semantics/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ Determinism & Execution Semantics
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../logical_plan/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ Lineage Model & Logical Plan
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../expression_dsl_and_ast/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ Expression DSL & AST
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../hashing_architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ Hashing Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../sql_preview_pipeline/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ SQL Preview & Rendering Pipeline
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../bizcore/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ Bizcore — Business Semantics Layer
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../health_check/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ Metadata Health Check
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Source Integration
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Source Integration
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../source_backends/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ Source Backends
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_8" >
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing & Quality
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Testing & Quality
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tests/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ Test Setup & Guidelines
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_9" >
+        
+          
+          <label class="md-nav__link" for="__nav_9" id="__nav_9_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Strategy & Architecture
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_9_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_9">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Strategy & Architecture
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../strategy/elevata_platform_strategy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ elevata Platform Strategy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_10" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_10" id="__nav_10_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Project
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_10_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_10">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Project
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../readme_ref/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ Main Project README
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ Changelog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+
+<h1 id="changelog">Changelog<a class="headerlink" href="#changelog" title="Permanent link">&para;</a></h1>
+<h1 id="changelog_1">Changelog<a class="headerlink" href="#changelog_1" title="Permanent link">&para;</a></h1>
+<p>All notable changes to this project will be documented in this file.<br />
+This project adheres to <a href="https://semver.org/">Semantic Versioning</a> and <a href="https://keepachangelog.com/">Keep a Changelog</a>.</p>
+<hr />
+<p>📈 For the full roadmap, see <a href="https://github.com/elevata-labs/elevata/blob/main/README.md">Project Readme</a></p>
+<p>🧾 Licensed under the <strong>AGPL-v3</strong> — open, governed, and community-driven.<br />
+💡 <em>elevata keeps evolving — one small, meaningful release at a time.</em></p>
+<hr />
+<h2 id="unreleased">[Unreleased]<a class="headerlink" href="#unreleased" title="Permanent link">&para;</a></h2>
+<p>TBD</p>
+<h2 id="unreleased_1">[Unreleased]<a class="headerlink" href="#unreleased_1" title="Permanent link">&para;</a></h2>
+<p>TBD</p>
+<hr />
+<h2 id="170-2026-05-16">[1.7.0] - 2026-05-16<a class="headerlink" href="#170-2026-05-16" title="Permanent link">&para;</a></h2>
+<p>This release introduces the <strong>Architecture Control Plane</strong> for deterministic architecture review, comparison,<br />
+and promotion workflows.</p>
+<p>Architecture changes can now be rendered as explicit, policy-aware reports before execution.<br />
+Architecture State, Change Reports, and Promotion Reports expose stable fingerprints, making architecture <br />
+intent reviewable, comparable, and CI-friendly.</p>
+<p>The focus is controlled lifecycle management for executable architecture.</p>
+<hr />
+<h3 id="added">✨ Added<a class="headerlink" href="#added" title="Permanent link">&para;</a></h3>
+<h4 id="architecture-control-plane">Architecture Control Plane<a class="headerlink" href="#architecture-control-plane" title="Permanent link">&para;</a></h4>
+<ul>
+<li>Added deterministic Architecture Change Reports via <code>elevata_plan</code>  </li>
+<li>Added Architecture State export via <code>elevata_state</code>  </li>
+<li>Added Architecture Promotion Reports via <code>elevata_promote</code>  </li>
+<li>Added JSON and text rendering for architecture reports  </li>
+<li>Added deterministic fingerprints for:  <ul>
+<li>Architecture State  </li>
+<li>Architecture Change Report  </li>
+<li>Architecture Promotion Report  </li>
+</ul>
+</li>
+<li>Added CI-oriented exit policies:  <ul>
+<li><code>--fail-on-changes</code>  </li>
+<li><code>--fail-on-blocked</code>  </li>
+<li><code>--fail-on-destructive</code>  </li>
+</ul>
+</li>
+<li>Added explicit baseline support for <code>elevata_plan</code> via <code>--previous-state</code>  </li>
+<li>Added configurable architecture state directory via <code>ELEVATA_ARCH_STATE_DIR</code></li>
+</ul>
+<h4 id="architecture-state-artifacts">Architecture State Artifacts<a class="headerlink" href="#architecture-state-artifacts" title="Permanent link">&para;</a></h4>
+<ul>
+<li>Added public Architecture State file serialization and deserialization helpers  </li>
+<li>Added explicit Architecture State export for review, CI, and promotion workflows  </li>
+<li>Added fingerprint-only output for Architecture State inspection  </li>
+<li>Added controlled baseline handling for persisted runtime architecture state  </li>
+</ul>
+<h4 id="shared-architecture-services">Shared Architecture Services<a class="headerlink" href="#shared-architecture-services" title="Permanent link">&para;</a></h4>
+<ul>
+<li>Added shared architecture scope resolution for report and load paths  </li>
+<li>Added shared policy decision reporting for MigrationPlan actions  </li>
+<li>Added shared schema-operation shadow compare utilities  </li>
+<li>Added deterministic report rendering helpers for architecture and promotion reports</li>
+</ul>
+<hr />
+<h3 id="improved">🔄 Improved<a class="headerlink" href="#improved" title="Permanent link">&para;</a></h3>
+<ul>
+<li><code>elevata_load</code> uses shared architecture scope resolution while preserving execution guard behavior  </li>
+<li><code>elevata_load</code> uses shared shadow-compare utilities while preserving enforce-mode blocking semantics  </li>
+<li>Architecture state persistence keeps a stable runtime baseline while allowing explicit state artifact exports  </li>
+<li>Architecture report generation uses the same semantic path as execution:<br />
+  Architecture State → Architecture Diff → MigrationPlan → Policy Decisions  </li>
+<li>README highlights Architecture Control Plane capabilities in a compact form  </li>
+<li>Documentation now describes Architecture State, Change Reports, Promotion Reports, CI exit policies,<br />
+and deterministic fingerprints</li>
+</ul>
+<hr />
+<h3 id="governance-determinism">🔒 Governance &amp; Determinism<a class="headerlink" href="#governance-determinism" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Architecture changes can be reviewed as deterministic artifacts before execution  </li>
+<li>Promotion comparisons use stable Architecture State files as input artifacts  </li>
+<li>Destructive schema actions are surfaced through explicit policy decisions  </li>
+<li>Report fingerprints provide stable references for review, CI, and promotion workflows  </li>
+<li>Load execution remains protected by its own preflight and guard checks</li>
+</ul>
+<hr />
+<h3 id="quality-stability">🧪 Quality &amp; Stability<a class="headerlink" href="#quality-stability" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Added tests for Architecture Change Reports</li>
+<li>Added tests for Architecture Promotion Reports</li>
+<li>Added tests for Architecture State export and file roundtrips</li>
+<li>Added tests for report fingerprints and deterministic JSON output</li>
+<li>Added tests for scope resolution and <code>_hist</code> scope expansion</li>
+<li>Added tests for shared shadow-compare behavior</li>
+<li>Added CLI tests for <code>elevata_state</code>, <code>elevata_plan</code>, and <code>elevata_promote</code></li>
+<li>Preserved Architecture Guard enforce-mode behavior in <code>elevata_load</code></li>
+</ul>
+<hr />
+<h2 id="160-2026-05-14">[1.6.0] - 2026-05-14<a class="headerlink" href="#160-2026-05-14" title="Permanent link">&para;</a></h2>
+<p>This release completes the cutover to <strong>Architecture-driven Materialization</strong>.<br />
+Schema evolution is now driven by Architecture State → Architecture Diff → MigrationPlan,<br />
+and the resulting materialization steps are applied deterministically before load SQL execution.</p>
+<p>The focus is turning architecture from an observable plan into an executable runtime contract.</p>
+<hr />
+<h3 id="added_1">✨ Added<a class="headerlink" href="#added_1" title="Permanent link">&para;</a></h3>
+<h4 id="architecture-driven-materialization">Architecture-driven Materialization<a class="headerlink" href="#architecture-driven-materialization" title="Permanent link">&para;</a></h4>
+<ul>
+<li>MigrationPlan is now the authoritative schema-evolution intent for materialization  </li>
+<li>Materialization steps are derived from architecture changes instead of planner-side drift heuristics  </li>
+<li>Deterministic execution path for:  </li>
+<li>dataset renames  </li>
+<li>column renames  </li>
+<li>additive schema changes  </li>
+<li>type evolution  </li>
+<li>rebuild-based remediation where required  </li>
+<li>Shadow compare can enforce consistency between architecture intent and planned materialization DDL</li>
+</ul>
+<h4 id="controlled-rebuild-execution">Controlled rebuild execution<a class="headerlink" href="#controlled-rebuild-execution" title="Permanent link">&para;</a></h4>
+<ul>
+<li>Deterministic rebuild flows can now execute all required steps when policy allows them:  </li>
+<li>temporary table cleanup  </li>
+<li>temporary table creation  </li>
+<li>backfill via <code>INSERT ... SELECT</code>  </li>
+<li>source table replacement  </li>
+<li>final table rename  </li>
+<li>Rebuild steps remain policy-aware and are only applied after preflight validation</li>
+</ul>
+<hr />
+<h3 id="improved_1">🔄 Improved<a class="headerlink" href="#improved_1" title="Permanent link">&para;</a></h3>
+<ul>
+<li><code>elevata_load</code> now requires Architecture MigrationPlan intent for deterministic materialization paths  </li>
+<li>Preflight behavior is stricter and more explainable before DDL or DML execution starts  </li>
+<li>Destructive schema operations are now executable only after explicit policy approval  </li>
+<li><code>_hist</code> physical drops remain separately gated via <code>ELEVATA_ALLOW_AUTO_DROP_HIST_COLUMNS</code>  </li>
+<li>Full-refresh materialization suppresses redundant column-level DDL while preserving dataset rename intent  </li>
+<li>Architecture guard enforcement now runs even with <code>--no-print</code>, preventing execution from bypassing shadow-compare blocking</li>
+</ul>
+<hr />
+<h3 id="fixed">🛠️ Fixed<a class="headerlink" href="#fixed" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Prevented destructive-but-approved materialization steps from being silently skipped by the applier  </li>
+<li>Fixed enforcement behavior where <code>--no-print</code> could suppress Architecture guard execution  </li>
+<li>Stabilized MaterializationPolicy compatibility for direct test and caller instantiation  </li>
+<li>Cleaned up outdated preview-only wording around MigrationPlan semantics</li>
+</ul>
+<hr />
+<h3 id="governance-determinism_1">🔒 Governance &amp; Determinism<a class="headerlink" href="#governance-determinism_1" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Architecture is now the source of truth for schema evolution intent  </li>
+<li>Materialization is no longer driven by implicit planner-side schema changes  </li>
+<li>Policy gates remain explicit for destructive operations  </li>
+<li>Execution blocks before applying schema changes when architecture intent and materialization output diverge</li>
+</ul>
+<hr />
+<h2 id="151-2026-04-28">[1.5.1] - 2026-04-28<a class="headerlink" href="#151-2026-04-28" title="Permanent link">&para;</a></h2>
+<p>This patch release improves developer experience and UI consistency.<br />
+It adds safe test isolation (preventing accidental writes to the metadata DB),<br />
+updates the recommended Python version, and polishes list view actions.</p>
+<h3 id="improved_2">🔄 Improved<a class="headerlink" href="#improved_2" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Recommended Python version updated to <strong>3.14</strong> (supported: <strong>Python 3.11+</strong>)</li>
+<li>Safer test runner setup:</li>
+<li><code>pytest-django</code> added to base requirements</li>
+<li>test settings enforce isolated DB behavior (SQLite tests run in-memory)</li>
+<li><code>runtests.py</code> now uses test settings by default and fails fast if <code>pytest-django</code> is missing</li>
+</ul>
+<h3 id="fixed_1">🛠️ Fixed<a class="headerlink" href="#fixed_1" title="Permanent link">&para;</a></h3>
+<ul>
+<li>UI list actions: consistent button group dividers across mixed button styles (solid/outline/disabled)</li>
+<li>SourceDataset list: Import action now renders consistently (disabled placeholder when unsupported), avoiding visual “jitter”</li>
+<li>Reduced pytest warning noise by avoiding premature plugin imports</li>
+</ul>
+<hr />
+<h2 id="150-2026-04-24">[1.5.0] - 2026-04-24<a class="headerlink" href="#150-2026-04-24" title="Permanent link">&para;</a></h2>
+<p>This release strengthens elevata’s Architecture Runtime by making architecture drift visible,<br />
+scoping changes to the executed dataset set, and introducing policy-gated destructive schema operations.</p>
+<p>The focus is deterministic, explainable schema evolution across supported warehouses.</p>
+<hr />
+<h3 id="added_2">✨ Added<a class="headerlink" href="#added_2" title="Permanent link">&para;</a></h3>
+<h4 id="architecture-state-diff-scoped">Architecture State &amp; Diff (scoped)<a class="headerlink" href="#architecture-state-diff-scoped" title="Permanent link">&para;</a></h4>
+<ul>
+<li>Architecture state persistence with stable fingerprinting  </li>
+<li>Scoped architecture diff for the current execution order (includes related <code>_hist</code> targets)  </li>
+<li>Migration plan preview for renames, adds, drops and type evolution signals  </li>
+<li>Shadow compare that cross-checks migration intent vs. planned materialization DDL</li>
+</ul>
+<h4 id="policy-gated-destructive-schema-operations">Policy-gated destructive schema operations<a class="headerlink" href="#policy-gated-destructive-schema-operations" title="Permanent link">&para;</a></h4>
+<ul>
+<li>Base-table <code>DROP COLUMN</code> support gated by <code>ELEVATA_ALLOW_AUTO_DROP_COLUMNS</code>  </li>
+<li>Optional <code>_hist</code> physical drops gated by <code>ELEVATA_ALLOW_AUTO_DROP_HIST_COLUMNS</code>  </li>
+<li>Minimal CLI notice when destructive DDL is planned/executed (prevents “silent cleanup” surprises)</li>
+</ul>
+<hr />
+<h3 id="improved_3">🔄 Improved<a class="headerlink" href="#improved_3" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Clearer CLI output for architecture drift and migration intent  </li>
+<li>More robust cross-dialect type normalization and equivalence handling  </li>
+<li>Improved determinism for drift detection across warehouse-specific type representations</li>
+</ul>
+<hr />
+<h3 id="fixed_2">🛠️ Fixed<a class="headerlink" href="#fixed_2" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Multiple edge cases in schema drift planning around rename/add/drop interactions  </li>
+<li>Improved correctness for historization-related schema sync scenarios  </li>
+<li>Miscellaneous stability improvements in execution + materialization tooling</li>
+</ul>
+<hr />
+<h2 id="143-2026-04-04">[1.4.3] - 2026-04-04<a class="headerlink" href="#143-2026-04-04" title="Permanent link">&para;</a></h2>
+<p>This patch release restores the correct logo asset reference in elevata's UI.</p>
+<p>The focus of this release is a complete and consistent default UI experience<br />
+for users cloning and starting elevata locally.</p>
+<hr />
+<h3 id="fixed_3">🛠️ Fixed<a class="headerlink" href="#fixed_3" title="Permanent link">&para;</a></h3>
+<h4 id="ui-logo-asset-reference">UI Logo Asset Reference<a class="headerlink" href="#ui-logo-asset-reference" title="Permanent link">&para;</a></h4>
+<ul>
+<li>Corrected the UI logo asset reference used by the web interface  </li>
+<li>Restored the intended default UI appearance for fresh local setups  </li>
+<li>Removed a visual regression that could make the interface appear incomplete<br />
+  despite an otherwise successful startup</li>
+</ul>
+<hr />
+<h2 id="142-2026-03-11">[1.4.2] - 2026-03-11<a class="headerlink" href="#142-2026-03-11" title="Permanent link">&para;</a></h2>
+<p>This patch release introduces deterministic audit attribution for metadata mutations<br />
+created through ManyToMany relations and scoped metadata editing workflows.</p>
+<p>The focus of this release is to ensure that all metadata mutations performed within<br />
+elevata's architecture runtime are consistently attributed to the initiating user.</p>
+<hr />
+<h3 id="added_3">✨ Added<a class="headerlink" href="#added_3" title="Permanent link">&para;</a></h3>
+<h4 id="deterministic-audit-attribution-for-through-models">Deterministic Audit Attribution for Through Models<a class="headerlink" href="#deterministic-audit-attribution-for-through-models" title="Permanent link">&para;</a></h4>
+<ul>
+<li>Introduced automatic audit propagation for ManyToMany through models
+  created via <code>form.save_m2m()</code>  </li>
+<li>Added audit backfill logic ensuring <code>created_by</code> and <code>updated_by</code>
+  are populated for lineage relations such as <code>TargetColumnInput</code>  </li>
+<li>Ensured consistent audit attribution across scoped metadata editors
+  and Query Builder operations</li>
+</ul>
+<hr />
+<h3 id="improved_4">⚙ Improved<a class="headerlink" href="#improved_4" title="Permanent link">&para;</a></h3>
+<h4 id="metadata-mutation-audit-consistency">Metadata Mutation Audit Consistency<a class="headerlink" href="#metadata-mutation-audit-consistency" title="Permanent link">&para;</a></h4>
+<ul>
+<li>Hardened audit attribution across metadata CRUD operations,
+  scoped views, and contract synchronization workflows  </li>
+<li>Centralized audit backfill logic for ManyToMany through models
+  created outside standard ORM save paths</li>
+</ul>
+<h4 id="audit-backfill-performance">Audit Backfill Performance<a class="headerlink" href="#audit-backfill-performance" title="Permanent link">&para;</a></h4>
+<ul>
+<li>Optimized audit propagation for through models using
+  SQL-based updates instead of row-by-row ORM updates</li>
+</ul>
+<hr />
+<h2 id="141-2026-03-01">[1.4.1] - 2026-03-01<a class="headerlink" href="#141-2026-03-01" title="Permanent link">&para;</a></h2>
+<p>This patch release introduces and stabilizes elevata’s
+dialect-specific SQL keyword registry.</p>
+<p>The focus of this release is deterministic, dialect-owned handling
+of reserved identifiers across all supported warehouses.</p>
+<hr />
+<h3 id="added_4">✨ Added<a class="headerlink" href="#added_4" title="Permanent link">&para;</a></h3>
+<h4 id="deterministic-sql-keyword-registry">Deterministic SQL Keyword Registry<a class="headerlink" href="#deterministic-sql-keyword-registry" title="Permanent link">&para;</a></h4>
+<ul>
+<li>Introduced dialect-specific reserved keyword modules<br />
+  (<code>rendering/dialects/keywords/*.py</code>)  </li>
+<li>Added <code>elevata_generate_reserved_keywords</code> management command  </li>
+<li>Engine-truth extraction for:  </li>
+<li>Databricks (<code>sql_keywords()</code>)  </li>
+<li>DuckDB (<code>duckdb_keywords()</code>)  </li>
+<li>Documentation-based extraction with strict validation for:  </li>
+<li>PostgreSQL  </li>
+<li>Snowflake  </li>
+<li>MSSQL  </li>
+<li>Fabric Warehouse  </li>
+<li>BigQuery  </li>
+<li>Sanity checks guarding against incomplete or malformed keyword sets  </li>
+<li>Optional core SQL overlay for defensive fallback safety</li>
+</ul>
+<hr />
+<h3 id="improved_5">🔄 Improved<a class="headerlink" href="#improved_5" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Fully restored dialect-owned SQL rendering for keyword extraction  </li>
+<li>Ensured no vendor-specific SQL remains in management commands  </li>
+<li>Stabilized documentation parsing across vendor doc layouts  </li>
+<li>Harmonized quoting behavior across all dialects</li>
+</ul>
+<hr />
+<h3 id="architectural-integrity">🔒 Architectural Integrity<a class="headerlink" href="#architectural-integrity" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Keyword extraction is deterministic and reproducible  </li>
+<li>All SQL used in extraction is owned by the dialect layer  </li>
+<li>Identifier quoting behavior is now fully dialect-driven</li>
+</ul>
+<hr />
+<h2 id="140-2026-02-28">[1.4.0] - 2026-02-28<a class="headerlink" href="#140-2026-02-28" title="Permanent link">&para;</a></h2>
+<p>This release significantly expands elevata’s ingestion capabilities (REST + Files)<br />
+while further strengthening deterministic, dialect-owned execution semantics<br />
+across all supported warehouses.</p>
+<hr />
+<h3 id="added_5">✨ Added<a class="headerlink" href="#added_5" title="Permanent link">&para;</a></h3>
+<h4 id="ingestion-framework-raw">Ingestion Framework (RAW)<a class="headerlink" href="#ingestion-framework-raw" title="Permanent link">&para;</a></h4>
+<ul>
+<li>Native RAW ingestion for REST APIs and file-based sources via <code>SourceDataset.ingestion_config</code>  </li>
+<li>Support for CSV, JSON, JSONL, Excel and Parquet sources  </li>
+<li>Environment variable expansion for file URIs (e.g. <code>${ELEVATA_INGEST_ROOT}/...</code>)  </li>
+<li>CSV parsing options (<code>delimiter</code>, <code>quotechar</code>, <code>encoding</code>)  </li>
+<li>Excel ingestion options (<code>sheet_name</code> / <code>sheet_index</code>, <code>header_row</code>, <code>max_rows</code>) with strict validation  </li>
+<li>Chunked file processing for large datasets with accurate total row tracking  </li>
+<li>Standardized RAW landing with preserved JSON <code>payload</code> (system role)  </li>
+<li>Deterministic JSON path–driven column mapping for REST and JSON ingestion</li>
+</ul>
+<h4 id="ingestion-routing">Ingestion Routing<a class="headerlink" href="#ingestion-routing" title="Permanent link">&para;</a></h4>
+<ul>
+<li>Unified ingestion dispatcher as single entry point (<code>ingest_raw_for_source_dataset(...)</code>)</li>
+</ul>
+<hr />
+<h3 id="improved_6">✨ Improved<a class="headerlink" href="#improved_6" title="Permanent link">&para;</a></h3>
+<h4 id="dialect-owned-merge-rendering">Dialect-Owned Merge Rendering<a class="headerlink" href="#dialect-owned-merge-rendering" title="Permanent link">&para;</a></h4>
+<ul>
+<li>Refactored merge rendering to delegate SQL shape entirely to dialects  </li>
+<li><code>load_sql</code> now provides semantic ingredients only (source select, keys, columns)  </li>
+<li>Cross-platform MERGE fallbacks where native MERGE is not available  </li>
+<li>Improved dialect diagnostics and merge validation behavior</li>
+</ul>
+<h4 id="fully-executable-historization-scd-type-2">Fully Executable Historization (SCD Type 2)<a class="headerlink" href="#fully-executable-historization-scd-type-2" title="Permanent link">&para;</a></h4>
+<ul>
+<li>History datasets (<code>*_hist</code>) now generate execution-ready SQL  </li>
+<li>Historization pipeline fully dialect-owned (incremental history primitives)  </li>
+<li>Strict validation for required SCD technical columns and INSERT alignment</li>
+</ul>
+<hr />
+<h3 id="fixed_4">🛠️ Fixed<a class="headerlink" href="#fixed_4" title="Permanent link">&para;</a></h3>
+<ul>
+<li>SQLAlchemy 2.0 execution compatibility in ingestion landing paths  </li>
+<li>Correct cumulative row reporting for chunked RAW ingestion  </li>
+<li>Cross-dialect merge, historization and delete-detection edge cases  </li>
+<li>BigQuery hashing stability and literal rendering correctness  </li>
+<li>Windows file URI normalization for file-based ingestion</li>
+</ul>
+<hr />
+<h2 id="131-2026-02-18">[1.3.1] - 2026-02-18<a class="headerlink" href="#131-2026-02-18" title="Permanent link">&para;</a></h2>
+<p>This release stabilizes the Airflow example environment and resolves several issues<br />
+that could prevent successful execution when testing elevata with external target<br />
+systems.</p>
+<p>The focus of this release is usability and reliability of the Airflow example setup,<br />
+ensuring that users can immediately validate elevata orchestration against their own<br />
+target database without requiring additional infrastructure.</p>
+<hr />
+<h3 id="improved_7">✨ Improved<a class="headerlink" href="#improved_7" title="Permanent link">&para;</a></h3>
+<h4 id="airflow-example-stability">Airflow Example Stability<a class="headerlink" href="#airflow-example-stability" title="Permanent link">&para;</a></h4>
+<ul>
+<li>Airflow example now installs backend-specific dependencies at container startup<br />
+  instead of build time  </li>
+<li>Backend selection is now driven entirely by environment configuration
+  via <code>ELEVATA_SQL_DIALECT</code></li>
+<li>Removed hardcoded backend assumptions from Dockerfile and docker-compose  </li>
+<li>Airflow containers now run elevata inside an isolated virtual environment,<br />
+  preventing dependency conflicts with Airflow itself  </li>
+<li>Improved compatibility with Databricks, PostgreSQL, MSSQL, Snowflake,<br />
+  BigQuery and other supported targets</li>
+</ul>
+<h4 id="configuration-environment-handling">Configuration &amp; Environment Handling<a class="headerlink" href="#configuration-environment-handling" title="Permanent link">&para;</a></h4>
+<ul>
+<li>Environment configuration now consistently sourced from <code>.env</code>  </li>
+<li>Removed docker-compose defaults overriding user configuration  </li>
+<li>Simplified switching between target systems without rebuilding images  </li>
+<li>Improved portability for local testing and Open Source usage</li>
+</ul>
+<h4 id="dependency-handling">Dependency Handling<a class="headerlink" href="#dependency-handling" title="Permanent link">&para;</a></h4>
+<ul>
+<li>Backend-specific requirements are installed only when required  </li>
+<li>Prevented SQLAlchemy version conflicts with Airflow dependencies  </li>
+<li>Optional dialect imports (e.g. DuckDB) no longer fail when backend is not active</li>
+</ul>
+<hr />
+<h3 id="fixed_5">🛠️ Fixed<a class="headerlink" href="#fixed_5" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Airflow example failing to start due to dependency conflicts  </li>
+<li>SQLAlchemy downgrade caused by backend requirement installation  </li>
+<li>Incorrect backend loading when multiple dialects were present  </li>
+<li>Environment variable precedence issues between <code>.env</code>,<br />
+  docker-compose defaults and container runtime  </li>
+<li>Multiple startup issues related to entrypoint execution  </li>
+<li>Improved robustness of dialect imports across environments</li>
+</ul>
+<hr />
+<h3 id="internal">🔧 Internal<a class="headerlink" href="#internal" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Refactored Airflow entrypoint initialization logic  </li>
+<li>Added backend installation stamp mechanism to avoid repeated installs  </li>
+<li>Improved separation between Airflow runtime dependencies<br />
+  and elevata execution dependencies</li>
+</ul>
+<hr />
+<h2 id="130-2026-02-17">[1.3.0] - 2026-02-17<a class="headerlink" href="#130-2026-02-17" title="Permanent link">&para;</a></h2>
+<p>This release introduces execution safety improvements, deterministic schema evolution,<br />
+and orchestration-level predictability enhancements.</p>
+<p>The focus of this release is long-term stability and reproducible execution behavior<br />
+across platforms, rather than expanding modeling capabilities.</p>
+<p>Execution planning, schema evolution, and load execution are now aligned around a<br />
+deterministic preflight model that guarantees predictable outcomes before execution begins.</p>
+<hr />
+<h3 id="added_6">✨ Added<a class="headerlink" href="#added_6" title="Permanent link">&para;</a></h3>
+<h4 id="execution-safety-predictability">Execution Safety &amp; Predictability<a class="headerlink" href="#execution-safety-predictability" title="Permanent link">&para;</a></h4>
+<ul>
+<li>Introduced preflight validation phase before execution  </li>
+<li>Deterministic failure behavior for unsafe schema evolution scenarios  </li>
+<li>Execution now blocks before SQL execution when unsafe changes are detected  </li>
+<li>Consistent error vs warning classification during materialization planning  </li>
+<li>Improved transparency of execution behavior and failure causes</li>
+</ul>
+<h4 id="schema-evolution-type-drift-handling">Schema Evolution &amp; Type Drift Handling<a class="headerlink" href="#schema-evolution-type-drift-handling" title="Permanent link">&para;</a></h4>
+<ul>
+<li>Canonical datatype comparison across all supported dialects  </li>
+<li>Type drift detection during materialization planning  </li>
+<li>Drift classification into:  </li>
+<li>equivalent  </li>
+<li>widening (safe)  </li>
+<li>narrowing / incompatible (unsafe)  </li>
+<li>Automatic schema evolution for safe widening changes  </li>
+<li>Dialect-aware ALTER COLUMN generation where supported  </li>
+<li>Deterministic rebuild fallback for dialects without ALTER support  </li>
+<li>Consistent schema evolution behavior across Snowflake, Databricks, PostgreSQL,<br />
+  MSSQL and DuckDB</li>
+</ul>
+<h4 id="materialization-execution-architecture">Materialization &amp; Execution Architecture<a class="headerlink" href="#materialization-execution-architecture" title="Permanent link">&para;</a></h4>
+<ul>
+<li>Materialization split into planning and application phases  </li>
+<li>MaterializationPlan now explicitly represents:  </li>
+<li>required DDL steps  </li>
+<li>warnings  </li>
+<li>blocking errors  </li>
+<li>Structural synchronization of rawcore <code>_hist</code> datasets aligned with base datasets  </li>
+<li>Improved consistency between schema introspection, metadata, and execution behavior</li>
+</ul>
+<h4 id="orchestration-execution-planning">Orchestration &amp; Execution Planning<a class="headerlink" href="#orchestration-execution-planning" title="Permanent link">&para;</a></h4>
+<ul>
+<li>Metadata-driven execution manifest generation  </li>
+<li>Deterministic dependency graph for dataset execution order  </li>
+<li>Airflow example DAG for lineage-based execution orchestration  </li>
+<li>Execution planning fingerprint for reproducibility validation</li>
+</ul>
+<h4 id="query-builder-ux-improvements">Query Builder UX Improvements<a class="headerlink" href="#query-builder-ux-improvements" title="Permanent link">&para;</a></h4>
+<ul>
+<li>Query Builder now displays inline validation and dependency conflict messages<br />
+  directly in the editing context instead of failing silently  </li>
+<li>Blocking mutations caused by downstream dataset dependencies are surfaced<br />
+  as contextual warnings in the grid UI  </li>
+<li>Inline editors remain open when a mutation is rejected, allowing users to<br />
+  immediately correct input  </li>
+<li>Conflict warnings are automatically cleared when cancelling or completing edits  </li>
+<li>Improved transparency when renaming or modifying query-derived columns<br />
+  referenced downstream</li>
+</ul>
+<hr />
+<h3 id="fixed_6">🛠️ Fixed<a class="headerlink" href="#fixed_6" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Multiple edge cases where schema drift could result in inconsistent execution behavior  </li>
+<li>Incorrect handling of schema evolution across dialect-specific type representations  </li>
+<li>Improved stability of materialization planning for renamed datasets and columns  </li>
+<li>Various internal consistency improvements in execution planning and validation</li>
+</ul>
+<hr />
+<h3 id="governance-determinism_2">🔒 Governance &amp; Determinism<a class="headerlink" href="#governance-determinism_2" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Execution behavior is now fully determined before execution begins</li>
+<li>Unsafe schema changes are blocked deterministically</li>
+<li>Reduced risk of partial schema application or inconsistent load states</li>
+<li>Improved alignment between metadata contracts and physical schema evolution</li>
+</ul>
+<hr />
+<h2 id="120-2026-02-08">[1.2.0] - 2026-02-08<a class="headerlink" href="#120-2026-02-08" title="Permanent link">&para;</a></h2>
+<p>This release introduces a major upgrade to Query Builder contract handling,<br />
+query-derived schema synchronization, and datatype inference.</p>
+<p>It significantly improves determinism, usability, and correctness of<br />
+metadata-driven query modeling while simplifying internal typing logic.</p>
+<h3 id="added_7">✨ Added<a class="headerlink" href="#added_7" title="Permanent link">&para;</a></h3>
+<h4 id="multi-platform-execution-support">Multi-platform execution support<a class="headerlink" href="#multi-platform-execution-support" title="Permanent link">&para;</a></h4>
+<ul>
+<li>Added native execution dialects for:  </li>
+<li>Snowflake  </li>
+<li>Databricks SQL (Unity Catalog)  </li>
+<li>Microsoft Fabric Warehouse  </li>
+<li>Unified execution semantics across platforms using the same metadata model  </li>
+<li>No platform-specific modeling required  </li>
+<li>Architecture defined once, executed consistently across engines</li>
+</ul>
+<p>This release marks the first version where elevata execution semantics are aligned across<br />
+multiple modern cloud data warehouse platforms.</p>
+<h4 id="query-builder-contract-handling">Query Builder &amp; Contract Handling<a class="headerlink" href="#query-builder-contract-handling" title="Permanent link">&para;</a></h4>
+<ul>
+<li>Query-derived TargetColumns are now fully synchronized with the Query Tree output contract  </li>
+<li>Automatic creation, rename, update and deletion of query-derived columns  </li>
+<li>Contract-based schema alignment between:  </li>
+<li>SQL preview  </li>
+<li>logical plan  </li>
+<li>materialized dataset schema  </li>
+<li>Aggregate nodes now redefine output contracts explicitly as:  </li>
+<li>group keys + measures only  </li>
+<li>Window and Aggregate operators expose correct upstream input columns<br />
+  without requiring intermediate target column assignment</li>
+</ul>
+<h4 id="datatype-inference">Datatype inference<a class="headerlink" href="#datatype-inference" title="Permanent link">&para;</a></h4>
+<ul>
+<li>Deterministic datatype inference for:  </li>
+<li>window functions (ROW_NUMBER, RANK, DENSE_RANK)  </li>
+<li>aggregate measures (COUNT, SUM, MIN, MAX, AVG)  </li>
+<li>COUNT and ranking functions now default to INTEGER instead of BIGINT  </li>
+<li>Datatypes inferred from upstream input columns where possible  </li>
+<li>Canonical datatype resolution aligned with DATATYPE_CHOICES</li>
+</ul>
+<h4 id="query-builder-ux-improvements_1">Query Builder UX improvements<a class="headerlink" href="#query-builder-ux-improvements_1" title="Permanent link">&para;</a></h4>
+<ul>
+<li>Aggregate editor now shows input dataset columns directly  </li>
+<li>Window and Aggregate nodes operate on input contracts instead of
+  materialized target schema  </li>
+<li>Eliminates unnecessary intermediate column creation</li>
+</ul>
+<h4 id="databricks-execution-improvements">Databricks execution improvements<a class="headerlink" href="#databricks-execution-improvements" title="Permanent link">&para;</a></h4>
+<ul>
+<li>Improved raw ingestion performance for Databricks SQL Warehouse by batching multi-row INSERT execution</li>
+<li>Eliminates per-row execution overhead caused by connector-level executemany behavior</li>
+<li>No changes required to metadata models or query definitions</li>
+</ul>
+<h3 id="fixed_7">🛠️ Fixed<a class="headerlink" href="#fixed_7" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Window columns incorrectly defaulting to STRING datatype  </li>
+<li>Aggregate measures not inheriting input column datatype  </li>
+<li>Contract sync overriding inferred datatypes  </li>
+<li>Missing input columns in Aggregate editor selection  </li>
+<li>Incorrect system-managed flag for query-derived columns  </li>
+<li>Multiple contract sync race conditions caused by partial state inference</li>
+</ul>
+<h3 id="governance-determinism_3">🔒 Governance &amp; Determinism<a class="headerlink" href="#governance-determinism_3" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Query contract inference now consistently evaluates against query_head  </li>
+<li>Dataset schema always reflects effective query output contract  </li>
+<li>Deterministic datatype normalization across query-derived columns  </li>
+<li>Reduced risk of schema drift between metadata and generated SQL</li>
+</ul>
+<hr />
+<h2 id="110-2026-01-31">[1.1.0] - 2026-01-31<a class="headerlink" href="#110-2026-01-31" title="Permanent link">&para;</a></h2>
+<p>This release introduces a major upgrade to the Query Builder and UNION workflow,<br />
+together with critical stability and governance improvements across metadata,<br />
+schema sync, and historization.</p>
+<h3 id="added_8">✨ Added<a class="headerlink" href="#added_8" title="Permanent link">&para;</a></h3>
+<h4 id="query-builder-union-workflow">Query Builder &amp; UNION workflow<a class="headerlink" href="#query-builder-union-workflow" title="Permanent link">&para;</a></h4>
+<ul>
+<li>Full UNION operator support with:  </li>
+<li>Branch management  </li>
+<li>Output schema contracts  </li>
+<li>Column mappings per branch  </li>
+<li>Guided UNION toolbar with:  </li>
+<li>Output / Branch navigation  </li>
+<li>Schema copy from branch  </li>
+<li>Auto-map by name  </li>
+<li>Validation and “Set as head”  </li>
+<li>Contract snapshot with input → output diff  </li>
+<li>Determinism and governance indicators (ordering, window/aggregate checks)  </li>
+<li>Contextual node summaries (SELECT, AGGREGATE, WINDOW, UNION)</li>
+</ul>
+<h4 id="metadata-driven-governance">Metadata-driven governance<a class="headerlink" href="#metadata-driven-governance" title="Permanent link">&para;</a></h4>
+<ul>
+<li>Clear separation of <strong>query_root</strong> (anchor) and <strong>query_head</strong> (current output)  </li>
+<li>Head-based validation, SQL preview and contract inference  </li>
+<li>Guardrails for destructive operations with downstream dependents</li>
+</ul>
+<h4 id="schema-sync-historization">Schema sync &amp; historization<a class="headerlink" href="#schema-sync-historization" title="Permanent link">&para;</a></h4>
+<ul>
+<li>Robust metadata-driven rename propagation via <code>former_names</code>  </li>
+<li>Orphan preservation in <code>_hist</code> (inactive, detached, not dropped)  </li>
+<li>Safe FK reference deletion that never removes hist columns  </li>
+<li>Technical tail columns always appended last  </li>
+<li>Deterministic ordinal normalization for system-managed schemas</li>
+</ul>
+<h3 id="fixed_8">🛠️ Fixed<a class="headerlink" href="#fixed_8" title="Permanent link">&para;</a></h3>
+<ul>
+<li>UNIQUE constraint violations in hist regeneration  </li>
+<li>Broken rename propagation across rawcore → hist  </li>
+<li>False-positive orphan deletions  </li>
+<li>Inconsistent candidate column inference in query builder  </li>
+<li>UNION validation / navigation not triggering correctly  </li>
+<li>Output schema copy errors due to field mismatches  </li>
+<li>Multiple signal / sync race conditions</li>
+</ul>
+<h3 id="governance-safety">🔒 Governance &amp; Safety<a class="headerlink" href="#governance-safety" title="Permanent link">&para;</a></h3>
+<ul>
+<li>UNION validation enforces compatible schemas  </li>
+<li>Set-as-head explicitly marks final dataset output  </li>
+<li>Defensive rebuild of hist metadata with key lineage preservation  </li>
+<li>Deterministic ordering guarantees for window and aggregate functions</li>
+</ul>
+<hr />
+<h2 id="100-2026-01-25-first-stable-release">[1.0.0] - 2026-01-25 — First stable release<a class="headerlink" href="#100-2026-01-25-first-stable-release" title="Permanent link">&para;</a></h2>
+<p>This release marks the <strong>first stable, backwards-compatible version</strong> of elevata.</p>
+<p>elevata has evolved from a SQL generation layer into a <strong>metadata-driven, deterministic data platform engine</strong>.<br />
+From this version onwards, interfaces, metadata structures and execution semantics are considered stable.</p>
+<h3 id="highlights">✨ Highlights<a class="headerlink" href="#highlights" title="Permanent link">&para;</a></h3>
+<h4 id="query-builder-major-feature">🪄 Query Builder (Major Feature)<a class="headerlink" href="#query-builder-major-feature" title="Permanent link">&para;</a></h4>
+<ul>
+<li>Explicit, metadata-driven <strong>query planning</strong> with SELECT, AGGREGATE, WINDOW and UNION nodes  </li>
+<li>Deterministic query execution via a formal <strong>Query Tree</strong>  </li>
+<li>Clear separation between <strong>query structure</strong> and generated SQL  </li>
+<li>Guided UI for building and evolving queries without writing SQL  </li>
+<li>SQL preview reflects the <em>exact</em> executed query</li>
+</ul>
+<h4 id="query-contracts">🧠 Query Contracts<a class="headerlink" href="#query-contracts" title="Permanent link">&para;</a></h4>
+<ul>
+<li>Explicit, inspectable <strong>output schema contracts</strong>  </li>
+<li>Field-level validation and error reporting  </li>
+<li>Early detection of incompatible unions, missing mappings and invalid transformations</li>
+</ul>
+<h4 id="lineage-explainability">🧬 Lineage &amp; Explainability<a class="headerlink" href="#lineage-explainability" title="Permanent link">&para;</a></h4>
+<ul>
+<li>End-to-end lineage across datasets, fields and query nodes  </li>
+<li>Full traceability from source to serving layer  </li>
+<li>Query tree visualization for complex transformations</li>
+</ul>
+<h4 id="determinism-governance">🔒 Determinism &amp; Governance<a class="headerlink" href="#determinism-governance" title="Permanent link">&para;</a></h4>
+<ul>
+<li>Deterministic execution guarantees for aggregates and window functions  </li>
+<li>ORDER BY / PARTITION BY governance with clear warnings and errors  </li>
+<li>Clear distinction between execution errors and policy violations</li>
+</ul>
+<h4 id="platform-maturity">🧩 Platform Maturity<a class="headerlink" href="#platform-maturity" title="Permanent link">&para;</a></h4>
+<ul>
+<li>Stable execution semantics  </li>
+<li>Backwards compatibility guarantees from this release onwards  </li>
+<li>Foundation for orchestration and governance integrations in future releases</li>
+</ul>
+<hr />
+<h2 id="091-2026-01-14">[0.9.1] – 2026-01-14<a class="headerlink" href="#091-2026-01-14" title="Permanent link">&para;</a></h2>
+<h3 id="improved_8">✨ Improved<a class="headerlink" href="#improved_8" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Refined lineage visualization with configurable multi-hop upstream and downstream views  </li>
+<li>Clearer lineage semantics distinguishing direct inputs from extended execution dependencies  </li>
+<li>Improved lineage UX with consistent ordering and scope labeling</li>
+</ul>
+<h3 id="serving-layer">🧠 Serving Layer<a class="headerlink" href="#serving-layer" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Serving datasets now support presentation-oriented identifiers (friendly names)  </li>
+<li>Dataset and column naming in Serving layer allows casing, spaces, and special characters  </li>
+<li>Identifier handling is dialect-aware and uses proper quoting where required</li>
+</ul>
+<h3 id="validation-health">🛡️ Validation &amp; Health<a class="headerlink" href="#validation-health" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Extended metadata validation to distinguish blocking vs advisory findings  </li>
+<li>Improved health checks for Serving and Bizcore datasets  </li>
+<li>Validation logic consolidated and aligned across layers</li>
+</ul>
+<h3 id="internal_1">🧩 Internal<a class="headerlink" href="#internal_1" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Improved consistency between lineage analysis, validators, and UI  </li>
+<li>Minor internal cleanups in metadata services and views</li>
+</ul>
+<hr />
+<h2 id="090-2026-01-12">[0.9.0] – 2026-01-12<a class="headerlink" href="#090-2026-01-12" title="Permanent link">&para;</a></h2>
+<h3 id="bizcore-business-semantics-as-first-class-metadata">🧠 Bizcore: Business Semantics as First-Class Metadata<a class="headerlink" href="#bizcore-business-semantics-as-first-class-metadata" title="Permanent link">&para;</a></h3>
+<p>This release introduces <strong>Bizcore</strong>, a dedicated layer for modeling<br />
+business meaning, rules, and calculations as explicit metadata —<br />
+executed deterministically alongside technical datasets.</p>
+<p>Bizcore makes elevata <strong>business-capable by design</strong>, without introducing<br />
+BI-style semantic layers or query-time abstractions.</p>
+<h3 id="added_9">✨ Added<a class="headerlink" href="#added_9" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Bizcore datasets and columns as first-class metadata objects  </li>
+<li>Multi-upstream join support for Bizcore datasets  </li>
+<li>UI support for building and validating Bizcore structures  </li>
+<li>Deterministic SQL preview for Bizcore datasets  </li>
+<li>Lineage-driven qualification of expressions and joins  </li>
+<li>End-to-end traceability from Core → Bizcore → Serving</li>
+</ul>
+<h3 id="changed">🔄 Changed<a class="headerlink" href="#changed" title="Permanent link">&para;</a></h3>
+<ul>
+<li>SQL generation now fully respects semantic lineage in expressions  </li>
+<li>Join aliasing and qualification are applied consistently across layers</li>
+</ul>
+<h3 id="quality-stability_1">🧪 Quality &amp; Stability<a class="headerlink" href="#quality-stability_1" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Extensive validation of join correctness and expression rendering  </li>
+<li>Scoped and non-scoped UI flows aligned under a single metadata model  </li>
+<li>No breaking changes to existing Raw, Stage, or Core pipelines</li>
+</ul>
+<h3 id="improved_9">✨ Improved<a class="headerlink" href="#improved_9" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Manual expressions now automatically qualify unaliased column references<br />
+  with the correct input alias during SQL generation.<br />
+  This ensures consistent, unambiguous SQL for Bizcore calculations<br />
+  without requiring users to manually prefix column names.</li>
+</ul>
+<blockquote>
+<p>This release marks a major milestone: elevata now supports<br />
+<strong>explicit business semantics as metadata</strong>, not as BI-layer logic.</p>
+</blockquote>
+<hr />
+<h2 id="080-2026-01-04">[0.8.0] – 2026-01-04<a class="headerlink" href="#080-2026-01-04" title="Permanent link">&para;</a></h2>
+<h3 id="execution-orchestration-as-first-class-architecture">⚙️ Execution &amp; Orchestration as First-Class Architecture<a class="headerlink" href="#execution-orchestration-as-first-class-architecture" title="Permanent link">&para;</a></h3>
+<p>This release introduces an explicit, metadata-driven execution model,<br />
+establishing <strong>orchestration, failure semantics, and observability</strong> as first-class concerns in elevata.</p>
+<p>Execution is now planned, executed, and explained independently of SQL generation,<br />
+providing a robust foundation for platform-native orchestration and governance.</p>
+<h3 id="added_10">✨ Added<a class="headerlink" href="#added_10" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Explicit <strong>Execution Plan</strong> model separating planning from execution  </li>
+<li>Dependency-graph–based dataset execution with deterministic ordering  </li>
+<li>Multi-dataset batch execution with a shared <code>batch_run_id</code>  </li>
+<li>Structured execution policies (<code>continue_on_error</code>, <code>max_retries</code>)  </li>
+<li>Retry semantics with per-attempt tracking (<code>attempt_no</code>)  </li>
+<li>Distinct failure semantics:  </li>
+<li><code>blocked</code> (dependency-based non-execution)  </li>
+<li><code>aborted</code> (policy-based fail-fast non-execution)  </li>
+<li><strong>Load Run Snapshot</strong> (<code>meta.load_run_snapshot</code>)  </li>
+<li>Batch-level, JSON-based execution state  </li>
+<li>Captures plan, policy, dependencies, and aggregated outcomes  </li>
+<li>Extended <strong>Load Run Log</strong> (<code>meta.load_run_log</code>)  </li>
+<li>Orchestration-only events (blocked / aborted)  </li>
+<li>Best-effort, non-blocking meta logging  </li>
+<li>CLI execution diagnostics:  </li>
+<li>Execution snapshot printing (<code>--debug-execution</code>)  </li>
+<li>Snapshot persistence (<code>--write-execution-snapshot</code>)  </li>
+<li>Deterministic BigQuery table qualification for execution and metadata writes  <br />
+  (prevents sporadic cross-project <code>NotFound</code> errors during streaming inserts)  </li>
+<li>Global execution modes:  </li>
+<li>single-dataset execution with dependencies (default)  </li>
+<li>platform-wide execution in deterministic order (<code>--all</code>)  </li>
+<li>optional schema-scoped execution (<code>--schema</code>)</li>
+</ul>
+<h3 id="changed_1">🔄 Changed<a class="headerlink" href="#changed_1" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Execution semantics are no longer implicit in SQL or CLI flow  </li>
+<li>Load execution is now driven by an explicit execution model  </li>
+<li>Fail-fast behavior is deterministic and explicitly reported  </li>
+<li>Execution observability is metadata-first and dialect-agnostic  </li>
+</ul>
+<h3 id="quality-stability_2">🧪 Quality &amp; Stability<a class="headerlink" href="#quality-stability_2" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Extensive unit tests for execution ordering, retries, fail-fast, and blocking  </li>
+<li>Guardrails for orchestration-only events and best-effort persistence  </li>
+<li>Clear separation of execution core vs CLI and dialect adapters  </li>
+<li>No destructive changes to existing materialization or SQL generation logic</li>
+</ul>
+<blockquote>
+<p>This release establishes elevata as a <strong>self-orchestrating, explainable<br />
+data platform core</strong>, laying the groundwork for native scheduling,<br />
+governance rules, and external orchestration integrations.</p>
+</blockquote>
+<hr />
+<h2 id="071-2025-12-29">[0.7.1] – 2025-12-29<a class="headerlink" href="#071-2025-12-29" title="Permanent link">&para;</a></h2>
+<h3 id="metadata-driven-schema-evolution">🧱 Metadata-Driven Schema Evolution<a class="headerlink" href="#metadata-driven-schema-evolution" title="Permanent link">&para;</a></h3>
+<p>This release completes and stabilizes the first materialization layer for<br />
+<strong>safe, deterministic schema evolution</strong> in target warehouses.</p>
+<p>Schema changes are now derived explicitly from metadata and applied in a<br />
+controlled, lineage-aware manner — without implicit inference from SQL.</p>
+<h3 id="added_11">✨ Added<a class="headerlink" href="#added_11" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Metadata-driven materialization planning for target datasets  </li>
+<li>Automatic provisioning of missing target tables  </li>
+<li>Deterministic column synchronization (additive, non-destructive)  </li>
+<li>Explicit handling of dataset and column renames via <code>former_names</code>  </li>
+<li>Lineage-aware propagation of renames into history (<code>_hist</code>) datasets  </li>
+<li>Deterministic <code>INSERT … (column list)</code> generation across all dialects  </li>
+<li>DuckDB-native introspection via PRAGMA with execution-engine consistency</li>
+</ul>
+<h3 id="changed_2">🔄 Changed<a class="headerlink" href="#changed_2" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Materialization is now planned separately from SQL rendering  </li>
+<li>Table existence is determined by effective provisioning steps, not schema creation alone  </li>
+<li>Incremental loads reliably auto-provision target tables when required  </li>
+<li>History datasets are provisioned deterministically and stay structurally aligned with base tables</li>
+</ul>
+<h3 id="quality-stability_3">🧪 Quality &amp; Stability<a class="headerlink" href="#quality-stability_3" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Extensive unit tests for materialization planning and rename scenarios  </li>
+<li>Guardrails for ambiguous rename situations (multiple former matches)  </li>
+<li>Improved separation of introspection vs execution concerns  </li>
+<li>Removed duplicate provisioning paths and race conditions  </li>
+</ul>
+<blockquote>
+<p>This release lays the foundation for controlled schema evolution,<br />
+future governance rules, and automated validation layers.</p>
+</blockquote>
+<hr />
+<h2 id="070-2025-12-21">[0.7.0] – 2025-12-21<a class="headerlink" href="#070-2025-12-21" title="Permanent link">&para;</a></h2>
+<h3 id="added_12">Added<a class="headerlink" href="#added_12" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Dataset-driven, lineage-aware execution with automatic dependency resolution  </li>
+<li>Unified RAW execution semantics via physical ingestion (Source → RAW)  </li>
+<li>Stable technical column model across all layers  </li>
+<li>BigQuery execution backend with native ingestion support  </li>
+<li>Dialect-aware hashing and surrogate key generation (BigQuery, DuckDB, Postgres, MSSQL)  </li>
+<li>SourceDataset-level static and incremental filters with runtime {{DELTA_CUTOFF}} resolution  </li>
+</ul>
+<h3 id="changed_3">Changed<a class="headerlink" href="#changed_3" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Execution operates on datasets rather than layers  </li>
+<li>RAW datasets are treated as an optional ingestion layer  </li>
+<li>RAW ingestion always rebuilds tables, while source extraction may be incrementally scoped  </li>
+</ul>
+<h3 id="fixed_9">Fixed<a class="headerlink" href="#fixed_9" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Load plan debug output and execution logging consistency  </li>
+<li>Signal handling for historization execution order  </li>
+<li>Correct application of incremental filters during ingestion and delete detection  </li>
+<li>Lineage-based translation of incremental scope filters across renamed columns  </li>
+<li>Cross-dialect consistency for incremental execution (DuckDB, MSSQL, Postgres, BigQuery)  </li>
+</ul>
+<hr />
+<h2 id="061-2025-12-15">[0.6.1] – 2025-12-15<a class="headerlink" href="#061-2025-12-15" title="Permanent link">&para;</a></h2>
+<h3 id="fixed_10">Fixed<a class="headerlink" href="#fixed_10" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Correct introspection of SQL Server alias types (e.g. <code>dbo.Name</code>, <code>dbo.Flag</code>)</li>
+<li>Proper handling of <code>bit</code> columns during ingestion (no fallback to string types)</li>
+<li>Correct precision and scale mapping for <code>money</code> and <code>smallmoney</code> columns</li>
+<li>Stable and deterministic column ordering during metadata import</li>
+</ul>
+<h3 id="improved_10">Improved<a class="headerlink" href="#improved_10" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Lossless ingestion of source datatypes via <code>source_datatype_raw</code></li>
+<li>Strict, fail-fast dialect-specific type rendering to prevent silent fallbacks</li>
+</ul>
+<h3 id="notes">Notes<a class="headerlink" href="#notes" title="Permanent link">&para;</a></h3>
+<ul>
+<li>This release significantly improves correctness for SQL Server as a source system.</li>
+<li>Re-importing source metadata is recommended to benefit from the improved typing behavior.</li>
+</ul>
+<hr />
+<h2 id="060-2025-12-14">[0.6.0] – 2025-12-14<a class="headerlink" href="#060-2025-12-14" title="Permanent link">&para;</a></h2>
+<h3 id="warehouse-native-execution-scd-historization">🚀 Warehouse-Native Execution &amp; SCD Historization<a class="headerlink" href="#warehouse-native-execution-scd-historization" title="Permanent link">&para;</a></h3>
+<p>This release introduces the foundation for a fully warehouse-native execution framework.<br />
+elevata now manages entire data load pipelines end-to-end — from metadata to SQL generation to execution, historization and observability.</p>
+<h3 id="major-features">✨ Major Features<a class="headerlink" href="#major-features" title="Permanent link">&para;</a></h3>
+<h4 id="1-execution-engine-execute">1. Execution Engine (<code>--execute</code>)<a class="headerlink" href="#1-execution-engine-execute" title="Permanent link">&para;</a></h4>
+<p>elevata can now execute rendered SQL directly against target systems, measure performance, record affected rows, and log complete run metadata.<br />
+This shifts elevata beyond SQL rendering into a full pipeline engine.</p>
+<h4 id="2-full-scd-type-2-historization">2. Full SCD Type 2 Historization<a class="headerlink" href="#2-full-scd-type-2-historization" title="Permanent link">&para;</a></h4>
+<p>A deterministic, metadata-driven historization framework:<br />
+- automatic change detection via row-hash<br />
+- version closing for changed and deleted keys<br />
+- insertion of new and changed versions<br />
+- lineage-aware attribute propagation  </p>
+<h4 id="3-metadata-driven-incremental-merge-loads">3. Metadata-Driven Incremental Merge Loads<a class="headerlink" href="#3-metadata-driven-incremental-merge-loads" title="Permanent link">&para;</a></h4>
+<p>Complete incremental pipeline including:<br />
+- new-row inserts<br />
+- changed-row updates<br />
+- delete detection<br />
+- MERGE or UPDATE+INSERT fallback depending on dialect</p>
+<h4 id="4-auto-provisioning-of-warehouse-structures">4. Auto-Provisioning of Warehouse Structures<a class="headerlink" href="#4-auto-provisioning-of-warehouse-structures" title="Permanent link">&para;</a></h4>
+<p>elevata can automatically create:<br />
+- target schemas (raw, stage, rawcore, ...)<br />
+- the <code>meta.load_run_log</code> table<br />
+- all required objects for execution and logging  </p>
+<p>Controlled via <code>.env</code> flags.</p>
+<h4 id="5-warehouse-level-load-logging">5. Warehouse-Level Load Logging<a class="headerlink" href="#5-warehouse-level-load-logging" title="Permanent link">&para;</a></h4>
+<p>A new table <code>meta.load_run_log</code> provides full observability into load executions:<br />
+- load mode, historization flags, dialect<br />
+- start/end timestamps, render/execution duration<br />
+- rows affected, error messages, status<br />
+- batch and run identifiers  </p>
+<h4 id="6-documentation-expansion">6. Documentation Expansion<a class="headerlink" href="#6-documentation-expansion" title="Permanent link">&para;</a></h4>
+<ul>
+<li>New historization architecture document  </li>
+<li>Extended execution, logging, and provisioning sections  </li>
+<li>Revised dialect and SQL generation chapters  </li>
+</ul>
+<h3 id="testing-improvements">🧪 Testing Improvements<a class="headerlink" href="#testing-improvements" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Deterministic SQL tests for merge and historization pipelines  </li>
+<li>Combined historization pipeline tests  </li>
+<li>Prepared E2E execution flow for dialect-specific execution engines  </li>
+</ul>
+<blockquote>
+<p>This release establishes the execution foundation on which future orchestration, validation and automation layers will be built.</p>
+</blockquote>
+<hr />
+<h2 id="053-2025-12-10">[0.5.3] — 2025-12-10<a class="headerlink" href="#053-2025-12-10" title="Permanent link">&para;</a></h2>
+<h3 id="historization-structure-dialect-engine-enhancements">🔹 Historization Structure &amp; Dialect Engine Enhancements<a class="headerlink" href="#historization-structure-dialect-engine-enhancements" title="Permanent link">&para;</a></h3>
+<p>This release completes the metadata foundation required for full historized
+incremental loading in v0.6.0. It finalizes *_hist dataset structure, ensures
+cross-dialect consistency, and extends SQL rendering to use dialect-driven
+identifier rules.</p>
+<h2 id="highlights_1">✨ Highlights<a class="headerlink" href="#highlights_1" title="Permanent link">&para;</a></h2>
+<h3 id="metadata-historization">Metadata / Historization<a class="headerlink" href="#metadata-historization" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Automatic creation and maintenance of <code>&lt;dataset&gt;_hist</code> datasets in RAWCORE</li>
+<li>Full rename propagation for datasets and columns</li>
+<li>All *_hist fields are system-managed and read-only</li>
+<li>New technical field in RAWCORE: <code>row_hash</code> for change detection (persisted expression)</li>
+<li>Versioning strategy established:</li>
+<li><code>version_started_at</code> inclusive, <code>version_ended_at</code> exclusive</li>
+<li>open-ended validity via max timestamp</li>
+<li><code>version_state</code> (<code>current</code>, <code>changed</code>, <code>deleted</code>)</li>
+</ul>
+<h3 id="sql-generation-dialects">SQL Generation / Dialects<a class="headerlink" href="#sql-generation-dialects" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Unified <code>render_identifier()</code> and <code>render_table_identifier()</code> for consistent quoting</li>
+<li>All SQL generation now uses dialect identifier rendering</li>
+<li>Delete detection routing tested and guarded per dialect capability</li>
+</ul>
+<h3 id="load-runner">Load Runner<a class="headerlink" href="#load-runner" title="Permanent link">&para;</a></h3>
+<ul>
+<li><code>elevata_load</code> supports <code>--execute</code> with safe stub execution via <code>ExecutionEngine</code></li>
+<li>Logging improvements and full dry-run support remain functional</li>
+</ul>
+<h3 id="testing-stability">Testing &amp; Stability<a class="headerlink" href="#testing-stability" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Expanded test coverage for historization and dialect routing</li>
+<li>Full suite green across merge, delete detection &amp; *_hist scenarios</li>
+</ul>
+<hr />
+<h2 id="052-2025-12-07">[0.5.2] — 2025-12-07<a class="headerlink" href="#052-2025-12-07" title="Permanent link">&para;</a></h2>
+<h3 id="metadata-stability-history-hist-foundation">🛠️️ Metadata stability &amp; History (HIST) foundation<a class="headerlink" href="#metadata-stability-history-hist-foundation" title="Permanent link">&para;</a></h3>
+<p>This release significantly improves the robustness, determinism, and safety of 
+history metadata generation in the RAWCORE schema.</p>
+<h2 id="highlights_2">✨ Highlights<a class="headerlink" href="#highlights_2" title="Permanent link">&para;</a></h2>
+<h3 id="metadata-historization_1">Metadata / Historization<a class="headerlink" href="#metadata-historization_1" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Deterministic generation of *_hist datasets based on lineage_key.  </li>
+<li>Robust schema sync between RAWCORE and *_hist (idempotent, safe deletes).  </li>
+<li>History SK expression based on rawcore SK + version_started_at.  </li>
+<li>History BK definition: rawcore SK + version_started_at.  </li>
+<li>History datasets and columns are fully system-managed (no UI unlock).</li>
+</ul>
+<h3 id="signals-ui">Signals &amp; UI<a class="headerlink" href="#signals-ui" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Automatic *_hist sync on dataset rename and column changes in rawcore.  </li>
+<li>Inline rename refreshes both rawcore and corresponding *_hist rows.  </li>
+<li>Inline editing is disabled for *_hist datasets and columns.  </li>
+</ul>
+<h3 id="sql-preview">SQL Preview<a class="headerlink" href="#sql-preview" title="Permanent link">&para;</a></h3>
+<ul>
+<li>build_sql_preview_for_target returns a clear comment for history targets instead of misleading SQL.</li>
+<li>Tests added to guard the _hist-preview behaviour.</li>
+</ul>
+<hr />
+<h2 id="051-2025-12-04">[0.5.1] — 2025-12-04<a class="headerlink" href="#051-2025-12-04" title="Permanent link">&para;</a></h2>
+<h3 id="documentation-consistency-release">🧹 Documentation &amp; Consistency Release<a class="headerlink" href="#documentation-consistency-release" title="Permanent link">&para;</a></h3>
+<p>This patch focuses on improving the clarity, coherence, and structure of elevata’s developer documentation.</p>
+<h2 id="highlights_3">✨ Highlights<a class="headerlink" href="#highlights_3" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Full harmonization of all architecture documents  </li>
+<li>Removal of outdated version references and legacy wording  </li>
+<li>Unified heading and layout style across all Markdown files  </li>
+<li>Consistent terminology for LogicalPlan, Expression DSL, Dialects, and Load SQL  </li>
+<li>Improved mkdocs navigation structure  </li>
+<li>Minor text corrections and consistency fixes across the docs</li>
+</ul>
+<h2 id="no-functional-changes">🚫 No functional changes<a class="headerlink" href="#no-functional-changes" title="Permanent link">&para;</a></h2>
+<p>This release does not modify the SQL engine, metadata model, or any public API surface.<br />
+All test suites remain unchanged and green.</p>
+<hr />
+<h2 id="050-2025-12-01">[0.5.0] — 2025-12-01<a class="headerlink" href="#050-2025-12-01" title="Permanent link">&para;</a></h2>
+<h3 id="multi-dialect-engine-mssql-support-deterministic-fk-hashing">🛠️️ Multi-Dialect Engine, MSSQL Support &amp; Deterministic FK Hashing<a class="headerlink" href="#multi-dialect-engine-mssql-support-deterministic-fk-hashing" title="Permanent link">&para;</a></h3>
+<p>This release delivers the next major milestone of elevata’s SQL engine:
+full <strong>multi-dialect SQL generation</strong>, an extensible dialect factory,
+runtime dialect switching in the UI, and a complete rewrite of the
+surrogate-key and foreign-key hashing system using a vendor-neutral DSL AST.</p>
+<hr />
+<h2 id="major-features_1">🚀 Major Features<a class="headerlink" href="#major-features_1" title="Permanent link">&para;</a></h2>
+<h3 id="1-multi-dialect-sql-rendering-postgres-duckdb-mssql"><strong>1. Multi-Dialect SQL Rendering (Postgres, DuckDB, MSSQL)</strong><a class="headerlink" href="#1-multi-dialect-sql-rendering-postgres-duckdb-mssql" title="Permanent link">&para;</a></h3>
+<ul>
+<li>New pluggable dialect architecture (<code>SqlDialect</code>, <code>dialect_factory</code>).</li>
+<li>Three fully operational dialects:</li>
+<li><strong>DuckDBDialect</strong></li>
+<li><strong>PostgresDialect</strong></li>
+<li><strong>MssqlDialect</strong> (new)</li>
+<li>Centralised dialect registry &amp; runtime resolution via:</li>
+<li>profile  </li>
+<li>env (<code>ELEVATA_SQL_DIALECT</code>)  </li>
+<li>URL parameter in SQL preview  </li>
+</ul>
+<p>All SQL generation (preview + Load Runner) now passes through a unified,
+dialect-aware pipeline.</p>
+<hr />
+<h3 id="2-sql-preview-dialect-selector-ui"><strong>2. SQL Preview Dialect Selector (UI)</strong><a class="headerlink" href="#2-sql-preview-dialect-selector-ui" title="Permanent link">&para;</a></h3>
+<ul>
+<li>New dropdown in TargetDataset detail view.</li>
+<li>Instant SQL refresh via HTMX request.</li>
+<li>Clean display of dialect-specific SQL functions (quoting, hashing, concat, types).</li>
+</ul>
+<hr />
+<h3 id="3-deterministic-cross-dialect-hashing-via-dsl-ast"><strong>3. Deterministic, Cross-Dialect Hashing via DSL AST</strong><a class="headerlink" href="#3-deterministic-cross-dialect-hashing-via-dsl-ast" title="Permanent link">&para;</a></h3>
+<p>A full rewrite of surrogate-key and FK hashing:</p>
+<ul>
+<li>New DSL expression system (<code>Hash256Expression</code>, <code>ConcatWsExpression</code>, <code>Literal</code>, <code>ColumnRef</code>).</li>
+<li>Dialect-specific SQL rendering happens <strong>exclusively in dialect classes</strong>.</li>
+<li>Identical logical lineage yields identical hash values across vendors.</li>
+<li>Fully deterministic ordering + null replacement semantics.</li>
+<li>Clean child-lineage FK hashing:</li>
+<li>BK1, child BK1, BK2, child BK2…</li>
+<li><code>~</code> and <code>|</code> literal separators, ordered alphabetically</li>
+</ul>
+<p>All existing hashing tests green after the rewrite.</p>
+<hr />
+<h3 id="4-multi-source-stage-identity-mode"><strong>4. Multi-Source Stage Identity Mode</strong><a class="headerlink" href="#4-multi-source-stage-identity-mode" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Correct logical union builder for Stage datasets with multiple upstream sources.</li>
+<li>Clean identity (no ranking) vs. non-identity (ranking) handling.</li>
+<li>Injected <code>source_identity_id</code> literal per upstream branch.</li>
+<li>All multi-source identity tests fully passing.</li>
+</ul>
+<hr />
+<h3 id="5-dialect-aware-fk-rendering"><strong>5. Dialect-Aware FK Rendering</strong><a class="headerlink" href="#5-dialect-aware-fk-rendering" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Parent surrogate keys and child FK keys now rendered via DSL → dialect.</li>
+<li>MSSQL: <code>CONVERT(VARCHAR(64), HASHBYTES('SHA2_256', …), 2)</code></li>
+<li>Postgres: <code>ENCODE(DIGEST(CONCAT_WS(...), 'sha256'), 'hex')</code></li>
+<li>DuckDB: <code>SHA256(CONCAT_WS(...))</code></li>
+</ul>
+<hr />
+<h2 id="internal-improvements">🔧 Internal Improvements<a class="headerlink" href="#internal-improvements" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Entire <code>builder.py</code> cleaned, simplified, and refactored.</li>
+<li>Unified <code>render_select_for_target()</code> and load-SQL paths.</li>
+<li>Removed legacy manual hashing logic.</li>
+<li>No raw SQL string assembly left in hashing pipeline.</li>
+<li>Strict quoting rules per dialect.</li>
+<li>Sauber extrahierte DSL operators (<code>col()</code>, <code>lit()</code>, <code>concat_ws()</code>, <code>hash256()</code>).</li>
+</ul>
+<hr />
+<h2 id="testing">🧪 Testing<a class="headerlink" href="#testing" title="Permanent link">&para;</a></h2>
+<ul>
+<li>New tests:</li>
+<li><code>test_dialect_postgres.py</code></li>
+<li><code>test_hashing_dialects.py</code></li>
+<li><code>test_fk_hashing.py</code></li>
+<li>Full MSSQL hashing coverage</li>
+<li>Updated test helpers for DSL AST inspection.</li>
+<li>All Stage multi-source tests green after identity-mode rewrite.</li>
+</ul>
+<hr />
+<h2 id="documentation">📘 Documentation<a class="headerlink" href="#documentation" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Updated architecture docs:</li>
+<li><em>Dialect System</em></li>
+<li><em>SQL Rendering Conventions</em></li>
+<li><em>Hashing Architecture</em></li>
+<li>README modernised with new capabilities and architecture.</li>
+</ul>
+<hr />
+<h2 id="roadmap-shift">🧭 Roadmap Shift<a class="headerlink" href="#roadmap-shift" title="Permanent link">&para;</a></h2>
+<p>With the 0.5.0 SQL backend complete, the next stage focuses on execution:</p>
+<ul>
+<li>Load Runner CLI (Full, Merge, Dry-Run)</li>
+<li>Caching &amp; improved SQL formatting</li>
+<li>Multi-source incremental merges</li>
+<li>Additional dialects (Snowflake, BigQuery, Databricks)</li>
+</ul>
+<hr />
+<p><strong>Impact</strong><br />
+Version <strong>0.5.0</strong> transforms elevata into a <strong>true multi-backend SQL generator</strong><br />
+with deterministic hashing, dialect-specific rendering, and a stable architectural core<br />
+for future execution engines.</p>
+<hr />
+<h2 id="040-2025-11-20">[0.4.0] — 2025-11-20<a class="headerlink" href="#040-2025-11-20" title="Permanent link">&para;</a></h2>
+<h3 id="dialect-architecture-load-sql-modernization">🧠 Dialect Architecture &amp; Load SQL Modernization<a class="headerlink" href="#dialect-architecture-load-sql-modernization" title="Permanent link">&para;</a></h3>
+<p>This release marks a major leap for elevata:<br />
+a complete SQL dialect abstraction layer, a unified Load-SQL pipeline,<br />
+and extensive new documentation that sets the foundation for future multi-backend support.</p>
+<hr />
+<h3 id="core-features">🚀 Core Features<a class="headerlink" href="#core-features" title="Permanent link">&para;</a></h3>
+<h4 id="fully-modular-sql-dialect-system"><strong>Fully Modular SQL Dialect System</strong><a class="headerlink" href="#fully-modular-sql-dialect-system" title="Permanent link">&para;</a></h4>
+<p>A new, extensible dialect layer powers all SQL generation:</p>
+<ul>
+<li>Central <code>SqlDialect</code> base class  </li>
+<li>Concrete <code>DuckDBDialect</code> reference implementation  </li>
+<li>Dialect resolution via <code>ELEVATA_SQL_DIALECT</code>, <code>ELEVATA_DIALECT</code>, and active profile  </li>
+<li>Dialect capabilities:</li>
+<li><code>supports_merge</code></li>
+<li><code>supports_delete_detection</code></li>
+<li>Expression-level hooks:</li>
+<li><code>concat_expression()</code></li>
+<li><code>hash_expression()</code></li>
+<li><code>cast_expression()</code></li>
+<li><code>render_literal()</code></li>
+</ul>
+<p>This architecture enables clean, vendor-neutral SQL generation for future backends<br />
+(Postgres, MSSQL, Snowflake, BigQuery, Databricks).</p>
+<hr />
+<h3 id="load-sql-architecture-20">🔧 Load SQL Architecture 2.0<a class="headerlink" href="#load-sql-architecture-20" title="Permanent link">&para;</a></h3>
+<p>A fully redesigned, dialect-aware Load SQL engine:</p>
+<h4 id="full-load"><strong>Full Load</strong><a class="headerlink" href="#full-load" title="Permanent link">&para;</a></h4>
+<ul>
+<li><code>render_create_replace_table</code>  </li>
+<li><code>render_insert_into_table</code>  </li>
+<li>Uses dialect quoting, casting, literal handling</li>
+</ul>
+<h4 id="incremental-merge-load"><strong>Incremental Merge Load</strong><a class="headerlink" href="#incremental-merge-load" title="Permanent link">&para;</a></h4>
+<ul>
+<li>Native dialect-specific <code>MERGE</code> for DuckDB  </li>
+<li>Clean failure modes for dialects without merge support  </li>
+<li>Deterministic key handling  </li>
+<li>Automatic update/insert column mapping</li>
+</ul>
+<h4 id="delete-detection"><strong>Delete Detection</strong><a class="headerlink" href="#delete-detection" title="Permanent link">&para;</a></h4>
+<ul>
+<li>Dialect-specific implementation (<code>DELETE … WHERE NOT EXISTS</code>)  </li>
+<li>Guardrails when delete detection is requested but dialect does not support it</li>
+</ul>
+<p>All Load SQL now flows through a single, coherent pipeline via <code>load_sql.py</code>.</p>
+<hr />
+<h3 id="testing-enhancements">🧪 Testing Enhancements<a class="headerlink" href="#testing-enhancements" title="Permanent link">&para;</a></h3>
+<ul>
+<li>New test suite for:</li>
+<li>literal rendering (<code>NULL</code>, booleans, strings, dates, datetimes)</li>
+<li>cast expression rendering</li>
+<li>concat &amp; hash expression helpers</li>
+<li>merge &amp; delete detection dialect hooks</li>
+<li>End-to-end tests for Full and Merge load generation</li>
+<li>All tests green across the refactor</li>
+</ul>
+<p>This ensures reliable future extensions to new SQL dialects.</p>
+<hr />
+<h3 id="documentation_1">📘 Documentation<a class="headerlink" href="#documentation_1" title="Permanent link">&para;</a></h3>
+<p>Three major new documents added:</p>
+<ul>
+<li><strong>Dialect System</strong> — full architectural overview of dialect abstraction  </li>
+<li><strong>Load SQL Architecture</strong> — how Full, Merge, and Delete Detection SQL are generated  </li>
+<li><strong>Incremental Load Architecture</strong> — planner, merge semantics, delete detection</li>
+</ul>
+<p>All are linked from:
+- <code>index.md</code>
+- <code>README_docs.md</code>
+- <code>mkdocs.yml</code> navigation</p>
+<hr />
+<h3 id="internal-improvements_1">🔍 Internal Improvements<a class="headerlink" href="#internal-improvements_1" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Harmonized <code>get_active_dialect()</code> with environment and profile resolution  </li>
+<li>Consolidated SQL preview and load paths to use the same dialect entrypoints  </li>
+<li>Removed legacy assumptions and duplicated logic  </li>
+<li>Fully revised DuckDB implementation as reference for new dialects</li>
+</ul>
+<hr />
+<h3 id="roadmap-impact">🗺️ Roadmap Impact<a class="headerlink" href="#roadmap-impact" title="Permanent link">&para;</a></h3>
+<p>With 0.4.0 released, the following items shift to <strong>0.5.x</strong>:</p>
+<ul>
+<li>Target System Selector (Profiles → target backend)  </li>
+<li>Additional SQL dialects (MSSQL, Postgres, Snowflake)  </li>
+<li>Pseudo-Lineage Graph in UI  </li>
+<li>Multi-Source Incremental Loads  </li>
+<li>Load-Runner CLI</li>
+</ul>
+<p>These features build directly on the new architecture introduced in 0.4.0.</p>
+<hr />
+<p><strong>Impact</strong><br />
+Version 0.4.0 delivers the foundational SQL engine for elevata’s future:<br />
+clean, extensible, and ready for multiple SQL backends.<br />
+It stabilizes the path toward 0.5.x — where elevata becomes a multi-dialect metadata-driven ETL generator.</p>
+<hr />
+<h2 id="030-2025-11-12">[0.3.0] — 2025-11-12<a class="headerlink" href="#030-2025-11-12" title="Permanent link">&para;</a></h2>
+<h3 id="lineage-aware-target-generation-sql-preview">Lineage-Aware Target Generation &amp; SQL Preview<a class="headerlink" href="#lineage-aware-target-generation-sql-preview" title="Permanent link">&para;</a></h3>
+<h4 id="core-features_1">🚀 Core Features<a class="headerlink" href="#core-features_1" title="Permanent link">&para;</a></h4>
+<p><strong>Lineage-Driven Target Generation</strong>
+- Added a stable <code>lineage_key</code> to both <code>TargetDataset</code> and <code>TargetColumn</code>:
+  - Enables fully <strong>idempotent target generation</strong>.
+  - Prevents duplicate targets after renaming (<code>lineage_key</code> is preserved).
+- <code>TargetGenerationService.apply_all()</code> refactored into modular steps:
+  - Existing datasets are now matched and updated via <code>lineage_key</code> instead of physical names.
+  - Clean dataset-level and column-level re-numbering during regeneration.</p>
+<p><strong>Three-Layer Data Lineage</strong>
+- Explicit dataset-level lineage:
+  - <code>TargetDatasetInput</code> defines upstream relationships (<code>source_dataset</code> and/or <code>upstream_target_dataset</code>).
+  - <code>combination_mode</code> (<code>single</code> or <code>union</code>) indicates how multiple inputs are combined.</p>
+<ul>
+<li>Explicit column-level lineage:</li>
+<li><code>TargetColumnInput</code> mirrors the same relationships for individual columns.</li>
+<li>
+<p><code>upstream_columns</code> now correctly map transformations between layers.</p>
+</li>
+<li>
+<p>Layer-specific rules:</p>
+</li>
+<li><strong>Raw</strong> = only <code>source_datasets</code></li>
+<li><strong>Stage</strong> = prefers Raw as upstream (or Source directly if <code>generate_raw_tables=False</code>)</li>
+<li><strong>Rawcore</strong> = always built from Stage</li>
+</ul>
+<p><strong>Multi-Source Consolidation</strong>
+- New <code>SourceDatasetGroup</code> + <code>SourceDatasetGroupMembership</code> model:
+  - Supports joining multiple SourceDatasets into a single Stage target.
+  - The “primary system” flag defines which source drives column order.
+- <code>TargetDatasetInput.role</code> classifies inputs as:
+  - <code>primary</code>, <code>enrichment</code>, <code>reference_lookup</code>, or <code>audit_only</code>.</p>
+<p><strong>Surrogate &amp; Business Keys</strong>
+- Surrogate key columns are automatically renamed when their dataset is renamed<br />
+  → e.g. renaming <code>rc_aw_productmodel</code> → <code>rc_aw_product_model</code> auto-renames the key column to <code>rc_aw_product_model_key</code>.
+- Surrogate key expressions now reference <strong>upstream column names</strong> (Raw or Stage), not renamed targets.
+- Deterministic column ordering:
+  1. Surrogate keys<br />
+  2. Business keys<br />
+  3. Integrated source columns<br />
+  4. Artificial columns</p>
+<p><strong>Column Generation Enhancements</strong>
+- Automatic assignment of <code>ordinal_position</code> on save:
+  - Newly created columns append at the end in numeric sequence.
+  - Safe against manual reordering.
+- Integrated columns added after initial generation are correctly appended and re-numbered without violating unique constraints.</p>
+<hr />
+<h4 id="logical-query-model-sql-preview">🧠 Logical Query Model &amp; SQL Preview<a class="headerlink" href="#logical-query-model-sql-preview" title="Permanent link">&para;</a></h4>
+<p><strong>Logical Plan Layer</strong>
+- New internal model (<code>logical_plan.py</code>) represents canonical SQL structure for a target dataset:
+  - Supports <code>LogicalSelect</code>, <code>LogicalUnion</code>, <code>LogicalExpression</code>, and lineage mapping.
+- <code>builder.py</code> now constructs expressions (Surrogate Key, BK, and regular fields) from <code>TargetColumnInput</code> lineage.
+- Dialect-specific type mapping handled cleanly via <code>map_logical_to_duckdb_type</code>.</p>
+<p><strong>SQL Preview 2.0</strong>
+- SQL preview now generates <strong>true lineage-based SELECT statements</strong>, e.g.:
+  - <strong>Stage:</strong><br />
+<code>sql
+    SELECT … FROM "raw"."raw_aw1_person"
+    UNION ALL
+    SELECT … FROM "raw"."raw_aw2_person"</code>
+  - <strong>Rawcore:</strong><br />
+<code>sql
+    SELECT hash256(…) AS rc_aw_person_key, … 
+    FROM "stage"."stg_aw_person"</code>
+- Automatic field alignment:
+  - Columns missing in one upstream are rendered as <code>NULL AS &lt;column&gt;</code>.
+  - Integrated columns retain their target aliases.
+- Supports both <code>manual_expression</code> and templated (<code>{{ … }}</code>) syntax.
+- New visually distinct <strong>green preview box</strong> in UI with proper formatting:
+  - Keywords capitalized<br />
+  - Indentation after <code>SELECT</code><br />
+  - Clean separation before <code>FROM</code></p>
+<hr />
+<h4 id="ui-governance-behavior">🧩 UI, Governance &amp; Behavior<a class="headerlink" href="#ui-governance-behavior" title="Permanent link">&para;</a></h4>
+<ul>
+<li><strong>Context-aware lineage display</strong> in detail views:</li>
+<li><code>Source Datasets</code> and <code>Upstream Datasets</code> shown based on layer.</li>
+<li>Input relations now read like:
+    <code>raw_aw1_person · businessentityid -&gt; stg_aw_person · businessentityid</code></li>
+<li><strong>System-managed field handling</strong> refined:</li>
+<li>Layer-specific read-only fields controlled by settings.</li>
+<li><code>lineage_key</code> treated as an internal system field (hidden in forms and lists).</li>
+<li>Surrogate key names locked for user editing but updated automatically when renaming datasets.</li>
+</ul>
+<hr />
+<h4 id="testing-quality">🧪 Testing &amp; Quality<a class="headerlink" href="#testing-quality" title="Permanent link">&para;</a></h4>
+<p><strong>Structured Testing Foundation</strong>
+- Introduced the first complete automated test framework for the metadata generation platform.
+- Added dedicated <code>runtests.py</code> launcher for reliable execution across environments.
+- Integrated <strong>realistic DB-based lineage tests</strong> (<code>Raw → Stage → Rawcore</code>).
+- Added <strong>logic-only tests</strong> for hashing, naming, and validators.
+- Prepared <strong>SQL Preview test templates</strong> for the future rendering pipeline.
+- New documentation: <a href="../tests/">🧪 Testing &amp; Quality</a></p>
+<p><strong>Impact</strong><br />
+This milestone establishes a solid foundation for test coverage,<br />
+ensuring safe refactoring, reproducibility, and confidence in every release.</p>
+<hr />
+<h2 id="026-2025-11-03">[0.2.6] — 2025-11-03<a class="headerlink" href="#026-2025-11-03" title="Permanent link">&para;</a></h2>
+<h3 id="target-generation-surrogate-key-implementation">⚙️ Target Generation &amp; Surrogate Key Implementation<a class="headerlink" href="#target-generation-surrogate-key-implementation" title="Permanent link">&para;</a></h3>
+<p><strong>Core Features</strong>
+- Introduced fully automated <code>TargetDataset</code> and <code>TargetColumn</code> generation service (<code>TargetGenerationService</code>).
+- Deterministic surrogate key creation using SHA-256 and runtime-loaded pepper.
+- Added <code>business_key_column</code> and <code>surrogate_key_column</code> flags to differentiate logical vs. physical keys.
+- Layer-aware naming now based on <code>TargetSchema.physical_prefix</code> (no hardcoded prefixes).
+- Integrated filtering: only <code>integrate=True</code> columns included across all layers.</p>
+<p><strong>UI Enhancements</strong>
+- Added <strong>“Generate Targets”</strong> button to SourceDataset list with progress spinner &amp; success message.
+- Improved error feedback and runtime validation for pepper and target schema scope.
+- Consistent Bootstrap iconography (<code>bi-lightning-charge</code>) and visual feedback for active operations.</p>
+<p><strong>Technical Refinements</strong>
+- Surrogate key expressions persisted in metadata for transparency and traceability.
+- Environment-based pepper resolution via <code>.env</code> and <code>get_runtime_pepper()</code>.
+- Refactored naming logic (<code>naming.py</code>, <code>rules.py</code>, <code>mappers.py</code>) for consistent layer-specific conventions.</p>
+<p><strong>Impact</strong><br />
+This release completes the <strong>Target Automation foundation</strong> for elevata —<br />
+paving the way for v0.3.0’s Meta-SQL and rendering engine. 🚀</p>
+<hr />
+<h2 id="025-2025-10-27">[0.2.5] — 2025-10-27<a class="headerlink" href="#025-2025-10-27" title="Permanent link">&para;</a></h2>
+<h3 id="metadata-model-finalization-ui-polish">🧩 Metadata Model Finalization &amp; UI Polish<a class="headerlink" href="#metadata-model-finalization-ui-polish" title="Permanent link">&para;</a></h3>
+<p><strong>Core Enhancements</strong><br />
+- Completed redesign of the <strong>core metadata model</strong> — fully aligned with the 0.3.x architecture.<br />
+- Added <strong>TargetSchema</strong> as a first-class model defining platform layers (<code>raw</code>, <code>stage</code>, <code>rawcore</code>, <code>bizcore</code>, <code>serving</code>).<br />
+- Introduced <strong>TargetDatasetInput</strong> and <strong>TargetColumnInput</strong> for multi-source mappings and lineage tracking.<br />
+- Added lifecycle flags (<code>active</code>, <code>retired_at</code>) for controlled dataset and column deprecation.<br />
+- Simplified incremental-load logic (<code>increment_filter</code> placeholder on SourceDataset).<br />
+- Unified naming conventions (<code>*_schema_name</code>, <code>*_dataset_name</code>) across all models.<br />
+- Extended governance primitives (<code>sensitivity</code>, <code>access_intent</code>) and surrogate-key configuration per layer.<br />
+- Removed obsolete fields (<code>get_metadata</code>, <code>stage_dataset</code>, etc.) and harmonized field semantics.  </p>
+<p><strong>UI &amp; Usability</strong><br />
+- Introduced <strong>SourceDatasetGroup</strong> for managing groups of structurally identical source tables.<br />
+- Added governance badges and toggles for better lineage and visibility cues.<br />
+- Revised navigation order for more natural workflows.<br />
+- Improved help texts, icons, and consistent color themes across all metadata entities.  </p>
+<p><strong>Impact</strong><br />
+This release finalizes the <strong>metadata foundation</strong> for elevata — stable enough for automation development in 0.3.x.<br />
+No breaking structural changes expected before 0.3.0.  </p>
+<hr />
+<h3 id="ui-comfort-continuation">🪶 UI Comfort Continuation<a class="headerlink" href="#ui-comfort-continuation" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Unified color scheme for governance badges (<code>badge-pii-high</code>, <code>badge-pk</code>, …).  </li>
+<li>Improved hover feedback and spacing in list views.  </li>
+<li>All badges defined declaratively via <code>ELEVATA_CRUD</code> — no model-specific logic required.  </li>
+<li>Updated <code>elevata-theme.css</code> for consistent badge geometry and hover states.  </li>
+</ul>
+<hr />
+<p><strong>Why it matters</strong><br />
+Version 0.2.5 concludes the <strong>“Model &amp; Comfort”</strong> milestone:<br />
+the framework now combines a stable metadata core, polished UI, and ready groundwork for automated target generation in 0.3.x. 🚀  </p>
+<hr />
+<h2 id="024-2025-10-26">[0.2.4] — 2025-10-26<a class="headerlink" href="#024-2025-10-26" title="Permanent link">&para;</a></h2>
+<h3 id="strategic-documentation-architecture-alignment">Strategic Documentation &amp; Architecture Alignment<a class="headerlink" href="#strategic-documentation-architecture-alignment" title="Permanent link">&para;</a></h3>
+<p>This release finalizes the strategic and architectural foundation for the upcoming <strong>metadata model freeze (v0.3.x)</strong>.<br />
+It does not yet include model changes — instead, it defines the <em>why</em> and <em>how</em> for the next major milestone.</p>
+<p><strong>Highlights</strong>
+- New and refined <strong>README</strong> with philosophy, vision, and AGPLv3 licensing
+- Updated <strong>roadmap</strong> outlining the transition toward declarative architecture
+- Strategic <strong>dbt decoupling paper</strong>, defining the new “governed SQL through architecture” direction
+- Preparations for <strong>TargetSchema</strong>, <strong>TargetDatasetReference</strong>, and <strong>deterministic key generation</strong> to follow in v0.3.x</p>
+<p><strong>Why it matters</strong><br />
+This release marks the calm before the model storm — the documentation is ready, the vision is clear, and the next step is building it. 🚀</p>
+<h2 id="023-2025-10-25">[0.2.3] – 2025-10-25<a class="headerlink" href="#023-2025-10-25" title="Permanent link">&para;</a></h2>
+<h3 id="ui-comfort-release">🪶 UI Comfort Release<a class="headerlink" href="#ui-comfort-release" title="Permanent link">&para;</a></h3>
+<p><strong>Highlights</strong>
+- Added generic, reusable filter bar for all CRUD list views<br />
+- Added dynamic toggle buttons for boolean fields<br />
+- Improved badge rendering for PII &amp; PK indicators<br />
+- Added sticky table headers for long datasets</p>
+<p><strong>Why it matters</strong><br />
+This release focuses purely on usability and governance visibility.<br />
+It lays the groundwork for 0.3.0 (TargetDataset automation and lineage features).</p>
+<hr />
+<h2 id="022-2025-10-25">[0.2.2] – 2025-10-25<a class="headerlink" href="#022-2025-10-25" title="Permanent link">&para;</a></h2>
+<h3 id="maintenance-release-dbt-dependency-cleanup">🧹 Maintenance Release — dbt Dependency Cleanup<a class="headerlink" href="#maintenance-release-dbt-dependency-cleanup" title="Permanent link">&para;</a></h3>
+<h4 id="summary">Summary<a class="headerlink" href="#summary" title="Permanent link">&para;</a></h4>
+<p>This minor maintenance release removes all remaining dbt-related artefacts and clarifies elevata’s independent direction ahead of the 0.3.x milestone.</p>
+<h4 id="changes">🔧 Changes<a class="headerlink" href="#changes" title="Permanent link">&para;</a></h4>
+<ul>
+<li>Removed unused <code>dbt_project/</code> folder from repository.</li>
+<li>Deleted all <code>DBT_*</code> variables from <code>.env</code> and example configuration files.</li>
+<li>Removed dbt references from <code>NOTICE.md</code> and documentation.</li>
+<li>Updated <code>README.md</code> and <code>dbt_decoupling.md</code> to reflect full <strong>runtime independence</strong>.</li>
+<li>Adjusted Roadmap and strategy wording in <code>CHANGELOG.md</code> (dbt now optional adapter, not dependency).</li>
+<li>Minor documentation clean-ups and license consistency fixes (MIT → AGPL v3 in trademark notice).</li>
+</ul>
+<h4 id="notes_1">💡 Notes<a class="headerlink" href="#notes_1" title="Permanent link">&para;</a></h4>
+<p>This release does <strong>not</strong> introduce new features but marks an important architectural boundary:
+elevata ≥ 0.2.2 operates entirely without dbt or its configuration files.<br />
+The foundation for native rendering and execution begins with v0.3.x.</p>
+<hr />
+<h2 id="021-2025-10-23">[0.2.1] – 2025-10-23<a class="headerlink" href="#021-2025-10-23" title="Permanent link">&para;</a></h2>
+<h3 id="improved_11">🪶 Improved<a class="headerlink" href="#improved_11" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Added truncation for long text fields (<code>Description</code>, <code>Remark</code>) in list views to improve readability.  </li>
+<li>Full text now appears on hover for better UX.  </li>
+<li>Refined visual highlighting for primary and integrate columns.  </li>
+<li>Minor CSS polish and layout consistency fixes across metadata tables.  </li>
+</ul>
+<hr />
+<h2 id="020-2025-10-22">[0.2.0] - 2025-10-22<a class="headerlink" href="#020-2025-10-22" title="Permanent link">&para;</a></h2>
+<h3 id="metadata-introspection-profiles-integration">🧩 Metadata Introspection &amp; Profiles Integration<a class="headerlink" href="#metadata-introspection-profiles-integration" title="Permanent link">&para;</a></h3>
+<h4 id="overview">Overview<a class="headerlink" href="#overview" title="Permanent link">&para;</a></h4>
+<p>This release marks a major milestone – elevata now connects to relational sources via SQLAlchemy and imports full schema metadata directly into its core models. The new profile and secret management architecture lays the foundation for secure, declarative, and environment-aware metadata operations.</p>
+<hr />
+<h4 id="highlights_4">🚀 Highlights<a class="headerlink" href="#highlights_4" title="Permanent link">&para;</a></h4>
+<ul>
+<li><strong>Generic Metadata Import via SQLAlchemy</strong>  </li>
+<li>Engine factory supporting multiple relational backends (MSSQL, Postgres, SQLite).  </li>
+<li>Reads column definitions, data types, PK information from <code>SourceDataset</code> entries.  </li>
+<li>
+<p>Automatic datatype normalization across dialects (e.g. <code>NVARCHAR</code> → STRING, <code>BIT</code> → BOOLEAN).  </p>
+</li>
+<li>
+<p><strong>Flexible Secrets &amp; Profiles</strong>  </p>
+</li>
+<li>Unified <code>elevata_profiles.yaml</code> config with environment-based secret resolution.  </li>
+<li>Connection references derived convention-based from <code>type</code> and <code>short_name</code>.  </li>
+<li>
+<p>Optional Azure Key Vault integration.  </p>
+</li>
+<li>
+<p><strong>Security &amp; Configuration</strong>  </p>
+</li>
+<li>Sensitive data never stored in the database.  </li>
+<li>Secrets resolved dynamically at runtime via <code>.env</code> or Key Vault.  </li>
+<li>
+<p>Clear separation of metadata and operational configuration.  </p>
+</li>
+<li>
+<p><strong>Developer Experience</strong>  </p>
+</li>
+<li>Simplified connector interfaces and improved error reporting.  </li>
+<li>Cleaner model relationships for <code>SourceSystem</code> and <code>SourceDataset</code>.  </li>
+<li>New code organization: <code>connectors.py</code>, <code>resolver.py</code>, <code>ref_builder.py</code>.</li>
+</ul>
+<hr />
+<h4 id="next-v030-will-focus-on-automated-target-model-generation-and-metadata-lineage">🧭 Next: v0.3.0 will focus on automated target model generation and metadata lineage.<a class="headerlink" href="#next-v030-will-focus-on-automated-target-model-generation-and-metadata-lineage" title="Permanent link">&para;</a></h4>
+<hr />
+<h4 id="technical-notes">🧠 Technical Notes<a class="headerlink" href="#technical-notes" title="Permanent link">&para;</a></h4>
+<ul>
+<li>Fully decoupled from dbt profiles; all runtime connections and secrets resolved through <code>elevata_profiles.yaml</code>.  </li>
+<li>All SQL renderers return expressions as plain text templates — ready for downstream ELT tools or custom runners.  </li>
+<li>Surrogate Key hashing implemented engine-specifically (Postgres pgcrypto / MSSQL HASHBYTES).  </li>
+<li>Supports per-profile Overrides for multi-DB systems (e.g. <code>sap1</code>, <code>sap2</code> → <code>sap</code>).  </li>
+<li>Improved ordering, idempotency and error reporting in import and generation routines.  </li>
+</ul>
+<hr />
+<h2 id="011-2025-10-19">[0.1.1] - 2025-10-19<a class="headerlink" href="#011-2025-10-19" title="Permanent link">&para;</a></h2>
+<h3 id="ui-polish-postgresql-power">🪶 <em>UI Polish &amp; PostgreSQL Power</em><a class="headerlink" href="#ui-polish-postgresql-power" title="Permanent link">&para;</a></h3>
+<h4 id="overview_1">Overview<a class="headerlink" href="#overview_1" title="Permanent link">&para;</a></h4>
+<p>A refinement release that makes <strong>elevata</strong> smoother and more flexible:<br />
+a polished Django UI meets full <strong>PostgreSQL</strong> support — available via Docker or your own setup.<br />
+Better visuals, faster workflows, and real database choice.</p>
+<hr />
+<h4 id="improvements">✨ Improvements<a class="headerlink" href="#improvements" title="Permanent link">&para;</a></h4>
+<ul>
+<li><strong>UI &amp; UX Enhancements</strong>  </li>
+<li>Polished Django interface with cleaner layouts and spacing  </li>
+<li>Improved responsiveness and overall visual consistency  </li>
+<li>
+<p>Optimized inline interactions and usability tweaks  </p>
+</li>
+<li>
+<p><strong>Database Support</strong>  </p>
+</li>
+<li>Full PostgreSQL backend support  </li>
+<li>Works with Docker Compose or a user-provided instance  </li>
+<li>
+<p>Updated settings for seamless configuration and migrations  </p>
+</li>
+<li>
+<p><strong>Developer Experience</strong>  </p>
+</li>
+<li>Simplified environment setup (SQLite or PostgreSQL)  </li>
+<li>Improved local testing through Docker Compose  </li>
+</ul>
+<hr />
+<h2 id="010-2025-10-14">[0.1.0] - 2025-10-14<a class="headerlink" href="#010-2025-10-14" title="Permanent link">&para;</a></h2>
+<h3 id="metadata-management-comes-alive">🧩 <em>Metadata Management Comes Alive</em><a class="headerlink" href="#metadata-management-comes-alive" title="Permanent link">&para;</a></h3>
+<h4 id="overview_2">Overview<a class="headerlink" href="#overview_2" title="Permanent link">&para;</a></h4>
+<p>This release marks a major milestone:<br />
+<strong>elevata</strong> now provides a fully functional, metadata-driven web interface for managing your data platform’s core structures — built with <strong>Django</strong>, <strong>HTMX</strong>, and a clean <strong>Bootstrap 5</strong> theme.  </p>
+<p>It’s the first end-to-end usable version:<br />
+from user login → to inline editing → to audit tracking — all running securely and responsively out of the box.</p>
+<hr />
+<h4 id="highlights_5">🚀 Highlights<a class="headerlink" href="#highlights_5" title="Permanent link">&para;</a></h4>
+<ul>
+<li><strong>Complete Metadata Management Module</strong>  </li>
+<li>Inline CRUD with audit fields and user tracking  </li>
+<li>
+<p>Automatic URL &amp; view generation for all models  </p>
+</li>
+<li>
+<p><strong>Modern UI &amp; UX</strong>  </p>
+</li>
+<li>Responsive elevata theme (Bootstrap 5.3)  </li>
+<li>Autofocus &amp; usability improvements for inline editing  </li>
+<li>
+<p>Unified form and grid styling  </p>
+</li>
+<li>
+<p><strong>Security &amp; Reliability</strong>  </p>
+</li>
+<li>Integrated authentication (login, logout, password change)  </li>
+<li>
+<p>Safe CSRF handling for all HTMX requests  </p>
+</li>
+<li>
+<p><strong>Developer Experience</strong>  </p>
+</li>
+<li>Default SQLite backend for easy setup  </li>
+<li>Clean folder structure: <code>core/</code>, <code>metadata/</code>, <code>dbt_project/</code>  </li>
+<li>Ready for future extensions (PostgreSQL, dbt, etc.)</li>
+</ul>
+<hr />
+<h2 id="001-2025-10-06">[0.0.1] - 2025-10-06<a class="headerlink" href="#001-2025-10-06" title="Permanent link">&para;</a></h2>
+<h3 id="added_13">Added<a class="headerlink" href="#added_13" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Project documentation scaffold (<code>README.md</code>)</li>
+<li>License file (<code>LICENSE</code>) under AGPLv3</li>
+<li>Notice file (<code>NOTICE.md</code>) for third-party licenses</li>
+<li><code>.gitignore</code> for Python and dbt projects</li>
+<li>Placeholder <code>requirements/base.txt</code></li>
+<li>Initial backend support for <strong>DuckDB</strong> (<code>requirements/duckdb.txt</code>)</li>
+<li>Base <code>dbt_project/</code> folder</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+  <script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div>
+        © 2025-2026 elevata project · elevata® is a registered trademark in Germany.
+      </div>
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.instant", "navigation.tracking", "content.code.copy", "content.tabs.link", "toc.integrate"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

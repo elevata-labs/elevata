@@ -1,0 +1,2201 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Declarative Data Architecture & Metadata Framework">
+      
+      
+        <meta name="author" content="Ilona Tag">
+      
+      
+      
+        <link rel="prev" href="../incremental_load/">
+      
+      
+        <link rel="next" href="../historization_architecture/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>⚙️ Load SQL Architecture - elevata</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../styles/elevata-theme.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="custom" data-md-color-accent="custom">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#load-sql-architecture" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="elevata" class="md-header__button md-logo" aria-label="elevata" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            elevata
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              ⚙️ Load SQL Architecture
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m17.75 4.09-2.53 1.94.91 3.06-2.63-1.81-2.63 1.81.91-3.06-2.53-1.94L12.44 4l1.06-3 1.06 3zm3.5 6.91-1.64 1.25.59 1.98-1.7-1.17-1.7 1.17.59-1.98L15.75 11l2.06-.05L18.5 9l.69 1.95zm-2.28 4.95c.83-.08 1.72 1.1 1.19 1.85-.32.45-.66.87-1.08 1.27C15.17 23 8.84 23 4.94 19.07c-3.91-3.9-3.91-10.24 0-14.14.4-.4.82-.76 1.27-1.08.75-.53 1.93.36 1.85 1.19-.27 2.86.69 5.83 2.89 8.02a9.96 9.96 0 0 0 8.02 2.89m-1.64 2.02a12.08 12.08 0 0 1-7.8-3.47c-2.17-2.19-3.33-5-3.49-7.82-2.81 3.14-2.7 7.96.31 10.98 3.02 3.01 7.84 3.12 10.98.31"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 7a5 5 0 0 1 5 5 5 5 0 0 1-5 5 5 5 0 0 1-5-5 5 5 0 0 1 5-5m0 2a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3m0-7 2.39 3.42C13.65 5.15 12.84 5 12 5s-1.65.15-2.39.42zM3.34 7l4.16-.35A7.2 7.2 0 0 0 5.94 8.5c-.44.74-.69 1.5-.83 2.29zm.02 10 1.76-3.77a7.131 7.131 0 0 0 2.38 4.14zM20.65 7l-1.77 3.79a7.02 7.02 0 0 0-2.38-4.15zm-.01 10-4.14.36c.59-.51 1.12-1.14 1.54-1.86.42-.73.69-1.5.83-2.29zM12 22l-2.41-3.44c.74.27 1.55.44 2.41.44.82 0 1.63-.17 2.37-.44z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+  
+
+<nav class="md-nav md-nav--primary md-nav--integrated" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="elevata" class="md-nav__button md-logo" aria-label="elevata" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    elevata
+  </label>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../getting_started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ Getting Started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../secure_metadata_connectivity/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ Secure Metadata Connectivity
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Metadata Model & Generation
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Metadata Model & Generation
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../generation_logic/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ Generation Logic
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../incremental_load/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ Incremental Load Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ Load SQL Architecture
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ Load SQL Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-overview" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🔧 1. Overview
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-logical-plans-for-load-operations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🔧 2. Logical Plans for Load Operations
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-expression-ast-in-load-sql" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🔧 3. Expression AST in Load SQL
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-dialect-rendering" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🔧 4. Dialect Rendering
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-intent-layer-generation-ingestion" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🔧 5. Intent layer (generation + ingestion)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="🔧 5. Intent layer (generation + ingestion)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#landing-intent" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🧩 Landing intent
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#ingestion-mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🧩 Ingestion mode
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#allowed-states-raw-landing-include_ingest" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🧩 Allowed states (RAW landing × include_ingest)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-load-runner" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🔧 6. Load Runner
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-deterministic-generation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🔧 7. Deterministic Generation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-mergebased-incremental-sql-generation-rawcore" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🔧 8. Merge‑based Incremental SQL Generation (Rawcore)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="🔧 8. Merge‑based Incremental SQL Generation (Rawcore)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#81-source-resolution" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🧩 8.1 Source Resolution
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#82-natural-key-join" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🧩 8.2 Natural Key Join
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#83-logical-plan-reuse" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🧩 8.3 Logical Plan Reuse
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#84-dialectdependent-strategy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🧩 8.4 Dialect‑dependent Strategy
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#85-delete-detection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🧩 8.5 Delete Detection
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#9-execution-semantics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🔧 9. Execution Semantics
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#10-execution-autoprovisioning-warehouse-logging" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🔧 10. Execution, Auto‑Provisioning &amp; Warehouse Logging
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="🔧 10. Execution, Auto‑Provisioning &amp; Warehouse Logging">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#101-execution-modes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🧩 10.1 Execution Modes
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#102-layer-aware-execution-raw-ingestion" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🧩 10.2 Layer-aware execution (RAW = ingestion)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="🧩 10.2 Layer-aware execution (RAW = ingestion)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#ingestion-configuration-ingestion_config" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🔎 Ingestion configuration (ingestion_config)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#103-autoprovisioning" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🧩 10.3 Auto‑Provisioning
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#104-warehouselevel-load-run-log" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🧩 10.4 Warehouse‑level Load Run Log
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#105-schema-evolution-migrationplan-driven" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🧩 10.5 Schema Evolution (MigrationPlan-driven)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#11-load-observability-debugging" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🔧 11. Load Observability &amp; Debugging
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#12-cli-usage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🔧 12. CLI Usage
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#13-execute-mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🔧 13. Execute Mode
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../historization_architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ Historization Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../schema_evolution/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ Schema Evolution
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SQL Rendering & Dialects
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    SQL Rendering & Dialects
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../sql_rendering_conventions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ SQL Rendering Conventions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dialect_system/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ Dialect System
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../target_backends/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ Target Backends
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Execution & Observability
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Execution & Observability
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../load_execution_architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ Load Execution & Orchestration Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../architecture_control_plane/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ Architecture Control Plane
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Concepts
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Concepts
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../architecture_overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ Architecture Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../query_builder_and_query_tree/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ Query Builder & Query Tree
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../determinism_and_execution_semantics/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ Determinism & Execution Semantics
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../logical_plan/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ Lineage Model & Logical Plan
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../expression_dsl_and_ast/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ Expression DSL & AST
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../hashing_architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ Hashing Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../sql_preview_pipeline/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ SQL Preview & Rendering Pipeline
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../bizcore/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ Bizcore — Business Semantics Layer
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../health_check/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ Metadata Health Check
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Source Integration
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Source Integration
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../source_backends/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ Source Backends
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_8" >
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing & Quality
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Testing & Quality
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tests/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ Test Setup & Guidelines
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_9" >
+        
+          
+          <label class="md-nav__link" for="__nav_9" id="__nav_9_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Strategy & Architecture
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_9_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_9">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Strategy & Architecture
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../strategy/elevata_platform_strategy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ elevata Platform Strategy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_10" >
+        
+          
+          <label class="md-nav__link" for="__nav_10" id="__nav_10_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Project
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_10_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_10">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Project
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../readme_ref/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ Main Project README
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../changelog_ref/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ Changelog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+
+<h1 id="load-sql-architecture">⚙️ Load SQL Architecture<a class="headerlink" href="#load-sql-architecture" title="Permanent link">&para;</a></h1>
+<p>This document describes how elevata transforms metadata into executable SQL for load operations.</p>
+<hr />
+<h2 id="1-overview">🔧 1. Overview<a class="headerlink" href="#1-overview" title="Permanent link">&para;</a></h2>
+<p>The load SQL pipeline turns metadata into <strong>complete SQL statements</strong> suitable for execution on analytical backends.  </p>
+<p>High‑level flow:</p>
+<pre><code>Metadata → Logical Plan → Expression AST → Dialect Rendering → SQL Load Statement → Execution
+</code></pre>
+<p>The system is designed so that:<br />
+- metadata remains backend‑agnostic<br />
+- logical plans describe <em>what</em> is required, not <em>how</em> it is written<br />
+- dialects encapsulate syntactic differences<br />
+- execution engines are decoupled from SQL generation</p>
+<blockquote>
+<p><strong>Note</strong><br />
+This document focuses exclusively on SQL generation and rendering.<br />
+Execution order, orchestration semantics, retries, failure handling,<br />
+and execution observability are described separately in<br />
+<a href="../load_execution_architecture/">Load Execution &amp; Orchestration Architecture</a>.</p>
+</blockquote>
+<hr />
+<h2 id="2-logical-plans-for-load-operations">🔧 2. Logical Plans for Load Operations<a class="headerlink" href="#2-logical-plans-for-load-operations" title="Permanent link">&para;</a></h2>
+<p>elevata represents load operations using SQL primitives:  </p>
+<ul>
+<li><code>LogicalSelect</code> – core building block  </li>
+<li><code>LogicalUnion</code> – multi-source resolution  </li>
+<li><code>SubquerySource</code> – ranking, filtering, pre‑aggregation  </li>
+</ul>
+<p>Logical plans are intentionally <strong>dialect‑neutral</strong>.</p>
+<hr />
+<h2 id="3-expression-ast-in-load-sql">🔧 3. Expression AST in Load SQL<a class="headerlink" href="#3-expression-ast-in-load-sql" title="Permanent link">&para;</a></h2>
+<p>Every column expression is represented as an AST node during load generation.  </p>
+<p>Supported node types include:<br />
+- <code>ColumnRef</code><br />
+- <code>Literal</code><br />
+- <code>ExprRef</code><br />
+- <code>ConcatExpr</code><br />
+- <code>ConcatWsExpr</code><br />
+- <code>CoalesceExpr</code><br />
+- <code>WindowFunctionExpr</code><br />
+- <code>Hash256Expr</code>  </p>
+<p>The AST guarantees that:<br />
+- hashing is consistent across dialects<br />
+- CONCAT / COALESCE behave uniformly<br />
+- window functions are structured, not string‑built<br />
+- SQL remains predictable and comparable</p>
+<hr />
+<h2 id="4-dialect-rendering">🔧 4. Dialect Rendering<a class="headerlink" href="#4-dialect-rendering" title="Permanent link">&para;</a></h2>
+<p>After a logical plan is constructed, the selected dialect renders the plan and its AST into concrete SQL.</p>
+<pre><code>sql = dialect.render_select(plan)
+</code></pre>
+<p>Each dialect implements:<br />
+- identifier quoting<br />
+- literal rendering<br />
+- hashing functions<br />
+- CONCAT / CONCAT_WS<br />
+- COALESCE<br />
+- window functions<br />
+- subqueries and unions  </p>
+<p>This ensures consistent semantics while using native SQL syntax per backend.</p>
+<hr />
+<h2 id="5-intent-layer-generation-ingestion">🔧 5. Intent layer (generation + ingestion)<a class="headerlink" href="#5-intent-layer-generation-ingestion" title="Permanent link">&para;</a></h2>
+<p>elevata uses a small "intent layer" to keep core decisions consistent across<br />
+target generation, ingestion, drift detection and quality checks.</p>
+<h3 id="landing-intent">🧩 Landing intent<a class="headerlink" href="#landing-intent" title="Permanent link">&para;</a></h3>
+<p>The function <code>landing_required(SourceDataset)</code> determines whether a dataset<br />
+conceptually requires a RAW landing object.</p>
+<p>Decision rules:<br />
+- <code>SourceDataset.integrate</code> must be True (hard gate).<br />
+- <code>SourceDataset.generate_raw_table</code> overrides the system default.<br />
+- If unset, inherit <code>System.generate_raw_tables</code>.  </p>
+<p>This decision is shared across:<br />
+- RAW target generation<br />
+- ingestion execution planning<br />
+- future drift detection and quality checks</p>
+<h3 id="ingestion-mode">🧩 Ingestion mode<a class="headerlink" href="#ingestion-mode" title="Permanent link">&para;</a></h3>
+<p>The function <code>resolve_ingest_mode(SourceDataset)</code> determines how RAW is populated:<br />
+- <code>native</code>: elevata extracts and loads<br />
+- <code>external</code>: an external tool populates RAW; elevata validates + continues<br />
+- <code>none</code>: no landing ingestion (federated/virtual access)  </p>
+<p>If RAW landing is required but <code>include_ingest='none'</code>, configuration is inconsistent<br />
+and must fail fast.</p>
+<h3 id="allowed-states-raw-landing-include_ingest">🧩 Allowed states (RAW landing × include_ingest)<a class="headerlink" href="#allowed-states-raw-landing-include_ingest" title="Permanent link">&para;</a></h3>
+<p>The decision whether a RAW landing exists is driven by <code>landing_required(SourceDataset)</code>.<br />
+The execution mode is driven by <code>System.include_ingest</code>, but only becomes relevant<br />
+when RAW landing is required.</p>
+<table>
+<thead>
+<tr>
+<th>landing_required</th>
+<th>include_ingest</th>
+<th>Result / behavior</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>false</td>
+<td>none</td>
+<td>✅ Valid. No RAW landing. Ingestion is skipped (federated/virtual or intentionally no landing).</td>
+</tr>
+<tr>
+<td>false</td>
+<td>external</td>
+<td>✅ Valid (ignored). No RAW landing, so ingestion is skipped.</td>
+</tr>
+<tr>
+<td>false</td>
+<td>native</td>
+<td>✅ Valid (ignored). No RAW landing, so ingestion is skipped.</td>
+</tr>
+<tr>
+<td>true</td>
+<td>native</td>
+<td>✅ Valid. elevata performs native ingestion (extract + load into RAW).</td>
+</tr>
+<tr>
+<td>true</td>
+<td>external</td>
+<td>✅ Valid. RAW is expected to be populated by an external tool; elevata validates RAW existence and continues with downstream steps (drift/quality/etc.).</td>
+</tr>
+<tr>
+<td>true</td>
+<td>none</td>
+<td>❌ Invalid. Configuration inconsistency: RAW landing is required but no ingestion mode is enabled. Must fail fast.</td>
+</tr>
+</tbody>
+</table>
+<p>Notes:<br />
+- <code>include_ingest</code> is only actionable when <code>landing_required=True</code>.<br />
+- For <code>include_ingest=external</code>, elevata does not extract data but still logs runs and can run drift/quality checks on RAW.</p>
+<hr />
+<h2 id="6-load-runner">🔧 6. Load Runner<a class="headerlink" href="#6-load-runner" title="Permanent link">&para;</a></h2>
+<p>The <strong>Load Runner CLI</strong> (<code>elevata_load</code>) orchestrates SQL generation and execution.  </p>
+<p>It:<br />
+- resolves the active profile and target system<br />
+- reads target dataset metadata<br />
+- constructs the logical plan<br />
+- renders SQL via the active dialect<br />
+- optionally executes SQL in the target warehouse  </p>
+<p>The same pipeline is used for SQL preview and execution.</p>
+<hr />
+<h2 id="7-deterministic-generation">🔧 7. Deterministic Generation<a class="headerlink" href="#7-deterministic-generation" title="Permanent link">&para;</a></h2>
+<p>The SQL generation pipeline is fully deterministic:<br />
+- stable business-key ordering<br />
+- stable hashing patterns<br />
+- stable helper column naming<br />
+- stable logical plan structure  </p>
+<p>This guarantees reproducible SQL and predictable diffs.</p>
+<hr />
+<h2 id="8-mergebased-incremental-sql-generation-rawcore">🔧 8. Merge‑based Incremental SQL Generation (Rawcore)<a class="headerlink" href="#8-mergebased-incremental-sql-generation-rawcore" title="Permanent link">&para;</a></h2>
+<p>This section documents how merge‑based incremental loads are implemented for Rawcore targets.</p>
+<h3 id="81-source-resolution">🧩 8.1 Source Resolution<a class="headerlink" href="#81-source-resolution" title="Permanent link">&para;</a></h3>
+<p>For targets using <code>incremental_strategy = "merge"</code>, the SQL layer resolves the Stage upstream dataset as the merge source:  </p>
+<ul>
+<li>source: <code>stage.&lt;table&gt; AS s</code>  </li>
+<li>target: <code>rawcore.&lt;table&gt; AS t</code>  </li>
+</ul>
+<p>Lineage metadata guarantees compatible natural keys and attribute sets.</p>
+<h3 id="82-natural-key-join">🧩 8.2 Natural Key Join<a class="headerlink" href="#82-natural-key-join" title="Permanent link">&para;</a></h3>
+<p>Natural key fields define:<br />
+- the merge join condition<br />
+- identification of new vs. existing rows<br />
+- delete‑detection scope  </p>
+<p>If no natural key is defined, SQL generation fails.</p>
+<h3 id="83-logical-plan-reuse">🧩 8.3 Logical Plan Reuse<a class="headerlink" href="#83-logical-plan-reuse" title="Permanent link">&para;</a></h3>
+<p>All column expressions used in UPDATE and INSERT branches are reused from the logical plan.  </p>
+<p>Business logic is defined once and rendered consistently.</p>
+<h3 id="84-dialectdependent-strategy">🧩 8.4 Dialect‑dependent Strategy<a class="headerlink" href="#84-dialectdependent-strategy" title="Permanent link">&para;</a></h3>
+<p>Dialects choose between:<br />
+- native <code>MERGE</code> statements<br />
+- fallback <code>UPDATE</code> + <code>INSERT ... WHERE NOT EXISTS</code> patterns  </p>
+<p>Both paths reuse the same logical plan expressions.</p>
+<h3 id="85-delete-detection">🧩 8.5 Delete Detection<a class="headerlink" href="#85-delete-detection" title="Permanent link">&para;</a></h3>
+<p>Delete detection is implemented as a separate anti‑join statement that runs before the merge.  </p>
+<p>The SQL layer translates incremental scope filters from source lineage into target column expressions.  </p>
+<p>The incremental scope used for delete detection is derived from the SourceDataset.increment_filter and<br />
+translated via lineage into target
+column references.</p>
+<hr />
+<h2 id="9-execution-semantics">🔧 9. Execution Semantics<a class="headerlink" href="#9-execution-semantics" title="Permanent link">&para;</a></h2>
+<p>Execution semantics are defined by target layer:  </p>
+<table>
+<thead>
+<tr>
+<th>Layer</th>
+<th>Behaviour</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>raw</code></td>
+<td>Replace when loaded or seeded</td>
+</tr>
+<tr>
+<td><code>stage</code></td>
+<td>Always replace (truncate before insert)</td>
+</tr>
+<tr>
+<td><code>rawcore</code></td>
+<td>Replace only when <code>mode = full</code>; incremental runs never truncate</td>
+</tr>
+<tr>
+<td><code>*_hist</code></td>
+<td>Never truncate; versioned updates only</td>
+</tr>
+</tbody>
+</table>
+<p>Execution always runs <strong>inside the target system</strong>.</p>
+<hr />
+<h2 id="10-execution-autoprovisioning-warehouse-logging">🔧 10. Execution, Auto‑Provisioning &amp; Warehouse Logging<a class="headerlink" href="#10-execution-autoprovisioning-warehouse-logging" title="Permanent link">&para;</a></h2>
+<h3 id="101-execution-modes">🧩 10.1 Execution Modes<a class="headerlink" href="#101-execution-modes" title="Permanent link">&para;</a></h3>
+<p><code>elevata_load</code> supports:  </p>
+<ul>
+<li><strong>Dry‑run</strong>: render SQL without executing it  </li>
+<li><strong>Execute</strong> (<code>--execute</code>): render and execute SQL in the target warehouse</li>
+</ul>
+<h3 id="102-layer-aware-execution-raw-ingestion">🧩 10.2 Layer-aware execution (RAW = ingestion)<a class="headerlink" href="#102-layer-aware-execution-raw-ingestion" title="Permanent link">&para;</a></h3>
+<p><code>elevata_load --execute</code> is intentionally <strong>layer-aware</strong>:  </p>
+<ul>
+<li>For <code>raw</code> targets, <code>--execute</code> does not produce SQL but triggers <strong>ingestion</strong> logic instead.<br />
+The same execution command therefore has different semantics depending on the target layer.  </li>
+<li>For downstream layers (<code>stage</code>, <code>rawcore</code>, <code>*_hist</code>), <code>--execute</code> renders and executes<br />
+<strong>warehouse-native SQL</strong> as usual.  </li>
+</ul>
+<p>Why this matters:<br />
+- elevata treats <strong>ingestion as a first-class citizen</strong> of the pipeline.<br />
+- The same lineage metadata that drives target generation also drives ingestion planning.<br />
+- This closes an important gap in dbt-style stacks: dbt excels at transformations but does not provide<br />
+ingestion as part of its core execution model.  </p>
+<p>Practical rule:<br />
+- If you can <code>--execute</code> a RAW table, elevata will bring the data in (native/external mode).<br />
+- If you <code>--execute</code> a Stage model, elevata assumes that its upstream exists inside the target execution context<br />
+  (RAW landing or federated/external availability), and will fail fast otherwise.</p>
+<h4 id="ingestion-configuration-ingestion_config">🔎 Ingestion configuration (<code>ingestion_config</code>)<a class="headerlink" href="#ingestion-configuration-ingestion_config" title="Permanent link">&para;</a></h4>
+<p>For RAW ingestion, source connection details and behavior are defined via <code>SourceDataset.ingestion_config</code>.</p>
+<ul>
+<li>For relational sources, scoping is controlled via <code>static_filter</code> and <code>increment_filter</code>.  </li>
+<li>For non-relational sources (Files / REST), <code>ingestion_config</code> contains connector-specific parameters<br />
+(e.g. <code>uri</code> or <code>url</code>).</li>
+</ul>
+<p>Regardless of source type, RAW ingestion is always executed as <strong>Full Replace</strong>:</p>
+<ul>
+<li>Drop (if supported)  </li>
+<li>Create  </li>
+<li>Truncate  </li>
+<li>Insert</li>
+</ul>
+<h3 id="103-autoprovisioning">🧩 10.3 Auto‑Provisioning<a class="headerlink" href="#103-autoprovisioning" title="Permanent link">&para;</a></h3>
+<p>When enabled, execution automatically provisions:<br />
+- target schemas<br />
+- the meta schema<br />
+- the <code>load_run_log</code> table  </p>
+<p>All DDL is idempotent.</p>
+<h3 id="104-warehouselevel-load-run-log">🧩 10.4 Warehouse‑level Load Run Log<a class="headerlink" href="#104-warehouselevel-load-run-log" title="Permanent link">&para;</a></h3>
+<p>Each executed load writes a row into <code>meta.load_run_log</code>, capturing:<br />
+- batch and load run IDs<br />
+- target dataset and system<br />
+- load mode and flags<br />
+- timestamps and durations<br />
+- execution status and error details  </p>
+<p>This enables warehouse‑native observability and auditing.</p>
+<h3 id="105-schema-evolution-migrationplan-driven">🧩 10.5 Schema Evolution (MigrationPlan-driven)<a class="headerlink" href="#105-schema-evolution-migrationplan-driven" title="Permanent link">&para;</a></h3>
+<p>Before executing generated DML, elevata applies deterministic <strong>schema evolution steps</strong> that align<br />
+physical target tables with metadata-defined schemas:</p>
+<ul>
+<li><code>ENSURE_SCHEMA</code> (idempotent)  </li>
+<li><code>RENAME TABLE</code> (dataset rename via <code>former_names</code>)  </li>
+<li><code>RENAME COLUMN</code> (column rename via <code>former_names</code>)  </li>
+<li><code>ADD COLUMN</code> (when safe and supported)  </li>
+<li><code>DROP COLUMN</code> (policy-gated; disabled by default)  </li>
+<li>Base tables: enabled via <code>ELEVATA_ALLOW_AUTO_DROP_COLUMNS=true</code>  </li>
+<li><code>_hist</code> tables: enabled via <code>ELEVATA_ALLOW_AUTO_DROP_HIST_COLUMNS=true</code>  </li>
+</ul>
+<p>Schema evolution steps are derived from the <strong>Architecture MigrationPlan</strong> and executed by the applier.<br />
+Destructive operations remain policy-gated and are only executed when explicitly enabled.</p>
+<p>Table creation remains the responsibility of the load runner via <code>ensure_target_table(...)</code>.</p>
+<hr />
+<h2 id="11-load-observability-debugging">🔧 11. Load Observability &amp; Debugging<a class="headerlink" href="#11-load-observability-debugging" title="Permanent link">&para;</a></h2>
+<p>Load runs expose structured summaries, batch grouping, and CLI‑level logging to support debugging and monitoring.</p>
+<hr />
+<h2 id="12-cli-usage">🔧 12. CLI Usage<a class="headerlink" href="#12-cli-usage" title="Permanent link">&para;</a></h2>
+<p>The <code>elevata_load</code> command supports preview, debugging, batch execution, and warehouse execution.</p>
+<hr />
+<h2 id="13-execute-mode">🔧 13. Execute Mode<a class="headerlink" href="#13-execute-mode" title="Permanent link">&para;</a></h2>
+<p>The <code>--execute</code> flag enables direct execution of load SQL in the target warehouse via dialect‑specific execution engines.</p>
+<hr />
+<p>© 2025-2026 elevata Labs — Internal Technical Documentation</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+  <script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div>
+        © 2025-2026 elevata project · elevata® is a registered trademark in Germany.
+      </div>
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.instant", "navigation.tracking", "content.code.copy", "content.tabs.link", "toc.integrate"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

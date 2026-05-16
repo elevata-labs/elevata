@@ -73,6 +73,7 @@ nav:
 
   - Execution & Observability:
       - ⚙️ Load Execution & Orchestration Architecture: load_execution_architecture.md
+      - ⚙️ Architecture Control Plane: architecture_control_plane.md
 
   - Concepts:
       - ⚙️ Architecture Overview: architecture_overview.md

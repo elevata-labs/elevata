@@ -23,11 +23,27 @@ Contact: <https://github.com/elevata-labs/elevata>.
 from __future__ import annotations
 
 import json
+import os
 from json import JSONDecodeError
 from pathlib import Path
 from typing import Any
 
 from .state import ArchitectureState
+
+
+DEFAULT_ARCHITECTURE_STATE_DIR = ".elevata/state"
+ARCHITECTURE_STATE_DIR_ENV = "ELEVATA_ARCH_STATE_DIR"
+
+
+def resolve_architecture_state_dir(default: str | Path = DEFAULT_ARCHITECTURE_STATE_DIR) -> Path:
+  """
+  Resolve the architecture state directory.
+  """
+  value = os.getenv(ARCHITECTURE_STATE_DIR_ENV)
+  if value and value.strip():
+    return Path(value.strip())
+
+  return Path(default)
 
 
 class ArchitectureStateStore:
@@ -39,8 +55,8 @@ class ArchitectureStateStore:
   requiring DB schema changes.
   """
 
-  def __init__(self, base_path: str | Path = ".elevata/state"):
-    self.base_path = Path(base_path)
+  def __init__(self, base_path: str | Path | None = None):
+    self.base_path = Path(base_path) if base_path is not None else resolve_architecture_state_dir()
     self.base_path.mkdir(parents=True, exist_ok=True)
 
   def _state_file(self) -> Path:
@@ -60,8 +76,26 @@ class ArchitectureStateStore:
     if not path.exists():
       return None
 
+    return self.load_file(path)
+
+  def save(self, state: ArchitectureState) -> None:
+    """
+    Persist the given architecture state to disk.
+    """
+    self.save_file(self._state_file(), state)
+
+  @classmethod
+  def load_file(cls, path: str | Path) -> ArchitectureState | None:
+    """
+    Load an architecture state from a JSON file.
+    """
+    state_path = Path(path)
+
+    if not state_path.exists():
+      return None
+
     try:
-      raw = path.read_text(encoding="utf-8")
+      raw = state_path.read_text(encoding="utf-8")
     except OSError:
       return None
 
@@ -70,33 +104,38 @@ class ArchitectureStateStore:
 
     try:
       data = json.loads(raw)
-      return self._deserialize(data)
+      return cls.deserialize(data)
     except (JSONDecodeError, TypeError, ValueError, KeyError, AttributeError):
       return None
 
-  def save(self, state: ArchitectureState) -> None:
+  @classmethod
+  def save_file(cls, path: str | Path, state: ArchitectureState) -> None:
     """
-    Persist the given architecture state to disk.
+    Persist an architecture state to a JSON file.
     """
-    path = self._state_file()
-
-    tmp_path = path.with_suffix(".tmp")
+    state_path = Path(path)
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = state_path.with_suffix(".tmp")
 
     with tmp_path.open("w", encoding="utf-8") as f:
       json.dump(
-        self._serialize(state),
+        cls.serialize(state),
         f,
         ensure_ascii=False,
         indent=2,
       )
 
-    tmp_path.replace(path)
+    tmp_path.replace(state_path)
 
   # ---------------------------
   # Serialization
   # ---------------------------
 
-  def _serialize(self, state: ArchitectureState) -> dict[str, Any]:
+  @staticmethod
+  def serialize(state: ArchitectureState) -> dict[str, Any]:
+    """
+    Return the JSON-serializable representation of an architecture state.
+    """
     return {
       "datasets": [
         {
@@ -127,7 +166,11 @@ class ArchitectureStateStore:
       ]
     }
 
-  def _deserialize(self, data: dict[str, Any]) -> ArchitectureState:
+  @staticmethod
+  def deserialize(data: dict[str, Any]) -> ArchitectureState:
+    """
+    Build an architecture state from a JSON-compatible dictionary.
+    """
     from .state import DatasetState, ColumnState
 
     datasets = []

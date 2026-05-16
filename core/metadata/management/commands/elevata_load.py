@@ -36,8 +36,20 @@ from django.utils.timezone import now
 from django.core.management.base import BaseCommand, CommandError
 from dataclasses import replace
 
+from metadata.architecture.scope import (
+  dataset_keys_from_execution_items,
+  split_dataset_key,
+)
 from metadata.architecture.migration_planner import MigrationPlanner
 from metadata.architecture.service import ArchitectureStateService
+from metadata.architecture.shadow_compare import (
+  SCHEMA_OP_ACTION_TYPES,
+  build_actual_schema_op_tokens_from_plan,
+  build_expected_schema_op_tokens,
+  compare_schema_op_tokens,
+  format_schema_op_token,
+  parse_schema_op_token,
+)
 
 from metadata.config.profiles import load_profile
 from metadata.config.targets import get_target_system
@@ -1740,69 +1752,11 @@ class Command(BaseCommand):
         previous_state = arch_service.load_previous_state()
         current_state, arch_diff = arch_service.diff_against(previous_state)
 
-        def _execution_item_dataset_key(item):
-          """
-          Return a stable dataset key for items coming from execution_order.
-
-          execution_order may contain different object shapes depending on the
-          planning path, so this helper must be defensive.
-          """
-          if isinstance(item, str):
-            return item
-
-          if hasattr(item, "dataset_key") and getattr(item, "dataset_key"):
-            return item.dataset_key
-
-          if hasattr(item, "target_schema") and hasattr(item, "target_dataset_name"):
-            schema = getattr(item.target_schema, "short_name", None)
-            if schema:
-              return f"{schema}.{item.target_dataset_name}"
-
-          if hasattr(item, "target_dataset"):
-            td = item.target_dataset
-            if hasattr(td, "target_schema") and hasattr(td, "target_dataset_name"):
-              schema = getattr(td.target_schema, "short_name", None)
-              if schema:
-                return f"{schema}.{td.target_dataset_name}"
-
-          return None
-
-        # --- compute execution scope ---
-        relevant_dataset_keys = {
-          dataset_key
-          for item in execution_order
-          for dataset_key in [_execution_item_dataset_key(item)]
-          if dataset_key
-        }
-
-        # Expand scope with related *_hist datasets (best effort)
-        def _expand_relevant_keys_with_hist(state, keys):
-          try:
-            by_key = state.datasets_by_key
-          except Exception:
-            return keys
-
-          expanded = set(keys)
-          for base_key in list(keys):
-            ds = by_key.get(base_key)
-            if ds is None:
-              continue
-            if not getattr(ds, "historize", False):
-              continue
-            if getattr(ds, "is_hist", False):
-              continue
-
-            candidates = [
-              f"{base_key}_hist",
-              f"{ds.schema_short_name}.{ds.dataset_name}_hist",
-            ]
-            for cand in candidates:
-              if cand in by_key:
-                expanded.add(cand)
-          return expanded
-
-        if current_state is not None and relevant_dataset_keys:
-          relevant_dataset_keys = _expand_relevant_keys_with_hist(current_state, relevant_dataset_keys)
+        relevant_dataset_keys = dataset_keys_from_execution_items(
+          execution_order,
+          architecture_state=current_state,
+          include_related_hist=True,
+        )
  
         relevant_dataset_changes = [
           ch for ch in arch_diff.dataset_changes
@@ -1999,199 +1953,14 @@ class Command(BaseCommand):
           # This is best-effort. In enforce-mode, mismatches block execute-runs.
           # ------------------------------------------------------------
           try:
-            suppressed_by_full_refresh = 0
-            suppressed_add_by_full_refresh = 0
-            full_refresh_keys: set[str] = set()
-
-            def _split_dataset_key(key: str) -> tuple[str | None, str | None]:
-              if not key or "." not in key:
-                return None, None
-              a, b = key.split(".", 1)
-              return (a or None), (b or None)
-            
-            def _tok(op: str, **kwargs) -> str:
-              """
-              Stable, non-SQL token for shadow-compare.
-              We use JSON to avoid confusing these compare-tokens with executable SQL.
-              """
-              payload: dict[str, Any] = {"op": op}
-              for k, v in (kwargs or {}).items():
-                if v is not None:
-                  payload[k] = v
-              return json.dumps(payload, sort_keys=True, separators=(",", ":"))
-
-            def _tok_parse(token: str) -> dict[str, Any] | None:
-              try:
-                v = json.loads(token)
-                if isinstance(v, dict) and v.get("op"):
-                  return v
-              except Exception:
-                return None
-              return None
-            
-            def _tok_pretty(token: str) -> str:
-              """
-              Human-friendly representation for shadow-compare tokens.
-              Keep token computation stable (JSON), but render log output compact.
-              """
-              p = _tok_parse(token)
-              if not p:
-                return token
-
-              op = str(p.get("op") or "").strip()
-              ds = p.get("ds")
-              col = p.get("col")
-              prev = p.get("prev")
-              cur = p.get("cur")
-
-              parts: list[str] = []
-              if op:
-                parts.append(f"op={op}")
-              if ds:
-                parts.append(f"ds={ds}")
-              if col:
-                parts.append(f"col={col}")
-              if prev:
-                parts.append(f"prev={prev}")
-              if cur:
-                parts.append(f"cur={cur}")
-
-              return " ".join(parts) if parts else token
-
-            def _token_for_action(a):
-              at = getattr(a, "action_type", None)
-              if at == "RENAME_DATASET":
-                prev = getattr(a, "previous_dataset_key", None)
-                cur = getattr(a, "dataset_key", None)
-                if prev and cur:
-                  return _tok("RENAME_DATASET", prev=prev, cur=cur)
-              if at == "RENAME_COLUMN":
-                ds = getattr(a, "dataset_key", None)
-                prev = getattr(a, "previous_column_name", None)
-                cur = getattr(a, "column_name", None)
-                if ds and prev and cur:
-                  return _tok("RENAME_COLUMN", ds=ds, prev=prev, cur=cur)
-              if at == "ADD_COLUMN":
-                ds = getattr(a, "dataset_key", None)
-                col = getattr(a, "column_name", None)
-                if ds and col:
-                  return _tok("ADD_COLUMN", ds=ds, col=col)
-              if at == "DROP_COLUMN":
-                ds = getattr(a, "dataset_key", None)
-                col = getattr(a, "column_name", None)
-                if ds and col:
-                  return _tok("DROP_COLUMN", ds=ds, col=col)
-              if at == "ALTER_COLUMN":
-                ds = getattr(a, "dataset_key", None)
-                col = getattr(a, "column_name", None)
-                if ds and col:
-                  return _tok("ALTER_COLUMN", ds=ds, col=col)
-              if at == "REBUILD_DATASET":
-                ds = getattr(a, "dataset_key", None)
-                if ds:
-                  return _tok("REBUILD_DATASET", ds=ds)
-              return None            
-
-            def _parse_materialization_tokens(*, plan, schema_short: str) -> set[str]:
-              tokens: set[str] = set()
-              steps = list(getattr(plan, "steps", None) or [])
-              dataset_key = str(getattr(plan, "dataset_key", "") or "")
-
-              for s in steps:
-                op = str(getattr(s, "op", "") or "")
-                reason = str(getattr(s, "reason", "") or "")
-                sql = str(getattr(s, "sql", "") or "")
-
-                if op == "RENAME_COLUMN":
-                  # reason example:
-                  # "Rename column old_name -> new_name (former name match)"
-                  m = re.search(r"Rename column\s+(.+?)\s+->\s+(.+?)(?:\s|\(|$)", reason)
-                  if m:
-                    old = (m.group(1) or "").strip()
-                    new = (m.group(2) or "").strip()
-                    if dataset_key and old and new:
-                      tokens.add(_tok("RENAME_COLUMN", ds=dataset_key, prev=old, cur=new))
-                  continue
-
-                if op == "RENAME_DATASET":
-                  # reason example:
-                  # "Dataset rename detected via former_names: old_table -> new_table"
-                  m = re.search(r":\s*(.+?)\s*->\s*(.+?)\s*$", reason)
-                  if m:
-                    old_tbl = (m.group(1) or "").strip()
-                    new_tbl = (m.group(2) or "").strip()
-                    if schema_short and old_tbl and new_tbl:
-                      tokens.add(_tok(
-                        "RENAME_DATASET",
-                        prev=f"{schema_short}.{old_tbl}",
-                        cur=f"{schema_short}.{new_tbl}",
-                      ))
-                  continue
-
-                if op == "ADD_COLUMN":
-                  # reason example:
-                  # "Column <name> missing"
-                  col = None
-                  m = re.search(r"Column\s+(.+?)\s+missing", reason)
-                  if m:
-                    col = (m.group(1) or "").strip()
-
-                  # Fallback: parse from SQL if reason text is missing/changed
-                  if not col and sql:
-                    # Supports identifiers with quotes/backticks/brackets (incl. spaces when quoted)
-                    ident = r"(`[^`]+`|\"[^\"]+\"|\[[^\]]+\]|[A-Za-z_][A-Za-z0-9_]*)"
-                    m2 = re.search(
-                      rf"\balter\s+table\b.*?\badd\s+(?:column\s+)?(?P<col>{ident})\b",
-                      sql,
-                      flags=re.IGNORECASE,
-                    )
-                    if m2:
-                      raw = (m2.group("col") or "").strip()
-                      col = raw.strip("`\"[]").strip()
-
-                  if dataset_key and col:
-                    tokens.add(_tok("ADD_COLUMN", ds=dataset_key, col=col))
-                  continue
-
-                if op == "ALTER_COLUMN_TYPE":
-                  # Map to a stable token: ALTER_COLUMN <ds>.<col>
-                  col = None
-                  m = re.search(r"\balter\s+(.+?)\s+to\b", reason, flags=re.IGNORECASE)
-                  if m:
-                    col = (m.group(1) or "").strip()
-                  if dataset_key and col:
-                    tokens.add(_tok("ALTER_COLUMN", ds=dataset_key, col=col))
-                  continue
-
-                if op == "DROP_COLUMN":
-                  # Prefer SQL parse: ALTER TABLE ... DROP COLUMN <col>
-                  m = re.search(r"\bdrop\s+column\s+([A-Za-z_][A-Za-z0-9_]*)", sql, flags=re.IGNORECASE)
-                  if m:
-                    col = m.group(1)
-                    tokens.add(_tok("DROP_COLUMN", ds=dataset_key, col=col))
-                    continue
-                  # Fallback: reason contains "...<schema>.<table>.<col>"
-                  m2 = re.search(r"\.([A-Za-z_][A-Za-z0-9_]*)\s*$", reason)
-                  if m2:
-                    col = m2.group(1)
-                    tokens.add(_tok("DROP_COLUMN", ds=dataset_key, col=col))
-                  continue
-
-              if getattr(plan, "requires_rebuild", False) and dataset_key:
-                tokens.add(_tok("REBUILD_DATASET", ds=dataset_key))
-
-              return tokens
-
             expected_actions = [
               a for a in (migration_plan.actions or ())
-              if getattr(a, "action_type", None) in ("RENAME_DATASET", "RENAME_COLUMN", "ADD_COLUMN", "DROP_COLUMN", "ALTER_COLUMN", "REBUILD_DATASET")
+              if getattr(a, "action_type", None) in SCHEMA_OP_ACTION_TYPES
             ]
 
             # Only compare when the migration plan contains schema-op actions.
-            # Otherwise we would report planner-driven drift as "unexpected" even though
-            # there's nothing to compare against.
+            # Otherwise planner-driven drift would be reported without architecture intent.
             if expected_actions:
-              # Build materialization plans for the same scope and extract rename steps.
               mat_policy = load_materialization_policy()
               mat_policy = replace(mat_policy, debug_plan=bool(debug_plan))
               # CLI can only enable; never override env/policy from True -> False.
@@ -2211,10 +1980,11 @@ class Command(BaseCommand):
                 target_sa_engine = None
 
               actual: set[str] = set()
+              full_refresh_keys: set[str] = set()
               type_drift_kind_by_ds_col: dict[tuple[str, str], str] = {}
 
               for ds_key in sorted(relevant_dataset_keys or set()):
-                schema_short_local, ds_name_local = _split_dataset_key(ds_key)
+                schema_short_local, ds_name_local = split_dataset_key(ds_key)
                 if not schema_short_local or not ds_name_local:
                   continue
 
@@ -2240,11 +2010,9 @@ class Command(BaseCommand):
                 if (not AUTO_PROVISION_TABLES) or (schema_short_local not in mat_policy.sync_schema_shorts):
                   continue
 
-                # Apply the same full-refresh filtering as the real run:
                 load_plan_shadow = build_load_plan(td_shadow)
                 is_full_refresh_shadow = should_truncate_before_load(td_shadow, load_plan_shadow)
                 if is_full_refresh_shadow:
-                  # Full refresh: table will be DROP+CREATE later, so column renames are not executed as DDL steps.
                   full_refresh_keys.add(ds_key)
 
                 plan_shadow = build_materialization_plan(
@@ -2255,9 +2023,7 @@ class Command(BaseCommand):
                   policy=mat_policy,
                 )
 
-                # Collect TYPE_DRIFT hints so "missing_in_materialization" can explain itself.
-                # Example warning:
-                #   TYPE_DRIFT: kind=narrowing reason=... col=rawcore.tbl.col desired=... actual=...
+                # Collect TYPE_DRIFT hints so missing materialization output can be explained.
                 for w in (getattr(plan_shadow, "warnings", None) or []):
                   s = str(w)
                   if not s.startswith("TYPE_DRIFT:"):
@@ -2270,8 +2036,7 @@ class Command(BaseCommand):
                     ds_k, col_name = col_path.rsplit(".", 1)
                     type_drift_kind_by_ds_col[(ds_k, col_name)] = kind
 
-                # Shadow-compare must mirror the *actual* schema steps we execute:
-                # derive steps from MigrationPlan intent (same as run_single_target_dataset).
+                # Shadow compare mirrors the schema steps executed by run_single_target_dataset.
                 if migration_plan is not None:
                   mig_res = build_materialization_from_migration_plan(
                     td=td_shadow,
@@ -2283,12 +2048,18 @@ class Command(BaseCommand):
                     exec_engine=engine,
                     is_full_refresh=is_full_refresh_shadow,
                   )
-                  ensure_steps = [s for s in (getattr(plan_shadow, "steps", None) or []) if getattr(s, "op", None) == "ENSURE_SCHEMA"]
+                  ensure_steps = [
+                    s for s in (getattr(plan_shadow, "steps", None) or [])
+                    if getattr(s, "op", None) == "ENSURE_SCHEMA"
+                  ]
                   plan_shadow.steps = ensure_steps + list(mig_res.steps or [])
 
                 if is_full_refresh_shadow:
                   keep_ops = {"ENSURE_SCHEMA", "RENAME_DATASET"}
-                  plan_shadow.steps = [s for s in (plan_shadow.steps or []) if getattr(s, "op", None) in keep_ops]
+                  plan_shadow.steps = [
+                    s for s in (plan_shadow.steps or [])
+                    if getattr(s, "op", None) in keep_ops
+                  ]
 
                 if no_type_changes:
                   drop_ops = {
@@ -2299,100 +2070,43 @@ class Command(BaseCommand):
                     "DROP_TABLE",
                     "RENAME_TABLE",
                   }
-                  plan_shadow.steps = [s for s in (plan_shadow.steps or []) if getattr(s, "op", None) not in drop_ops]
+                  plan_shadow.steps = [
+                    s for s in (plan_shadow.steps or [])
+                    if getattr(s, "op", None) not in drop_ops
+                  ]
 
-                actual |= _parse_materialization_tokens(
+                actual.update(build_actual_schema_op_tokens_from_plan(
                   plan=plan_shadow,
                   schema_short=schema_short_local,
-                )
+                ))
 
-              # Filter expected column-renames for datasets that are full-refresh in this run.
-              expected = set()
-              for a in expected_actions:
-                t = _token_for_action(a)
-                if not t:
-                  continue
-                if getattr(a, "action_type", None) == "RENAME_COLUMN":
-                  ds = getattr(a, "dataset_key", None)
-                  if ds in full_refresh_keys:
-                    suppressed_by_full_refresh += 1
-                    continue
-                if getattr(a, "action_type", None) == "ADD_COLUMN":
-                  ds = getattr(a, "dataset_key", None)
-                  if ds in full_refresh_keys:
-                    suppressed_add_by_full_refresh += 1
-                    continue
-                expected.add(t)
+              expected_build = build_expected_schema_op_tokens(
+                actions=expected_actions,
+                full_refresh_dataset_keys=full_refresh_keys,
+              )
+              expected = set(expected_build.tokens)
 
-              missing = sorted(expected - actual)
-              unexpected = sorted(actual - expected)
-
-              # Rebuild implies all column-level schema ops for that dataset are covered by DROP+CREATE.
-              # We treat expected column ops as satisfied when the materialization planner chooses rebuild.
-              rebuild_ds = set()
-              for t in actual:
-                p = _tok_parse(t)
-                if p and p.get("op") == "REBUILD_DATASET" and p.get("ds"):
-                  rebuild_ds.add(str(p["ds"]))
-
-              # If the planner chose rebuild, treat expected column-level ops as satisfied.
-              if rebuild_ds and missing:
-                kept_missing = []
-                for t in missing:
-                  p = _tok_parse(t) or {}
-                  if p.get("op") in ("RENAME_COLUMN", "ADD_COLUMN", "DROP_COLUMN", "ALTER_COLUMN"):
-                    ds_k = str(p.get("ds") or "")
-                    if ds_k and ds_k in rebuild_ds:
-                      continue
-                  kept_missing.append(t)
-                missing = kept_missing
-
-              # A rebuild is an acceptable remediation for column-level ops; don't treat it as unexpected
-              # if we expected any column-level changes for that dataset.
-              if rebuild_ds and unexpected:
-                expected_ds_with_column_ops = set()
-                for t in expected:
-                  p = _tok_parse(t) or {}
-                  if p.get("op") in ("RENAME_COLUMN", "ADD_COLUMN", "DROP_COLUMN", "ALTER_COLUMN"):
-                    ds_k = str(p.get("ds") or "")
-                    if ds_k:
-                      expected_ds_with_column_ops.add(ds_k)
-                unexpected = [
-                  t for t in unexpected
-                  if not (
-                    (_tok_parse(t) or {}).get("op") == "REBUILD_DATASET"
-                    and str((_tok_parse(t) or {}).get("ds") or "") in expected_ds_with_column_ops
-                  )
-                ]
-
-              # Policy-aware suppression:
-              # - By default, we do NOT physically drop business columns in *_hist.
-              # - Shadow-compare should therefore not warn as "missing" when a hist DROP is expected
-              #   from MigrationPlan but intentionally not emitted by MaterializationPlanner.
               allow_hist_drop = _get_bool_env("ELEVATA_ALLOW_AUTO_DROP_HIST_COLUMNS", False)
-              suppressed_hist_drop = []
-              if (not allow_hist_drop) and missing:
-                kept = []
-                for t in missing:
-                  p = _tok_parse(t) or {}
-                  if p.get("op") == "DROP_COLUMN":
-                    ds_k = str(p.get("ds") or "")
-                    if ds_k.endswith("_hist"):
-                      suppressed_hist_drop.append(t)
-                      continue
-                  kept.append(t)
-                missing = kept
+              compare = compare_schema_op_tokens(
+                expected=expected,
+                actual=actual,
+                allow_hist_drop=allow_hist_drop,
+              )
+
+              missing = list(compare.missing)
+              unexpected = list(compare.unexpected)
+              suppressed_hist_drop = list(compare.suppressed_hist_drop_columns)
 
               self.stdout.write(self.style.NOTICE(
                 f"-- SHADOW compare (schema ops): expected={len(expected)} actual={len(actual)} "
                 f"missing={len(missing)} unexpected={len(unexpected)} "
-                f"suppressed_full_refresh_col_renames={suppressed_by_full_refresh} "
-                f"suppressed_full_refresh_add_columns={suppressed_add_by_full_refresh} "
+                f"suppressed_full_refresh_col_renames={expected_build.suppressed_full_refresh_col_renames} "
+                f"suppressed_full_refresh_add_columns={expected_build.suppressed_full_refresh_add_columns} "
                 f"suppressed_hist_drop_columns={len(suppressed_hist_drop)}"
               ))
 
               def _missing_note(token: str) -> str:
-                p = _tok_parse(token) or {}
+                p = parse_schema_op_token(token) or {}
                 op = str(p.get("op") or "")
                 ds = str(p.get("ds") or "")
                 col = str(p.get("col") or "")
@@ -2410,21 +2124,20 @@ class Command(BaseCommand):
               if missing:
                 for t in missing:
                   self.stdout.write(self.style.WARNING(
-                    f"   ! missing_in_materialization: {_tok_pretty(t)}{_missing_note(t)}"
+                    f"   ! missing_in_materialization: {format_schema_op_token(t)}{_missing_note(t)}"
                   ))
               if suppressed_hist_drop:
                 for t in suppressed_hist_drop:
                   self.stdout.write(self.style.NOTICE(
-                    f"   ~ hist_drop_suppressed (policy): {_tok_pretty(t)}"
+                    f"   ~ hist_drop_suppressed (policy): {format_schema_op_token(t)}"
                   ))
               if unexpected:
                 for t in unexpected:
                   self.stdout.write(self.style.WARNING(
-                    f"   ! unexpected_in_materialization: {_tok_pretty(t)}"
+                    f"   ! unexpected_in_materialization: {format_schema_op_token(t)}"
                   ))
 
-              shadow_failed = bool(missing or unexpected)
-              if shadow_failed and arch_mode == "enforce" and execute:
+              if compare.is_mismatch and arch_mode == "enforce" and execute:
                 raise CommandError(
                   "Architecture guard blocked execution: schema-op shadow compare mismatch "
                   f"(missing={len(missing)}, unexpected={len(unexpected)}). "

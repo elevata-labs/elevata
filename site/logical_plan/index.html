@@ -1,0 +1,2272 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Declarative Data Architecture & Metadata Framework">
+      
+      
+        <meta name="author" content="Ilona Tag">
+      
+      
+      
+        <link rel="prev" href="../determinism_and_execution_semantics/">
+      
+      
+        <link rel="next" href="../expression_dsl_and_ast/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>⚙️ Lineage Model & Logical Plan - elevata</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../styles/elevata-theme.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="custom" data-md-color-accent="custom">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#logical-plan" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="elevata" class="md-header__button md-logo" aria-label="elevata" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            elevata
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              ⚙️ Lineage Model & Logical Plan
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m17.75 4.09-2.53 1.94.91 3.06-2.63-1.81-2.63 1.81.91-3.06-2.53-1.94L12.44 4l1.06-3 1.06 3zm3.5 6.91-1.64 1.25.59 1.98-1.7-1.17-1.7 1.17.59-1.98L15.75 11l2.06-.05L18.5 9l.69 1.95zm-2.28 4.95c.83-.08 1.72 1.1 1.19 1.85-.32.45-.66.87-1.08 1.27C15.17 23 8.84 23 4.94 19.07c-3.91-3.9-3.91-10.24 0-14.14.4-.4.82-.76 1.27-1.08.75-.53 1.93.36 1.85 1.19-.27 2.86.69 5.83 2.89 8.02a9.96 9.96 0 0 0 8.02 2.89m-1.64 2.02a12.08 12.08 0 0 1-7.8-3.47c-2.17-2.19-3.33-5-3.49-7.82-2.81 3.14-2.7 7.96.31 10.98 3.02 3.01 7.84 3.12 10.98.31"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 7a5 5 0 0 1 5 5 5 5 0 0 1-5 5 5 5 0 0 1-5-5 5 5 0 0 1 5-5m0 2a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3m0-7 2.39 3.42C13.65 5.15 12.84 5 12 5s-1.65.15-2.39.42zM3.34 7l4.16-.35A7.2 7.2 0 0 0 5.94 8.5c-.44.74-.69 1.5-.83 2.29zm.02 10 1.76-3.77a7.131 7.131 0 0 0 2.38 4.14zM20.65 7l-1.77 3.79a7.02 7.02 0 0 0-2.38-4.15zm-.01 10-4.14.36c.59-.51 1.12-1.14 1.54-1.86.42-.73.69-1.5.83-2.29zM12 22l-2.41-3.44c.74.27 1.55.44 2.41.44.82 0 1.63-.17 2.37-.44z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+  
+
+<nav class="md-nav md-nav--primary md-nav--integrated" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="elevata" class="md-nav__button md-logo" aria-label="elevata" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    elevata
+  </label>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../getting_started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ Getting Started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../secure_metadata_connectivity/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ Secure Metadata Connectivity
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Metadata Model & Generation
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Metadata Model & Generation
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../generation_logic/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ Generation Logic
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../incremental_load/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ Incremental Load Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../load_sql_architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ Load SQL Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../historization_architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ Historization Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../schema_evolution/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ Schema Evolution
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SQL Rendering & Dialects
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    SQL Rendering & Dialects
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../sql_rendering_conventions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ SQL Rendering Conventions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dialect_system/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ Dialect System
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../target_backends/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ Target Backends
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Execution & Observability
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Execution & Observability
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../load_execution_architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ Load Execution & Orchestration Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../architecture_control_plane/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ Architecture Control Plane
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Concepts
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Concepts
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../architecture_overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ Architecture Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../query_builder_and_query_tree/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ Query Builder & Query Tree
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../determinism_and_execution_semantics/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ Determinism & Execution Semantics
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ Lineage Model & Logical Plan
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ Lineage Model & Logical Plan
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-purpose-of-the-logical-plan" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🔧 1. Purpose of the Logical Plan
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-query-tree-and-logical-plan" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🔧 2. Query Tree and Logical Plan
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-core-node-types" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🔧 3. Core Node Types
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="🔧 3. Core Node Types">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#31-logicalselect" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🧩 3.1 LogicalSelect
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#32-selectitem" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🧩 3.2 SelectItem
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#33-source-nodes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🧩 3.3 Source Nodes
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="🧩 3.3 Source Nodes">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#tablesource" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🔎 TableSource
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#subquerysource" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🔎 SubquerySource
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#34-logicalunion" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🧩 3.4 LogicalUnion
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-window-functions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🔧 4. Window Functions
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-subqueries-in-multi-source-stage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🔧 5. Subqueries in Multi-Source Stage
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="🔧 5. Subqueries in Multi-Source Stage">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#identity-mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🧩 Identity Mode
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#no-subquery-required" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🧩 No Subquery Required.
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#non-identity-mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🧩 Non-Identity Mode
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-integration-with-expression-dsl-ast" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🔧 6. Integration With Expression DSL &amp; AST
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-dialect-rendering-responsibilities" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🔧 7. Dialect Rendering Responsibilities
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="🔧 7. Dialect Rendering Responsibilities">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#bigquery" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🧩 BigQuery
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#databricks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🧩 Databricks
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#duckdb" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🧩 DuckDB
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#fabric-warehouse" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🧩 Fabric Warehouse
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mssql" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🧩 MSSQL
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#postgres" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🧩 Postgres
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#snowflake" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🧩 Snowflake
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-logical-plan-rendering-rules-dialect-agnostic" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🔧 8. Logical Plan Rendering Rules (Dialect-Agnostic)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="🔧 8. Logical Plan Rendering Rules (Dialect-Agnostic)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#81-select" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🧩 8.1 SELECT
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#82-union" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🧩 8.2 UNION
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#83-subquery" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🧩 8.3 Subquery
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#84-window-function" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🧩 8.4 Window Function
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#9-how-the-builder-constructs-logical-plans" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🔧 9. How the Builder Constructs Logical Plans
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="🔧 9. How the Builder Constructs Logical Plans">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#91-single-source-stage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🧩 9.1 Single-Source Stage
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#92-multi-source-stage-identity" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🧩 9.2 Multi-Source Stage Identity
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#93-multi-source-stage-non-identity" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🧩 9.3 Multi-Source Stage Non-Identity
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#10-benefits-of-the-logical-plan" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🔧 10. Benefits of the Logical Plan
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#11-bizcore-and-the-logical-plan" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🔧 11. Bizcore and the Logical Plan
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../expression_dsl_and_ast/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ Expression DSL & AST
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../hashing_architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ Hashing Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../sql_preview_pipeline/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ SQL Preview & Rendering Pipeline
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../bizcore/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ Bizcore — Business Semantics Layer
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../health_check/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ Metadata Health Check
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Source Integration
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Source Integration
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../source_backends/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ Source Backends
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_8" >
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing & Quality
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Testing & Quality
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tests/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ Test Setup & Guidelines
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_9" >
+        
+          
+          <label class="md-nav__link" for="__nav_9" id="__nav_9_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Strategy & Architecture
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_9_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_9">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Strategy & Architecture
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../strategy/elevata_platform_strategy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ elevata Platform Strategy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_10" >
+        
+          
+          <label class="md-nav__link" for="__nav_10" id="__nav_10_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Project
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_10_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_10">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Project
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../readme_ref/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ Main Project README
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../changelog_ref/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ Changelog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+
+<h1 id="logical-plan">⚙️ Logical Plan<a class="headerlink" href="#logical-plan" title="Permanent link">&para;</a></h1>
+<p>This document describes the <strong>Logical Plan</strong> layer of elevata, which includes:</p>
+<ul>
+<li>Subqueries in the FROM clause  </li>
+<li>Window Functions (ROW_NUMBER, etc.)  </li>
+<li>Multi-source Stage logic (identity vs non-identity)  </li>
+<li>Updated Select/Union/Source nodes  </li>
+<li>Integration with the Expression DSL &amp; AST  </li>
+<li>Dialect-safe rendering  </li>
+</ul>
+<hr />
+<h2 id="1-purpose-of-the-logical-plan">🔧 1. Purpose of the Logical Plan<a class="headerlink" href="#1-purpose-of-the-logical-plan" title="Permanent link">&para;</a></h2>
+<p>The Logical Plan is the <strong>dialect-agnostic intermediate representation</strong> between:</p>
+<pre><code>Metadata → Logical Plan → Dialect Renderer → SQL
+</code></pre>
+<p>It describes <em>what</em> needs to be executed, not <em>how</em> a specific SQL dialect expresses it.  </p>
+<p>The Logical Plan:<br />
+- is fully structured (tree-based)<br />
+- has no vendor SQL<br />
+- is deterministic<br />
+- is safe for testing<br />
+- can be rendered to any SQL dialect (BigQuery, Databricks, DuckDB, Fabric Warehouse, MSSQL, Postgres, SNowflake)  </p>
+<hr />
+<h2 id="2-query-tree-and-logical-plan">🔧 2. Query Tree and Logical Plan<a class="headerlink" href="#2-query-tree-and-logical-plan" title="Permanent link">&para;</a></h2>
+<p>The <strong>Query Tree</strong> operates at a higher abstraction level than the Logical Plan.</p>
+<ul>
+<li>The Query Tree defines <em>what</em> operations occur and in which order<br />
+  (e.g. SELECT → WINDOW → AGGREGATE).  </li>
+<li>The Logical Plan defines <em>how</em> these operations are represented as<br />
+  structured SQL components (LogicalSelect, SubquerySource, LogicalUnion, …).</li>
+</ul>
+<p>When custom query logic is enabled, the Query Tree is compiled into a Logical Plan<br />
+using the same builder infrastructure as default generation.</p>
+<p>This design keeps the Logical Plan as a stable, vendor-neutral intermediate representation,<br />
+regardless of whether SQL is generated automatically or via an explicit Query Tree.</p>
+<hr />
+<h2 id="3-core-node-types">🔧 3. Core Node Types<a class="headerlink" href="#3-core-node-types" title="Permanent link">&para;</a></h2>
+<h3 id="31-logicalselect">🧩 3.1 LogicalSelect<a class="headerlink" href="#31-logicalselect" title="Permanent link">&para;</a></h3>
+<p>Represents a SELECT statement.  </p>
+<p>Fields:<br />
+- <code>select_list: list[SelectItem]</code><br />
+- <code>from_: SourceNode</code> (table source, subquery, union, etc.)<br />
+- <code>where: Optional[Expr]</code><br />
+- <code>group_by: list[Expr]</code><br />
+- <code>order_by: list[OrderItem]</code>  </p>
+<p>Example structure:</p>
+<pre><code>LogicalSelect(
+  select_list=[SelectItem(ColumnRef(&quot;a&quot;)), SelectItem(ColumnRef(&quot;b&quot;))],
+  from_=TableSource(&quot;raw_sales&quot;, alias=&quot;r&quot;)
+)
+</code></pre>
+<hr />
+<h3 id="32-selectitem">🧩 3.2 SelectItem<a class="headerlink" href="#32-selectitem" title="Permanent link">&para;</a></h3>
+<p>Represents a single column in the SELECT list.  </p>
+<p>Fields:<br />
+- <code>expr: Expr</code><br />
+- <code>alias: Optional[str]</code>  </p>
+<hr />
+<h3 id="33-source-nodes">🧩 3.3 Source Nodes<a class="headerlink" href="#33-source-nodes" title="Permanent link">&para;</a></h3>
+<h4 id="tablesource">🔎 TableSource<a class="headerlink" href="#tablesource" title="Permanent link">&para;</a></h4>
+<pre><code>TableSource(table_name, alias)
+</code></pre>
+<h4 id="subquerysource">🔎 SubquerySource<a class="headerlink" href="#subquerysource" title="Permanent link">&para;</a></h4>
+<p>Represents:</p>
+<pre><code>(SELECT ...) AS alias
+</code></pre>
+<p>Used for:<br />
+- multi-source Stage ranking<br />
+- derived tables<br />
+- complex transformations  </p>
+<h3 id="34-logicalunion">🧩 3.4 LogicalUnion<a class="headerlink" href="#34-logicalunion" title="Permanent link">&para;</a></h3>
+<p>Represents a UNION or UNION ALL.</p>
+<p>Fields:
+- <code>selects: list[LogicalSelect]</code>
+- <code>union_type: "ALL" | "DISTINCT"</code></p>
+<p>Rendered as:</p>
+<pre><code>SELECT ...
+UNION ALL
+SELECT ...
+</code></pre>
+<p>often wrapped in a SubquerySource.</p>
+<hr />
+<h2 id="4-window-functions">🔧 4. Window Functions<a class="headerlink" href="#4-window-functions" title="Permanent link">&para;</a></h2>
+<p>Window functions appear via:</p>
+<pre><code>WindowFunctionExpr(
+  function_name=&quot;ROW_NUMBER&quot;,
+  partition_by=[...],
+  order_by=[OrderItem(...)]
+)
+</code></pre>
+<p>Example AST node inside a SelectItem:</p>
+<pre><code>SelectItem(
+  expr=WindowFunctionExpr(
+    function_name=&quot;ROW_NUMBER&quot;,
+    partition_by=[ColumnRef(&quot;business_key&quot;)],
+    order_by=[OrderItem(ColumnRef(&quot;updated_at&quot;), &quot;DESC&quot;)]
+  ),
+  alias=&quot;__src_rank_ord&quot;
+)
+</code></pre>
+<p>Used primarily in Stage <strong>non-identity</strong> mode.</p>
+<hr />
+<h2 id="5-subqueries-in-multi-source-stage">🔧 5. Subqueries in Multi-Source Stage<a class="headerlink" href="#5-subqueries-in-multi-source-stage" title="Permanent link">&para;</a></h2>
+<p>Multi-source Stage requires optional ranking logic:</p>
+<h3 id="identity-mode">🧩 Identity Mode<a class="headerlink" href="#identity-mode" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Each upstream dataset contributes a <code>source_identity_id</code> literal.  </li>
+<li>No ranking is needed.  </li>
+<li>We use <strong>raw UNION ALL</strong>:  </li>
+</ul>
+<pre><code>LogicalUnion([sel1, sel2, ...])
+</code></pre>
+<h3 id="no-subquery-required">🧩 No Subquery Required.<a class="headerlink" href="#no-subquery-required" title="Permanent link">&para;</a></h3>
+<hr />
+<h3 id="non-identity-mode">🧩 Non-Identity Mode<a class="headerlink" href="#non-identity-mode" title="Permanent link">&para;</a></h3>
+<ul>
+<li>UNION ALL is wrapped into a SubquerySource.  </li>
+<li>Outer SELECT applies ROW_NUMBER and filters.  </li>
+</ul>
+<p>Logical Plan pattern:</p>
+<pre><code>LogicalSelect(
+  select_list=[...],
+  from_=SubquerySource(
+    select=LogicalSelect(
+      select_list=[..., WindowFunctionExpr(...) AS __src_rank_ord],
+      from_=LogicalUnion([...])
+    ),
+    alias=&quot;ranked&quot;
+  ),
+  where=ComparisonExpr(ColumnRef(&quot;__src_rank_ord&quot;), &quot;=&quot;, Literal(1))
+)
+</code></pre>
+<hr />
+<h2 id="6-integration-with-expression-dsl-ast">🔧 6. Integration With Expression DSL &amp; AST<a class="headerlink" href="#6-integration-with-expression-dsl-ast" title="Permanent link">&para;</a></h2>
+<p>All expressions inside the Logical Plan use the DSL/AST layer:<br />
+- column references<br />
+- literals<br />
+- CONCAT/CONCAT_WS<br />
+- COALESCE<br />
+- HASH256<br />
+- window functions  </p>
+<p>This ensures cross-dialect consistency.</p>
+<hr />
+<h2 id="7-dialect-rendering-responsibilities">🔧 7. Dialect Rendering Responsibilities<a class="headerlink" href="#7-dialect-rendering-responsibilities" title="Permanent link">&para;</a></h2>
+<p>Each dialect must render:<br />
+- SELECT lists<br />
+- window functions<br />
+- subqueries<br />
+- unions<br />
+- column references with quoting rules<br />
+- expressions via the DSL AST  </p>
+<p>Example dialect responsibilities:  </p>
+<h3 id="bigquery">🧩 BigQuery<a class="headerlink" href="#bigquery" title="Permanent link">&para;</a></h3>
+<ul>
+<li>window functions: identical to ANSI  </li>
+<li>hashing: <code>TO_HEX(SHA256(&lt;expr&gt;))</code>  </li>
+<li>table addressing: dataset-qualified identifiers</li>
+</ul>
+<h3 id="databricks">🧩 Databricks<a class="headerlink" href="#databricks" title="Permanent link">&para;</a></h3>
+<ul>
+<li>window functions: identical to ANSI / Spark SQL  </li>
+<li>hashing: <code>SHA2(&lt;expr&gt;, 256)</code>  </li>
+<li>execution: runs on Databricks SQL Warehouse (Unity Catalog for catalog/schema)</li>
+</ul>
+<h3 id="duckdb">🧩 DuckDB<a class="headerlink" href="#duckdb" title="Permanent link">&para;</a></h3>
+<ul>
+<li>window functions: identical to ANSI  </li>
+<li>hashing: SHA256()  </li>
+</ul>
+<h3 id="fabric-warehouse">🧩 Fabric Warehouse<a class="headerlink" href="#fabric-warehouse" title="Permanent link">&para;</a></h3>
+<ul>
+<li>hashing via <code>HASHBYTES('SHA2_256', &lt;expr&gt;)</code>  </li>
+<li>convert binary → hex via <code>CONVERT(VARCHAR(64), ..., 2)</code>  </li>
+<li>DDL idempotency: <code>IF OBJECT_ID(...) IS NULL</code> pattern (no <code>CREATE TABLE IF NOT EXISTS</code>)</li>
+</ul>
+<h3 id="mssql">🧩 MSSQL<a class="headerlink" href="#mssql" title="Permanent link">&para;</a></h3>
+<ul>
+<li>hashing via <code>HASHBYTES('SHA2_256', ...)</code>  </li>
+<li>convert binary → hex via <code>CONVERT(VARCHAR(64), ..., 2)</code>  </li>
+</ul>
+<h3 id="postgres">🧩 Postgres<a class="headerlink" href="#postgres" title="Permanent link">&para;</a></h3>
+<ul>
+<li>subqueries: <code>(SELECT ...) AS alias</code>  </li>
+<li>hashing: <code>ENCODE(DIGEST(...), 'sha256'), 'hex')</code>  </li>
+</ul>
+<h3 id="snowflake">🧩 Snowflake<a class="headerlink" href="#snowflake" title="Permanent link">&para;</a></h3>
+<ul>
+<li>window functions: identical to ANSI  </li>
+<li>hashing: <code>LOWER(TO_HEX(SHA2(&lt;expr&gt;, 256)))</code>  </li>
+<li>identifiers: quoted via <code>"..."</code> and database/schema-qualified rendering</li>
+</ul>
+<hr />
+<h2 id="8-logical-plan-rendering-rules-dialect-agnostic">🔧 8. Logical Plan Rendering Rules (Dialect-Agnostic)<a class="headerlink" href="#8-logical-plan-rendering-rules-dialect-agnostic" title="Permanent link">&para;</a></h2>
+<h3 id="81-select">🧩 8.1 SELECT<a class="headerlink" href="#81-select" title="Permanent link">&para;</a></h3>
+<pre><code>SELECT &lt;select_list&gt;
+FROM &lt;source&gt;
+[WHERE &lt;expr&gt;]
+[GROUP BY &lt;exprs&gt;]
+[ORDER BY &lt;order_items&gt;]
+</code></pre>
+<h3 id="82-union">🧩 8.2 UNION<a class="headerlink" href="#82-union" title="Permanent link">&para;</a></h3>
+<pre><code>SELECT ...
+UNION ALL
+SELECT ...
+</code></pre>
+<h3 id="83-subquery">🧩 8.3 Subquery<a class="headerlink" href="#83-subquery" title="Permanent link">&para;</a></h3>
+<pre><code>(
+  SELECT ...
+) AS alias
+</code></pre>
+<h3 id="84-window-function">🧩 8.4 Window Function<a class="headerlink" href="#84-window-function" title="Permanent link">&para;</a></h3>
+<pre><code>ROW_NUMBER() OVER (PARTITION BY ... ORDER BY ...)
+</code></pre>
+<p>Dialect modifies only:<br />
+- quoting<br />
+- hashing<br />
+- type conversions  </p>
+<hr />
+<h2 id="9-how-the-builder-constructs-logical-plans">🔧 9. How the Builder Constructs Logical Plans<a class="headerlink" href="#9-how-the-builder-constructs-logical-plans" title="Permanent link">&para;</a></h2>
+<p>Key builder patterns:</p>
+<h3 id="91-single-source-stage">🧩 9.1 Single-Source Stage<a class="headerlink" href="#91-single-source-stage" title="Permanent link">&para;</a></h3>
+<pre><code>LogicalSelect(from_=TableSource(...))
+</code></pre>
+<h3 id="92-multi-source-stage-identity">🧩 9.2 Multi-Source Stage Identity<a class="headerlink" href="#92-multi-source-stage-identity" title="Permanent link">&para;</a></h3>
+<pre><code>LogicalUnion([...])
+</code></pre>
+<h3 id="93-multi-source-stage-non-identity">🧩 9.3 Multi-Source Stage Non-Identity<a class="headerlink" href="#93-multi-source-stage-non-identity" title="Permanent link">&para;</a></h3>
+<pre><code>SubquerySource(
+  select=LogicalSelect(
+    select_list=[..., WindowFunctionExpr(...)],
+    from_=LogicalUnion([...])
+  )
+)
+</code></pre>
+<p>Outer filter applied via another LogicalSelect.</p>
+<hr />
+<h2 id="10-benefits-of-the-logical-plan">🔧 10. Benefits of the Logical Plan<a class="headerlink" href="#10-benefits-of-the-logical-plan" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Supports subqueries as first-class citizens  </li>
+<li>Vendor-neutral window functions  </li>
+<li>Clean separation between logic and SQL syntax  </li>
+<li>Extensible architecture (CASE WHEN, JOIN, GROUPING SETS)  </li>
+<li>Deterministic behavior for multi-source processing  </li>
+<li>No vendor SQL stored in metadata  </li>
+<li>Strict testability  </li>
+</ul>
+<hr />
+<h2 id="11-bizcore-and-the-logical-plan">🔧 11. Bizcore and the Logical Plan<a class="headerlink" href="#11-bizcore-and-the-logical-plan" title="Permanent link">&para;</a></h2>
+<p>Bizcore datasets do not introduce new Logical Plan node types.</p>
+<p>Instead:</p>
+<ul>
+<li>Bizcore logic is expressed through existing constructs:  </li>
+<li>joins  </li>
+<li>expressions  </li>
+<li>derived SelectItems  </li>
+<li>Business rules compile into standard AST expressions  </li>
+<li>No semantic shortcuts or abstractions exist at plan level</li>
+</ul>
+<p>This design guarantees:</p>
+<ul>
+<li>identical behavior between technical and business datasets  </li>
+<li>full reuse of planning, validation, and rendering logic  </li>
+<li>uniform explainability across layers</li>
+</ul>
+<p>From the Logical Plan’s perspective,
+Bizcore is <strong>just another deterministic dataset</strong> —
+with richer intent, not different mechanics.</p>
+<hr />
+<p>© 2025-2026 elevata Labs — Internal Technical Documentation</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+  <script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div>
+        © 2025-2026 elevata project · elevata® is a registered trademark in Germany.
+      </div>
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.instant", "navigation.tracking", "content.code.copy", "content.tabs.link", "toc.integrate"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

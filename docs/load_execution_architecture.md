@@ -57,6 +57,42 @@ Execution consumes an ExecutionPlan and applies:
 Execution produces **results**, not SQL:
 status, timing, attempts, and failure reasons.
 
+### 🧩 2.3 Architecture Control Plane
+
+The Architecture Control Plane provides read-only reports around architecture  
+state and schema evolution intent.
+
+It is separate from load execution and does not apply DDL or DML.
+
+The control plane commands are:
+
+| Command | Purpose |
+|---|---|
+| `elevata_state` | Render the metadata-defined architecture state |
+| `elevata_plan` | Render an architecture change report |
+| `elevata_promote` | Compare two architecture state artifacts |
+
+The load runner remains responsible for execution safety. Before executing load SQL,  
+it performs preflight validation, derives materialization steps from the MigrationPlan,  
+applies policy checks, and blocks unsafe execution.
+
+This separation allows architecture review and operational execution to use the same semantic basis  
+while keeping execution guardrails inside the load runner.
+
+Architecture Control Plane flow:
+
+```text
+Architecture State
+  ↓
+Architecture Diff
+  ↓
+MigrationPlan
+  ↓
+Policy Decisions
+  ↓
+Architecture Report
+```
+
 ---
 
 ## 🔧 3. Materialization Preflight Stage
@@ -107,7 +143,7 @@ so base and history schemas stay consistent and lineage-safe.
 
 ---
 
-## 🔧 3. Dependency Graph & Ordering
+## 🔧 4. Dependency Graph & Ordering
 
 Dataset dependencies are resolved into a directed acyclic graph (DAG).
 
@@ -122,7 +158,7 @@ and never block execution planning.
 
 ---
 
-## 🔧 4. Execution Policies
+## 🔧 5. Execution Policies
 
 Execution behavior is controlled by an explicit **ExecutionPolicy**.
 
@@ -139,9 +175,9 @@ All execution semantics are explicit and predictable.
 
 ---
 
-## 🔧 5. Retry & Failure Semantics
+## 🔧 6. Retry & Failure Semantics
 
-### 🧩 5.1 Retries
+### 🧩 6.1 Retries
 
 Retries apply **only in execute mode** (`--execute`).
 
@@ -152,7 +188,7 @@ Retries apply **only in execute mode** (`--execute`).
 Retries are **never hidden**:
 each attempt is observable and logged.
 
-### 🧩 5.2 Failure Handling
+### 🧩 6.2 Failure Handling
 
 When a dataset fails after all retries:
 
@@ -161,11 +197,11 @@ When a dataset fails after all retries:
 
 ---
 
-## 🔧 6. Blocked vs Aborted
+## 🔧 7. Blocked vs Aborted
 
 elevata distinguishes two fundamentally different non-success outcomes.
 
-### 🧩 6.1 Blocked
+### 🧩 7.1 Blocked
 
 A dataset is **blocked** if:
 
@@ -180,7 +216,7 @@ Blocked datasets are reported as:
 
 This represents *dependency-based non-execution*.
 
-### 🧩 6.2 Aborted (Fail-Fast)
+### 🧩 7.2 Aborted (Fail-Fast)
 
 A dataset is **aborted** if:
 
@@ -199,7 +235,7 @@ Blocked and aborted are intentionally distinct and never conflated.
 
 ---
 
-## 🔧 7. Load Run Log (`meta.load_run_log`)
+## 🔧 8. Load Run Log (`meta.load_run_log`)
 
 The **load run log** is an append-only, event-level record of execution.
 
@@ -222,7 +258,7 @@ The log answers the question:
 
 ---
 
-## 🔧 8. Load Run Snapshot (`meta.load_run_snapshot`)
+## 🔧 9. Load Run Snapshot (`meta.load_run_snapshot`)
 
 The **load run snapshot** captures the declarative state of a load run.
 
@@ -244,7 +280,7 @@ The snapshot answers the question:
 
 > *What did this load run look like as a whole?*
 
-### 🧩 8.1 Event vs State
+### 🧩 9.1 Event vs State
 
 | Aspect | Load Run Log | Load Run Snapshot |
 |------|-------------|-------------------|
@@ -256,7 +292,7 @@ Both are complementary and intentionally distinct.
 
 ---
 
-## 🔧 9. Batch Runs & Multi-Dataset Loads
+## 🔧 10. Batch Runs & Multi-Dataset Loads
 
 A single invocation of `elevata_load` may execute multiple datasets.
 
@@ -274,7 +310,7 @@ This enables:
 
 ---
 
-## 🔧 10. Best-Effort Guarantees
+## 🔧 11. Best-Effort Guarantees
 
 Execution observability is **best-effort by design**.
 
@@ -286,7 +322,7 @@ Execution correctness always takes precedence over observability.
 
 ---
 
-## 🔧 11. CLI Integration (`elevata_load`)
+## 🔧 12. CLI Integration (`elevata_load`)
 
 The execution architecture is exposed through the CLI:
 
@@ -301,7 +337,7 @@ All execution logic lives in the execution core.
 
 ---
 
-## 🔧 12. Design Summary
+## 🔧 13. Design Summary
 
 The execution architecture of elevata is:
 

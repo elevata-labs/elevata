@@ -19,6 +19,90 @@ TBD
 
 ---
 
+## [1.7.0] - 2026-05-16
+
+This release introduces the **Architecture Control Plane** for deterministic architecture review, comparison,  
+and promotion workflows.
+
+Architecture changes can now be rendered as explicit, policy-aware reports before execution.  
+Architecture State, Change Reports, and Promotion Reports expose stable fingerprints, making architecture   
+intent reviewable, comparable, and CI-friendly.
+
+The focus is controlled lifecycle management for executable architecture.
+
+---
+
+### ✨ Added
+
+#### Architecture Control Plane
+
+- Added deterministic Architecture Change Reports via `elevata_plan`  
+- Added Architecture State export via `elevata_state`  
+- Added Architecture Promotion Reports via `elevata_promote`  
+- Added JSON and text rendering for architecture reports  
+- Added deterministic fingerprints for:  
+    - Architecture State  
+    - Architecture Change Report  
+    - Architecture Promotion Report  
+- Added CI-oriented exit policies:  
+    - `--fail-on-changes`  
+    - `--fail-on-blocked`  
+    - `--fail-on-destructive`  
+- Added explicit baseline support for `elevata_plan` via `--previous-state`  
+- Added configurable architecture state directory via `ELEVATA_ARCH_STATE_DIR`
+
+#### Architecture State Artifacts
+
+- Added public Architecture State file serialization and deserialization helpers  
+- Added explicit Architecture State export for review, CI, and promotion workflows  
+- Added fingerprint-only output for Architecture State inspection  
+- Added controlled baseline handling for persisted runtime architecture state  
+
+#### Shared Architecture Services
+
+- Added shared architecture scope resolution for report and load paths  
+- Added shared policy decision reporting for MigrationPlan actions  
+- Added shared schema-operation shadow compare utilities  
+- Added deterministic report rendering helpers for architecture and promotion reports
+
+---
+
+### 🔄 Improved
+
+- `elevata_load` uses shared architecture scope resolution while preserving execution guard behavior  
+- `elevata_load` uses shared shadow-compare utilities while preserving enforce-mode blocking semantics  
+- Architecture state persistence keeps a stable runtime baseline while allowing explicit state artifact exports  
+- Architecture report generation uses the same semantic path as execution:  
+  Architecture State → Architecture Diff → MigrationPlan → Policy Decisions  
+- README highlights Architecture Control Plane capabilities in a compact form  
+- Documentation now describes Architecture State, Change Reports, Promotion Reports, CI exit policies,  
+and deterministic fingerprints
+
+---
+
+### 🔒 Governance & Determinism
+
+- Architecture changes can be reviewed as deterministic artifacts before execution  
+- Promotion comparisons use stable Architecture State files as input artifacts  
+- Destructive schema actions are surfaced through explicit policy decisions  
+- Report fingerprints provide stable references for review, CI, and promotion workflows  
+- Load execution remains protected by its own preflight and guard checks
+
+---
+
+### 🧪 Quality & Stability
+
+- Added tests for Architecture Change Reports
+- Added tests for Architecture Promotion Reports
+- Added tests for Architecture State export and file roundtrips
+- Added tests for report fingerprints and deterministic JSON output
+- Added tests for scope resolution and `_hist` scope expansion
+- Added tests for shared shadow-compare behavior
+- Added CLI tests for `elevata_state`, `elevata_plan`, and `elevata_promote`
+- Preserved Architecture Guard enforce-mode behavior in `elevata_load`
+
+---
+
 ## [1.6.0] - 2026-05-14
 
 This release completes the cutover to **Architecture-driven Materialization**.  
@@ -36,21 +120,21 @@ The focus is turning architecture from an observable plan into an executable run
 - MigrationPlan is now the authoritative schema-evolution intent for materialization  
 - Materialization steps are derived from architecture changes instead of planner-side drift heuristics  
 - Deterministic execution path for:  
-  - dataset renames  
-  - column renames  
-  - additive schema changes  
-  - type evolution  
-  - rebuild-based remediation where required  
+    - dataset renames  
+    - column renames  
+    - additive schema changes  
+    - type evolution  
+    - rebuild-based remediation where required  
 - Shadow compare can enforce consistency between architecture intent and planned materialization DDL
 
 #### Controlled rebuild execution
 
 - Deterministic rebuild flows can now execute all required steps when policy allows them:  
-  - temporary table cleanup  
-  - temporary table creation  
-  - backfill via `INSERT ... SELECT`  
-  - source table replacement  
-  - final table rename  
+    - temporary table cleanup  
+    - temporary table creation  
+    - backfill via `INSERT ... SELECT`  
+    - source table replacement  
+    - final table rename  
 - Rebuild steps remain policy-aware and are only applied after preflight validation
 
 ---
@@ -94,9 +178,9 @@ updates the recommended Python version, and polishes list view actions.
 
 - Recommended Python version updated to **3.14** (supported: **Python 3.11+**)
 - Safer test runner setup:
-  - `pytest-django` added to base requirements
-  - test settings enforce isolated DB behavior (SQLite tests run in-memory)
-  - `runtests.py` now uses test settings by default and fails fast if `pytest-django` is missing
+    - `pytest-django` added to base requirements
+    - test settings enforce isolated DB behavior (SQLite tests run in-memory)
+    - `runtests.py` now uses test settings by default and fails fast if `pytest-django` is missing
 
 ### 🛠️ Fixed
 

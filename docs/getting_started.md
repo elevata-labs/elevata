@@ -66,6 +66,9 @@ SEC_DEV_PEPPER=supersecretpeppervalue
 ELEVATA_ALLOW_TYPE_ALTER=false
 ELEVATA_ALLOW_AUTO_DROP_COLUMNS=false
 ELEVATA_ALLOW_AUTO_DROP_HIST_COLUMNS=false
+
+# Architecture state baseline directory
+ELEVATA_ARCH_STATE_DIR=.elevata/state
 ```
 
 Install the target backend you want to execute against:
@@ -192,7 +195,75 @@ You can now:
 
 ---
 
-## 🔧 5. Secure Connectivity (optional)
+## 🔧 5. Architecture Control Plane Commands
+
+elevata provides read-only commands for architecture state, review, and
+promotion workflows.
+
+### 🧩 5.1 Render Architecture State
+
+Render the metadata-defined architecture state:
+
+```bash 
+python manage.py elevata_state
+```
+
+Write an architecture state artifact:
+
+```bash 
+python manage.py elevata_state --output .artifacts/dev_architecture_state.json 
+```
+
+Print only the architecture state fingerprint:
+
+```bash 
+python manage.py elevata_state --fingerprint-only
+```
+
+### 🧩 5.2 Render Architecture Change Report
+
+Render a report for one dataset:
+
+```bash 
+python manage.py elevata_plan rc_aw_customer --schema rawcore
+```
+
+Render a JSON report for CI:
+
+```bash 
+python manage.py elevata_plan --all --schema rawcore --format json
+```
+
+Use an explicit baseline state file:
+
+```bash
+python manage.py elevata_plan rc_aw_customer \
+--schema rawcore \
+--previous-state .artifacts/prod_architecture_state.json
+```
+
+### 🧩 5.3 Compare Architecture State Artifacts
+
+Compare two architecture state files:
+
+```bash
+python manage.py elevata_promote \
+.artifacts/dev_architecture_state.json \
+.artifacts/prod_architecture_state.json \
+--source-label dev \
+--target-label prod
+```
+CI exit policies are available via:
+
+```bash 
+--fail-on-changes 
+--fail-on-blocked 
+--fail-on-destructive 
+```
+
+---
+
+## 🔧 6. Secure Connectivity (optional)
 
 If you’re connecting to production metadata systems,
 use environment variables instead of plain-text passwords.
@@ -202,7 +273,7 @@ For advanced setups, see
 
 ---
 
-## 🔧 6. Useful Commands
+## 🔧 7. Useful Commands
 
 | Purpose | Command |
 |----------|---------|

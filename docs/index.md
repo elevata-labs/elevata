@@ -64,6 +64,11 @@ This index gives you an overview of all major topics and how they fit together.
 - [Load Execution & Orchestration Architecture](load_execution_architecture.md)  
   How elevata executes load plans: dependency graphs, retries, failure semantics, load run logging and execution snapshots.
 
+- [Architecture Control Plane](architecture_control_plane.md)  
+  Deterministic architecture state, change reports, promotion reports,  
+  policy decisions and fingerprints for review, CI, and controlled architecture
+  promotion workflows.
+
 ---
 
 ### 💡 Concepts
@@ -142,9 +147,10 @@ If you are new to elevata, a good reading path is:
 
 1. [Getting Started](getting_started.md)  
 2. [Architecture Overview](architecture_overview.md)  
-3. [Generation Logic](generation_logic.md)  
-4. [Dialect System](dialect_system.md)  
-5. [Hashing Architecture](hashing_architecture.md)  
+3. [Architecture Control Plane](architecture_control_plane.md)  
+4. [Generation Logic](generation_logic.md)  
+5. [Dialect System](dialect_system.md)  
+6. [Hashing Architecture](hashing_architecture.md)  
 
 This will give you a mental model for how metadata flows through the platform and becomes executable SQL.
 
@@ -158,8 +164,9 @@ while remaining metadata-native and deterministic, continue with:
 1. [Bizcore — Business Semantics Layer](bizcore.md)  
 2. [Query Builder & Query Tree](query_builder_and_query_tree.md)  
 3. [Determinism & Execution Semantics](determinism_and_execution_semantics.md)  
-4. [Lineage Model & Logical Plan](logical_plan.md)  
-5. [SQL Preview & Rendering Pipeline](sql_preview_pipeline.md)
+4. [Architecture Control Plane](architecture_control_plane.md)  
+5. [Lineage Model & Logical Plan](logical_plan.md)  
+6. [SQL Preview & Rendering Pipeline](sql_preview_pipeline.md)
 
 ---
 
@@ -178,7 +185,7 @@ A personal open-source initiative exploring the future of declarative data archi
 
 ---
 
-_Last updated: 2026-02-14_
+_Last updated: 2026-05-16_
 
 © 2025-2026 elevata Labs — Internal Technical Documentation
 Built with purpose. Rendered with precision. 🪶

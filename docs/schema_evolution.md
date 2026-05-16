@@ -14,6 +14,8 @@ Schema evolution in elevata is not a migration tool and not a best-effort heuris
 It is a deterministic reconciliation process between metadata and physical warehouse schemas,  
 designed to be safe, lineage-aware, and reproducible across environments.
 
+Architecture reports expose the same schema evolution intent before execution.
+
 ---
 
 ## 🔧 Core Principles
@@ -142,6 +144,30 @@ and are intentionally **dialect-aware**.
 
 Type equivalence is used for drift classification and noise reduction.  
 Physical DDL is always rendered by the dialect and executed only when schema evolution intent requires it.
+
+---
+
+## 🔧 Architecture Change Reports
+
+Architecture Change Reports describe schema evolution intent before execution.
+
+They are derived from:
+
+```text
+Architecture State → Architecture Diff → MigrationPlan → Policy Decisions
+```
+
+The report includes:
+
+- dataset and column changes  
+- MigrationPlan actions  
+- policy decisions for destructive operations  
+- deterministic report fingerprint
+
+Reports are read-only. They do not apply schema changes.
+
+`elevata_load` remains responsible for execution preflight and applies schema changes  
+only after guard checks pass.
 
 ---
 

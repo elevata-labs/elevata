@@ -12,6 +12,7 @@ elevata is built for reproducibility:
 - SQL previews must match executed SQL  
 - CI checks must be stable  
 - the same metadata must produce the same output across runs  
+- architecture reports must produce stable fingerprints  
 - multi-dialect rendering must not introduce semantic drift
 
 Determinism is therefore treated as a correctness requirement, not a “best practice”.
@@ -76,7 +77,36 @@ Type drift warnings may still be emitted for visibility.
 
 ---
 
-## 🔧 4. Window functions
+## 🔧 4. Architecture Report Determinism
+
+Architecture reports are deterministic artifacts.
+
+The same architecture state, scope, migration intent, and policy configuration  
+produce the same report fingerprint.
+
+Deterministic report artifacts include:
+
+- Architecture State fingerprint  
+- Architecture Change Report fingerprint  
+- Architecture Promotion Report fingerprint
+
+These fingerprints are derived from canonical JSON representations.
+
+Report JSON uses stable ordering and contains semantic architecture information:
+
+- scope  
+- architecture state fingerprints  
+- dataset changes  
+- column changes  
+- MigrationPlan actions  
+- policy decisions
+
+The reports do not require SQL rendering, warehouse introspection, or execution
+engines.
+
+---
+
+## 🔧 5. Window functions
 
 Some window functions are inherently nondeterministic without ordering.
 
@@ -98,7 +128,7 @@ Windowed aggregates (SUM/AVG/…) may not require ORDER BY:
 
 ---
 
-## 🔧 5. Aggregation determinism
+## 🔧 6. Aggregation determinism
 
 Aggregations can become nondeterministic if result ordering is undefined in the aggregation semantics.
 
@@ -111,7 +141,7 @@ Other aggregates (SUM, COUNT, MIN, MAX, AVG) are deterministic without ordering.
 
 ---
 
-## 🔧 6. Contract stability and collisions
+## 🔧 7. Contract stability and collisions
 
 The output contract must be stable and unambiguous.
 
@@ -123,7 +153,7 @@ Rules:
 
 ---
 
-## 🔧 7. Why elevata is not a semantic layer
+## 🔧 8. Why elevata is not a semantic layer
 
 elevata does not implement query-time semantics (like BI semantic layers or metric stores).  
 Instead, elevata materializes semantics into datasets deterministically:
@@ -136,7 +166,7 @@ This avoids tool-specific logic and ensures reproducible pipelines.
 
 ---
 
-## 🔧 8. References
+## 🔧 9. References
 
 - [Query Tree & Query Builder](query_builder_and_query_tree.md)    
 - [Lineage Model & Logical Plan](logical_plan.md)   

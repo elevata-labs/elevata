@@ -52,7 +52,7 @@ validated, and applied deterministically before execution.
 
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/elevata-labs/elevata/main/docs/elevata_v1_6_0.png" alt="elevata UI preview" width="700"/>
+  <img src="https://raw.githubusercontent.com/elevata-labs/elevata/main/docs/elevata_v1_7_0.png" alt="elevata UI preview" width="700"/>
   <br/>
   <em>Dataset detail view with lineage, metadata, and dialect-aware SQL previews</em>
 </p>
@@ -117,6 +117,18 @@ Behavior is deterministic and observable.
 Schema drift is reconciled through Architecture MigrationPlan-driven materialization:  
 renames, adds, type evolution and controlled rebuilds are derived from architecture state,  
 while destructive changes remain explicitly policy-gated.
+
+---
+
+## 🧭 Architecture Control Plane
+
+elevata makes architecture changes reviewable before execution.
+
+Architecture State, Change Reports and Promotion Reports expose deterministic fingerprints,  
+MigrationPlan actions and policy decisions.
+
+This supports controlled review, CI checks and environment-to-environment architecture promotion  
+while keeping execution guardrails inside the load runner.
 
 ---
 

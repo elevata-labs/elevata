@@ -22,7 +22,7 @@ Contact: <https://github.com/elevata-labs/elevata>.
 
 import pytest
 
-from core.metadata.rendering.dialects.dialect_factory import get_active_dialect
+from metadata.rendering.dialects.dialect_factory import get_active_dialect
 
 
 @pytest.mark.parametrize(
