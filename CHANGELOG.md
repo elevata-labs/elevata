@@ -13,9 +13,44 @@ This project adheres to [Semantic Versioning](https://semver.org/) and [Keep a C
 
 ---
 
-## [Unreleased]
+## [1.7.1] - 2026-05-18
 
-TBD
+This patch release hardens the **Architecture Control Plane** report contract by making scoped  
+architecture reports precise, self-contained, and fingerprint-stable for review and CI workflows.
+
+The focus is reliable scope semantics for deterministic architecture artifacts.
+
+---
+
+### 🔄 Improved
+
+#### Architecture Control Plane
+
+- Hardened scoped Architecture Change Reports so report payloads only contain  
+  dataset changes, column changes, MigrationPlan actions, policy decisions and  
+  summary counts that belong to the selected scope  
+- Refined scope mode semantics:  
+    - `elevata_plan --all` reports `all`  
+    - schema-scoped and dataset-scoped reports report `scoped`  
+    - scoped promotion reports expose the selected target dataset in the  
+      embedded Architecture Change Report  
+- Strengthened report fingerprints so scoped report fingerprints represent the  
+  selected architecture scope precisely
+
+### 📘 Documentation
+
+- Documented Architecture Control Plane scope semantics for `all` and `scoped` 
+  report modes  
+- Clarified that `--schema` is optional for unique dataset names and useful for  
+  explicit schema-scoped CI workflows  
+- Added operational smoke checks for Architecture State, Architecture Change  
+  Reports, Architecture Promotion Reports and no-change exit behavior
+
+### 🧪 Quality & Stability
+
+- Added tests for scoped report payload consistency  
+- Added tests for `elevata_plan` scope mode behavior  
+- Added tests for `elevata_promote` scoped target metadata
 
 ---
 

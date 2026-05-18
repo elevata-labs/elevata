@@ -101,6 +101,10 @@ Report JSON uses stable ordering and contains semantic architecture information:
 - MigrationPlan actions  
 - policy decisions
 
+The selected report scope is part of the deterministic artifact contract.  
+For scoped reports, dataset changes, column changes, MigrationPlan actions, policy decisions  
+and summary counts are restricted to the selected scope.
+
 The reports do not require SQL rendering, warehouse introspection, or execution
 engines.
 

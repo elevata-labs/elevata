@@ -323,3 +323,97 @@ def test_architecture_change_report_fingerprint_changes_with_policy_decision():
   )
 
   assert blocked_report.report_fingerprint != allowed_report.report_fingerprint
+
+
+def test_architecture_change_report_filters_changes_to_report_scope():
+  previous_state = _state(
+    _dataset(
+      "customer",
+      columns=(
+        _column("customer_id", datatype="integer", nullable=False),
+      ),
+    ),
+    _dataset(
+      "product",
+      columns=(
+        _column("product_id", datatype="integer", nullable=False),
+      ),
+    ),
+  )
+  current_state = _state(
+    _dataset(
+      "customer",
+      columns=(
+        _column("customer_id", datatype="integer", nullable=False),
+        _column("customer_name"),
+      ),
+    ),
+    _dataset(
+      "product",
+      columns=(
+        _column("product_id", datatype="integer", nullable=False),
+        _column("product_name"),
+      ),
+    ),
+  )
+
+  report = build_architecture_change_report(
+    previous_state=previous_state,
+    current_state=current_state,
+    policy=_policy(),
+    relevant_dataset_keys={"rawcore.customer"},
+    schema_short="rawcore",
+    target_name="customer",
+  )
+
+  assert report.scope.mode == "scoped"
+  assert [c.dataset_key for c in report.column_changes] == ["rawcore.customer"]
+  assert [a.dataset_key for a in report.migration_actions] == ["rawcore.customer"]
+  assert report.summary.column_change_count == 1
+
+
+def test_architecture_change_report_all_scope_keeps_all_changes():
+  previous_state = _state(
+    _dataset(
+      "customer",
+      columns=(
+        _column("customer_id", datatype="integer", nullable=False),
+      ),
+    ),
+    _dataset(
+      "product",
+      columns=(
+        _column("product_id", datatype="integer", nullable=False),
+      ),
+    ),
+  )
+  current_state = _state(
+    _dataset(
+      "customer",
+      columns=(
+        _column("customer_id", datatype="integer", nullable=False),
+        _column("customer_name"),
+      ),
+    ),
+    _dataset(
+      "product",
+      columns=(
+        _column("product_id", datatype="integer", nullable=False),
+        _column("product_name"),
+      ),
+    ),
+  )
+
+  report = build_architecture_change_report(
+    previous_state=previous_state,
+    current_state=current_state,
+    policy=_policy(),
+    relevant_dataset_keys=None,
+  )
+
+  assert report.scope.mode == "all"
+  assert [c.dataset_key for c in report.column_changes] == [
+    "rawcore.customer",
+    "rawcore.product",
+  ]
+  assert report.summary.column_change_count == 2

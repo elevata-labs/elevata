@@ -28,7 +28,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from metadata.architecture.report import ArchitectureChangeReport
+from metadata.architecture.report import ArchitectureChangeReport, ArchitectureReportScopeMode
 from metadata.architecture.report_builder import build_architecture_change_report
 from metadata.architecture.state import ArchitectureState
 from metadata.architecture.store import ArchitectureStateStore
@@ -109,6 +109,8 @@ def build_architecture_promotion_report(
   target_label: str = "target",
   relevant_dataset_keys: set[str] | None = None,
   schema_short: str | None = None,
+  target_name: str | None = None,
+  scope_mode: ArchitectureReportScopeMode | None = None,
 ) -> ArchitecturePromotionReport:
   """
   Build a deterministic promotion report from two architecture states.
@@ -119,7 +121,8 @@ def build_architecture_promotion_report(
     policy=policy,
     relevant_dataset_keys=relevant_dataset_keys,
     schema_short=schema_short,
-    target_name=None,
+    target_name=target_name,
+    scope_mode=scope_mode,
   )
 
   return ArchitecturePromotionReport(
@@ -140,6 +143,8 @@ def build_architecture_promotion_report_from_files(
   target_label: str = "target",
   relevant_dataset_keys: set[str] | None = None,
   schema_short: str | None = None,
+  target_name: str | None = None,
+  scope_mode: ArchitectureReportScopeMode | None = None,
 ) -> ArchitecturePromotionReport:
   """
   Build a deterministic promotion report from two architecture state files.
@@ -164,6 +169,8 @@ def build_architecture_promotion_report_from_files(
     target_label=target_label,
     relevant_dataset_keys=relevant_dataset_keys,
     schema_short=schema_short,
+    target_name=target_name,
+    scope_mode=scope_mode,
   )
 
 

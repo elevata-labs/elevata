@@ -52,7 +52,7 @@ validated, and applied deterministically before execution.
 
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/elevata-labs/elevata/main/docs/elevata_v1_7_0.png" alt="elevata UI preview" width="700"/>
+  <img src="https://raw.githubusercontent.com/elevata-labs/elevata/main/docs/elevata_v1_7_1.png" alt="elevata UI preview" width="700"/>
   <br/>
   <em>Dataset detail view with lineage, metadata, and dialect-aware SQL previews</em>
 </p>

@@ -148,6 +148,11 @@ class Command(BaseCommand):
         target_label=target_label,
         relevant_dataset_keys=relevant_dataset_keys,
         schema_short=schema_short,
+        target_name=target_dataset,
+        scope_mode=_resolve_promotion_scope_mode(
+          schema_short=schema_short,
+          target_dataset=target_dataset,
+        ),
       )
     except ArchitecturePromotionError as exc:
       raise CommandError(str(exc))
@@ -188,3 +193,17 @@ def _apply_exit_policy(
 
   if fail_on_changes and report.has_changes:
     raise CommandError("Architecture promotion contains changes.", returncode=1)
+
+
+def _resolve_promotion_scope_mode(
+  *,
+  schema_short: str | None,
+  target_dataset: str | None,
+) -> str:
+  """
+  Resolve the public scope mode for architecture promotion output.
+  """
+  if schema_short is None and target_dataset is None:
+    return "all"
+
+  return "scoped"

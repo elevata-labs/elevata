@@ -436,3 +436,75 @@ def test_elevata_promote_writes_output_file(tmp_path, monkeypatch):
   data = json.loads(output_path.read_text(encoding="utf-8"))
   assert data["summary"]["has_changes"] is True
   assert data["change_report"]["migration_actions"][0]["action_type"] == "ADD_COLUMN"
+
+
+def test_elevata_promote_all_scope_reports_all_mode(tmp_path, monkeypatch):
+  _patch_policy(monkeypatch)
+  source_state = _state(_dataset(
+    "customer",
+    columns=(
+      _column("customer_id", datatype="integer", nullable=False),
+    ),
+  ))
+  target_state = _state(_dataset(
+    "customer",
+    columns=(
+      _column("customer_id", datatype="integer", nullable=False),
+    ),
+  ))
+  source_path = tmp_path / "source.json"
+  target_path = tmp_path / "target.json"
+  _write_state(source_path, source_state)
+  _write_state(target_path, target_state)
+
+  out = StringIO()
+  call_command(
+    "elevata_promote",
+    str(source_path),
+    str(target_path),
+    "--format",
+    "json",
+    stdout=out,
+  )
+
+  data = json.loads(out.getvalue())
+  assert data["change_report"]["scope"]["mode"] == "all"
+
+
+def test_elevata_promote_target_scope_reports_target_name(tmp_path, monkeypatch):
+  _patch_policy(monkeypatch)
+  source_state = _state(_dataset(
+    "customer",
+    columns=(
+      _column("customer_id", datatype="integer", nullable=False),
+    ),
+  ))
+  target_state = _state(_dataset(
+    "customer",
+    columns=(
+      _column("customer_id", datatype="integer", nullable=False),
+      _column("customer_name"),
+    ),
+  ))
+  source_path = tmp_path / "source.json"
+  target_path = tmp_path / "target.json"
+  _write_state(source_path, source_state)
+  _write_state(target_path, target_state)
+
+  out = StringIO()
+  call_command(
+    "elevata_promote",
+    str(source_path),
+    str(target_path),
+    "--target-dataset",
+    "customer",
+    "--schema",
+    "rawcore",
+    "--format",
+    "json",
+    stdout=out,
+  )
+
+  data = json.loads(out.getvalue())
+  assert data["change_report"]["scope"]["mode"] == "scoped"
+  assert data["change_report"]["scope"]["target_name"] == "customer"

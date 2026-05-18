@@ -142,6 +142,11 @@ class Command(BaseCommand):
       relevant_dataset_keys=relevant_dataset_keys,
       schema_short=schema_short,
       target_name=target_name,
+      scope_mode=_resolve_report_scope_mode(
+        all_datasets=all_datasets,
+        schema_short=schema_short,
+        target_name=target_name,
+      ),
     )
 
     if output_format == "json":
@@ -180,3 +185,18 @@ def _apply_exit_policy(
 
   if fail_on_changes and report.has_changes:
     raise CommandError("Architecture plan contains changes.", returncode=1)
+  
+
+def _resolve_report_scope_mode(
+  *,
+  all_datasets: bool,
+  schema_short: str | None,
+  target_name: str | None,
+) -> str:
+  """
+  Resolve the public scope mode for architecture plan output.
+  """
+  if all_datasets and schema_short is None and target_name is None:
+    return "all"
+
+  return "scoped"

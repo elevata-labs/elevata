@@ -107,7 +107,29 @@ The report includes:
 - policy decisions  
 - deterministic report fingerprint
 
+Report scope is part of the report contract.
+
+| Invocation | Scope mode | Scope meaning |
+|---|---|---|
+| `elevata_plan --all` | `all` | all active target datasets |
+| `elevata_plan --all --schema rawcore` | `scoped` | all active target datasets in the selected schema |
+| `elevata_plan rc_aw_customer` | `scoped` | the selected dataset and related architecture scope |
+
+For scoped reports, the report payload contains only changes, migration actions,  
+policy decisions and summary counts that belong to the selected scope.  
+The report fingerprint therefore represents the selected architecture scope.
+
+When a target dataset name is unique, `--schema` can be omitted.  
+Use `--schema` when the same dataset name exists in multiple schemas or when  
+CI scripts should declare the intended schema explicitly.
+
 Render a report for one dataset:
+
+```bash
+python manage.py elevata_plan rc_aw_customer
+```
+
+Render a report for one dataset with an explicit schema:
 
 ```bash
 python manage.py elevata_plan rc_aw_customer --schema rawcore
@@ -129,7 +151,6 @@ Use an explicit baseline state file:
 
 ```bash
 python manage.py elevata_plan rc_aw_customer \
-  --schema rawcore \
   --previous-state .artifacts/prod_architecture_state.json
 ```
 
@@ -170,9 +191,21 @@ For dataset-scoped comparison:
 python manage.py elevata_promote \
   .artifacts/dev_architecture_state.json \
   .artifacts/prod_architecture_state.json \
-  --target-dataset customer \
+  --target-dataset rc_aw_customer
+```
+
+For dataset-scoped comparison with an explicit schema:
+
+```bash
+python manage.py elevata_promote \
+  .artifacts/dev_architecture_state.json \
+  .artifacts/prod_architecture_state.json \
+  --target-dataset rc_aw_customer \
   --schema rawcore
 ```
+
+Promotion reports use the same scope semantics as change reports.
+The embedded Architecture Change Report exposes the effective scope in JSON and text output.
 
 ---
 
@@ -232,6 +265,62 @@ deterministic fingerprints.
 
 Fingerprints are derived from canonical JSON representations and allow CI, review processes,  
 and promotion workflows to reference exact architecture artifacts.
+
+---
+
+## 🔧 8. Operational Smoke Checks
+
+The following commands provide a compact validation set for architecture artifacts.
+
+Export the current architecture state:
+
+```bash
+python manage.py elevata_state --output .artifacts/current_architecture_state.json
+```
+
+Render a platform-wide report:
+
+```bash
+python manage.py elevata_plan --all \
+  --format json \
+  --output .artifacts/architecture_plan_all.json
+```
+
+Render a schema-scoped report:
+
+```bash
+python manage.py elevata_plan --all \
+  --schema rawcore \
+  --format json \
+  --output .artifacts/architecture_plan_rawcore.json
+```
+
+Render a dataset-scoped report:
+
+```bash
+python manage.py elevata_plan rc_aw_customer \
+  --format json \
+  --output .artifacts/architecture_plan_rc_aw_customer.json
+```
+
+Compare two state artifacts:
+
+```bash
+python manage.py elevata_promote \
+  .artifacts/current_architecture_state.json \
+  .artifacts/current_architecture_state.json \
+  --format json \
+  --output .artifacts/architecture_promotion_self_check.json
+```
+
+Validate no-change exit behavior against an explicit baseline:
+
+```bash
+python manage.py elevata_plan --all \
+  --previous-state .artifacts/current_architecture_state.json \
+  --format json \
+  --fail-on-changes
+```
 
 ---
 

@@ -400,3 +400,59 @@ def test_elevata_plan_raises_for_unreadable_previous_state_file(tmp_path, monkey
     )
 
   assert "could not be read" in str(exc_info.value)
+
+
+def test_elevata_plan_all_scope_reports_all_mode(monkeypatch):
+  state = _state(
+    _dataset("customer", columns=(_column("id"),)),
+    _dataset("product", columns=(_column("id"),)),
+  )
+  _patch_architecture_states(
+    monkeypatch,
+    previous_state=state,
+    current_state=state,
+  )
+
+  out = StringIO()
+  call_command(
+    "elevata_plan",
+    "--all",
+    "--format",
+    "json",
+    stdout=out,
+  )
+
+  data = json.loads(out.getvalue())
+  assert data["scope"]["mode"] == "all"
+  assert data["scope"]["dataset_keys"] == [
+    "rawcore.customer",
+    "rawcore.product",
+  ]
+
+
+def test_elevata_plan_schema_scope_reports_scoped_mode(monkeypatch):
+  state = _state(
+    _dataset("customer", schema_short_name="rawcore", columns=(_column("id"),)),
+    _dataset("customer", schema_short_name="bizcore", columns=(_column("id"),)),
+  )
+  _patch_architecture_states(
+    monkeypatch,
+    previous_state=state,
+    current_state=state,
+  )
+
+  out = StringIO()
+  call_command(
+    "elevata_plan",
+    "--all",
+    "--schema",
+    "rawcore",
+    "--format",
+    "json",
+    stdout=out,
+  )
+
+  data = json.loads(out.getvalue())
+  assert data["scope"]["mode"] == "scoped"
+  assert data["scope"]["schema_short"] == "rawcore"
+  assert data["scope"]["dataset_keys"] == ["rawcore.customer"]
