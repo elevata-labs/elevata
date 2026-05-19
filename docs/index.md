@@ -66,8 +66,8 @@ This index gives you an overview of all major topics and how they fit together.
 
 - [Architecture Control Plane](architecture_control_plane.md)  
   Deterministic architecture state, change reports, promotion reports,  
-  policy decisions and fingerprints for review, CI, and controlled architecture
-  promotion workflows.
+  approval artifacts, policy decisions and fingerprints for review, CI,
+  controlled approval, and architecture promotion workflows.
 
 ---
 

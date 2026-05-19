@@ -43,6 +43,10 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from generic import GenericCRUDView
 
+from metadata.architecture.review_status import (
+  ArchitectureReviewStatusError,
+  build_target_dataset_architecture_review_status,
+)
 from metadata.constants import DIALECT_HINTS
 from metadata.forms import TargetColumnForm, TargetDatasetForm
 from metadata.generation.policies import (
@@ -525,6 +529,42 @@ def targetdataset_query_contract_view(request, pk: int):
     "contract_diff": diff,
   }
   return render(request, "metadata/query/targetdataset_query_contract.html", ctx)
+
+
+@login_required
+@permission_required("metadata.view_targetdataset", raise_exception=True)
+def targetdataset_architecture_review(request, pk: int):
+  """
+  Render the architecture review status for one TargetDataset.
+  """
+  from metadata.architecture.review_status import (
+    ArchitectureReviewStatusError,
+    build_target_dataset_architecture_review_status,
+  )
+
+  td = get_object_or_404(
+    TargetDataset.objects.select_related("target_schema"),
+    pk=pk,
+  )
+
+  review_status = None
+  error_message = None
+
+  try:
+    review_status = build_target_dataset_architecture_review_status(td)
+  except ArchitectureReviewStatusError as exc:
+    error_message = str(exc)
+  except Exception as exc:
+    logger.exception("Architecture review status failed: %s", exc)
+    error_message = str(exc)
+
+  ctx = {
+    "title": "Architecture review",
+    "object": td,
+    "review_status": review_status,
+    "error_message": error_message,
+  }
+  return render(request, "metadata/architecture/targetdataset_architecture_review.html", ctx)
 
 
 @login_required

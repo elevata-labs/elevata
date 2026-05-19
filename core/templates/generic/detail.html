@@ -81,6 +81,9 @@ Contact: <https://github.com/elevata-labs/elevata>.
             <a href="{% url 'targetdataset_lineage' object.pk %}" class="btn btn-sm btn-outline-primary">
               <i class="bi bi-diagram-3"></i> Lineage
             </a>
+            <a href="{% url 'targetdataset_architecture_review' object.pk %}" class="btn btn-sm btn-outline-secondary">
+              <i class="bi bi-shield-check"></i> Review status
+            </a>
             {% if object.target_schema.short_name in "bizcore serving" %}
               <a href="{% url 'targetdataset_query_builder' object.pk %}" class="btn btn-sm btn-outline-primary">
                 <i class="bi bi-compass"></i> Query builder

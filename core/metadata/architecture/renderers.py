@@ -24,6 +24,11 @@ from __future__ import annotations
 
 import json
 
+from metadata.architecture.approval import (
+  ArchitectureApprovalArtifact,
+  ArchitectureApprovalCheckResult,
+)
+from metadata.architecture.promotion import ArchitecturePromotionReport
 from metadata.architecture.report import ArchitectureChangeReport
 
 
@@ -163,6 +168,123 @@ def _format_policy_decision_line(decision) -> str:
   if decision.message:
     parts.append(f"({decision.message})")
   return " ".join(parts)
+
+
+def render_architecture_approval_json(artifact: ArchitectureApprovalArtifact) -> str:
+  """
+  Render an architecture approval artifact as deterministic JSON.
+  """
+  return json.dumps(
+    artifact.to_dict(),
+    ensure_ascii=False,
+    sort_keys=True,
+    indent=2,
+  ) + "\n"
+
+
+def render_architecture_approval_text(artifact: ArchitectureApprovalArtifact) -> str:
+  """
+  Render an architecture approval artifact as deterministic text.
+  """
+  data = artifact.to_dict()
+  report = artifact.report
+  review = artifact.review
+  state = report.get("state", {})
+  scope = report.get("scope", {})
+  summary = report.get("summary", {})
+
+  lines: list[str] = []
+
+  lines.append("Architecture Approval Artifact")
+  lines.append("=" * 30)
+  lines.append("")
+
+  lines.append("Artifact")
+  lines.append("--------")
+  lines.append(f"approval_id: {data['approval_id']}")
+  lines.append(f"artifact_fingerprint: {data['artifact_fingerprint']}")
+  lines.append("")
+
+  lines.append("Review")
+  lines.append("------")
+  lines.append(f"decision: {review.decision}")
+  lines.append(f"decided_by: {review.decided_by}")
+  lines.append(f"decided_at: {review.decided_at}")
+  if review.note:
+    lines.append(f"note: {review.note}")
+  lines.append("")
+
+  lines.append("Report")
+  lines.append("------")
+  lines.append(f"type: {report.get('type')}")
+  lines.append(f"report_fingerprint: {report.get('report_fingerprint')}")
+  lines.append(f"is_blocked: {str(report.get('is_blocked')).lower()}")
+  lines.append(f"previous_fingerprint: {state.get('previous_fingerprint') or '<none>'}")
+  lines.append(f"current_fingerprint: {state.get('current_fingerprint')}")
+  lines.append("")
+
+  lines.append("Scope")
+  lines.append("-----")
+  lines.append(f"mode: {scope.get('mode')}")
+  if scope.get("schema_short"):
+    lines.append(f"schema: {scope.get('schema_short')}")
+  if scope.get("target_name"):
+    lines.append(f"target: {scope.get('target_name')}")
+  dataset_keys = list(scope.get("dataset_keys") or [])
+  lines.append(f"datasets: {len(dataset_keys)}")
+  for dataset_key in dataset_keys:
+    lines.append(f"- {dataset_key}")
+  lines.append("")
+
+  lines.append("Summary")
+  lines.append("-------")
+  lines.append(f"dataset_changes: {summary.get('dataset_change_count')}")
+  lines.append(f"column_changes: {summary.get('column_change_count')}")
+  lines.append(f"migration_actions: {summary.get('migration_action_count')}")
+  lines.append(f"policy_decisions: {summary.get('policy_decision_count')}")
+  lines.append(
+    "blocking_policy_decisions: "
+    f"{summary.get('blocking_policy_decision_count')}"
+  )
+  lines.append("")
+
+  return "\n".join(lines)
+
+
+def render_architecture_approval_check_json(
+  result: ArchitectureApprovalCheckResult,
+) -> str:
+  """
+  Render an architecture approval check result as deterministic JSON.
+  """
+  return json.dumps(
+    result.to_dict(),
+    ensure_ascii=False,
+    sort_keys=True,
+    indent=2,
+  ) + "\n"
+
+
+def render_architecture_approval_check_text(
+  result: ArchitectureApprovalCheckResult,
+) -> str:
+  """
+  Render an architecture approval check result as deterministic text.
+  """
+  lines: list[str] = []
+
+  lines.append("Architecture Approval Check")
+  lines.append("=" * 27)
+  lines.append("")
+  lines.append(f"status: {result.status}")
+  lines.append(f"is_valid: {str(result.is_valid).lower()}")
+  lines.append(f"message: {result.message}")
+  lines.append(f"report_fingerprint: {result.report_fingerprint or '<none>'}")
+  lines.append(f"approval_id: {result.approval_id or '<none>'}")
+  lines.append(f"artifact_fingerprint: {result.artifact_fingerprint or '<none>'}")
+  lines.append("")
+
+  return "\n".join(lines)
 
 
 def render_architecture_promotion_report_json(report: ArchitecturePromotionReport) -> str:

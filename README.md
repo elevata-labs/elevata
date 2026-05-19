@@ -52,7 +52,7 @@ validated, and applied deterministically before execution.
 
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/elevata-labs/elevata/main/docs/elevata_v1_7_1.png" alt="elevata UI preview" width="700"/>
+  <img src="https://raw.githubusercontent.com/elevata-labs/elevata/main/docs/elevata_v1_8_0.png" alt="elevata UI preview" width="700"/>
   <br/>
   <em>Dataset detail view with lineage, metadata, and dialect-aware SQL previews</em>
 </p>
@@ -124,11 +124,14 @@ while destructive changes remain explicitly policy-gated.
 
 elevata makes architecture changes reviewable before execution.
 
-Architecture State, Change Reports and Promotion Reports expose deterministic fingerprints,  
-MigrationPlan actions and policy decisions.
+Architecture State, Change Reports, Promotion Reports and Approval Artifacts expose deterministic fingerprints,  
+MigrationPlan actions, policy decisions and review decisions.
 
 This supports controlled review, CI checks and environment-to-environment architecture promotion  
 while keeping execution guardrails inside the load runner.
+
+The Architecture Review Status UI makes approval state, scope, policy status, change summary and fingerprint consistency  
+visible for each dataset architecture scope.
 
 ---
 

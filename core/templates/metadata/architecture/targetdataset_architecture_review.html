@@ -1,0 +1,263 @@
+<!--
+elevata - Metadata-driven Data Platform Framework
+Copyright © 2025-2026 Ilona Tag
+
+This file is part of elevata.
+
+elevata is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of
+the License, or (at your option) any later version.
+
+elevata is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with elevata. If not, see <https://www.gnu.org/licenses/>.
+
+Contact: <https://github.com/elevata-labs/elevata>.
+-->
+
+{% extends "base.html" %}
+
+{% block title %}{{ title }} · elevata{% endblock %}
+
+{% block content %}
+<h1 class="h4 mb-3 d-flex align-items-center justify-content-between">
+  <span>
+    Architecture review
+    <span class="badge badge-lineage-layer ms-2">
+      {{ object.target_schema.short_name }}
+    </span>
+    <span class="badge text-bg-secondary ms-2">
+      {{ object.target_dataset_name }}
+    </span>
+  </span>
+
+  <div class="page-actions">
+    <a href="{% url 'targetdataset_lineage' object.pk %}" class="btn btn-sm btn-outline-secondary">
+      <i class="bi bi-diagram-3"></i> Lineage
+    </a>
+    <a href="{% url 'targetdataset_detail' object.pk %}" class="btn btn-sm btn-outline-primary">
+      <i class="bi bi-arrow-left"></i> Back to details
+    </a>
+  </div>
+</h1>
+
+<div class="small text-muted mb-4">
+  Review status shows whether the metadata-defined architecture changes for this dataset scope
+  are approved by a matching deterministic Approval Artifact.
+</div>
+
+{% if error_message %}
+  <div class="alert alert-danger">
+    <div class="fw-semibold">Architecture review status failed</div>
+    <div class="small mt-1">{{ error_message }}</div>
+  </div>
+{% elif review_status %}
+  <div class="row g-4 mb-4">
+    <div class="col-lg-7">
+      <div class="card h-100">
+        <div class="card-body">
+          <div class="d-flex align-items-start justify-content-between gap-3">
+            <div>
+              <div class="small text-muted mb-1">Review status</div>
+              <h2 class="h5 mb-2 d-flex align-items-center gap-2">
+                <i class="bi {{ review_status.icon }}"></i>
+                {{ review_status.label }}
+              </h2>
+              <p class="text-muted mb-0">
+                {{ review_status.message }}
+              </p>
+            </div>
+            <span class="badge {{ review_status.badge_class }}">
+              {{ review_status.status }}
+            </span>
+          </div>
+
+          <hr>
+
+          <div class="row g-3 small">
+            <div class="col-md-6">
+              <div class="text-muted">Dataset scope</div>
+              <div class="fw-semibold">{{ review_status.dataset_key }}</div>
+            </div>
+            <div class="col-md-6">
+              <div class="text-muted">Approval directory</div>
+              <code>{{ review_status.approval_directory }}</code>
+            </div>
+            <div class="col-md-6">
+              <div class="text-muted">Report fingerprint</div>
+              <code>{{ review_status.report_fingerprint|slice:":16" }}…</code>
+            </div>
+            <div class="col-md-6">
+              <div class="text-muted">Approval ID</div>
+              {% if review_status.approval_id %}
+                <code>{{ review_status.approval_id }}</code>
+              {% else %}
+                <span class="text-muted">–</span>
+              {% endif %}
+            </div>
+            <div class="col-md-6">
+              <div class="text-muted">Approval fingerprint</div>
+              {% if review_status.artifact_fingerprint %}
+                <code>{{ review_status.artifact_fingerprint|slice:":16" }}…</code>
+              {% else %}
+                <span class="text-muted">–</span>
+              {% endif %}
+            </div>
+            <div class="col-md-6">
+              <div class="text-muted">Policy status</div>
+              {% if review_status.is_blocked %}
+                <span class="badge badge-health-error">blocked</span>
+              {% else %}
+                <span class="badge badge-health-ok">clear</span>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-lg-5">
+      <div class="card h-100">
+        <div class="card-body">
+          <div class="small text-muted mb-1">Review decision</div>
+          {% if review_status.review_decision %}
+            <div class="h5 mb-2">{{ review_status.review_decision }}</div>
+            <div class="small">
+              <div>
+                <span class="text-muted">Reviewer:</span>
+                <span class="fw-semibold">{{ review_status.decided_by }}</span>
+              </div>
+              <div>
+                <span class="text-muted">Decided at:</span>
+                <code>{{ review_status.decided_at }}</code>
+              </div>
+              {% if review_status.note %}
+                <div class="mt-2">
+                  <span class="text-muted">Note:</span>
+                  {{ review_status.note }}
+                </div>
+              {% endif %}
+            </div>
+          {% else %}
+            {% if review_status.status == "no_changes" %}
+              <div class="h5 mb-2">No approval required</div>
+              <p class="text-muted small mb-0">
+                This dataset scope has no architecture changes. Approval artifacts are used when architecture changes are present.
+              </p>
+            {% else %}
+              <div class="h5 mb-2">No matching approval</div>
+              <p class="text-muted small mb-0">
+                Create and store an approval artifact for the report fingerprint shown on this page.
+              </p>
+            {% endif %}
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row g-4 mb-4">
+    <div class="col-lg-6">
+      <div class="card h-100">
+        <div class="card-body">
+          <div class="fw-semibold mb-3">Architecture change summary</div>
+          <div class="row g-3 text-center">
+            <div class="col-6 col-md-4">
+              <div class="h4 mb-0">{{ review_status.summary.dataset_change_count }}</div>
+              <div class="small text-muted">Dataset changes</div>
+            </div>
+            <div class="col-6 col-md-4">
+              <div class="h4 mb-0">{{ review_status.summary.column_change_count }}</div>
+              <div class="small text-muted">Column changes</div>
+            </div>
+            <div class="col-6 col-md-4">
+              <div class="h4 mb-0">{{ review_status.summary.migration_action_count }}</div>
+              <div class="small text-muted">Migration actions</div>
+            </div>
+            <div class="col-6 col-md-4">
+              <div class="h4 mb-0">{{ review_status.summary.policy_decision_count }}</div>
+              <div class="small text-muted">Policy decisions</div>
+            </div>
+            <div class="col-6 col-md-4">
+              <div class="h4 mb-0">{{ review_status.summary.blocking_policy_decision_count }}</div>
+              <div class="small text-muted">Blocking decisions</div>
+            </div>
+            <div class="col-6 col-md-4">
+              <div class="h4 mb-0">
+                {% if review_status.has_changes %}yes{% else %}no{% endif %}
+              </div>
+              <div class="small text-muted">Has changes</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-lg-6">
+      <div class="card h-100">
+        <div class="card-body">
+          <div class="fw-semibold mb-3">Architecture scope</div>
+          <div class="small mb-2">
+            <span class="text-muted">Mode:</span>
+            <span class="fw-semibold">{{ review_status.scope.mode }}</span>
+            {% if review_status.scope.schema_short %}
+              <span class="text-muted ms-2">Schema:</span>
+              <span class="fw-semibold">{{ review_status.scope.schema_short }}</span>
+            {% endif %}
+          </div>
+
+          {% if review_status.scope.dataset_keys %}
+            <ul class="small mb-0">
+              {% for dataset_key in review_status.scope.dataset_keys %}
+                <li><code>{{ dataset_key }}</code></li>
+              {% endfor %}
+            </ul>
+          {% else %}
+            <p class="text-muted small mb-0">No datasets in scope.</p>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card mb-4">
+    <div class="card-body">
+      <div class="fw-semibold mb-3">State fingerprints</div>
+      <div class="row g-3 small">
+        <div class="col-lg-6">
+          <div class="text-muted">Previous state</div>
+          {% if review_status.state.previous_fingerprint %}
+            <code>{{ review_status.state.previous_fingerprint }}</code>
+          {% else %}
+            <span class="text-muted">–</span>
+          {% endif %}
+        </div>
+        <div class="col-lg-6">
+          <div class="text-muted">Metadata-defined state</div>
+          <code>{{ review_status.state.current_fingerprint }}</code>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {% if review_status.has_changes %}
+  <div class="card">
+    <div class="card-body">
+      <div class="fw-semibold mb-2">Artifact workflow</div>
+      <p class="text-muted small">
+        Generate the Architecture Change Report, create an Approval Artifact,
+        and store it so this page can resolve the review status.
+      </p>
+      <pre class="small mb-0"><code>python manage.py elevata_plan {{ review_status.dataset_key }} --format json --output .artifacts/architecture_plan.json
+python manage.py elevata_approve .artifacts/architecture_plan.json --approved-by "Reviewer Name" --store
+python manage.py elevata_approval_check .artifacts/architecture_plan.json {{ review_status.approval_directory }}/{{ review_status.report_fingerprint }}.approval.json</code></pre>
+    </div>
+  </div>
+  {% endif %}
+{% endif %}
+{% endblock %}

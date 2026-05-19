@@ -8,10 +8,11 @@ It turns architecture state into explicit artifacts:
 - Architecture State  
 - Architecture Change Report  
 - Architecture Promotion Report  
+- Architecture Approval Artifact  
 - deterministic report fingerprints
 
 These artifacts make structural architecture changes reviewable, policy-aware,
-and suitable for CI pipelines.
+approvable, verifiable, visible in the UI, and suitable for CI pipelines.
 
 ---
 
@@ -32,6 +33,8 @@ MigrationPlan
 Policy Decisions
   ↓
 Architecture Change Report
+  ↓
+Architecture Approval Artifact
 ```
 
 This makes schema evolution intent explicit before load execution applies any
@@ -156,7 +159,96 @@ python manage.py elevata_plan rc_aw_customer \
 
 ---
 
-## 🔧 4. Architecture Promotion Report
+## 🔧 4. Architecture Approval Artifact
+
+An Architecture Approval Artifact records a review decision for one exact
+Architecture Change Report fingerprint.
+
+It answers:
+
+```text
+Has this exact architecture change report been reviewed and approved?
+```
+
+Approval artifacts are deterministic JSON artifacts. They bind a review decision to the report fingerprint,  
+report scope, report state, summary counts, and policy status of the approved Architecture Change Report.
+
+An approval does not override policy decisions. If a report contains blocking policy decisions,  
+execution remains blocked by the load runner and materialization policy.
+
+Approval artifacts are created from Architecture Change Report JSON:
+
+```bash
+python manage.py elevata_plan rc_aw_customer \
+  --format json \
+  --output .artifacts/architecture_plan_rc_aw_customer.json
+
+python manage.py elevata_approve .artifacts/architecture_plan_rc_aw_customer.json \
+  --approved-by "Reviewer Name" \
+  --note "Reviewed for deployment." \
+  --output .artifacts/architecture_approval_rc_aw_customer.json
+```
+
+To store the approval artifact in the configured approval directory:
+
+```bash
+python manage.py elevata_approve .artifacts/architecture_plan_rc_aw_customer.json \
+  --approved-by "Reviewer Name" \
+  --note "Reviewed for deployment." \
+  --store
+```
+
+The approval artifact directory is configured via:
+
+```bash
+ELEVATA_ARCH_APPROVAL_DIR=.elevata/approvals
+```
+
+The stored file name is derived from the approved report fingerprint:
+
+```text
+<report_fingerprint>.approval.json
+```
+
+To verify that an approval artifact matches an Architecture Change Report:
+
+```bash
+python manage.py elevata_approval_check \
+  .artifacts/architecture_plan_rc_aw_customer.json \
+  .elevata/approvals/<report_fingerprint>.approval.json
+```
+
+The approval check fails when:
+
+- the approval artifact fingerprint does not match its payload  
+- the approval identifier does not match the artifact fingerprint  
+- the approval references another Architecture Change Report  
+- the review decision is not `approved`
+
+---
+
+## 🔧 5. Architecture Review Status UI
+
+The Architecture Review Status UI shows the review state for a selected
+TargetDataset architecture scope.
+
+It displays:
+
+- review status  
+- report fingerprint  
+- approval identifier and artifact fingerprint  
+- reviewer and decision timestamp  
+- policy status  
+- architecture scope  
+- change summary  
+- state fingerprints
+
+Review states include approved, pending review, approval drift, blocked by policy, no architecture changes,  
+and invalid approval artifact.
+
+---
+
+## 🔧 6. Architecture Promotion Report
 
 An Architecture Promotion Report compares two Architecture State artifacts.
 
@@ -209,7 +301,7 @@ The embedded Architecture Change Report exposes the effective scope in JSON and 
 
 ---
 
-## 🔧 5. CI Exit Policies
+## 🔧 7. CI Exit Policies
 
 Architecture reports and promotion reports support explicit exit policies:
 
@@ -240,7 +332,7 @@ python manage.py elevata_promote \
 
 ---
 
-## 🔧 6. Execution Guardrails
+## 🔧 8. Execution Guardrails
 
 The Architecture Control Plane is read-only.
 
@@ -254,21 +346,23 @@ This preserves a strict separation:
 | `elevata_state` | Render architecture state |
 | `elevata_plan` | Render architecture change report |
 | `elevata_promote` | Compare architecture state artifacts |
+| `elevata_approve` | Create architecture approval artifact |
+| `elevata_approval_check` | Verify approval artifact against a change report |
 | `elevata_load` | Execute loads with preflight and guard checks |
 
 ---
 
-## 🔧 7. Deterministic Fingerprints
+## 🔧 9. Deterministic Fingerprints
 
-Architecture State, Architecture Change Report, and Architecture Promotion Report each expose  
-deterministic fingerprints.
+Architecture State, Architecture Change Report, Architecture Promotion Report, and Architecture Approval Artifact  
+each expose deterministic fingerprints.
 
 Fingerprints are derived from canonical JSON representations and allow CI, review processes,  
-and promotion workflows to reference exact architecture artifacts.
+approval decisions, and promotion workflows to reference exact architecture artifacts.
 
 ---
 
-## 🔧 8. Operational Smoke Checks
+## 🔧 10. Operational Smoke Checks
 
 The following commands provide a compact validation set for architecture artifacts.
 
@@ -311,6 +405,23 @@ python manage.py elevata_promote \
   .artifacts/current_architecture_state.json \
   --format json \
   --output .artifacts/architecture_promotion_self_check.json
+```
+
+Create and store an approval artifact:
+
+```bash
+python manage.py elevata_approve .artifacts/architecture_plan_rc_aw_customer.json \
+  --approved-by "Reviewer Name" \
+  --note "Reviewed for deployment." \
+  --store
+```
+
+Verify the stored approval artifact:
+
+```bash
+python manage.py elevata_approval_check \
+  .artifacts/architecture_plan_rc_aw_customer.json \
+  .elevata/approvals/<report_fingerprint>.approval.json
 ```
 
 Validate no-change exit behavior against an explicit baseline:

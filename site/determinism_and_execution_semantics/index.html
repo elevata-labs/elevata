@@ -1739,16 +1739,19 @@ because the table is recreated during execution.</p>
 <p>Type drift warnings may still be emitted for visibility.</p>
 <hr />
 <h2 id="4-architecture-report-determinism">🔧 4. Architecture Report Determinism<a class="headerlink" href="#4-architecture-report-determinism" title="Permanent link">&para;</a></h2>
-<p>Architecture reports are deterministic artifacts.</p>
+<p>Architecture reports and approval artifacts are deterministic artifacts.</p>
 <p>The same architecture state, scope, migration intent, and policy configuration<br />
 produce the same report fingerprint.</p>
 <p>Deterministic report artifacts include:</p>
 <ul>
 <li>Architecture State fingerprint  </li>
 <li>Architecture Change Report fingerprint  </li>
-<li>Architecture Promotion Report fingerprint</li>
+<li>Architecture Promotion Report fingerprint  </li>
+<li>Architecture Approval Artifact fingerprint</li>
 </ul>
 <p>These fingerprints are derived from canonical JSON representations.</p>
+<p>Approval artifact fingerprints are derived from the approval payload and review decision.<br />
+They bind an approval to one exact Architecture Change Report reference.</p>
 <p>Report JSON uses stable ordering and contains semantic architecture information:</p>
 <ul>
 <li>scope  </li>
@@ -1758,8 +1761,14 @@ produce the same report fingerprint.</p>
 <li>MigrationPlan actions  </li>
 <li>policy decisions</li>
 </ul>
+<p>The selected report scope is part of the deterministic artifact contract.<br />
+For scoped reports, dataset changes, column changes, MigrationPlan actions, policy decisions<br />
+and summary counts are restricted to the selected scope.</p>
 <p>The reports do not require SQL rendering, warehouse introspection, or execution
 engines.</p>
+<p>Approval artifacts do not alter execution policy. A matching approval confirms that an Architecture Change Report<br />
+was reviewed, while load execution remains protected by preflight checks, policy decisions and materialization guardrails.</p>
+<p>The Architecture Review Status UI displays the resulting review state without executing DDL or DML.</p>
 <hr />
 <h2 id="5-window-functions">🔧 5. Window functions<a class="headerlink" href="#5-window-functions" title="Permanent link">&para;</a></h2>
 <p>Some window functions are inherently nondeterministic without ordering.</p>

@@ -79,7 +79,7 @@ Type drift warnings may still be emitted for visibility.
 
 ## 🔧 4. Architecture Report Determinism
 
-Architecture reports are deterministic artifacts.
+Architecture reports and approval artifacts are deterministic artifacts.
 
 The same architecture state, scope, migration intent, and policy configuration  
 produce the same report fingerprint.
@@ -88,9 +88,13 @@ Deterministic report artifacts include:
 
 - Architecture State fingerprint  
 - Architecture Change Report fingerprint  
-- Architecture Promotion Report fingerprint
+- Architecture Promotion Report fingerprint  
+- Architecture Approval Artifact fingerprint
 
 These fingerprints are derived from canonical JSON representations.
+
+Approval artifact fingerprints are derived from the approval payload and review decision.  
+They bind an approval to one exact Architecture Change Report reference.
 
 Report JSON uses stable ordering and contains semantic architecture information:
 
@@ -107,6 +111,11 @@ and summary counts are restricted to the selected scope.
 
 The reports do not require SQL rendering, warehouse introspection, or execution
 engines.
+
+Approval artifacts do not alter execution policy. A matching approval confirms that an Architecture Change Report  
+was reviewed, while load execution remains protected by preflight checks, policy decisions and materialization guardrails.
+
+The Architecture Review Status UI displays the resulting review state without executing DDL or DML.
 
 ---
 

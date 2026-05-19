@@ -232,6 +232,7 @@ urlpatterns += [
   path("target-datasets/<int:pk>/sql/merge/", views.targetdataset_merge_sql_preview, name="targetdataset_merge_sql_preview"),
   path("target-datasets/<int:pk>/sql/delete/", views.targetdataset_delete_sql_preview, name="targetdataset_delete_sql_preview"),
   path("target-datasets/<int:pk>/lineage/", views.targetdataset_lineage, name="targetdataset_lineage"),
+  path("target-datasets/<int:pk>/architecture-review/", views.targetdataset_architecture_review, name="targetdataset_architecture_review"),
   path("target-datasets/<int:pk>/query-builder/", views.targetdataset_query_builder, name="targetdataset_query_builder"),
   path("target-datasets/<int:pk>/query-builder/create-root/", views.targetdataset_create_query_root, name="targetdataset_create_query_root"),
   path("metadata/target-datasets/<int:pk>/query/reset-root/", views.targetdataset_reset_query_root, name="targetdataset_reset_query_root"),

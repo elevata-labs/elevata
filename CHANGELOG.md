@@ -13,6 +13,76 @@ This project adheres to [Semantic Versioning](https://semver.org/) and [Keep a C
 
 ---
 
+## [1.8.0] - 2026-05-19
+
+This release introduces **Architecture Review Decisions** for the Architecture Control Plane.
+
+Architecture Change Reports can now be approved as deterministic Approval Artifacts, verified against their  
+original report fingerprint, and surfaced through a read-only Architecture Review Status UI.
+
+The focus is closing the architecture review loop: planned architecture changes become reviewable,  
+approvable, verifiable, and visible as stable artifacts.
+
+---
+
+### ✨ Added
+
+#### Architecture Approval Artifacts
+
+- Added deterministic Architecture Approval Artifacts for Architecture Change Reports  
+- Added approval artifact fingerprints derived from canonical JSON payloads  
+- Added stable approval identifiers derived from approval artifact fingerprints  
+- Added approval report references containing:  
+    - report fingerprint  
+    - report scope  
+    - report state  
+    - report summary  
+    - policy block status  
+- Added review decision metadata:  
+    - decision  
+    - reviewer  
+    - decision timestamp  
+    - review note
+
+#### Architecture Review Commands
+
+- Added `elevata_approve` for creating Architecture Approval Artifacts  
+- Added `elevata_approval_check` for verifying approval artifacts against Architecture Change Reports  
+- Added `--store` support for storing approval artifacts by report fingerprint  
+- Added configurable approval artifact directory via `ELEVATA_ARCH_APPROVAL_DIR`  
+- Added fingerprint-only output for Approval Artifacts
+
+#### Architecture Review Status UI
+
+- Added read-only Architecture Review Status page for TargetDataset architecture scopes  
+- Added visual review states for:  
+    - approved and matching  
+    - pending review  
+    - approval drift  
+    - blocked by policy  
+    - no architecture changes  
+    - invalid approval artifact  
+- Added visible report fingerprint, approval identifier, approval fingerprint, policy status,  
+  architecture scope, state fingerprints and change summary  
+- Added TargetDataset navigation entry for Architecture Review Status
+
+### 🔒 Governance & Determinism
+
+- Approval artifacts bind review decisions to exact Architecture Change Report fingerprints  
+- Approval checks fail when the artifact payload, approval identifier, report reference or review decision is invalid  
+- Approval does not override policy decisions or load execution guardrails  
+- The Architecture Control Plane remains read-only; load execution remains protected by preflight and materialization checks
+
+### 🧪 Quality & Stability
+
+- Added tests for Architecture Approval Artifact determinism  
+- Added tests for approval artifact store behavior and fingerprint validation  
+- Added tests for `elevata_approve --store`  
+- Added tests for `elevata_approval_check`  
+- Added tests for Architecture Review Status states
+
+---
+
 ## [1.7.1] - 2026-05-18
 
 This patch release hardens the **Architecture Control Plane** report contract by making scoped  

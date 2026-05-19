@@ -879,10 +879,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#4-architecture-promotion-report" class="md-nav__link">
+  <a href="#4-architecture-approval-artifact" class="md-nav__link">
     <span class="md-ellipsis">
       
-        🔧 4. Architecture Promotion Report
+        🔧 4. Architecture Approval Artifact
       
     </span>
   </a>
@@ -890,10 +890,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#5-ci-exit-policies" class="md-nav__link">
+  <a href="#5-architecture-review-status-ui" class="md-nav__link">
     <span class="md-ellipsis">
       
-        🔧 5. CI Exit Policies
+        🔧 5. Architecture Review Status UI
       
     </span>
   </a>
@@ -901,10 +901,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#6-execution-guardrails" class="md-nav__link">
+  <a href="#6-architecture-promotion-report" class="md-nav__link">
     <span class="md-ellipsis">
       
-        🔧 6. Execution Guardrails
+        🔧 6. Architecture Promotion Report
       
     </span>
   </a>
@@ -912,10 +912,43 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#7-deterministic-fingerprints" class="md-nav__link">
+  <a href="#7-ci-exit-policies" class="md-nav__link">
     <span class="md-ellipsis">
       
-        🔧 7. Deterministic Fingerprints
+        🔧 7. CI Exit Policies
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-execution-guardrails" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🔧 8. Execution Guardrails
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#9-deterministic-fingerprints" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🔧 9. Deterministic Fingerprints
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#10-operational-smoke-checks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🔧 10. Operational Smoke Checks
       
     </span>
   </a>
@@ -1625,10 +1658,11 @@ for metadata-defined architecture.</p>
 <li>Architecture State  </li>
 <li>Architecture Change Report  </li>
 <li>Architecture Promotion Report  </li>
+<li>Architecture Approval Artifact  </li>
 <li>deterministic report fingerprints</li>
 </ul>
 <p>These artifacts make structural architecture changes reviewable, policy-aware,
-and suitable for CI pipelines.</p>
+approvable, verifiable, visible in the UI, and suitable for CI pipelines.</p>
 <hr />
 <h2 id="1-purpose">🔧 1. Purpose<a class="headerlink" href="#1-purpose" title="Permanent link">&para;</a></h2>
 <p>elevata treats architecture as executable metadata.</p>
@@ -1643,6 +1677,8 @@ MigrationPlan
 Policy Decisions
   ↓
 Architecture Change Report
+  ↓
+Architecture Approval Artifact
 </code></pre>
 <p>This makes schema evolution intent explicit before load execution applies any
 DDL or DML.</p>
@@ -1693,7 +1729,43 @@ and the metadata-defined architecture state.</p>
 <li>policy decisions  </li>
 <li>deterministic report fingerprint</li>
 </ul>
+<p>Report scope is part of the report contract.</p>
+<table>
+<thead>
+<tr>
+<th>Invocation</th>
+<th>Scope mode</th>
+<th>Scope meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>elevata_plan --all</code></td>
+<td><code>all</code></td>
+<td>all active target datasets</td>
+</tr>
+<tr>
+<td><code>elevata_plan --all --schema rawcore</code></td>
+<td><code>scoped</code></td>
+<td>all active target datasets in the selected schema</td>
+</tr>
+<tr>
+<td><code>elevata_plan rc_aw_customer</code></td>
+<td><code>scoped</code></td>
+<td>the selected dataset and related architecture scope</td>
+</tr>
+</tbody>
+</table>
+<p>For scoped reports, the report payload contains only changes, migration actions,<br />
+policy decisions and summary counts that belong to the selected scope.<br />
+The report fingerprint therefore represents the selected architecture scope.</p>
+<p>When a target dataset name is unique, <code>--schema</code> can be omitted.<br />
+Use <code>--schema</code> when the same dataset name exists in multiple schemas or when<br />
+CI scripts should declare the intended schema explicitly.</p>
 <p>Render a report for one dataset:</p>
+<pre><code class="language-bash">python manage.py elevata_plan rc_aw_customer
+</code></pre>
+<p>Render a report for one dataset with an explicit schema:</p>
 <pre><code class="language-bash">python manage.py elevata_plan rc_aw_customer --schema rawcore
 </code></pre>
 <p>Render a report for all datasets in a schema:</p>
@@ -1704,11 +1776,72 @@ and the metadata-defined architecture state.</p>
 </code></pre>
 <p>Use an explicit baseline state file:</p>
 <pre><code class="language-bash">python manage.py elevata_plan rc_aw_customer \
-  --schema rawcore \
   --previous-state .artifacts/prod_architecture_state.json
 </code></pre>
 <hr />
-<h2 id="4-architecture-promotion-report">🔧 4. Architecture Promotion Report<a class="headerlink" href="#4-architecture-promotion-report" title="Permanent link">&para;</a></h2>
+<h2 id="4-architecture-approval-artifact">🔧 4. Architecture Approval Artifact<a class="headerlink" href="#4-architecture-approval-artifact" title="Permanent link">&para;</a></h2>
+<p>An Architecture Approval Artifact records a review decision for one exact
+Architecture Change Report fingerprint.</p>
+<p>It answers:</p>
+<pre><code class="language-text">Has this exact architecture change report been reviewed and approved?
+</code></pre>
+<p>Approval artifacts are deterministic JSON artifacts. They bind a review decision to the report fingerprint,<br />
+report scope, report state, summary counts, and policy status of the approved Architecture Change Report.</p>
+<p>An approval does not override policy decisions. If a report contains blocking policy decisions,<br />
+execution remains blocked by the load runner and materialization policy.</p>
+<p>Approval artifacts are created from Architecture Change Report JSON:</p>
+<pre><code class="language-bash">python manage.py elevata_plan rc_aw_customer \
+  --format json \
+  --output .artifacts/architecture_plan_rc_aw_customer.json
+
+python manage.py elevata_approve .artifacts/architecture_plan_rc_aw_customer.json \
+  --approved-by &quot;Reviewer Name&quot; \
+  --note &quot;Reviewed for deployment.&quot; \
+  --output .artifacts/architecture_approval_rc_aw_customer.json
+</code></pre>
+<p>To store the approval artifact in the configured approval directory:</p>
+<pre><code class="language-bash">python manage.py elevata_approve .artifacts/architecture_plan_rc_aw_customer.json \
+  --approved-by &quot;Reviewer Name&quot; \
+  --note &quot;Reviewed for deployment.&quot; \
+  --store
+</code></pre>
+<p>The approval artifact directory is configured via:</p>
+<pre><code class="language-bash">ELEVATA_ARCH_APPROVAL_DIR=.elevata/approvals
+</code></pre>
+<p>The stored file name is derived from the approved report fingerprint:</p>
+<pre><code class="language-text">&lt;report_fingerprint&gt;.approval.json
+</code></pre>
+<p>To verify that an approval artifact matches an Architecture Change Report:</p>
+<pre><code class="language-bash">python manage.py elevata_approval_check \
+  .artifacts/architecture_plan_rc_aw_customer.json \
+  .elevata/approvals/&lt;report_fingerprint&gt;.approval.json
+</code></pre>
+<p>The approval check fails when:</p>
+<ul>
+<li>the approval artifact fingerprint does not match its payload  </li>
+<li>the approval identifier does not match the artifact fingerprint  </li>
+<li>the approval references another Architecture Change Report  </li>
+<li>the review decision is not <code>approved</code></li>
+</ul>
+<hr />
+<h2 id="5-architecture-review-status-ui">🔧 5. Architecture Review Status UI<a class="headerlink" href="#5-architecture-review-status-ui" title="Permanent link">&para;</a></h2>
+<p>The Architecture Review Status UI shows the review state for a selected
+TargetDataset architecture scope.</p>
+<p>It displays:</p>
+<ul>
+<li>review status  </li>
+<li>report fingerprint  </li>
+<li>approval identifier and artifact fingerprint  </li>
+<li>reviewer and decision timestamp  </li>
+<li>policy status  </li>
+<li>architecture scope  </li>
+<li>change summary  </li>
+<li>state fingerprints</li>
+</ul>
+<p>Review states include approved, pending review, approval drift, blocked by policy, no architecture changes,<br />
+and invalid approval artifact.</p>
+<hr />
+<h2 id="6-architecture-promotion-report">🔧 6. Architecture Promotion Report<a class="headerlink" href="#6-architecture-promotion-report" title="Permanent link">&para;</a></h2>
 <p>An Architecture Promotion Report compares two Architecture State artifacts.</p>
 <p>It answers:</p>
 <pre><code class="language-text">What would change when this target architecture state is compared to that source state?
@@ -1730,11 +1863,19 @@ and the metadata-defined architecture state.</p>
 <pre><code class="language-bash">python manage.py elevata_promote \
   .artifacts/dev_architecture_state.json \
   .artifacts/prod_architecture_state.json \
-  --target-dataset customer \
+  --target-dataset rc_aw_customer
+</code></pre>
+<p>For dataset-scoped comparison with an explicit schema:</p>
+<pre><code class="language-bash">python manage.py elevata_promote \
+  .artifacts/dev_architecture_state.json \
+  .artifacts/prod_architecture_state.json \
+  --target-dataset rc_aw_customer \
   --schema rawcore
 </code></pre>
+<p>Promotion reports use the same scope semantics as change reports.
+The embedded Architecture Change Report exposes the effective scope in JSON and text output.</p>
 <hr />
-<h2 id="5-ci-exit-policies">🔧 5. CI Exit Policies<a class="headerlink" href="#5-ci-exit-policies" title="Permanent link">&para;</a></h2>
+<h2 id="7-ci-exit-policies">🔧 7. CI Exit Policies<a class="headerlink" href="#7-ci-exit-policies" title="Permanent link">&para;</a></h2>
 <p>Architecture reports and promotion reports support explicit exit policies:</p>
 <table>
 <thead>
@@ -1772,7 +1913,7 @@ and the metadata-defined architecture state.</p>
   --fail-on-destructive
 </code></pre>
 <hr />
-<h2 id="6-execution-guardrails">🔧 6. Execution Guardrails<a class="headerlink" href="#6-execution-guardrails" title="Permanent link">&para;</a></h2>
+<h2 id="8-execution-guardrails">🔧 8. Execution Guardrails<a class="headerlink" href="#8-execution-guardrails" title="Permanent link">&para;</a></h2>
 <p>The Architecture Control Plane is read-only.</p>
 <p>Load execution remains protected by the load runner. <code>elevata_load</code> performs its own preflight checks<br />
 before DDL or DML can be executed.</p>
@@ -1798,17 +1939,71 @@ before DDL or DML can be executed.</p>
 <td>Compare architecture state artifacts</td>
 </tr>
 <tr>
+<td><code>elevata_approve</code></td>
+<td>Create architecture approval artifact</td>
+</tr>
+<tr>
+<td><code>elevata_approval_check</code></td>
+<td>Verify approval artifact against a change report</td>
+</tr>
+<tr>
 <td><code>elevata_load</code></td>
 <td>Execute loads with preflight and guard checks</td>
 </tr>
 </tbody>
 </table>
 <hr />
-<h2 id="7-deterministic-fingerprints">🔧 7. Deterministic Fingerprints<a class="headerlink" href="#7-deterministic-fingerprints" title="Permanent link">&para;</a></h2>
-<p>Architecture State, Architecture Change Report, and Architecture Promotion Report each expose<br />
-deterministic fingerprints.</p>
+<h2 id="9-deterministic-fingerprints">🔧 9. Deterministic Fingerprints<a class="headerlink" href="#9-deterministic-fingerprints" title="Permanent link">&para;</a></h2>
+<p>Architecture State, Architecture Change Report, Architecture Promotion Report, and Architecture Approval Artifact<br />
+each expose deterministic fingerprints.</p>
 <p>Fingerprints are derived from canonical JSON representations and allow CI, review processes,<br />
-and promotion workflows to reference exact architecture artifacts.</p>
+approval decisions, and promotion workflows to reference exact architecture artifacts.</p>
+<hr />
+<h2 id="10-operational-smoke-checks">🔧 10. Operational Smoke Checks<a class="headerlink" href="#10-operational-smoke-checks" title="Permanent link">&para;</a></h2>
+<p>The following commands provide a compact validation set for architecture artifacts.</p>
+<p>Export the current architecture state:</p>
+<pre><code class="language-bash">python manage.py elevata_state --output .artifacts/current_architecture_state.json
+</code></pre>
+<p>Render a platform-wide report:</p>
+<pre><code class="language-bash">python manage.py elevata_plan --all \
+  --format json \
+  --output .artifacts/architecture_plan_all.json
+</code></pre>
+<p>Render a schema-scoped report:</p>
+<pre><code class="language-bash">python manage.py elevata_plan --all \
+  --schema rawcore \
+  --format json \
+  --output .artifacts/architecture_plan_rawcore.json
+</code></pre>
+<p>Render a dataset-scoped report:</p>
+<pre><code class="language-bash">python manage.py elevata_plan rc_aw_customer \
+  --format json \
+  --output .artifacts/architecture_plan_rc_aw_customer.json
+</code></pre>
+<p>Compare two state artifacts:</p>
+<pre><code class="language-bash">python manage.py elevata_promote \
+  .artifacts/current_architecture_state.json \
+  .artifacts/current_architecture_state.json \
+  --format json \
+  --output .artifacts/architecture_promotion_self_check.json
+</code></pre>
+<p>Create and store an approval artifact:</p>
+<pre><code class="language-bash">python manage.py elevata_approve .artifacts/architecture_plan_rc_aw_customer.json \
+  --approved-by &quot;Reviewer Name&quot; \
+  --note &quot;Reviewed for deployment.&quot; \
+  --store
+</code></pre>
+<p>Verify the stored approval artifact:</p>
+<pre><code class="language-bash">python manage.py elevata_approval_check \
+  .artifacts/architecture_plan_rc_aw_customer.json \
+  .elevata/approvals/&lt;report_fingerprint&gt;.approval.json
+</code></pre>
+<p>Validate no-change exit behavior against an explicit baseline:</p>
+<pre><code class="language-bash">python manage.py elevata_plan --all \
+  --previous-state .artifacts/current_architecture_state.json \
+  --format json \
+  --fail-on-changes
+</code></pre>
 <hr />
 <p>© 2025-2026 elevata Labs — Internal Technical Documentation</p>
 

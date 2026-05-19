@@ -48,8 +48,11 @@ Contact: <https://github.com/elevata-labs/elevata>.
       </a>
       <a href="{% url 'targetdataset_query_builder' object.pk %}" class="btn btn-sm btn-outline-primary">
         <i class="bi bi-compass"></i> Query builder
-      </a>
+      </a>   
     {% endif %}
+    <a href="{% url 'targetdataset_architecture_review' object.pk %}" class="btn btn-sm btn-outline-secondary">
+      <i class="bi bi-shield-check"></i> Review status
+    </a>
     <a href="{% url 'targetdataset_detail' object.pk %}" class="btn btn-sm btn-outline-primary">
       <i class="bi bi-arrow-left"></i> Back to details
     </a>
