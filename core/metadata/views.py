@@ -43,9 +43,13 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from generic import GenericCRUDView
 
-from metadata.architecture.review_status import (
-  ArchitectureReviewStatusError,
-  build_target_dataset_architecture_review_status,
+from metadata.architecture.operations import (
+  ArchitectureOperationsError,
+  build_target_dataset_architecture_operations_context,
+  check_target_dataset_architecture_approval,
+  create_target_dataset_architecture_approval,
+  render_target_dataset_architecture_report_json,
+  render_target_dataset_architecture_report_text,
 )
 from metadata.constants import DIALECT_HINTS
 from metadata.forms import TargetColumnForm, TargetDatasetForm
@@ -94,6 +98,44 @@ def _render_sql_error(prefix: str, exc: Exception) -> HttpResponse:
   )
   # SQL preview is a best-effort panel; errors are shown inline without failing the page.
   return HttpResponse(html, status=200)
+
+
+def _safe_download_token(value: str | None, fallback: str) -> str:
+  """
+  Return a filesystem-friendly token for download filenames.
+  """
+  token = re.sub(r"[^A-Za-z0-9_.-]+", "_", str(value or "").strip())
+  token = token.strip("._-")
+  return token or fallback
+
+
+def _architecture_report_filename(target_dataset: TargetDataset) -> str:
+  """
+  Build a stable download filename for an architecture report.
+  """
+  schema_short = getattr(
+    getattr(target_dataset, "target_schema", None),
+    "short_name",
+    None,
+  )
+  target_name = getattr(target_dataset, "target_dataset_name", None)
+
+  schema_token = _safe_download_token(schema_short, "schema")
+  target_token = _safe_download_token(target_name, "dataset")
+
+  return f"{schema_token}_{target_token}_architecture_report.json"
+
+
+def _approval_actor_name(user) -> str:
+  """
+  Return the reviewer name stored in approval artifacts.
+  """
+  for attr in ("email", "username"):
+    value = (getattr(user, attr, None) or "").strip()
+    if value:
+      return value
+
+  return str(user)
 
 
 def make_crud_view(model):
@@ -537,11 +579,6 @@ def targetdataset_architecture_review(request, pk: int):
   """
   Render the architecture review status for one TargetDataset.
   """
-  from metadata.architecture.review_status import (
-    ArchitectureReviewStatusError,
-    build_target_dataset_architecture_review_status,
-  )
-
   td = get_object_or_404(
     TargetDataset.objects.select_related("target_schema"),
     pk=pk,
@@ -551,8 +588,9 @@ def targetdataset_architecture_review(request, pk: int):
   error_message = None
 
   try:
-    review_status = build_target_dataset_architecture_review_status(td)
-  except ArchitectureReviewStatusError as exc:
+    operations_context = build_target_dataset_architecture_operations_context(td)
+    review_status = operations_context.review_status
+  except ArchitectureOperationsError as exc:
     error_message = str(exc)
   except Exception as exc:
     logger.exception("Architecture review status failed: %s", exc)
@@ -565,6 +603,134 @@ def targetdataset_architecture_review(request, pk: int):
     "error_message": error_message,
   }
   return render(request, "metadata/architecture/targetdataset_architecture_review.html", ctx)
+
+
+@login_required
+@permission_required("metadata.view_targetdataset", raise_exception=True)
+def targetdataset_architecture_report(request, pk: int):
+  """
+  Render the scoped Architecture Change Report as text.
+  """
+  td = get_object_or_404(
+    TargetDataset.objects.select_related("target_schema"),
+    pk=pk,
+  )
+
+  try:
+    rendered = render_target_dataset_architecture_report_text(td)
+  except ArchitectureOperationsError as exc:
+    return HttpResponse(
+      str(exc),
+      status=400,
+      content_type="text/plain; charset=utf-8",
+    )
+  except Exception as exc:
+    logger.exception("Architecture report rendering failed: %s", exc)
+    return HttpResponse(
+      str(exc),
+      status=500,
+      content_type="text/plain; charset=utf-8",
+    )
+
+  return HttpResponse(rendered, content_type="text/plain; charset=utf-8")
+
+
+@login_required
+@permission_required("metadata.view_targetdataset", raise_exception=True)
+def targetdataset_architecture_report_download(request, pk: int):
+  """
+  Download the scoped Architecture Change Report as deterministic JSON.
+  """
+  td = get_object_or_404(
+    TargetDataset.objects.select_related("target_schema"),
+    pk=pk,
+  )
+
+  try:
+    rendered = render_target_dataset_architecture_report_json(td)
+  except ArchitectureOperationsError as exc:
+    return HttpResponse(
+      str(exc),
+      status=400,
+      content_type="text/plain; charset=utf-8",
+    )
+  except Exception as exc:
+    logger.exception("Architecture report download failed: %s", exc)
+    return HttpResponse(
+      str(exc),
+      status=500,
+      content_type="text/plain; charset=utf-8",
+    )
+
+  response = HttpResponse(rendered, content_type="application/json; charset=utf-8")
+  response["Content-Disposition"] = (
+    f'attachment; filename="{_architecture_report_filename(td)}"'
+  )
+  return response
+
+
+@login_required
+@permission_required("metadata.change_targetdataset", raise_exception=True)
+@require_POST
+def targetdataset_architecture_approve(request, pk: int):
+  """
+  Create an approval artifact for the scoped Architecture Change Report.
+  """
+  td = get_object_or_404(
+    TargetDataset.objects.select_related("target_schema"),
+    pk=pk,
+  )
+
+  note = request.POST.get("note") or ""
+  approved_by = _approval_actor_name(request.user)
+
+  try:
+    result = create_target_dataset_architecture_approval(
+      td,
+      approved_by=approved_by,
+      note=note,
+    )
+    messages.success(
+      request,
+      (
+        "Architecture approval artifact created: "
+        f"{result.artifact.approval_id}"
+      ),
+    )
+  except ArchitectureOperationsError as exc:
+    messages.error(request, str(exc))
+  except Exception as exc:
+    logger.exception("Architecture approval failed: %s", exc)
+    messages.error(request, str(exc))
+
+  return redirect("targetdataset_architecture_review", pk=td.pk)
+
+
+@login_required
+@permission_required("metadata.view_targetdataset", raise_exception=True)
+@require_POST
+def targetdataset_architecture_approval_check(request, pk: int):
+  """
+  Check the stored approval artifact against the scoped report.
+  """
+  td = get_object_or_404(
+    TargetDataset.objects.select_related("target_schema"),
+    pk=pk,
+  )
+
+  try:
+    result = check_target_dataset_architecture_approval(td)
+    if result.is_valid:
+      messages.success(request, result.message)
+    else:
+      messages.warning(request, result.message)
+  except ArchitectureOperationsError as exc:
+    messages.error(request, str(exc))
+  except Exception as exc:
+    logger.exception("Architecture approval check failed: %s", exc)
+    messages.error(request, str(exc))
+
+  return redirect("targetdataset_architecture_review", pk=td.pk)
 
 
 @login_required

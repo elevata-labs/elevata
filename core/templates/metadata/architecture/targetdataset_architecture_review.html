@@ -245,19 +245,120 @@ Contact: <https://github.com/elevata-labs/elevata>.
     </div>
   </div>
 
-  {% if review_status.has_changes %}
-  <div class="card">
+  <div class="card mb-4">
     <div class="card-body">
-      <div class="fw-semibold mb-2">Artifact workflow</div>
-      <p class="text-muted small">
-        Generate the Architecture Change Report, create an Approval Artifact,
-        and store it so this page can resolve the review status.
-      </p>
-      <pre class="small mb-0"><code>python manage.py elevata_plan {{ review_status.dataset_key }} --format json --output .artifacts/architecture_plan.json
-python manage.py elevata_approve .artifacts/architecture_plan.json --approved-by "Reviewer Name" --store
-python manage.py elevata_approval_check .artifacts/architecture_plan.json {{ review_status.approval_directory }}/{{ review_status.report_fingerprint }}.approval.json</code></pre>
+      <div class="d-flex align-items-start justify-content-between gap-3 mb-3">
+        <div>
+          <div class="fw-semibold mb-1">Architecture operations</div>
+          <p class="text-muted small mb-0">
+            Generate, inspect, approve and verify Architecture Control Plane artifacts
+            for this dataset scope. This page handles architecture artifacts without executing loads.
+          </p>
+        </div>
+        <span class="badge text-bg-secondary">
+          review workflow
+        </span>
+      </div>
+
+      <div class="d-flex flex-wrap gap-2 mb-3">
+        <a
+          href="{% url 'targetdataset_architecture_report' object.pk %}"
+          target="_blank"
+          rel="noopener"
+          class="btn btn-sm btn-outline-secondary"
+        >
+          <i class="bi bi-file-text"></i>
+          Show report
+        </a>
+
+        <a
+          href="{% url 'targetdataset_architecture_report_download' object.pk %}"
+          class="btn btn-sm btn-outline-secondary"
+        >
+          <i class="bi bi-download"></i>
+          Download report JSON
+        </a>
+
+        <form
+          method="post"
+          action="{% url 'targetdataset_architecture_approval_check' object.pk %}"
+          class="d-inline"
+        >
+          {% csrf_token %}
+          <button
+            type="submit"
+            class="btn btn-sm btn-outline-secondary"
+            {% if not review_status.approval_id %}disabled{% endif %}
+          >
+            <i class="bi bi-shield-check"></i>
+            Check approval artifact
+          </button>
+        </form>
+
+        <a
+          href="{% url 'targetdataset_architecture_review' object.pk %}"
+          class="btn btn-sm btn-outline-primary"
+        >
+          <i class="bi bi-arrow-repeat"></i>
+          Refresh status
+        </a>
+      </div>
+
+      {% if perms.metadata.change_targetdataset %}
+        <form
+          method="post"
+          action="{% url 'targetdataset_architecture_approve' object.pk %}"
+          class="border-top pt-3 mt-3"
+        >
+          {% csrf_token %}
+
+          <label for="approval-note" class="form-label small fw-semibold">
+            Approval note
+          </label>
+          <textarea
+            id="approval-note"
+            name="note"
+            rows="2"
+            class="form-control form-control-sm mb-2"
+            placeholder="Optional review note"
+            {% if not review_status.has_changes or review_status.is_blocked or review_status.status == "approved" %}disabled{% endif %}
+          ></textarea>
+
+          <div class="d-flex align-items-center gap-2 flex-wrap">
+            <button
+              type="submit"
+              class="btn btn-sm btn-primary"
+              {% if not review_status.has_changes or review_status.is_blocked or review_status.status == "approved" %}disabled{% endif %}
+            >
+              <i class="bi bi-shield-plus"></i>
+              Create approval artifact
+            </button>
+
+            <span class="small text-muted">
+              approved_by = {{ request.user.username }}
+            </span>
+          </div>
+
+          <div class="small text-muted mt-2">
+            {% if review_status.status == "approved" %}
+              The report has a matching approval artifact.
+            {% elif review_status.is_blocked %}
+              Approval is disabled because the report is blocked by policy.
+              Approval does not override execution policy.
+            {% elif not review_status.has_changes %}
+              No approval artifact is required because this scope has no architecture changes.
+            {% else %}
+              This creates an Approval Artifact. It does not execute a load.
+            {% endif %}
+          </div>
+        </form>
+      {% else %}
+        <div class="alert alert-warning small mb-0">
+          You can inspect and verify architecture artifacts. Creating Approval Artifacts
+          requires change permission for TargetDataset.
+        </div>
+      {% endif %}
     </div>
   </div>
-  {% endif %}
 {% endif %}
 {% endblock %}

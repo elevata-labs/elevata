@@ -10,6 +10,73 @@ This project adheres to [Semantic Versioning](https://semver.org/) and [Keep a C
 🧾 Licensed under the **AGPL-v3** — open, governed, and community-driven.  
 💡 *elevata keeps evolving — one small, meaningful release at a time.*
 
+---
+
+## [1.9.0] - 2026-05-21
+
+This release introduces the **Architecture Operations UI** for the Architecture Control Plane.
+
+Architecture review workflows can now be operated directly from the TargetDataset Architecture Review page:  
+reports can be generated, inspected, downloaded, approved, checked and refreshed from the UI.
+
+The focus is making architecture review workflows actionable while keeping load execution protected by  
+the load runner and materialization guardrails.
+
+---
+
+### ✨ Added
+
+#### Architecture Operations UI
+
+- Added an Architecture Operations panel to the TargetDataset Architecture Review page  
+- Added UI action to show the scoped Architecture Change Report  
+- Added UI action to download the scoped Architecture Change Report as deterministic JSON  
+- Added UI action to create an Architecture Approval Artifact for the current report fingerprint  
+- Added UI action to check the stored Approval Artifact against the current scoped report  
+- Added UI action to refresh the Architecture Review Status  
+- Added Django message feedback for approval creation and approval checks
+
+#### Architecture Operations Service
+
+- Added shared Architecture Operations service functions for TargetDataset-scoped artifact workflows  
+- Added shared context construction for scoped Architecture Change Report, Review Status and Approval Store  
+- Added guarded Approval Artifact creation from the current scoped report  
+- Added stored Approval Artifact checks with explicit valid, missing, drift and invalid outcomes  
+- Added deterministic report rendering paths for UI preview and JSON download
+
+### 🔄 Improved
+
+#### Architecture Review Workflow
+
+- Replaced manual command guidance on the Architecture Review page with UI-driven artifact actions  
+- Kept Approval Artifact creation disabled when the report has no changes, is blocked by policy,  
+or already has a matching approval  
+- Kept policy decisions authoritative: approval does not override blocked execution policy  
+- Surfaced approval check results through standard UI messages  
+- Added global message rendering for success, warning and error feedback
+
+#### Documentation
+
+- Documented the Architecture Operations UI in the Architecture Control Plane guide  
+- Documented server-side artifact storage semantics for shared deployments  
+- Clarified persistent storage requirements for `ELEVATA_ARCH_STATE_DIR` and `ELEVATA_ARCH_APPROVAL_DIR`  
+- Updated README Architecture Control Plane summary with UI-operable review workflows
+
+### 🔒 Governance & Determinism
+
+- Architecture Operations UI actions operate on deterministic Architecture Control Plane artifacts  
+- Report preview and JSON download use the scoped Architecture Change Report contract  
+- Approval Artifacts remain bound to exact report fingerprints  
+- Approval checks compare stored artifacts against the current scoped report  
+- Load execution remains separated from Architecture Operations UI actions
+
+### 🧪 Quality & Stability
+
+- Added tests for Architecture Operations service context construction  
+- Added tests for report rendering through Architecture Operations service functions  
+- Added tests for guarded Approval Artifact creation  
+- Added tests for approval check outcomes  
+- Added tests for Architecture Operations UI view behavior and feedback messages
 
 ---
 

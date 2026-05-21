@@ -248,7 +248,64 @@ and invalid approval artifact.
 
 ---
 
-## 🔧 6. Architecture Promotion Report
+## 🔧 6. Architecture Operations UI
+
+The Architecture Operations UI makes Architecture Control Plane artifact workflows operable  
+from the TargetDataset architecture review page.
+
+It supports the selected TargetDataset architecture scope and provides controlled actions  
+for architecture artifacts:
+
+- show the scoped Architecture Change Report  
+- download the scoped Architecture Change Report as JSON  
+- create an Architecture Approval Artifact  
+- check the stored Approval Artifact against the current report  
+- refresh the Architecture Review Status
+
+The report shown and downloaded by the UI uses the same scoped Architecture Change Report  
+contract as `elevata_plan`.
+
+Approval Artifact creation records the logged-in reviewer, the decision timestamp,  
+and an optional review note. The artifact is stored in the configured approval artifact directory  
+and is bound to the current report fingerprint.
+
+Approval checks compare the stored Approval Artifact with the current scoped Architecture Change Report  
+and surface the result in the UI.
+
+Architecture Operations UI actions operate on Architecture Control Plane artifacts.  
+They do not execute loads and do not override policy decisions.
+
+---
+
+## 🔧 7. Artifact Storage for Shared Deployments
+
+Architecture Control Plane artifacts are stored on the server-side filesystem.
+
+The Architecture State Store uses `ELEVATA_ARCH_STATE_DIR` and stores the persisted architecture state  
+as JSON. The Approval Artifact Store uses `ELEVATA_ARCH_APPROVAL_DIR` and stores deterministic  
+approval artifacts as JSON files.
+
+For single-instance environments, the default `.elevata` paths provide a compact artifact layout  
+inside the elevata runtime directory. For shared deployments, both directories must point to  
+persistent server-side storage that is available to every application instance serving the same metadata database.
+
+Recommended deployment pattern:
+
+```bash
+ELEVATA_ARCH_STATE_DIR=/var/lib/elevata/state
+ELEVATA_ARCH_APPROVAL_DIR=/var/lib/elevata/approvals
+```
+
+In containerized or multi-instance deployments, these paths are backed by a shared persistent volume.  
+This ensures that Architecture State, Approval Artifacts, Review Status, and Approval Checks are resolved  
+consistently for all users of the shared metadata application.
+
+The metadata database stores metadata definitions. Architecture Control Plane artifacts are stored in the  
+configured artifact directories.
+
+---
+
+## 🔧 8. Architecture Promotion Report
 
 An Architecture Promotion Report compares two Architecture State artifacts.
 
@@ -301,7 +358,7 @@ The embedded Architecture Change Report exposes the effective scope in JSON and 
 
 ---
 
-## 🔧 7. CI Exit Policies
+## 🔧 9. CI Exit Policies
 
 Architecture reports and promotion reports support explicit exit policies:
 
@@ -332,9 +389,9 @@ python manage.py elevata_promote \
 
 ---
 
-## 🔧 8. Execution Guardrails
+## 🔧 10. Execution Guardrails
 
-The Architecture Control Plane is read-only.
+The Architecture Control Plane separates artifact operations from load execution.
 
 Load execution remains protected by the load runner. `elevata_load` performs its own preflight checks  
 before DDL or DML can be executed.
@@ -352,7 +409,7 @@ This preserves a strict separation:
 
 ---
 
-## 🔧 9. Deterministic Fingerprints
+## 🔧 11. Deterministic Fingerprints
 
 Architecture State, Architecture Change Report, Architecture Promotion Report, and Architecture Approval Artifact  
 each expose deterministic fingerprints.
@@ -362,7 +419,7 @@ approval decisions, and promotion workflows to reference exact architecture arti
 
 ---
 
-## 🔧 10. Operational Smoke Checks
+## 🔧 12. Operational Smoke Checks
 
 The following commands provide a compact validation set for architecture artifacts.
 

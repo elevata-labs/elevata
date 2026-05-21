@@ -52,7 +52,7 @@ validated, and applied deterministically before execution.
 
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/elevata-labs/elevata/main/docs/elevata_v1_8_0.png" alt="elevata UI preview" width="700"/>
+  <img src="https://raw.githubusercontent.com/elevata-labs/elevata/main/docs/elevata_v1_9_0.png" alt="elevata UI preview" width="700"/>
   <br/>
   <em>Dataset detail view with lineage, metadata, and dialect-aware SQL previews</em>
 </p>
@@ -130,8 +130,11 @@ MigrationPlan actions, policy decisions and review decisions.
 This supports controlled review, CI checks and environment-to-environment architecture promotion  
 while keeping execution guardrails inside the load runner.
 
-The Architecture Review Status UI makes approval state, scope, policy status, change summary and fingerprint consistency  
-visible for each dataset architecture scope.
+The Architecture Review Status UI makes approval state, scope, policy status, change summary and  
+fingerprint consistency visible for each dataset architecture scope.
+
+The Architecture Operations UI lets users inspect reports, download report JSON, create Approval Artifacts  
+and verify approvals directly from the review workflow.
 
 ---
 
