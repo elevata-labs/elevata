@@ -1,9 +1,9 @@
 # ⚙️ elevata Platform Strategy  
-## From SQL-Centric Pipelines to Metadata-Native Execution and Business Semantics
+## From SQL-Centric Pipelines to Architecture Runtime and Business Semantics
 
 > **Document type:** Strategy  
-> **Last updated:** 2026-01  
-> **Applies since:** elevata ≥ 0.8  
+> **Last updated:** 2026-05  
+> **Applies since:** elevata ≥ 2.0  
 
 ---
 
@@ -21,6 +21,9 @@ This tight coupling leads to:
 
 elevata addresses these limitations by treating **metadata — not SQL —  
 as the primary control plane** for data platforms.
+
+This control plane covers structure, lineage, execution semantics, review decisions,  
+controlled execution, and audit evidence.
 
 ---
 
@@ -41,26 +44,56 @@ defined as structured metadata and compiled into deterministic execution plans.
 
 In this sense, elevata acts as an **Architecture Runtime for modern data platforms**.
 
+Architecture is not only modeled. It is reviewed, approved, executed, and recorded  
+through deterministic runtime artifacts.
+
 ---
 
-## 🔧 3. elevata Today
+## 🔧 3. elevata as Architecture Runtime
 
-With the introduction of an explicit execution model,  
-elevata has evolved beyond SQL generation into a **platform execution core**.
+elevata is not a SQL generator with metadata around it.
+
+It is an **Architecture Runtime** that turns metadata-defined architecture into deterministic plans,  
+controlled execution, and auditable runtime records.
 
 Key characteristics:  
 - deterministic execution planning  
 - explicit dependency graphs  
 - structured failure semantics (blocked vs aborted)  
 - batch-level execution identity (`batch_run_id`)  
-- execution snapshots and run-level observability
+- execution snapshots and run-level observability  
+- deterministic Architecture State  
+- Architecture Change Reports  
+- Architecture Approval Artifacts  
+- scope-aware Architecture Control  
+- Architecture Execution Records
 
-Execution is now:  
+Execution is:  
 - planned explicitly  
 - executed deterministically  
-- explainable independently of SQL rendering
+- explainable independently of SQL rendering  
+- reviewable before execution  
+- auditable after controlled execution
 
 SQL is an output artifact — not the orchestration mechanism.
+
+Architecture Control closes the loop between architecture intent and runtime execution:
+
+```text
+Architecture State
+  ↓
+Architecture Change Report
+  ↓
+Architecture Approval Artifact
+  ↓
+Execution Preview
+  ↓
+Controlled Execution
+  ↓
+Architecture Execution Record
+```
+
+This makes architecture a governed runtime contract rather than a convention hidden inside transformation scripts.
 
 ---
 
@@ -73,6 +106,9 @@ Traditional SQL-centric pipelines embed business meaning directly into SQL:
 
 elevata separates concerns by making **business intent explicit and declarative**,  
 while keeping execution deterministic and warehouse-native.
+
+Business rules, dataset dependencies, schema evolution intent, and execution control  
+are expressed through metadata and runtime artifacts rather than inferred from SQL text.
 
 ---
 
@@ -99,6 +135,13 @@ Bizcore is **not**:
 
 Bizcore defines *what data means* — not *how queries should behave*.
 
+Bizcore execution remains part of the same Architecture Runtime:
+
+- lineage determines execution order  
+- metadata determines generated SQL  
+- Architecture Control determines review and execution readiness  
+- Execution Records capture controlled runtime outcomes
+
 ---
 
 ## 🔧 6. Separation of Responsibilities
@@ -122,6 +165,9 @@ This separation ensures:
 By combining:  
 - metadata-native execution  
 - explicit business semantics  
+- architecture review and approval  
+- controlled execution  
+- auditable execution records  
 - warehouse-native processing
 
 elevata becomes a **platform backbone**, not a transformation tool.
@@ -129,14 +175,26 @@ elevata becomes a **platform backbone**, not a transformation tool.
 External tools (orchestrators, BI platforms) integrate with elevata,  
 but do not define execution, semantics, or governance.
 
+They consume or trigger architecture that is defined, controlled, and recorded
+inside elevata.
+
 ---
 
-## 🔧 8. Long-Term Vision
+## 🔧 8. Strategic Direction
 
-elevata aims to become a **metadata-native data platform engine**:  
+elevata is a **metadata-native data platform engine**:  
 a system where structure, execution, governance, and business intent  
-are derived from explicit definitions rather than implicit SQL behavior.  
+are derived from explicit definitions rather than implicit SQL behavior.
 
 The goal is not to replace orchestration frameworks or BI tools,  
 but to provide a reliable, transparent core that makes data platforms  
 predictable, governable, and evolvable over time.
+
+Architecture Runtime is the central category:
+
+```text
+Metadata defines architecture.
+Architecture Control governs execution.
+Execution Records preserve audit evidence.
+SQL remains an artifact.
+```

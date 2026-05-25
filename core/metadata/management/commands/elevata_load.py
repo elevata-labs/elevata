@@ -1981,6 +1981,7 @@ class Command(BaseCommand):
 
               actual: set[str] = set()
               full_refresh_keys: set[str] = set()
+              comparable_dataset_keys: set[str] = set()
               type_drift_kind_by_ds_col: dict[tuple[str, str], str] = {}
 
               for ds_key in sorted(relevant_dataset_keys or set()):
@@ -2009,6 +2010,8 @@ class Command(BaseCommand):
                 # Materialization planner is only relevant if sync is enabled for this schema.
                 if (not AUTO_PROVISION_TABLES) or (schema_short_local not in mat_policy.sync_schema_shorts):
                   continue
+
+                comparable_dataset_keys.add(ds_key)
 
                 load_plan_shadow = build_load_plan(td_shadow)
                 is_full_refresh_shadow = should_truncate_before_load(td_shadow, load_plan_shadow)
@@ -2080,8 +2083,17 @@ class Command(BaseCommand):
                   schema_short=schema_short_local,
                 ))
 
+              comparable_expected_actions = [
+                action
+                for action in expected_actions
+                if (
+                  str(getattr(action, "dataset_key", "") or "") in comparable_dataset_keys
+                  or str(getattr(action, "previous_dataset_key", "") or "") in comparable_dataset_keys
+                )
+              ]
+
               expected_build = build_expected_schema_op_tokens(
-                actions=expected_actions,
+                actions=comparable_expected_actions,
                 full_refresh_dataset_keys=full_refresh_keys,
               )
               expected = set(expected_build.tokens)
@@ -2100,8 +2112,10 @@ class Command(BaseCommand):
               self.stdout.write(self.style.NOTICE(
                 f"-- SHADOW compare (schema ops): expected={len(expected)} actual={len(actual)} "
                 f"missing={len(missing)} unexpected={len(unexpected)} "
+                f"comparable_actions={len(comparable_expected_actions)} "
                 f"suppressed_full_refresh_col_renames={expected_build.suppressed_full_refresh_col_renames} "
                 f"suppressed_full_refresh_add_columns={expected_build.suppressed_full_refresh_add_columns} "
+                f"suppressed_full_refresh_alter_columns={expected_build.suppressed_full_refresh_alter_columns} "
                 f"suppressed_hist_drop_columns={len(suppressed_hist_drop)}"
               ))
 

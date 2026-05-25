@@ -12,6 +12,172 @@ This project adheres to [Semantic Versioning](https://semver.org/) and [Keep a C
 
 ---
 
+## [2.0.0] - 2026-05-25
+
+This major release introduces **Architecture Control** for controlled, gated and auditable  
+execution of metadata-defined architecture from the UI.
+
+Architecture review workflows now extend into execution: users can select controlled scopes,  
+inspect the Execution Preview, verify approval readiness, run controlled loads, inspect captured  
+output, and retain deterministic Architecture Execution Records.
+
+The focus is closing the Architecture Runtime loop:
+
+```text
+Architecture State
+  ↓
+Architecture Change Report
+  ↓
+Architecture Approval Artifact
+  ↓
+Execution Preview
+  ↓
+Controlled Execution
+  ↓
+Architecture Execution Record
+```
+
+---
+
+### ✨ Added
+
+#### Architecture Control UI
+
+- Added a central Architecture Control workspace to the main navigation  
+- Added settings-driven support for non-model main menu entries  
+- Added scope-aware Architecture Control for:  
+    - all active target datasets  
+    - schema scopes  
+    - TargetDataset scopes  
+    - TargetDataset scopes with target-only execution  
+- Kept TargetDataset-level Architecture Control as a contextual deep link  
+- Added guided scope selection with automatic TargetDataset and schema context handling  
+- Added UI controls for dependency mode selection where applicable  
+- Added full-scope visibility for selected roots and execution order through expandable sections
+
+#### Execution Preview
+
+- Added Architecture Control Execution Preview for selected scopes  
+- Added root dataset and execution-order inspection before execution  
+- Added execution gate status for:  
+    - ready  
+    - ready without architecture changes  
+    - pending approval  
+    - blocked by policy  
+- Added dependency mode visibility:  
+    - `with_dependencies`  
+    - `target_only`  
+- Added deterministic preview fingerprints
+
+#### Controlled Execution
+
+- Added controlled UI execution for approved or no-change Architecture Control scopes  
+- Added constrained `elevata_load --execute` invocation from Architecture Control  
+- Added enforced Architecture Guard mode for UI-driven controlled execution  
+- Added target-only execution for TargetDataset scopes  
+- Added execution confirmation and in-page running feedback  
+- Added captured command output and error output in the UI  
+- Added expandable full captured output and error details  
+- Added session-bound execution result display after redirect  
+- Prevented stale execution results from appearing on unrelated or fresh Architecture Control page loads
+
+#### Architecture Execution Records
+
+- Added deterministic Architecture Execution Records for controlled Architecture Control executions  
+- Added file-backed Architecture Execution Record store  
+- Added configurable execution record directory via `ELEVATA_ARCH_EXECUTION_DIR`  
+- Added execution record JSON payload with:  
+    - execution identifier  
+    - operator  
+    - timestamps and duration  
+    - execution status and message  
+    - Architecture Control scope  
+    - dependency mode  
+    - report fingerprint  
+    - approval identifier  
+    - preview fingerprint  
+    - command invocation metadata  
+    - output and error tails  
+    - output and error line counts  
+    - deterministic record fingerprint  
+- Added UI display of stored execution record path and fingerprint
+
+#### Execution Output Usability
+
+- Added command output tail display for controlled executions  
+- Added expandable captured output and captured error sections  
+- Added ANSI escape sequence cleanup for captured command output  
+- Added show/hide labels for expandable details sections  
+- Added clearer controlled execution failure messages with details retained in the execution result panel
+
+---
+
+### 🔄 Improved
+
+#### Architecture Control Workflow
+
+- Renamed the UI concept from Architecture Operations to Architecture Control  
+- Promoted Architecture Control from TargetDataset-only workflow to a central scope-aware workspace  
+- Preserved TargetDataset deep links for direct contextual entry  
+- Improved scope handling to avoid accidental all-dataset execution when a TargetDataset is selected  
+- Improved schema and TargetDataset selection behavior for clearer user expectations  
+- Kept target-only execution restricted to TargetDataset scopes  
+- Kept schema and all-dataset execution lineage-aware by default
+
+#### Execution Semantics
+
+- Treated no-change Architecture Control scopes as executable without requiring an Approval Artifact  
+- Kept controlled execution blocked when reports contain blocking policy decisions  
+- Kept controlled execution blocked when architecture changes require but do not have matching approval  
+- Ensured UI-driven execution uses the same load runner and guardrails as CLI execution  
+- Kept arbitrary diagnostic and debug flags CLI-only
+
+#### Shadow Compare and Guard Diagnostics
+
+- Refined schema-operation shadow compare for Full Refresh scopes  
+- Suppressed non-actionable Full Refresh `ALTER_COLUMN` expectations  
+- Restricted expected schema-operation comparison to materialization-relevant datasets  
+- Improved shadow-compare output with comparable action counts and suppression counters
+
+#### Documentation
+
+- Updated Architecture Control Plane documentation for controlled execution and execution records  
+- Updated Architecture Overview for the Architecture Control runtime flow  
+- Updated Load Execution Architecture with Architecture Control execution semantics  
+- Updated Schema Evolution documentation with controlled execution and audit records  
+- Updated Determinism & Execution Semantics with Architecture Execution Record fingerprints  
+- Updated Getting Started with Architecture Control workflow and execution record configuration  
+- Updated Platform Strategy to reflect Architecture Runtime, Architecture Control and audit evidence  
+- Updated README Architecture Control summary  
+- Added `.env.example` entry for `ELEVATA_ARCH_EXECUTION_DIR`
+
+---
+
+### 🔒 Governance & Determinism
+
+- Architecture Control execution remains gated by report state, approval matching and policy decisions  
+- Controlled execution does not bypass preflight validation, materialization policy checks or Architecture Guard enforcement  
+- Architecture Execution Records provide deterministic audit references for controlled UI executions  
+- Execution Preview fingerprints include scope, dependency mode, report fingerprint, approval state and execution dataset set  
+- Approval Artifacts remain bound to exact Architecture Change Report fingerprints  
+- Target-only execution is explicit, visible and restricted to TargetDataset scopes  
+- Full captured output remains inspectable in the UI while persisted execution records retain compact audit payloads
+
+---
+
+### 🧪 Quality & Stability
+
+- Added tests for Architecture Execution Preview gate behavior and target-only execution  
+- Added tests for controlled Architecture Control execution command construction  
+- Added tests for controlled execution failure handling and Architecture Guard enforcement  
+- Added tests for Architecture Execution Record creation, rendering and storage  
+- Added tests for scope-aware menu configuration  
+- Added tests for Architecture Control view execution feedback and session-bound result handling  
+- Updated shadow-compare tests for Full Refresh suppression behavior  
+- Verified controlled execution through the UI for TargetDataset and target-only scopes
+
+---
+
 ## [1.9.0] - 2026-05-21
 
 This release introduces the **Architecture Operations UI** for the Architecture Control Plane.

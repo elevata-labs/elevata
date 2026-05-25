@@ -1,0 +1,969 @@
+<!--
+elevata - Metadata-driven Data Platform Framework
+Copyright © 2025-2026 Ilona Tag
+
+This file is part of elevata.
+
+elevata is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of
+the License, or (at your option) any later version.
+
+elevata is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with elevata. If not, see <https://www.gnu.org/licenses/>.
+
+Contact: <https://github.com/elevata-labs/elevata>.
+-->
+
+{% extends "base.html" %}
+
+{% block title %}Architecture Control · elevata{% endblock %}
+
+{% block content %}
+<h1 class="h4 mb-3 d-flex align-items-center justify-content-between">
+  <span>
+    Architecture Control
+    {% if scope %}
+      <span class="badge text-bg-secondary ms-2">
+        {{ scope.label }}
+      </span>
+    {% endif %}
+  </span>
+</h1>
+
+<div class="small text-muted mb-4">
+  Review, approve and prepare architecture execution across controlled scopes.
+</div>
+
+<div class="card mb-4">
+  <div class="card-body">
+    <div class="d-flex align-items-start justify-content-between gap-3 mb-3">
+      <div>
+        <div class="fw-semibold mb-1">Scope</div>
+        <p class="text-muted small mb-0">
+          Select the architecture scope used for report generation, approval checks
+          and execution readiness.
+        </p>
+      </div>
+      <span class="badge text-bg-secondary">
+        {{ scope_mode }}
+      </span>
+    </div>
+
+    <form
+      id="architecture-control-scope-form"
+      method="get"
+      action="{% url 'architecture_control' %}"
+    >
+      <div class="row g-3 align-items-end">
+        <div class="col-lg-3">
+          <label for="scope-mode" class="form-label small fw-semibold">
+            Scope type
+          </label>
+          <select id="scope-mode" name="scope_mode" class="form-select form-select-sm">
+            <option value="all" {% if scope_mode == "all" %}selected{% endif %}>
+              All datasets
+            </option>
+            <option value="schema" {% if scope_mode == "schema" %}selected{% endif %}>
+              Schema
+            </option>
+            <option value="target_dataset" {% if scope_mode == "target_dataset" %}selected{% endif %}>
+              Target dataset
+            </option>
+          </select>
+        </div>
+
+        <div class="col-lg-3">
+          <label for="schema-short" class="form-label small fw-semibold">
+            Schema
+          </label>
+          <select id="schema-short" name="schema_short" class="form-select form-select-sm">
+            <option value="">— select schema —</option>
+            {% for schema in target_schemas %}
+              <option
+                value="{{ schema.short_name }}"
+                {% if selected_schema_short == schema.short_name %}selected{% endif %}
+              >
+                {{ schema.short_name }}
+              </option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="col-lg-4">
+          <label for="target-dataset-id" class="form-label small fw-semibold">
+            Target dataset
+          </label>
+          <select id="target-dataset-id" name="target_dataset_id" class="form-select form-select-sm">
+            <option value="">— select target dataset —</option>
+            {% for dataset in target_datasets %}
+              <option
+                value="{{ dataset.pk }}"
+                data-schema-short="{{ dataset.target_schema.short_name }}"
+                {% if selected_target_dataset_pk == dataset.pk %}selected{% endif %}
+              >
+                {{ dataset.target_schema.short_name }}.{{ dataset.target_dataset_name }}
+              </option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="col-lg-2">
+          <button type="submit" class="btn btn-sm btn-primary w-100">
+            <i class="bi bi-shield-check"></i>
+            Apply scope
+          </button>
+        </div>
+      </div>
+
+      <div class="small text-muted mt-3">
+        Schema selection is used for schema scope. Target dataset selection is used
+        for target dataset scope. All datasets does not require an additional value.
+      </div>
+
+      <div class="border rounded p-3 mt-3 bg-light">
+        <div class="fw-semibold small mb-2">Execution controls</div>
+        <div class="form-check">
+          <input
+            id="execution-no-deps"
+            name="execution_no_deps"
+            value="1"
+            class="form-check-input"
+            type="checkbox"
+            {% if execution_no_deps %}checked{% endif %}
+            {% if scope_mode != "target_dataset" %}disabled{% endif %}
+          >
+          <label class="form-check-label small" for="execution-no-deps">
+            Target-only execution
+          </label>
+        </div>
+        <div class="small text-muted mt-1">
+          Runs only the selected TargetDataset and skips upstream dependencies.
+          Available for TargetDataset scope only.
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+
+{% if error_message %}
+  <div class="alert alert-danger">
+    <div class="fw-semibold">Architecture Control failed</div>
+    <div class="small mt-1">{{ error_message }}</div>
+  </div>
+{% elif review_status %}
+  <div class="row g-4 mb-4">
+    <div class="col-lg-7">
+      <div class="card h-100">
+        <div class="card-body">
+          <div class="d-flex align-items-start justify-content-between gap-3">
+            <div>
+              <div class="small text-muted mb-1">Review status</div>
+              <h2 class="h5 mb-2 d-flex align-items-center gap-2">
+                <i class="bi {{ review_status.icon }}"></i>
+                {{ review_status.label }}
+              </h2>
+              <p class="text-muted mb-0">
+                {{ review_status.message }}
+              </p>
+            </div>
+            <span class="badge {{ review_status.badge_class }}">
+              {{ review_status.status }}
+            </span>
+          </div>
+
+          <hr>
+
+          <div class="row g-3 small">
+            <div class="col-md-6">
+              <div class="text-muted">Scope key</div>
+              <code>{{ scope.key }}</code>
+            </div>
+            <div class="col-md-6">
+              <div class="text-muted">Report fingerprint</div>
+              <code>{{ review_status.report_fingerprint }}</code>
+            </div>
+            <div class="col-md-6">
+              <div class="text-muted">Approval ID</div>
+              {% if review_status.approval_id %}
+                <code>{{ review_status.approval_id }}</code>
+              {% else %}
+                <span class="text-muted">–</span>
+              {% endif %}
+            </div>
+            <div class="col-md-6">
+              <div class="text-muted">Approval directory</div>
+              <code>{{ review_status.approval_directory }}</code>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-lg-5">
+      <div class="card h-100">
+        <div class="card-body">
+          <div class="fw-semibold mb-3">Summary</div>
+
+          <div class="row g-3 small">
+            <div class="col-6">
+              <div class="text-muted">Datasets in scope</div>
+              <div class="fs-5">{{ review_status.scope.dataset_keys|length }}</div>
+            </div>
+            <div class="col-6">
+              <div class="text-muted">Dataset changes</div>
+              <div class="fs-5">{{ review_status.summary.dataset_change_count }}</div>
+            </div>
+            <div class="col-6">
+              <div class="text-muted">Column changes</div>
+              <div class="fs-5">{{ review_status.summary.column_change_count }}</div>
+            </div>
+            <div class="col-6">
+              <div class="text-muted">Migration actions</div>
+              <div class="fs-5">{{ review_status.summary.migration_action_count }}</div>
+            </div>
+            <div class="col-6">
+              <div class="text-muted">Policy decisions</div>
+              <div class="fs-5">{{ review_status.summary.policy_decision_count }}</div>
+            </div>
+            <div class="col-6">
+              <div class="text-muted">Blocking decisions</div>
+              <div class="fs-5">{{ review_status.summary.blocking_policy_decision_count }}</div>
+            </div>
+          </div>
+
+          {% if review_status.is_blocked %}
+            <div class="alert alert-danger small mt-3 mb-0">
+              The report contains blocking policy decisions. Approval does not override execution policy.
+            </div>
+          {% elif not review_status.has_changes %}
+            <div class="alert alert-secondary small mt-3 mb-0">
+              No approval artifact is required because this scope has no architecture changes.
+            </div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card mb-4">
+    <div class="card-body">
+      <div class="fw-semibold mb-3">State fingerprints</div>
+      <div class="row g-3 small">
+        <div class="col-lg-6">
+          <div class="text-muted">Previous state</div>
+          {% if review_status.state.previous_fingerprint %}
+            <code>{{ review_status.state.previous_fingerprint }}</code>
+          {% else %}
+            <span class="text-muted">–</span>
+          {% endif %}
+        </div>
+        <div class="col-lg-6">
+          <div class="text-muted">Metadata-defined state</div>
+          <code>{{ review_status.state.current_fingerprint }}</code>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card mb-4">
+    <div class="card-body">
+      <div class="d-flex align-items-start justify-content-between gap-3 mb-3">
+        <div>
+          <div class="fw-semibold mb-1">Execution preview</div>
+          <p class="text-muted small mb-0">
+            Inspect the execution scope derived from the selected Architecture Control scope.
+          </p>
+        </div>
+        {% if execution_preview %}
+          <span class="badge {{ execution_preview.gate.badge_class }}">
+            <i class="bi {{ execution_preview.gate.icon }}"></i>
+            {{ execution_preview.gate.label }}
+          </span>
+        {% endif %}
+      </div>
+
+      {% if execution_preview_error %}
+        <div class="alert alert-warning small mb-0">
+          {{ execution_preview_error }}
+        </div>
+      {% elif execution_preview %}
+        <div class="row g-3 small mb-3">
+          <div class="col-md-3">
+            <div class="text-muted">Root datasets</div>
+            <div class="fs-5">{{ execution_preview.root_count }}</div>
+          </div>
+          <div class="col-md-3">
+            <div class="text-muted">Execution steps</div>
+            <div class="fs-5">{{ execution_preview.step_count }}</div>
+          </div>
+          <div class="col-md-3">
+            <div class="text-muted">Gate status</div>
+            <code>{{ execution_preview.gate.status }}</code>
+          </div>
+          <div class="col-md-3">
+            <div class="text-muted">Dependency mode</div>
+            <code>{{ execution_preview.dependency_mode }}</code>
+          </div>
+          <div class="col-md-3">
+            <div class="text-muted">Preview fingerprint</div>
+            <code>{{ execution_preview.preview_fingerprint }}</code>
+          </div>
+        </div>
+
+        <div class="alert alert-light border small">
+          {{ execution_preview.gate.message }}
+        </div>
+
+        <div class="row g-4">
+          <div class="col-lg-5">
+            <div class="fw-semibold small mb-2">Selected roots</div>
+            <div class="border rounded p-2 bg-light">
+              {% for dataset_key in execution_preview.root_dataset_keys|slice:":12" %}
+                <div><code>{{ dataset_key }}</code></div>
+              {% endfor %}
+              {% if execution_preview.root_count > 12 %}
+                <div class="text-muted">… {{ execution_preview.root_count|add:"-12" }} more</div>
+              {% endif %}
+            </div>
+
+            {% if execution_preview.root_count > 12 %}
+              <details class="mt-2">
+                <summary class="small fw-semibold">
+                  <span class="details-closed-label">Show all selected roots</span>
+                  <span class="details-open-label">Hide all selected roots</span>
+                </summary>
+                <div class="border rounded p-2 bg-light mt-2">
+                  {% for dataset_key in execution_preview.root_dataset_keys %}
+                    <div><code>{{ dataset_key }}</code></div>
+                  {% endfor %}
+                </div>
+              </details>
+            {% endif %}
+          </div>
+
+          <div class="col-lg-7">
+            <div class="fw-semibold small mb-2">Execution order</div>
+            <div class="table-responsive">
+              <table class="table table-sm align-middle mb-0">
+                <thead>
+                  <tr>
+                    <th style="width: 4rem;">#</th>
+                    <th>Dataset</th>
+                    <th>Upstreams</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for step in execution_preview.steps|slice:":12" %}
+                    <tr>
+                      <td>{{ forloop.counter }}</td>
+                      <td><code>{{ step.dataset_key }}</code></td>
+                      <td>
+                        {% if step.upstream_keys %}
+                          {% for upstream_key in step.upstream_keys %}
+                            <span class="badge text-bg-light border">{{ upstream_key }}</span>
+                          {% endfor %}
+                        {% else %}
+                          <span class="text-muted">–</span>
+                        {% endif %}
+                      </td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+
+            {% if execution_preview.step_count > 12 %}
+              <div class="small text-muted mt-2">
+                Showing first 12 of {{ execution_preview.step_count }} execution steps.
+              </div>
+
+              <details class="mt-2">
+                <summary class="small fw-semibold">
+                  <span class="details-closed-label">Show full execution order</span>
+                  <span class="details-open-label">Hide full execution order</span>
+                </summary>
+                <div class="table-responsive mt-2">
+                  <table class="table table-sm align-middle mb-0">
+                    <thead>
+                      <tr>
+                        <th style="width: 4rem;">#</th>
+                        <th>Dataset</th>
+                        <th>Upstreams</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {% for step in execution_preview.steps %}
+                        <tr>
+                          <td>{{ forloop.counter }}</td>
+                          <td><code>{{ step.dataset_key }}</code></td>
+                          <td>
+                            {% if step.upstream_keys %}
+                              {% for upstream_key in step.upstream_keys %}
+                                <span class="badge text-bg-light border">{{ upstream_key }}</span>
+                              {% endfor %}
+                            {% else %}
+                              <span class="text-muted">–</span>
+                            {% endif %}
+                          </td>
+                        </tr>
+                      {% endfor %}
+                    </tbody>
+                  </table>
+                </div>
+              </details>
+            {% endif %}
+          </div>
+        </div>
+      {% else %}
+        <div class="alert alert-secondary small mb-0">
+          Execution preview is available after a valid Architecture Control scope is selected.
+        </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="card mb-4">
+    <div class="card-body">
+      <div class="d-flex align-items-start justify-content-between gap-3 mb-3">
+        <div>
+          <div class="fw-semibold mb-1">Controlled execution</div>
+          <p class="text-muted small mb-0">
+            Run the selected scope through the controlled elevata load path.
+          </p>
+        </div>
+        {% if execution_preview %}
+          <span class="badge {{ execution_preview.gate.badge_class }}">
+            <i class="bi {{ execution_preview.gate.icon }}"></i>
+            {{ execution_preview.gate.label }}
+          </span>
+        {% endif %}
+      </div>
+
+      {% if execution_preview_error %}
+        <div class="alert alert-warning small mb-0">
+          {{ execution_preview_error }}
+        </div>
+      {% elif execution_preview %}
+        <div class="alert alert-light border small mb-3">
+          {{ execution_preview.gate.message }}
+        </div>
+
+        <div class="row g-3 small mb-3">
+          <div class="col-md-3">
+            <div class="text-muted">Execution gate</div>
+            <code>{{ execution_preview.gate.status }}</code>
+          </div>
+          <div class="col-md-3">
+            <div class="text-muted">Report fingerprint</div>
+            <code>{{ execution_preview.report_fingerprint }}</code>
+          </div>
+          <div class="col-md-3">
+            <div class="text-muted">Approval ID</div>
+            {% if execution_preview.approval_id %}
+              <code>{{ execution_preview.approval_id }}</code>
+            {% else %}
+              <span class="text-muted">not required</span>
+            {% endif %}
+          </div>
+          <div class="col-md-3">
+            <div class="text-muted">Execution steps</div>
+            <div class="fs-5">{{ execution_preview.step_count }}</div>
+          </div>
+        </div>
+
+        {% if perms.metadata.change_targetdataset %}
+          <div
+            id="architecture-control-execution-running"
+            class="alert alert-info small d-none mb-3"
+          >
+            Controlled execution is running. Larger scopes can take several minutes.
+          </div>
+
+          <form
+            id="architecture-control-execute-form"
+            method="post"
+            action="{% url 'architecture_control_execute' %}"
+          >
+            {% csrf_token %}
+            <input type="hidden" name="scope_mode" value="{{ scope_mode }}">
+            {% if selected_schema_short %}
+              <input type="hidden" name="schema_short" value="{{ selected_schema_short }}">
+            {% endif %}
+            {% if selected_target_dataset_pk %}
+              <input type="hidden" name="target_dataset_id" value="{{ selected_target_dataset_pk }}">
+            {% endif %}
+            {% if execution_no_deps %}
+              <input type="hidden" name="execution_no_deps" value="1">
+            {% endif %}
+
+            <button
+              id="architecture-control-execute-button"
+              type="submit"
+              class="btn btn-sm btn-primary"
+              {% if not execution_preview.gate.can_execute %}disabled{% endif %}
+            >
+              <i class="bi bi-play-circle"></i>
+              Execute controlled load
+            </button>
+
+            <span class="small text-muted ms-2">
+              The load scope is derived from the selected Architecture Control scope.
+            </span>
+          </form>
+        {% else %}
+          <div class="alert alert-warning small mb-0">
+            Controlled execution requires change permission for TargetDataset.
+          </div>
+        {% endif %}
+        {% if last_execution_result %}
+          <hr>
+
+          <div class="d-flex align-items-start justify-content-between gap-3 mb-3">
+            <div>
+              <div class="fw-semibold mb-1">Last controlled execution</div>
+              <p class="text-muted small mb-0">
+                Captured command output from the latest execution for this scope.
+              </p>
+            </div>
+            {% if last_execution_result.succeeded %}
+              <span class="badge text-bg-success">success</span>
+            {% else %}
+              <span class="badge text-bg-danger">failed</span>
+            {% endif %}
+          </div>
+
+          <div class="alert {% if last_execution_result.succeeded %}alert-success{% else %}alert-danger{% endif %} small">
+            {{ last_execution_result.message }}
+          </div>
+
+          <div class="card border mb-3">
+            <div class="card-body">
+              <div class="fw-semibold small mb-3">Execution Record</div>
+              <div class="row g-3 small">
+                <div class="col-md-3">
+                  <div class="text-muted">Execution ID</div>
+                  <code>{{ last_execution_result.execution_id }}</code>
+                </div>
+                <div class="col-md-3">
+                  <div class="text-muted">Started by</div>
+                  <code>{{ last_execution_result.started_by }}</code>
+                </div>
+                <div class="col-md-3">
+                  <div class="text-muted">Started at</div>
+                  <code>{{ last_execution_result.started_at }}</code>
+                </div>
+                <div class="col-md-3">
+                  <div class="text-muted">Finished at</div>
+                  <code>{{ last_execution_result.finished_at }}</code>
+                </div>
+                <div class="col-md-3">
+                  <div class="text-muted">Duration</div>
+                  <code>{{ last_execution_result.duration_ms }} ms</code>
+                </div>
+                <div class="col-md-3">
+                  <div class="text-muted">Dependency mode</div>
+                  <code>{{ last_execution_result.dependency_mode }}</code>
+                </div>
+                <div class="col-md-3">
+                  <div class="text-muted">Record fingerprint</div>
+                  {% if last_execution_result.execution_record_fingerprint %}
+                    <code>{{ last_execution_result.execution_record_fingerprint }}</code>
+                  {% else %}
+                    <span class="text-muted">–</span>
+                  {% endif %}
+                </div>
+                <div class="col-md-3">
+                  <div class="text-muted">Record path</div>
+                  {% if last_execution_result.execution_record_path %}
+                    <code>{{ last_execution_result.execution_record_path }}</code>
+                  {% else %}
+                    <span class="text-muted">–</span>
+                  {% endif %}
+                </div>
+              </div>
+
+              {% if last_execution_result.execution_record_error %}
+                <div class="alert alert-warning small mt-3 mb-0">
+                  Execution finished, but the execution record could not be stored:
+                  {{ last_execution_result.execution_record_error }}
+                </div>
+              {% endif %}
+            </div>
+          </div>
+
+          <div class="row g-3 small mb-3">
+            <div class="col-md-3">
+              <div class="text-muted">Command</div>
+              <code>{{ last_execution_result.command_name }}</code>
+            </div>
+            <div class="col-md-3">
+              <div class="text-muted">Scope</div>
+              <code>{{ last_execution_result.scope_key }}</code>
+            </div>
+            <div class="col-md-3">
+              <div class="text-muted">Report fingerprint</div>
+              <code>{{ last_execution_result.report_fingerprint }}</code>
+            </div>
+            <div class="col-md-3">
+              <div class="text-muted">Preview fingerprint</div>
+              <code>{{ last_execution_result.preview_fingerprint }}</code>
+            </div>
+          </div>
+
+          <div class="row g-3">
+            <div class="col-lg-6">
+              <div class="fw-semibold small mb-2">Command options</div>
+              <pre class="border rounded bg-light p-2 small mb-0">{% for key, value in last_execution_result.command_options.items %}{{ key }}={{ value }}
+{% endfor %}</pre>
+            </div>
+            <div class="col-lg-6">
+              <div class="fw-semibold small mb-2">Command arguments</div>
+              <pre class="border rounded bg-light p-2 small mb-0">{% if last_execution_result.command_args %}{% for arg in last_execution_result.command_args %}{{ arg }}
+{% endfor %}{% else %}–
+{% endif %}</pre>
+            </div>
+          </div>
+
+          {% if last_execution_result.output_tail %}
+            <div class="mt-3">
+              <div class="fw-semibold small mb-2">Output</div>
+              <div class="fw-semibold small mb-2">Output tail</div>
+              <pre class="border rounded bg-light p-2 small mb-0">{% for line in last_execution_result.output_tail %}{{ line }}
+{% endfor %}</pre>
+            </div>
+          {% endif %}
+
+          {% if last_execution_result.output_lines %}
+            <details class="mt-3">
+              <summary class="small fw-semibold">
+                <span class="details-closed-label">Show captured output</span>
+                <span class="details-open-label">Hide captured output</span>
+                {% if last_execution_result.output_truncated %}
+                  <span class="text-muted">(last retained lines)</span>
+                {% endif %}
+              </summary>
+              <pre class="border rounded bg-light p-2 small mt-2 mb-0">{% for line in last_execution_result.output_lines %}{{ line }}
+{% endfor %}</pre>
+            </details>
+          {% endif %}
+
+          {% if last_execution_result.error_tail %}
+            <div class="mt-3">
+              <div class="fw-semibold small mb-2">Error tail</div>
+              <pre class="border rounded bg-light p-2 small mb-0 text-danger">{% for line in last_execution_result.error_tail %}{{ line }}
+{% endfor %}</pre>
+            </div>
+          {% endif %}
+
+          {% if last_execution_result.error_lines %}
+            <details class="mt-3">
+              <summary class="small fw-semibold text-danger">
+                <span class="details-closed-label">Show captured errors</span>
+                <span class="details-open-label">Hide captured errors</span>
+                {% if last_execution_result.error_truncated %}
+                  <span class="text-muted">(last retained lines)</span>
+                {% endif %}
+              </summary>
+              <pre class="border rounded bg-light p-2 small mt-2 mb-0 text-danger">{% for line in last_execution_result.error_lines %}{{ line }}
+{% endfor %}</pre>
+            </details>
+          {% endif %}
+        {% endif %}
+      {% else %}
+        <div class="alert alert-secondary small mb-0">
+          Controlled execution is available after a valid Architecture Control scope is selected.
+        </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="card mb-4">
+    <div class="card-body">
+      <div class="d-flex align-items-start justify-content-between gap-3 mb-3">
+        <div>
+          <div class="fw-semibold mb-1">Architecture artifacts</div>
+          <p class="text-muted small mb-0">
+            Generate, inspect, approve and verify Architecture Control artifacts
+            for the selected scope.
+          </p>
+        </div>
+        <span class="badge text-bg-secondary">
+          controlled scope
+        </span>
+      </div>
+
+      <div class="d-flex flex-wrap gap-2 mb-3">
+        <a
+          href="{% url 'architecture_control_report' %}?{{ scope_querystring }}"
+          target="_blank"
+          rel="noopener"
+          class="btn btn-sm btn-outline-secondary"
+        >
+          <i class="bi bi-file-text"></i>
+          Show report
+        </a>
+
+        <a
+          href="{% url 'architecture_control_report_download' %}?{{ scope_querystring }}"
+          class="btn btn-sm btn-outline-secondary"
+        >
+          <i class="bi bi-download"></i>
+          Download report JSON
+        </a>
+
+        <form
+          method="post"
+          action="{% url 'architecture_control_approval_check' %}"
+          class="d-inline"
+        >
+          {% csrf_token %}
+          <input type="hidden" name="scope_mode" value="{{ scope_mode }}">
+          {% if selected_schema_short %}
+            <input type="hidden" name="schema_short" value="{{ selected_schema_short }}">
+          {% endif %}
+          {% if selected_target_dataset_pk %}
+            <input type="hidden" name="target_dataset_id" value="{{ selected_target_dataset_pk }}">
+          {% endif %}
+
+          <button
+            type="submit"
+            class="btn btn-sm btn-outline-secondary"
+            {% if not review_status.approval_id %}disabled{% endif %}
+          >
+            <i class="bi bi-shield-check"></i>
+            Check approval artifact
+          </button>
+        </form>
+
+        <a
+          href="{% url 'architecture_control' %}?{{ scope_querystring }}"
+          class="btn btn-sm btn-outline-primary"
+        >
+          <i class="bi bi-arrow-repeat"></i>
+          Refresh status
+        </a>
+      </div>
+
+      {% if perms.metadata.change_targetdataset %}
+        <form
+          method="post"
+          action="{% url 'architecture_control_approve' %}"
+          class="border-top pt-3 mt-3"
+        >
+          {% csrf_token %}
+          <input type="hidden" name="scope_mode" value="{{ scope_mode }}">
+          {% if selected_schema_short %}
+            <input type="hidden" name="schema_short" value="{{ selected_schema_short }}">
+          {% endif %}
+          {% if selected_target_dataset_pk %}
+            <input type="hidden" name="target_dataset_id" value="{{ selected_target_dataset_pk }}">
+          {% endif %}
+
+          <label for="approval-note" class="form-label small fw-semibold">
+            Approval note
+          </label>
+          <textarea
+            id="approval-note"
+            name="note"
+            rows="2"
+            class="form-control form-control-sm mb-2"
+            placeholder="Optional review note"
+            {% if not review_status.has_changes or review_status.is_blocked or review_status.status == "approved" %}disabled{% endif %}
+          ></textarea>
+
+          <div class="d-flex align-items-center gap-2 flex-wrap">
+            <button
+              type="submit"
+              class="btn btn-sm btn-primary"
+              {% if not review_status.has_changes or review_status.is_blocked or review_status.status == "approved" %}disabled{% endif %}
+            >
+              <i class="bi bi-shield-plus"></i>
+              Create approval artifact
+            </button>
+
+            <span class="small text-muted">
+              approved_by = {{ request.user.username }}
+            </span>
+          </div>
+
+          <div class="small text-muted mt-2">
+            {% if review_status.status == "approved" %}
+              The report has a matching approval artifact.
+            {% elif review_status.is_blocked %}
+              Approval is disabled because the report is blocked by policy.
+              Approval does not override execution policy.
+            {% elif not review_status.has_changes %}
+              No approval artifact is required because this scope has no architecture changes.
+            {% else %}
+              This creates an Approval Artifact for the selected Architecture Control scope.
+            {% endif %}
+          </div>
+        </form>
+      {% else %}
+        <div class="alert alert-warning small mb-0">
+          You can inspect and verify architecture artifacts. Creating Approval Artifacts
+          requires change permission for TargetDataset.
+        </div>
+      {% endif %}
+    </div>
+  </div>
+{% endif %}
+
+<script>
+  (() => {
+    const scopeForm = document.getElementById("architecture-control-scope-form");
+    const scopeMode = document.getElementById("scope-mode");
+    const schemaSelect = document.getElementById("schema-short");
+    const targetDatasetSelect = document.getElementById("target-dataset-id");
+    const executionNoDeps = document.getElementById("execution-no-deps");
+
+    const selectedTargetSchema = () => {
+      if (!targetDatasetSelect || !targetDatasetSelect.value) {
+        return "";
+      }
+
+      const selectedOption = targetDatasetSelect.options[targetDatasetSelect.selectedIndex];
+      return selectedOption.dataset.schemaShort || "";
+    };
+
+    const syncScopeControls = () => {
+      if (!scopeMode || !schemaSelect || !targetDatasetSelect) {
+        return;
+      }
+
+      if (scopeMode.value === "all") {
+        schemaSelect.value = "";
+        targetDatasetSelect.value = "";
+        schemaSelect.disabled = true;
+        targetDatasetSelect.disabled = true;
+        if (executionNoDeps) {
+          executionNoDeps.checked = false;
+          executionNoDeps.disabled = true;
+        }
+        return;
+      }
+
+      if (scopeMode.value === "schema") {
+        targetDatasetSelect.value = "";
+        schemaSelect.disabled = false;
+        targetDatasetSelect.disabled = true;
+        if (executionNoDeps) {
+          executionNoDeps.checked = false;
+          executionNoDeps.disabled = true;
+        }
+        return;
+      }
+
+      if (scopeMode.value === "target_dataset") {
+        targetDatasetSelect.disabled = false;
+        const schemaShort = selectedTargetSchema();
+        if (schemaShort) {
+          schemaSelect.value = schemaShort;
+        }
+        schemaSelect.disabled = true;
+        if (executionNoDeps) {
+          executionNoDeps.disabled = !targetDatasetSelect.value;
+        }
+      }
+    };
+
+    if (scopeMode) {
+      scopeMode.addEventListener("change", () => {
+        syncScopeControls();
+      });
+    }
+
+    if (targetDatasetSelect && scopeMode) {
+      targetDatasetSelect.addEventListener("change", () => {
+        if (targetDatasetSelect.value) {
+          scopeMode.value = "target_dataset";
+        } else if (schemaSelect && schemaSelect.value) {
+          scopeMode.value = "schema";
+        } else {
+          scopeMode.value = "all";
+        }
+        syncScopeControls();
+      });
+    }
+
+    if (schemaSelect && scopeMode) {
+      schemaSelect.addEventListener("change", () => {
+        if (schemaSelect.value) {
+          scopeMode.value = "schema";
+        } else {
+          scopeMode.value = "all";
+        }
+        syncScopeControls();
+      });
+    }
+
+    if (scopeForm && scopeMode && schemaSelect && targetDatasetSelect) {
+      scopeForm.addEventListener("submit", () => {
+        schemaSelect.disabled = false;
+        targetDatasetSelect.disabled = false;
+        if (executionNoDeps) {
+          executionNoDeps.disabled = false;
+        }
+
+        if (scopeMode.value === "all") {
+          schemaSelect.value = "";
+          targetDatasetSelect.value = "";
+          if (executionNoDeps) {
+            executionNoDeps.checked = false;
+          }
+        }
+
+        if (scopeMode.value === "schema") {
+          targetDatasetSelect.value = "";
+          if (executionNoDeps) {
+            executionNoDeps.checked = false;
+          }
+        }
+
+        if (scopeMode.value === "target_dataset") {
+          const schemaShort = selectedTargetSchema();
+          if (schemaShort) {
+            schemaSelect.value = schemaShort;
+          }
+        }
+      });
+    }
+
+    syncScopeControls();
+
+    const executeForm = document.getElementById("architecture-control-execute-form");
+    const executeButton = document.getElementById("architecture-control-execute-button");
+    const runningNotice = document.getElementById("architecture-control-execution-running");
+
+    if (executeForm) {
+      executeForm.addEventListener("submit", (event) => {
+        const confirmed = window.confirm(
+          "Execute controlled load for this Architecture Control scope?"
+        );
+        if (!confirmed) {
+          event.preventDefault();
+          return;
+        }
+
+        if (runningNotice) {
+          runningNotice.classList.remove("d-none");
+        }
+
+        if (executeButton) {
+          executeButton.disabled = true;
+          executeButton.innerHTML = `
+            <span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>
+            Running controlled load...
+          `;
+        }
+      });
+    }
+  })();
+</script>
+{% endblock %}

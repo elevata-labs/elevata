@@ -37,11 +37,27 @@ This flow represents the central principle of elevata:
 
 > **Metadata → Logical Plan → Dialect-aware SQL → Warehouse**
 
-The Architecture Control Plane provides read-only review and comparison
+Architecture Control provides review, approval, controlled execution, and audit
 artifacts around the same architecture state:
 
 ```text 
-Architecture State → Architecture Diff → MigrationPlan → Policy Decisions
++Architecture State
++  ↓
++Architecture Diff
++  ↓
++MigrationPlan
++  ↓
++Policy Decisions
++  ↓
++Architecture Change Report
++  ↓
++Architecture Approval Artifact
++  ↓
++Execution Preview
++  ↓
++Controlled Execution
++  ↓
++Architecture Execution Record
 ```
 
 ---
@@ -106,35 +122,79 @@ Schema evolution does not provision missing tables. Table provisioning is handle
 Preflight validation includes schema introspection and dialect-aware semantic equivalence rules  
 to suppress non-actionable type differences.
 
-### 🧩 2.7.2 Architecture Control Plane
+### 🧩 2.7.2 Architecture Control
 
-The Architecture Control Plane makes metadata-defined architecture reviewable  
-before load execution applies schema or data changes.
+Architecture Control makes metadata-defined architecture reviewable, approvable,  
+executable through controlled scopes, and auditable.
 
 It provides deterministic artifacts for:
 
 - Architecture State  
 - Architecture Change Reports  
 - Architecture Promotion Reports  
+- Architecture Approval Artifacts  
+- Architecture Execution Records  
 - policy decisions  
 - report fingerprints
 
-The control plane is read-only. It does not execute SQL and does not apply DDL.
+Controlled execution is delegated to the load runner. Architecture Control does not bypass  
+preflight validation, materialization policy checks, Architecture Guard enforcement,  
+or dialect-owned SQL rendering.
 
 Command responsibilities:
 
 | Command | Responsibility |
 |---|---|
-| elevata_state | Render the metadata-defined architecture state |
-| elevata_plan | Render architecture change intent and policy decisions |
-| elevata_promote | Compare two architecture state artifacts |
-| elevata_load | Execute loads with preflight and guard checks |
+| `elevata_state` | Render the metadata-defined architecture state |
+| `elevata_plan` | Render architecture change intent and policy decisions |
+| `elevata_promote` | Compare two architecture state artifacts |
+| `elevata_approve` | Create architecture approval artifacts |
+| `elevata_approval_check` | Verify approval artifacts |
+| `elevata_load` | Execute loads with preflight and guard checks |
 
-Architecture reports use the same semantic path as execution:
+Architecture Control uses the same semantic path as execution:
 
 ```text 
 Architecture State → Architecture Diff → MigrationPlan → Policy Decisions
 ```
+
+The Architecture Control UI adds a constrained operational layer:
+
+- scope-aware report and review status  
+- approval artifact creation and verification  
+- execution preview  
+- controlled load execution  
+- target-only execution for TargetDataset scopes  
+- captured execution output  
+- persisted Architecture Execution Records
+
+Execution scopes are explicit:
+
+| Scope | Execution behavior |
+|---|---|
+| All datasets | Executes all active target datasets with dependency ordering |
+| Schema | Executes selected schema roots with dependency ordering |
+| TargetDataset | Executes the selected TargetDataset with dependency ordering |
+| TargetDataset, target-only | Executes only the selected TargetDataset |
+
+The default execution path remains lineage-aware. Target-only execution is available only  
+for TargetDataset scopes and is intended for focused iteration when upstream data is already available.
+
+Architecture Execution Records capture the audit context of controlled execution:
+
+- execution identifier  
+- operator  
+- timestamps and duration  
+- status and message  
+- Architecture Control scope  
+- dependency mode  
+- report fingerprint  
+- approval identifier  
+- preview fingerprint  
+- command invocation metadata  
+- output and error tails  
+- deterministic record fingerprint
+
 
 ## 🔧 3. Bizcore — Business Semantics as Metadata
 

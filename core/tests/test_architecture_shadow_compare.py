@@ -22,6 +22,8 @@ Contact: <https://github.com/elevata-labs/elevata>.
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 from metadata.architecture.migration_plan import MigrationAction
 from metadata.architecture.shadow_compare import (
   build_actual_schema_op_tokens_from_plan,
@@ -418,3 +420,58 @@ def test_compare_schema_op_tokens_keeps_hist_drop_when_allowed():
   assert result.is_mismatch is True
   assert result.missing == tuple(expected)
   assert result.suppressed_hist_drop_columns == ()
+
+def _action(
+  action_type: str,
+  *,
+  dataset_key: str,
+  column_name: str | None = None,
+  previous_column_name: str | None = None,
+):
+  """
+  Return a migration-action-shaped object.
+  """
+  return SimpleNamespace(
+    action_type=action_type,
+    dataset_key=dataset_key,
+    column_name=column_name,
+    previous_column_name=previous_column_name,
+  )
+
+
+def test_build_expected_schema_op_tokens_suppresses_full_refresh_alter_columns() -> None:
+  """
+  Verify Full Refresh suppresses column alter expectations.
+  """
+  result = build_expected_schema_op_tokens(
+    actions=(
+      _action(
+        "ALTER_COLUMN",
+        dataset_key="rawcore.rc_aw_person",
+        column_name="person_type_code",
+      ),
+    ),
+    full_refresh_dataset_keys={"rawcore.rc_aw_person"},
+  )
+
+  assert result.tokens == ()
+  assert result.suppressed_full_refresh_alter_columns == 1
+
+
+def test_build_expected_schema_op_tokens_keeps_non_full_refresh_alter_columns() -> None:
+  """
+  Verify non-Full-Refresh alter expectations remain comparable.
+  """
+  result = build_expected_schema_op_tokens(
+    actions=(
+      _action(
+        "ALTER_COLUMN",
+        dataset_key="rawcore.rc_aw_person",
+        column_name="person_type_code",
+      ),
+    ),
+    full_refresh_dataset_keys=set(),
+  )
+
+  assert len(result.tokens) == 1
+  assert result.suppressed_full_refresh_alter_columns == 0

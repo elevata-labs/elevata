@@ -113,13 +113,13 @@ def test_arch_mode_enforce_blocks_on_shadow_compare_mismatch(monkeypatch):
   monkeypatch.setattr(mod.ArchitectureStateService, "load_previous_state", lambda self: object())
   monkeypatch.setattr(mod.ArchitectureStateService, "diff_against", lambda self, _prev: (SimpleNamespace(fingerprint="x", datasets_by_key={}), _FakeArchDiff()))
 
-  # Intent contains an ALTER_COLUMN (not suppressed by full-refresh rules in shadow compare).
+  # Intent contains a DROP_COLUMN that is not emitted by the materialization shadow plan.
   fake_plan = _FakeMigrationPlan(actions=[
-    _Action(action_type="ALTER_COLUMN", dataset_key=ds_key, column_name="due_date"),
+    _Action(action_type="DROP_COLUMN", dataset_key=ds_key, column_name="due_date"),
   ])
   monkeypatch.setattr(mod.MigrationPlanner, "plan", lambda self, *args, **kwargs: fake_plan)
 
-  # Force a deterministic mismatch: expected has ALTER_COLUMN, actual has none.
+  # Force a deterministic mismatch: expected has DROP_COLUMN, actual has none.
   # Shadow compare will see missing>0 and enforce will block before execute_plan.
   def _fake_build_from_mp(**_kwargs):
     return SimpleNamespace(steps=[], warnings=[], blocking_errors=[], requires_rebuild=False)

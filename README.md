@@ -52,7 +52,7 @@ validated, and applied deterministically before execution.
 
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/elevata-labs/elevata/main/docs/elevata_v1_9_0.png" alt="elevata UI preview" width="700"/>
+  <img src="https://raw.githubusercontent.com/elevata-labs/elevata/main/docs/elevata_v2_0_0.png" alt="elevata UI preview" width="700"/>
   <br/>
   <em>Dataset detail view with lineage, metadata, and dialect-aware SQL previews</em>
 </p>
@@ -120,21 +120,21 @@ while destructive changes remain explicitly policy-gated.
 
 ---
 
-## 🧭 Architecture Control Plane
+## 🧭 Architecture Control
 
 elevata makes architecture changes reviewable before execution.
 
-Architecture State, Change Reports, Promotion Reports and Approval Artifacts expose deterministic fingerprints,  
-MigrationPlan actions, policy decisions and review decisions.
+Architecture State, Change Reports, Promotion Reports, Approval Artifacts and Execution Records  
+expose deterministic fingerprints, MigrationPlan actions, policy decisions, review decisions and execution outcomes.
 
 This supports controlled review, CI checks and environment-to-environment architecture promotion  
 while keeping execution guardrails inside the load runner.
 
-The Architecture Review Status UI makes approval state, scope, policy status, change summary and  
-fingerprint consistency visible for each dataset architecture scope.
+The Architecture Control UI makes approval state, scope, policy status, change summary,  
+execution preview, dependency mode, captured output and execution records visible for controlled scopes.
 
-The Architecture Operations UI lets users inspect reports, download report JSON, create Approval Artifacts  
-and verify approvals directly from the review workflow.
+Users can inspect reports, download report JSON, create Approval Artifacts, verify approvals,  
+execute approved or no-change scopes, and inspect the resulting Architecture Execution Record.
 
 ---
 

@@ -69,6 +69,12 @@ ELEVATA_ALLOW_AUTO_DROP_HIST_COLUMNS=false
 
 # Architecture state baseline directory
 ELEVATA_ARCH_STATE_DIR=.elevata/state
+
+# Architecture approval artifact directory
+ELEVATA_ARCH_APPROVAL_DIR=.elevata/approvals
+
+# Architecture execution record directory
+ELEVATA_ARCH_EXECUTION_DIR=.elevata/executions
 ```
 
 Install the target backend you want to execute against:
@@ -191,14 +197,15 @@ You can now:
 - Inspect **source datasets and columns**  
 - Define **integration rules** (`integrate = True`)  
 - Trigger **target auto-generation**  
-- Preview **auto-generated** SQL renderings (starting with DuckDB dialect)
+- Preview **auto-generated** SQL renderings (starting with DuckDB dialect)  
+- Open **Architecture Control** to review, approve, preview and execute controlled architecture scopes
 
 ---
 
-## 🔧 5. Architecture Control Plane Commands
+## 🔧 5. Architecture Control
 
-elevata provides read-only commands for architecture state, review, and
-promotion workflows.
+elevata provides deterministic commands and UI workflows for architecture state,  
+review, approval, controlled execution and audit records.
 
 ### 🧩 5.1 Render Architecture State
 
@@ -261,6 +268,59 @@ CI exit policies are available via:
 --fail-on-destructive 
 ```
 
+### 🧩 5.4 Create and Check Approval Artifacts
+
+Create an Approval Artifact from an Architecture Change Report:
+
+```bash
+python manage.py elevata_plan rc_aw_customer \
+  --schema rawcore \
+  --format json \
+  --output .artifacts/architecture_plan_rc_aw_customer.json
+
+python manage.py elevata_approve .artifacts/architecture_plan_rc_aw_customer.json \
+  --approved-by "Reviewer Name" \
+  --note "Reviewed for deployment." \
+  --store
+```
+
+Check a stored Approval Artifact:
+
+```bash
+python manage.py elevata_approval_check \
+  .artifacts/architecture_plan_rc_aw_customer.json \
+  .elevata/approvals/<report_fingerprint>.approval.json
+```
+
+### 🧩 5.5 Use Architecture Control in the UI
+
+The Architecture Control UI provides a guided workflow for controlled architecture scopes.
+
+It supports:
+
+- all-dataset scopes  
+- schema scopes  
+- TargetDataset scopes  
+- TargetDataset scopes with target-only execution
+
+From Architecture Control, you can:
+
+- inspect the Architecture Change Report  
+- download report JSON  
+- create and check Approval Artifacts  
+- inspect the Execution Preview  
+- run controlled load execution  
+- inspect captured execution output  
+- inspect the Architecture Execution Record
+
+Controlled execution uses the load runner and keeps preflight validation,  
+Architecture Guard enforcement, approval matching and dialect-owned SQL rendering in place.
+
+Architecture Execution Records are stored under:
+
+```bash
+ELEVATA_ARCH_EXECUTION_DIR=.elevata/executions
+```
 ---
 
 ## 🔧 6. Secure Connectivity (optional)
@@ -281,7 +341,10 @@ For advanced setups, see
 | Open Django shell | `python manage.py shell` |
 | Import source metadata | Trigger via UI (⚡ Import Datasets) |
 | Generate target structures | Trigger via UI (⚡ Generate Targets) |
-| Run tests | `pytest` |
+| Run tests | `python runtests.py` |
+| Render architecture state | `python manage.py elevata_state` |
+| Render architecture report | `python manage.py elevata_plan --all` |
+| Execute controlled architecture scope | Use Architecture Control in the UI |
 
 ---
 
@@ -289,8 +352,9 @@ For advanced setups, see
 
 Once your metadata environment is ready, continue with:
 
-- [Automatic Target Generation Logic](generation_logic.md)
-- [SQL Rendering & Alias Conventions](sql_rendering_conventions.md)
+- [Automatic Target Generation Logic](generation_logic.md)  
+- [Architecture Control Plane](architecture_control_plane.md)  
+- [SQL Rendering & Alias Conventions](sql_rendering_conventions.md)  
 - [Lineage Model & Logical Plan](logical_plan.md)
 
 ---

@@ -39,8 +39,8 @@ An **ExecutionPlan** is a deterministic, declarative description of
 
 The plan contains:
 
-- A stable `batch_run_id`
-- An ordered list of execution steps
+- A stable `batch_run_id`  
+- An ordered list of execution steps  
 - Dataset-level dependencies (upstream relationships)
 
 The plan is derived from metadata only.
@@ -50,8 +50,8 @@ No SQL is rendered and no execution happens at this stage.
 
 Execution consumes an ExecutionPlan and applies:
 
-- Execution policies (fail-fast vs continue-on-error)
-- Retry semantics
+- Execution policies (fail-fast vs continue-on-error)  
+- Retry semantics  
 - Dependency blocking rules
 
 Execution produces **results**, not SQL:
@@ -59,10 +59,12 @@ status, timing, attempts, and failure reasons.
 
 ### 🧩 2.3 Architecture Control Plane
 
-The Architecture Control Plane provides read-only reports around architecture  
-state and schema evolution intent.
+The Architecture Control Plane provides controlled review, approval, execution preview,  
+and execution audit workflows around architecture state and schema evolution intent.
 
-It is separate from load execution and does not apply DDL or DML.
+Execution remains delegated to the load runner. The Architecture Control UI invokes the load runner  
+through constrained scopes and does not bypass preflight validation, materialization policy checks,  
+or Architecture Guard enforcement.
 
 The control plane commands are:
 
@@ -71,6 +73,8 @@ The control plane commands are:
 | `elevata_state` | Render the metadata-defined architecture state |
 | `elevata_plan` | Render an architecture change report |
 | `elevata_promote` | Compare two architecture state artifacts |
+| `elevata_approve` | Create an approval artifact |
+| `elevata_approval_check` | Verify an approval artifact |
 
 The load runner remains responsible for execution safety. Before executing load SQL,  
 it performs preflight validation, derives materialization steps from the MigrationPlan,  
@@ -91,6 +95,14 @@ MigrationPlan
 Policy Decisions
   ↓
 Architecture Report
+  ↓
+Approval Artifact
+  ↓
+Execution Preview
+  ↓
+Controlled Execution
+  ↓
+Architecture Execution Record
 ```
 
 ---
@@ -134,8 +146,8 @@ This separation ensures deterministic execution behavior across platforms.
 
 For rawcore datasets with historization enabled:
 
-- base dataset materialization is planned first
-- corresponding `_hist` dataset schema is synchronized afterwards
+- base dataset materialization is planned first  
+- corresponding `_hist` dataset schema is synchronized afterwards  
 - synchronization is best-effort and does not block base execution
 
 The `_hist` synchronization uses the same schema evolution intent (MigrationPlan)  
@@ -149,8 +161,8 @@ Dataset dependencies are resolved into a directed acyclic graph (DAG).
 
 From this graph, elevata derives a **deterministic execution order**:
 
-- Upstream datasets are always executed before downstream datasets
-- Independent branches may be executed in parallel in the future
+- Upstream datasets are always executed before downstream datasets  
+- Independent branches may be executed in parallel in the future  
 - The same metadata state always yields the same order
 
 Dependency resolution errors are treated as **best-effort warnings**
@@ -164,7 +176,7 @@ Execution behavior is controlled by an explicit **ExecutionPolicy**.
 
 Core policy parameters:
 
-- `continue_on_error`
+- `continue_on_error`  
 - `max_retries`
 
 Policies apply globally to a run and are evaluated consistently
@@ -181,8 +193,8 @@ All execution semantics are explicit and predictable.
 
 Retries apply **only in execute mode** (`--execute`).
 
-- Dry-run failures are surfaced immediately
-- Retries are counted per dataset
+- Dry-run failures are surfaced immediately  
+- Retries are counted per dataset  
 - `attempt_no` starts at 1 and is propagated to execution logic
 
 Retries are **never hidden**:
@@ -192,7 +204,7 @@ each attempt is observable and logged.
 
 When a dataset fails after all retries:
 
-- Its status becomes `error`
+- Its status becomes `error`  
 - Downstream behavior depends on the execution policy
 
 ---
@@ -205,13 +217,13 @@ elevata distinguishes two fundamentally different non-success outcomes.
 
 A dataset is **blocked** if:
 
-- One of its upstream dependencies failed
+- One of its upstream dependencies failed  
 - The dataset itself was never attempted
 
 Blocked datasets are reported as:
 
-- `status = skipped`
-- `kind = blocked`
+- `status = skipped`  
+- `kind = blocked`  
 - `blocked_by = <upstream dataset>`
 
 This represents *dependency-based non-execution*.
@@ -220,13 +232,13 @@ This represents *dependency-based non-execution*.
 
 A dataset is **aborted** if:
 
-- Execution stops early due to `continue_on_error = false`
+- Execution stops early due to `continue_on_error = false`  
 - The dataset was not attempted due to fail-fast semantics
 
 Aborted datasets are reported as:
 
-- `status = skipped`
-- `kind = aborted`
+- `status = skipped`  
+- `kind = aborted`  
 - `status_reason = fail_fast_abort`
 
 This represents *policy-based non-execution*.
@@ -241,15 +253,15 @@ The **load run log** is an append-only, event-level record of execution.
 
 Characteristics:
 
-- Dataset- and attempt-granular
-- One row per execution attempt or orchestration event
+- Dataset- and attempt-granular  
+- One row per execution attempt or orchestration event  
 - Operational and time-oriented
 
 Typical events:
 
-- Successful dataset execution
-- Failed attempts
-- Blocked datasets
+- Successful dataset execution  
+- Failed attempts  
+- Blocked datasets  
 - Aborted datasets
 
 The log answers the question:
@@ -264,16 +276,16 @@ The **load run snapshot** captures the declarative state of a load run.
 
 Characteristics:
 
-- One row per batch run
-- JSON-based snapshot document
+- One row per batch run  
+- JSON-based snapshot document  
 - Explains *why* execution behaved the way it did
 
 The snapshot includes:
 
-- Execution plan
-- Execution policy
-- Dependency structure
-- Aggregated outcomes
+- Execution plan  
+- Execution policy  
+- Dependency structure  
+- Aggregated outcomes  
 - Failure reasons and counts
 
 The snapshot answers the question:
@@ -298,15 +310,15 @@ A single invocation of `elevata_load` may execute multiple datasets.
 
 All datasets executed in one invocation share:
 
-- The same `batch_run_id`
-- The same execution policy
+- The same `batch_run_id`  
+- The same execution policy  
 - The same snapshot
 
 This enables:
 
-- Consistent failure semantics
-- Cross-dataset observability
-- Future batch-level governance rules
+- Consistent failure semantics  
+- Cross-dataset observability  
+- Batch-level governance rules
 
 ---
 
@@ -314,8 +326,8 @@ This enables:
 
 Execution observability is **best-effort by design**.
 
-- Logging and snapshot persistence must never block execution
-- Meta-schema evolution is additive only
+- Logging and snapshot persistence must never block execution  
+- Meta-schema evolution is additive only  
 - Failures in observability are swallowed, not propagated
 
 Execution correctness always takes precedence over observability.
@@ -326,10 +338,10 @@ Execution correctness always takes precedence over observability.
 
 The execution architecture is exposed through the CLI:
 
-- `--execute` enables real execution
-- `--continue-on-error` controls fail-fast behavior
-- `--max-retries` controls retry behavior
-- `--debug-execution` prints execution snapshots
+- `--execute` enables real execution  
+- `--continue-on-error` controls fail-fast behavior  
+- `--max-retries` controls retry behavior  
+- `--debug-execution` prints execution snapshots  
 - `--write-execution-snapshot` persists snapshots to disk
 
 The CLI is an adapter.
@@ -337,19 +349,78 @@ All execution logic lives in the execution core.
 
 ---
 
-## 🔧 13. Design Summary
+## 🔧 13. Architecture Control Execution
+
+Architecture Control execution is a constrained UI path into the same load runner.
+
+It provides:
+
+- scope-aware execution preview  
+- approval-aware execution gating  
+- Architecture Guard enforcement  
+- controlled execution output capture  
+- Architecture Execution Record creation
+
+Architecture Control supports the following execution scopes:
+
+| Scope | Dependency behavior |
+|---|---|
+| All datasets | Executes all active target datasets with dependency ordering |
+| Schema | Executes selected schema roots with dependency ordering |
+| TargetDataset | Executes the selected TargetDataset with dependency ordering |
+| TargetDataset, target-only | Executes only the selected TargetDataset |
+
+Target-only execution is restricted to TargetDataset scopes. It supports focused iteration  
+while keeping the default execution path lineage-aware.
+
+### 🧩 13.1 Architecture Execution Record
+
+An Architecture Execution Record captures the audit context of a controlled UI execution.
+
+It contains:
+
+- execution identifier  
+- operator  
+- timestamps and duration  
+- status and message  
+- Architecture Control scope  
+- dependency mode  
+- report fingerprint  
+- approval identifier  
+- preview fingerprint  
+- command invocation metadata  
+- output and error tails  
+- output and error line counts  
+- record fingerprint
+
+Architecture Execution Records are stored as JSON artifacts under:
+
+```bash
+ELEVATA_ARCH_EXECUTION_DIR=.elevata/executions
+```
+
+They complement the load run log and load run snapshot:
+
+| Artifact | Granularity | Purpose |
+|---|---|---|
+| Load Run Log | Dataset / attempt | Operational event stream |
+| Load Run Snapshot | Batch run | Execution state and outcome summary |
+| Architecture Execution Record | Architecture Control execution | Review, approval, scope, command and audit eference |
+
+---
+
+## 🔧 14. Design Summary
 
 The execution architecture of elevata is:
 
-- Explicit, not implicit
-- Deterministic, not heuristic
-- Metadata-driven, not SQL-driven
-- Observable by default
+- Explicit, not implicit  
+- Deterministic, not heuristic  
+- Metadata-driven, not SQL-driven  
+- Observable by default  
 - Extensible without breaking changes
 
-This provides a robust foundation for:
-orchestration integrations, governance rules,
-and execution analytics in future versions.
+This provides a robust foundation for:  
+orchestration integrations, governance rules, and execution analytics.
 
 ---
 

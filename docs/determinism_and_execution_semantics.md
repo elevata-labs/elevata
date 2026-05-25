@@ -13,6 +13,7 @@ elevata is built for reproducibility:
 - CI checks must be stable  
 - the same metadata must produce the same output across runs  
 - architecture reports must produce stable fingerprints  
+- architecture execution records must preserve stable audit references  
 - multi-dialect rendering must not introduce semantic drift
 
 Determinism is therefore treated as a correctness requirement, not a “best practice”.
@@ -89,7 +90,8 @@ Deterministic report artifacts include:
 - Architecture State fingerprint  
 - Architecture Change Report fingerprint  
 - Architecture Promotion Report fingerprint  
-- Architecture Approval Artifact fingerprint
+- Architecture Approval Artifact fingerprint  
+- Architecture Execution Record fingerprint
 
 These fingerprints are derived from canonical JSON representations.
 
@@ -115,11 +117,66 @@ engines.
 Approval artifacts do not alter execution policy. A matching approval confirms that an Architecture Change Report  
 was reviewed, while load execution remains protected by preflight checks, policy decisions and materialization guardrails.
 
-The Architecture Review Status UI displays the resulting review state without executing DDL or DML.
+Architecture Control displays the resulting review state, execution readiness, dependency mode,  
+controlled execution output, and Architecture Execution Record.
 
 ---
 
-## 🔧 5. Window functions
+## 🔧 5. Architecture Control Execution Semantics
+
+Architecture Control provides a constrained UI path into the same deterministic load runner.
+
+It does not bypass:
+
+- preflight validation  
+- schema evolution policy checks  
+- Architecture Guard enforcement  
+- approval matching  
+- dialect-owned SQL rendering
+
+The Architecture Control UI exposes controlled execution scopes:
+
+| Scope | Dependency behavior |
+|---|---|
+| All datasets | Executes all active target datasets with dependency ordering |
+| Schema | Executes selected schema roots with dependency ordering |
+| TargetDataset | Executes the selected TargetDataset with dependency ordering |
+| TargetDataset, target-only | Executes only the selected TargetDataset |
+
+The default execution path remains lineage-aware.
+
+Target-only execution is restricted to TargetDataset scopes and is intended for focused iteration  
+when upstream data is already available.
+
+Controlled execution produces an Architecture Execution Record.
+
+The record captures:
+
+- execution identifier  
+- operator  
+- timestamps and duration  
+- execution status  
+- Architecture Control scope  
+- dependency mode  
+- report fingerprint  
+- approval identifier  
+- preview fingerprint  
+- command invocation metadata  
+- output and error tails  
+- output and error line counts  
+- deterministic record fingerprint
+
+Architecture Execution Records are deterministic audit artifacts. They answer:
+
+```text
+Who executed which controlled architecture scope, under which review and dependency context, and what happened?
+```
+
+The record fingerprint is derived from the canonical JSON representation of the execution record.
+
+---
+
+## 🔧 6. Window functions
 
 Some window functions are inherently nondeterministic without ordering.
 
@@ -141,7 +198,7 @@ Windowed aggregates (SUM/AVG/…) may not require ORDER BY:
 
 ---
 
-## 🔧 6. Aggregation determinism
+## 🔧 7. Aggregation determinism
 
 Aggregations can become nondeterministic if result ordering is undefined in the aggregation semantics.
 
@@ -154,7 +211,7 @@ Other aggregates (SUM, COUNT, MIN, MAX, AVG) are deterministic without ordering.
 
 ---
 
-## 🔧 7. Contract stability and collisions
+## 🔧 8. Contract stability and collisions
 
 The output contract must be stable and unambiguous.
 
@@ -166,7 +223,7 @@ Rules:
 
 ---
 
-## 🔧 8. Why elevata is not a semantic layer
+## 🔧 9. Why elevata is not a semantic layer
 
 elevata does not implement query-time semantics (like BI semantic layers or metric stores).  
 Instead, elevata materializes semantics into datasets deterministically:
@@ -179,7 +236,7 @@ This avoids tool-specific logic and ensures reproducible pipelines.
 
 ---
 
-## 🔧 9. References
+## 🔧 10. References
 
 - [Query Tree & Query Builder](query_builder_and_query_tree.md)    
 - [Lineage Model & Logical Plan](logical_plan.md)   

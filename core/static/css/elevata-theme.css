@@ -696,3 +696,16 @@ footer:hover {
   background-color: var(--bs-secondary-bg);
   opacity: 1; /* avoid "outgreyed" Bootstrap opacity */
 }
+
+/* Details disclosure labels */
+details summary {
+  cursor: pointer;
+}
+
+details[open] .details-closed-label {
+  display: none;
+}
+
+details:not([open]) .details-open-label {
+  display: none;
+}

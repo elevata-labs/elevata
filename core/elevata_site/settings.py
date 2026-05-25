@@ -43,7 +43,7 @@ from utils.db import build_metadata_database_url
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(find_dotenv(filename=".env", raise_error_if_not_found=False))
 
-ELEVATA_VERSION = "1.9.0"
+ELEVATA_VERSION = "2.0.0"
 
 ELEVATA_PROFILES_PATH = os.getenv("ELEVATA_PROFILES_PATH", str((BASE_DIR.parent / "config" / "elevata_profiles.yaml")))
 
@@ -214,6 +214,15 @@ ELEVATA_CRUD = {
       "TargetDataset": "file-check-2",
       "TargetColumn": "grid-2x2-check",
     },
+    "menu_items": [
+      {
+        "label": "Architecture Control",
+        "url_name": "architecture_control",
+        "card_text": "Review and approve architecture across controlled scopes.",
+        "icon": "shield-check",
+        "position": "end",
+      },
+    ],
     "exclude": [
       "SourceDatasetOwnership", 
       "TargetDatasetOwnership", 

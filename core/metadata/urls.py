@@ -153,6 +153,12 @@ urlpatterns += [
   path("source-type-hint/", views.source_type_hint, name="source_type_hint"),
   path("generate-targets/", views.generate_targets, name="generate_targets"),
   path("api/targetcolumns/upstream-meta/", views.targetcolumn_upstream_meta, name="targetcolumn_upstream_meta"),
+  path("architecture-control/", views.architecture_control, name="architecture_control"),
+  path("architecture-control/report/", views.architecture_control_report, name="architecture_control_report"),
+  path("architecture-control/report/download/", views.architecture_control_report_download, name="architecture_control_report_download"),
+  path("architecture-control/approve/", views.architecture_control_approve, name="architecture_control_approve"),
+  path("architecture-control/check/", views.architecture_control_approval_check, name="architecture_control_approval_check"),
+  path("architecture-control/execute/", views.architecture_control_execute, name="architecture_control_execute"),
 ]
 
 # Custom import endpoints (UI-Buttons → HTMX POST)

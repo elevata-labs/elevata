@@ -1,6 +1,6 @@
 """
 elevata - Metadata-driven Data Platform Framework
-Copyright © 2025 Ilona Tag
+Copyright © 2025-2026 Ilona Tag
 
 This file is part of elevata.
 
@@ -54,6 +54,75 @@ def _safe_reverse(name: str) -> str:
       continue
   return ""
 
+
+def _menu_item_from_config(config: dict) -> dict | None:
+  """
+  Build a menu item from a configured menu entry.
+  """
+  label = str(config.get("label") or "").strip()
+  url_name = str(config.get("url_name") or "").strip()
+  href = str(config.get("href") or "").strip()
+
+  if not href and url_name:
+    href = _safe_reverse(url_name)
+
+  if not label or not href:
+    return None
+
+  return {
+    "label": label,
+    "url_name": url_name,
+    "href": href,
+    "card_text": str(config.get("card_text") or "").strip(),
+    "icon": str(config.get("icon") or "folder").strip(),
+    "position": str(config.get("position") or "end").strip(),
+  }
+
+
+def _menu_item_matches_anchor(item: dict, anchor: str) -> bool:
+  """
+  Return True if a menu item matches a configured insertion anchor.
+  """
+  values = {
+    str(item.get("model_class_name") or ""),
+    str(item.get("model_name") or ""),
+    str(item.get("url_name") or ""),
+    str(item.get("label") or ""),
+  }
+  return anchor in values
+
+
+def _insert_menu_item(items: list[dict], item: dict) -> None:
+  """
+  Insert a configured menu item at its configured position.
+  """
+  position = str(item.pop("position", "end") or "end").strip()
+
+  if position == "start":
+    items.insert(0, item)
+    return
+
+  if position.startswith("before:"):
+    anchor = position.split(":", 1)[1].strip()
+    for index, existing in enumerate(items):
+      if _menu_item_matches_anchor(existing, anchor):
+        items.insert(index, item)
+        return
+    items.append(item)
+    return
+
+  if position.startswith("after:"):
+    anchor = position.split(":", 1)[1].strip()
+    for index, existing in enumerate(items):
+      if _menu_item_matches_anchor(existing, anchor):
+        items.insert(index + 1, item)
+        return
+    items.append(item)
+    return
+
+  items.append(item)
+
+
 def app_menu(request):
   """
   Dynamically generates the main menu from the models of the 'metadata' app.
@@ -66,6 +135,7 @@ def app_menu(request):
   prefix = cfg.get("prefix", "")
   descriptions = cfg.get("descriptions", {})
   icons = cfg.get("icons", {})
+  configured_menu_items = cfg.get("menu_items", [])
 
   items = []
   try:
@@ -102,7 +172,14 @@ def app_menu(request):
       "href": href,
       "card_text": desc,
       "icon": icon,
+      "model_class_name": model.__name__,
+      "model_name": model.__name__,
     })
+
+  for config in configured_menu_items:
+    item = _menu_item_from_config(config)
+    if item is not None:
+      _insert_menu_item(items, item)
 
   return {"MAIN_MENU": items}
 

@@ -16,6 +16,9 @@ designed to be safe, lineage-aware, and reproducible across environments.
 
 Architecture reports expose the same schema evolution intent before execution.
 
+Architecture Control makes this intent reviewable, approvable, executable through  
+controlled scopes, and auditable through Architecture Execution Records.
+
 ---
 
 ## 🔧 Core Principles
@@ -164,10 +167,51 @@ The report includes:
 - policy decisions for destructive operations  
 - deterministic report fingerprint
 
-Reports are read-only. They do not apply schema changes.
+Reports are review artifacts. They do not apply schema changes by themselves.
 
-`elevata_load` remains responsible for execution preflight and applies schema changes  
+`elevata_load` remains responsible for execution preflight and applies schema changes
 only after guard checks pass.
+
+Architecture Control uses the same schema evolution intent and adds a controlled
+review and execution layer:
+
+```text
+Architecture Change Report
+  ↓
+Architecture Approval Artifact
+  ↓
+Execution Preview
+  ↓
+Controlled Execution
+  ↓
+Architecture Execution Record
+```
+
+Controlled execution does not bypass schema evolution guardrails.  
+It invokes the load runner through constrained Architecture Control scopes and keeps:
+
+- preflight validation  
+- materialization policy checks  
+- Architecture Guard enforcement  
+- approval matching  
+- dialect-owned DDL rendering  
+- deterministic execution records
+
+Execution scopes are explicit:
+
+| Scope | Schema evolution behavior |
+|---|---|
+| All datasets | Applies schema evolution for all active target datasets in dependency order |
+| Schema | Applies schema evolution for selected schema roots and required dependencies |
+| TargetDataset | Applies schema evolution for the selected TargetDataset and required dependencies |
+| TargetDataset, target-only | Applies schema evolution only for the selected TargetDataset |
+
+Target-only execution is available only for TargetDataset scopes. It supports focused iteration  
+when upstream data is already available.
+
+Architecture Execution Records capture who executed which controlled schema evolution scope,  
+with which dependency mode, report fingerprint, approval identifier, preview fingerprint,  
+command metadata and result status.
 
 ---
 
@@ -291,6 +335,7 @@ These require:
 - Explicit policies  
 - Clear user intent  
 - Future controlled rollout
+- Controlled runtime execution
 
 Unsafe type drift can be explicitly allowed via `ELEVATA_ALLOW_TYPE_ALTER=true`  
 (or `--allow-type-alter`) and is then executed via dialect-supported ALTER or deterministic rebuild.
@@ -312,7 +357,8 @@ Without the hist flag, removed business columns in `_hist` are preserved as reti
 2. Previous name is added to `former_names`  
 3. Schema evolution detects rename  
 4. Physical schema is updated safely  
-5. `_hist` table is kept in sync automatically
+5. `_hist` table is kept in sync automatically  
+6. Architecture Control records the controlled execution result
 
 No SQL changes required.
 
@@ -327,6 +373,8 @@ No SQL changes required.
 | Incremental safety | ✅ MERGE never breaks |
 | Cross-dialect | ✅ BigQuery, Databricks, DuckDB, Fabric Warehouse, MSSQL, Postgres, Snowflake |
 | Historization | ✅ Always consistent |
+| Reviewability | ✅ Schema evolution intent is visible before execution |
+| Auditability | ✅ Controlled executions produce Architecture Execution Records |
 
 ---
 

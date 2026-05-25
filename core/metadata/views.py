@@ -24,6 +24,8 @@ import re
 import traceback
 from io import StringIO
 from typing import Any
+from urllib.parse import urlencode
+import uuid
 
 from collections import deque
 from crum import get_current_user
@@ -38,11 +40,29 @@ from django.db.models import Count
 from django.http import JsonResponse, HttpResponse, HttpResponseBadRequest, Http404
 from django.shortcuts import get_object_or_404, render, redirect
 from django.template.loader import render_to_string
+from django.urls import reverse
 from django.views.decorators.http import require_POST, require_GET
 from sqlalchemy.exc import SQLAlchemyError
 
 from generic import GenericCRUDView
 
+from metadata.architecture.control import (
+  ArchitectureControlError,
+  ArchitectureControlScope,
+  build_architecture_control_context,
+  check_architecture_control_approval,
+  create_architecture_control_approval,
+  render_architecture_control_report_json,
+  render_architecture_control_report_text,
+)
+from metadata.architecture.execution_preview import (
+  ArchitectureExecutionPreviewError,
+  build_architecture_execution_preview,
+)
+from metadata.architecture.execution_control import (
+  ArchitectureControlledExecutionError,
+  execute_architecture_control_scope,
+)
 from metadata.architecture.operations import (
   ArchitectureOperationsError,
   build_target_dataset_architecture_operations_context,
@@ -65,7 +85,7 @@ from metadata.generation.validators import summarize_targetdataset_health, valid
 from metadata.ingestion.import_service import import_metadata_for_datasets
 from metadata.models import (
   QueryUnionNode, QueryUnionBranch, QueryUnionOutputColumn, QueryUnionBranchMapping,
-  SourceDataset, System, TargetDataset, TargetDatasetInput, TargetColumn,)
+  SourceDataset, System, TargetSchema, TargetDataset, TargetDatasetInput, TargetColumn,)
 from metadata.rendering.dialects import get_active_dialect
 from metadata.rendering.sql_service import (
   render_preview_sql,
@@ -126,6 +146,22 @@ def _architecture_report_filename(target_dataset: TargetDataset) -> str:
   return f"{schema_token}_{target_token}_architecture_report.json"
 
 
+def _architecture_control_report_filename(scope: ArchitectureControlScope) -> str:
+  """
+  Build a stable download filename for an Architecture Control report.
+  """
+  if scope.mode == "all":
+    return "all_architecture_report.json"
+
+  if scope.mode == "schema":
+    schema_token = _safe_download_token(scope.schema_short, "schema")
+    return f"{schema_token}_architecture_report.json"
+
+  dataset_token = _safe_download_token(scope.dataset_key, "dataset")
+  dataset_token = dataset_token.replace(".", "_")
+  return f"{dataset_token}_architecture_report.json"
+
+
 def _approval_actor_name(user) -> str:
   """
   Return the reviewer name stored in approval artifacts.
@@ -136,6 +172,219 @@ def _approval_actor_name(user) -> str:
       return value
 
   return str(user)
+
+
+def _safe_int(value: str | None) -> int | None:
+  """
+  Return an integer for valid request values.
+  """
+  if value is None:
+    return None
+
+  try:
+    return int(value)
+  except (TypeError, ValueError):
+    return None
+
+
+def _architecture_control_scope_params(request) -> dict[str, str]:
+  """
+  Return normalized Architecture Control scope parameters.
+  """
+  values = request.POST if request.method == "POST" else request.GET
+  scope_mode = (values.get("scope_mode") or "all").strip()
+  if scope_mode not in {"all", "schema", "target_dataset"}:
+    scope_mode = "all"
+
+  schema_short = (values.get("schema_short") or "").strip()
+  target_dataset_id = (values.get("target_dataset_id") or "").strip()
+
+  if scope_mode == "target_dataset" and not target_dataset_id and schema_short:
+    scope_mode = "schema"
+  elif scope_mode == "all" and target_dataset_id:
+    scope_mode = "target_dataset"
+  elif scope_mode == "all" and schema_short:
+    scope_mode = "schema"
+
+  params = {
+    "scope_mode": scope_mode,
+  }
+
+  if scope_mode == "schema" and schema_short:
+    params["schema_short"] = schema_short
+
+  if scope_mode == "target_dataset" and target_dataset_id:
+    params["target_dataset_id"] = target_dataset_id
+
+    if (values.get("execution_no_deps") or "").strip() in {"1", "true", "on"}:
+      params["execution_no_deps"] = "1"
+
+  return params
+
+
+def _architecture_control_no_deps_from_params(params: dict[str, str]) -> bool:
+  """
+  Return whether target-only execution is requested.
+  """
+  return (
+    params.get("scope_mode") == "target_dataset"
+    and params.get("execution_no_deps") == "1"
+  )
+
+
+def _architecture_control_scope_from_params(
+  params: dict[str, str],
+) -> ArchitectureControlScope:
+  """
+  Build an Architecture Control scope from request parameters.
+  """
+  scope_mode = params.get("scope_mode") or "all"
+
+  if scope_mode == "all":
+    return ArchitectureControlScope.for_all()
+
+  if scope_mode == "schema":
+    return ArchitectureControlScope.for_schema(
+      params.get("schema_short") or "",
+    )
+
+  if scope_mode == "target_dataset":
+    target_dataset_id = _safe_int(params.get("target_dataset_id"))
+    if target_dataset_id is None:
+      raise ArchitectureControlError(
+        "Target dataset scope requires a TargetDataset selection."
+      )
+
+    target_dataset = get_object_or_404(
+      TargetDataset.objects.select_related("target_schema"),
+      pk=target_dataset_id,
+    )
+    return ArchitectureControlScope.from_target_dataset(target_dataset)
+
+  raise ArchitectureControlError(f"Unsupported Architecture Control scope: {scope_mode}")
+
+
+def _architecture_control_redirect(
+  params: dict[str, str],
+  *,
+  extra_params: dict[str, str] | None = None,
+):
+  """
+  Redirect to Architecture Control with the selected scope.
+  """
+  redirect_params = dict(params)
+  if extra_params:
+    redirect_params.update(extra_params)
+
+  querystring = urlencode(redirect_params)
+  target_url = reverse("architecture_control")
+  if querystring:
+    target_url = f"{target_url}?{querystring}"
+
+  return redirect(target_url)
+
+
+def _store_architecture_control_execution_result(request, result) -> str | None:
+  """
+  Store an Architecture Control execution result for UI rendering.
+  """
+  session = getattr(request, "session", None)
+  if session is None:
+    return None
+
+  succeeded = bool(getattr(result, "succeeded", False))
+  status = getattr(result, "status", None) or (
+    "success" if succeeded else "failed"
+  )
+  result_id = uuid.uuid4().hex
+
+  payload = {
+    "result_id": result_id,
+    "execution_id": getattr(result, "execution_id", ""),
+    "started_by": getattr(result, "started_by", ""),
+    "started_at": getattr(result, "started_at", ""),
+    "finished_at": getattr(result, "finished_at", ""),
+    "duration_ms": getattr(result, "duration_ms", 0),
+    "status": status,
+    "succeeded": succeeded,
+    "message": getattr(result, "message", ""),
+    "scope_key": getattr(result, "scope_key", ""),
+    "scope_label": getattr(result, "scope_label", ""),
+    "dependency_mode": getattr(result, "dependency_mode", ""),
+    "report_fingerprint": getattr(result, "report_fingerprint", ""),
+    "approval_id": getattr(result, "approval_id", None),
+    "preview_fingerprint": getattr(result, "preview_fingerprint", ""),
+    "command_name": getattr(result, "command_name", ""),
+    "command_args": list(getattr(result, "command_args", ()) or ()),
+    "command_options": dict(getattr(result, "command_options", {}) or {}),
+    "output_lines": list(getattr(result, "output_lines", ()) or ()),
+    "output_tail": list(getattr(result, "output_tail", ()) or ()),
+    "output_truncated": bool(getattr(result, "output_truncated", False)),
+    "error_lines": list(getattr(result, "error_lines", ()) or ()),
+    "error_tail": list(getattr(result, "error_tail", ()) or ()),
+    "error_truncated": bool(getattr(result, "error_truncated", False)),
+    "execution_record_path": getattr(result, "execution_record_path", None),
+    "execution_record_fingerprint": getattr(
+      result,
+      "execution_record_fingerprint",
+      None,
+    ),
+    "execution_record_error": getattr(result, "execution_record_error", None),
+  }
+
+  stored_results = session.get("architecture_control_execution_results")
+  if not isinstance(stored_results, dict):
+    stored_results = {}
+
+  stored_results[result_id] = payload
+  recent_ids = list(stored_results.keys())[-5:]
+  session["architecture_control_execution_results"] = {
+    key: stored_results[key]
+    for key in recent_ids
+  }
+  session["architecture_control_last_execution"] = payload
+
+  if hasattr(session, "modified"):
+    session.modified = True
+
+  return result_id
+
+
+def _architecture_control_execution_result_for_scope(
+  request,
+  scope,
+  *,
+  report_fingerprint: str | None = None,
+):
+  """
+  Return the stored execution result for the selected Architecture Control scope.
+  """
+  if scope is None:
+    return None
+
+  session = getattr(request, "session", None)
+  if session is None:
+    return None
+
+  result_id = (request.GET.get("execution_result_id") or "").strip()
+  if not result_id:
+    return None
+
+  stored_results = session.get("architecture_control_execution_results")
+  if isinstance(stored_results, dict):
+    result = stored_results.get(result_id)
+  else:
+    result = session.get("architecture_control_last_execution")
+    if not isinstance(result, dict) or result.get("result_id") != result_id:
+      result = None
+
+  if not isinstance(result, dict):
+    return None
+
+  if result.get("scope_key") != scope.key:
+    return None
+
+  return result
 
 
 def make_crud_view(model):
@@ -571,6 +820,254 @@ def targetdataset_query_contract_view(request, pk: int):
     "contract_diff": diff,
   }
   return render(request, "metadata/query/targetdataset_query_contract.html", ctx)
+
+
+@login_required
+@permission_required("metadata.view_targetdataset", raise_exception=True)
+def architecture_control(request):
+  """
+  Render Architecture Control for the selected architecture scope.
+  """
+  scope_params = _architecture_control_scope_params(request)
+  scope_querystring = urlencode(scope_params)
+  scope_mode = scope_params.get("scope_mode") or "all"
+  execution_no_deps = _architecture_control_no_deps_from_params(scope_params)
+  selected_schema_short = scope_params.get("schema_short") or ""
+  selected_target_dataset_pk = _safe_int(scope_params.get("target_dataset_id"))
+
+  control_context = None
+  review_status = None
+  execution_preview = None
+  execution_preview_error = None
+  last_execution_result = None
+  error_message = None
+
+  try:
+    scope = _architecture_control_scope_from_params(scope_params)
+    if scope.schema_short and not selected_schema_short:
+      selected_schema_short = scope.schema_short
+    control_context = build_architecture_control_context(scope)
+    review_status = control_context.review_status
+    report_fingerprint = getattr(
+      getattr(control_context, "report", None),
+      "report_fingerprint",
+      None,
+    )
+    last_execution_result = _architecture_control_execution_result_for_scope(
+      request,
+      scope,
+      report_fingerprint=report_fingerprint,
+    )
+    try:
+      execution_preview = build_architecture_execution_preview(
+        scope,
+        control_context=control_context,
+        no_deps=execution_no_deps,
+      )
+    except ArchitectureExecutionPreviewError as exc:
+      execution_preview_error = str(exc)
+  except ArchitectureControlError as exc:
+    scope = None
+    error_message = str(exc)
+  except Exception as exc:
+    scope = None
+    logger.exception("Architecture Control failed: %s", exc)
+    error_message = str(exc)
+
+  target_schemas = (
+    TargetSchema.objects
+    .order_by("short_name")
+  )
+  target_datasets = (
+    TargetDataset.objects
+    .select_related("target_schema")
+    .filter(active=True)
+    .order_by("target_schema__short_name", "target_dataset_name", "id")
+  )
+
+  ctx = {
+    "title": "Architecture Control",
+    "scope": scope,
+    "scope_mode": scope_mode,
+    "scope_params": scope_params,
+    "scope_querystring": scope_querystring,
+    "selected_schema_short": selected_schema_short,
+    "selected_target_dataset_pk": selected_target_dataset_pk,
+    "execution_no_deps": execution_no_deps,
+    "target_schemas": target_schemas,
+    "target_datasets": target_datasets,
+    "control_context": control_context,
+    "review_status": review_status,
+    "execution_preview": execution_preview,
+    "execution_preview_error": execution_preview_error,
+    "last_execution_result": last_execution_result,
+    "error_message": error_message,
+  }
+  return render(request, "metadata/architecture/architecture_control.html", ctx)
+
+
+@login_required
+@permission_required("metadata.view_targetdataset", raise_exception=True)
+def architecture_control_report(request):
+  """
+  Render the Architecture Control report as text.
+  """
+  scope_params = _architecture_control_scope_params(request)
+
+  try:
+    scope = _architecture_control_scope_from_params(scope_params)
+    rendered = render_architecture_control_report_text(scope)
+  except ArchitectureControlError as exc:
+    return HttpResponse(
+      str(exc),
+      status=400,
+      content_type="text/plain; charset=utf-8",
+    )
+  except Exception as exc:
+    logger.exception("Architecture Control report rendering failed: %s", exc)
+    return HttpResponse(
+      str(exc),
+      status=500,
+      content_type="text/plain; charset=utf-8",
+    )
+
+  return HttpResponse(rendered, content_type="text/plain; charset=utf-8")
+
+
+@login_required
+@permission_required("metadata.view_targetdataset", raise_exception=True)
+def architecture_control_report_download(request):
+  """
+  Download the Architecture Control report as deterministic JSON.
+  """
+  scope_params = _architecture_control_scope_params(request)
+
+  try:
+    scope = _architecture_control_scope_from_params(scope_params)
+    rendered = render_architecture_control_report_json(scope)
+  except ArchitectureControlError as exc:
+    return HttpResponse(
+      str(exc),
+      status=400,
+      content_type="text/plain; charset=utf-8",
+    )
+  except Exception as exc:
+    logger.exception("Architecture Control report download failed: %s", exc)
+    return HttpResponse(
+      str(exc),
+      status=500,
+      content_type="text/plain; charset=utf-8",
+    )
+
+  response = HttpResponse(rendered, content_type="application/json; charset=utf-8")
+  response["Content-Disposition"] = (
+    f'attachment; filename="{_architecture_control_report_filename(scope)}"'
+  )
+  return response
+
+
+@login_required
+@permission_required("metadata.change_targetdataset", raise_exception=True)
+@require_POST
+def architecture_control_approve(request):
+  """
+  Create an approval artifact for the selected Architecture Control scope.
+  """
+  scope_params = _architecture_control_scope_params(request)
+  note = request.POST.get("note") or ""
+  approved_by = _approval_actor_name(request.user)
+
+  try:
+    scope = _architecture_control_scope_from_params(scope_params)
+    result = create_architecture_control_approval(
+      scope,
+      approved_by=approved_by,
+      note=note,
+    )
+    messages.success(
+      request,
+      (
+        "Architecture approval artifact created: "
+        f"{result.artifact.approval_id}"
+      ),
+    )
+  except ArchitectureControlError as exc:
+    messages.error(request, str(exc))
+  except Exception as exc:
+    logger.exception("Architecture Control approval failed: %s", exc)
+    messages.error(request, str(exc))
+
+  return _architecture_control_redirect(scope_params)
+
+
+@login_required
+@permission_required("metadata.view_targetdataset", raise_exception=True)
+@require_POST
+def architecture_control_approval_check(request):
+  """
+  Check the stored approval artifact against the selected scope report.
+  """
+  scope_params = _architecture_control_scope_params(request)
+
+  try:
+    scope = _architecture_control_scope_from_params(scope_params)
+    result = check_architecture_control_approval(scope)
+    if result.is_valid:
+      messages.success(request, result.message)
+    else:
+      messages.warning(request, result.message)
+  except ArchitectureControlError as exc:
+    messages.error(request, str(exc))
+  except Exception as exc:
+    logger.exception("Architecture Control approval check failed: %s", exc)
+    messages.error(request, str(exc))
+
+  return _architecture_control_redirect(scope_params)
+
+
+@login_required
+@permission_required("metadata.change_targetdataset", raise_exception=True)
+@require_POST
+def architecture_control_execute(request):
+  """
+  Execute the selected Architecture Control scope through the controlled load path.
+  """
+  scope_params = _architecture_control_scope_params(request)
+  execution_no_deps = _architecture_control_no_deps_from_params(scope_params)
+  actor = _approval_actor_name(request.user)
+
+  try:
+    scope = _architecture_control_scope_from_params(scope_params)
+    result = execute_architecture_control_scope(
+      scope,
+      actor=actor,
+      no_deps=execution_no_deps,
+    )
+    execution_result_id = _store_architecture_control_execution_result(
+      request,
+      result,
+    )
+    if result.succeeded:
+      messages.success(request, result.message)
+    else:
+      messages.error(
+        request,
+        "Controlled execution failed. See Last controlled execution for details.",
+      )
+  except (ArchitectureControlError, ArchitectureControlledExecutionError) as exc:
+    messages.error(request, str(exc))
+  except Exception as exc:
+    logger.exception("Architecture Control execution failed: %s", exc)
+    messages.error(request, str(exc))
+
+  extra_params = {}
+  if "execution_result_id" in locals() and execution_result_id:
+    extra_params["execution_result_id"] = execution_result_id
+
+  return _architecture_control_redirect(
+    scope_params,
+    extra_params=extra_params,
+  )
 
 
 @login_required
