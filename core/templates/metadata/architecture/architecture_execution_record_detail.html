@@ -1,0 +1,205 @@
+<!--
+elevata - Metadata-driven Data Platform Framework
+Copyright © 2025-2026 Ilona Tag
+
+This file is part of elevata.
+
+elevata is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of
+the License, or (at your option) any later version.
+
+elevata is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with elevata. If not, see <https://www.gnu.org/licenses/>.
+
+Contact: <https://github.com/elevata-labs/elevata>.
+-->
+
+{% extends "base.html" %}
+
+{% block title %}Architecture Execution Record · elevata{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-start justify-content-between gap-3 mb-3">
+  <div>
+    <h1 class="h4 mb-1">Architecture Execution Record</h1>
+    <div class="small text-muted">
+      Stored audit evidence for one controlled Architecture Control execution.
+    </div>
+  </div>
+  <div class="d-flex gap-2">
+    <a
+      href="{{ back_url }}"
+      class="btn btn-sm btn-outline-secondary"
+    >
+      <i class="bi bi-arrow-left"></i>
+      Architecture Control
+    </a>
+    <a
+      href="{% url 'architecture_execution_record_download' execution_id %}"
+      class="btn btn-sm btn-outline-secondary"
+    >
+      <i class="bi bi-download"></i>
+      Download JSON
+    </a>
+  </div>
+</div>
+
+<div class="card mb-4">
+  <div class="card-body">
+    <div class="d-flex align-items-start justify-content-between gap-3 mb-3">
+      <div>
+        <div class="small text-muted">Execution ID</div>
+        <code>{{ record.execution_id }}</code>
+      </div>
+      {% if record.status == "success" %}
+        <span class="badge text-bg-success">success</span>
+      {% elif record.status == "failed" %}
+        <span class="badge text-bg-danger">failed</span>
+      {% else %}
+        <span class="badge text-bg-secondary">{{ record.status }}</span>
+      {% endif %}
+    </div>
+
+    <div class="row g-3 small">
+      <div class="col-md-3">
+        <div class="text-muted">Started at</div>
+        <code>{{ record.started_at }}</code>
+      </div>
+      <div class="col-md-3">
+        <div class="text-muted">Finished at</div>
+        <code>{{ record.finished_at }}</code>
+      </div>
+      <div class="col-md-3">
+        <div class="text-muted">Duration</div>
+        <code>{{ record.duration_label }}</code>
+      </div>
+      <div class="col-md-3">
+        <div class="text-muted">Dependency mode</div>
+        <code>{{ record.dependency_mode }}</code>
+      </div>
+      <div class="col-md-4">
+        <div class="text-muted">Scope</div>
+        <code>{{ record.scope_key }}</code>
+      </div>
+      <div class="col-md-4">
+        <div class="text-muted">Report fingerprint</div>
+        <code>{{ record.report_fingerprint }}</code>
+      </div>
+      <div class="col-md-4">
+        <div class="text-muted">Preview fingerprint</div>
+        <code>{{ record.preview_fingerprint }}</code>
+      </div>
+      <div class="col-md-4">
+        <div class="text-muted">Approval ID</div>
+        {% if record.approval_id %}
+          <code>{{ record.approval_id }}</code>
+        {% else %}
+          <span class="text-muted">–</span>
+        {% endif %}
+      </div>
+      <div class="col-md-4">
+        <div class="text-muted">Record fingerprint</div>
+        <code>{{ record.record_fingerprint }}</code>
+      </div>
+      <div class="col-md-4">
+        <div class="text-muted">Record path</div>
+        <code>{{ record.path }}</code>
+      </div>
+    </div>
+
+    <div class="alert alert-light border small mt-3 mb-0">
+      {{ record.message }}
+    </div>
+  </div>
+</div>
+
+<div class="row g-4 mb-4">
+  <div class="col-lg-6">
+    <div class="card h-100">
+      <div class="card-body">
+        <div class="fw-semibold mb-2">Output tail</div>
+        {% if payload.output_tail %}
+          <pre class="border rounded bg-light p-2 small mb-0">{% for line in payload.output_tail %}{{ line }}
+{% endfor %}</pre>
+        {% else %}
+          <div class="text-muted small">No output tail stored.</div>
+        {% endif %}
+
+        <details class="mt-3">
+          <summary class="small fw-semibold">
+            <span class="details-closed-label">Show full output</span>
+            <span class="details-open-label">Hide full output</span>
+          </summary>
+          {% if has_output_lines %}
+            {% if output_lines %}
+              <pre class="border rounded bg-light p-2 small mt-2 mb-0">{% for line in output_lines %}{{ line }}
+{% endfor %}</pre>
+            {% else %}
+              <div class="text-muted small mt-2">
+                No full output was captured.
+              </div>
+            {% endif %}
+          {% else %}
+            <div class="text-muted small mt-2">
+              Full output is not available for this execution record.
+            </div>
+          {% endif %}
+        </details>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-6">
+    <div class="card h-100">
+      <div class="card-body">
+        <div class="fw-semibold mb-2">Error tail</div>
+        {% if payload.error_tail %}
+          <pre class="border rounded bg-light p-2 small mb-0 text-danger">{% for line in payload.error_tail %}{{ line }}
+{% endfor %}</pre>
+        {% else %}
+          <div class="text-muted small">No error tail stored.</div>
+        {% endif %}
+
+        <details class="mt-3">
+          <summary class="small fw-semibold">
+            <span class="details-closed-label">Show full error output</span>
+            <span class="details-open-label">Hide full error output</span>
+          </summary>
+          {% if has_error_lines %}
+            {% if error_lines %}
+              <pre class="border rounded bg-light p-2 small mt-2 mb-0 text-danger">{% for line in error_lines %}{{ line }}
+{% endfor %}</pre>
+            {% else %}
+              <div class="text-muted small mt-2">
+                No full error output was captured.
+              </div>
+            {% endif %}
+          {% else %}
+            <div class="text-muted small mt-2">
+              Full error output is not available for this execution record.
+            </div>
+          {% endif %}
+        </details>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card mb-4">
+  <div class="card-body">
+    <details>
+      <summary class="fw-semibold">
+        <span class="details-closed-label">Show stored JSON</span>
+        <span class="details-open-label">Hide stored JSON</span>
+      </summary>
+      <pre class="border rounded bg-light p-2 small mt-3 mb-0">{{ payload_json }}</pre>
+    </details>
+  </div>
+</div>
+{% endblock %}

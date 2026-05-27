@@ -12,6 +12,68 @@ This project adheres to [Semantic Versioning](https://semver.org/) and [Keep a C
 
 ---
 
+## [2.1.0] - 2026-05-27
+
+This release makes Architecture Execution Records operable from Architecture Control.
+
+Controlled UI executions are retained as deterministic audit artifacts and can be reviewed, filtered,  
+downloaded and governed through retention cleanup without changing the controlled execution path.
+
+---
+
+### ✨ Added
+
+#### Architecture Execution History
+
+- Added Architecture Execution Record history to Architecture Control  
+- Added scope-aware history filtering for the selected Architecture Control scope  
+- Added option to inspect records across all scopes  
+- Added history filters for execution status, dependency mode and execution date range  
+- Added stored execution record summaries with execution identifier, timestamps, duration,  
+status, scope, dependency mode and fingerprint references  
+- Added Architecture Execution Record detail view  
+- Added Architecture Execution Record JSON download  
+- Added retention cleanup for stored execution records older than selected retention windows
+
+---
+
+### 🔄 Improved
+
+#### Architecture Control Workflow
+
+- Extended Architecture Control from last-result inspection to persisted execution history inspection  
+- Kept execution history read-only except for explicit retention cleanup  
+- Kept controlled execution, approval checks and Architecture Guard enforcement unchanged  
+- Preserved Architecture Execution Records as compact file-backed audit artifacts
+
+#### Documentation
+
+- Updated Architecture Control Plane documentation with execution history and retention behavior  
+- Updated Load Execution Architecture with Architecture Execution Record history semantics  
+- Updated Determinism & Execution Semantics with history and retention fingerprint behavior  
+- Updated README Architecture Control summary
+
+---
+
+### 🔒 Governance & Determinism
+
+- Architecture Execution Record fingerprints remain derived from canonical record payloads  
+- History filtering and detail rendering do not change stored execution record payloads  
+- Retention cleanup removes stored execution record artifacts only  
+- Approval Artifacts, Architecture State artifacts, load run logs and load run snapshots  
+are not affected by execution record retention
+
+---
+
+### 🧪 Quality & Stability
+
+- Added tests for execution record loading, summary construction, filtering and retention cleanup  
+- Added tests for Architecture Control history rendering  
+- Added tests for execution record detail rendering and JSON download  
+- Added tests for retention action messaging
+
+---
+
 ## [2.0.0] - 2026-05-25
 
 This major release introduces **Architecture Control** for controlled, gated and auditable  

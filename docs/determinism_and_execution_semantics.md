@@ -174,6 +174,11 @@ Who executed which controlled architecture scope, under which review and depende
 
 The record fingerprint is derived from the canonical JSON representation of the execution record.
 
+Stored Architecture Execution Records remain deterministic audit artifacts when displayed through  
+Architecture Control history, opened as detail views, downloaded as JSON, or removed by retention cleanup.  
+History filtering and retention operate on stored record metadata and do not change the canonical record payload  
+or its fingerprint.
+
 ---
 
 ## 🔧 6. Window functions

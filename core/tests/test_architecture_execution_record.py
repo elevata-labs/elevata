@@ -23,12 +23,15 @@ Contact: <https://github.com/elevata-labs/elevata>.
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 from types import SimpleNamespace
 
 from metadata.architecture.execution_record import (
+  ArchitectureExecutionRecordFilters,
   ArchitectureExecutionRecordStore,
   build_architecture_execution_record,
   render_architecture_execution_record_json,
+  render_architecture_execution_record_payload_json,
 )
 
 
@@ -115,3 +118,148 @@ def test_architecture_execution_record_store_writes_json(tmp_path) -> None:
   assert payload["execution_id"] == "exec_123"
   assert payload["record_fingerprint"] == record.record_fingerprint
   assert store.iter_record_paths() == (path,)
+
+
+def _record_for_store(
+  *,
+  execution_id: str,
+  started_at: str,
+  status: str = "success",
+  scope_key: str = "bizcore.bc_dim_customer",
+  dependency_mode: str = "target_only",
+):
+  """
+  Build an Architecture Execution Record for store query tests.
+  """
+  base = _result().__dict__.copy()
+  base.update({
+    "execution_id": execution_id,
+    "started_at": started_at,
+    "finished_at": started_at,
+    "status": status,
+    "scope_key": scope_key,
+    "scope_label": scope_key,
+    "dependency_mode": dependency_mode,
+  })
+  return build_architecture_execution_record(SimpleNamespace(**base))
+
+
+def test_render_architecture_execution_record_payload_json_is_canonical() -> None:
+  """
+  Verify stored execution record payloads render as canonical JSON.
+  """
+  payload = {
+    "record_type": "architecture_execution_record",
+    "record_version": 1,
+    "execution_id": "exec_123",
+  }
+
+  rendered = render_architecture_execution_record_payload_json(payload)
+
+  assert json.loads(rendered) == payload
+  assert rendered.endswith("\n")
+
+
+def test_architecture_execution_record_store_loads_payload_and_summary(tmp_path) -> None:
+  """
+  Verify stored records can be loaded as payloads and summaries.
+  """
+  record = build_architecture_execution_record(_result())
+  store = ArchitectureExecutionRecordStore(base_path=tmp_path)
+  store.save(record)
+
+  payload = store.load_payload("exec_123")
+  summary = store.load_summary("exec_123")
+
+  assert payload["execution_id"] == "exec_123"
+  assert summary.execution_id == "exec_123"
+  assert summary.scope_key == "bizcore.bc_dim_customer"
+  assert summary.dependency_mode == "target_only"
+  assert summary.record_fingerprint == record.record_fingerprint
+  assert summary.path == str(tmp_path / "exec_123.execution.json")
+
+
+def test_architecture_execution_record_store_lists_filtered_records(tmp_path) -> None:
+  """
+  Verify execution record history filters operate on stored record payloads.
+  """
+  store = ArchitectureExecutionRecordStore(base_path=tmp_path)
+  store.save(_record_for_store(
+    execution_id="exec_old_success",
+    started_at="2026-05-21T10:00:00+00:00",
+    status="success",
+    scope_key="bizcore.Customer",
+    dependency_mode="target_only",
+  ))
+  store.save(_record_for_store(
+    execution_id="exec_new_failed",
+    started_at="2026-05-24T10:00:00+00:00",
+    status="failed",
+    scope_key="serving.Customer",
+    dependency_mode="with_dependencies",
+  ))
+
+  failed = store.list_records(
+    ArchitectureExecutionRecordFilters(status="failed"),
+    limit=None,
+  )
+  target_only = store.list_records(
+    ArchitectureExecutionRecordFilters(dependency_mode="target_only"),
+    limit=None,
+  )
+  serving = store.list_records(
+    ArchitectureExecutionRecordFilters(scope_key="serving.Customer"),
+    limit=None,
+  )
+
+  assert [summary.execution_id for summary in failed] == ["exec_new_failed"]
+  assert [summary.execution_id for summary in target_only] == ["exec_old_success"]
+  assert [summary.execution_id for summary in serving] == ["exec_new_failed"]
+
+
+def test_architecture_execution_record_store_filters_by_started_date(tmp_path) -> None:
+  """
+  Verify execution record history supports inclusive started timestamp filters.
+  """
+  store = ArchitectureExecutionRecordStore(base_path=tmp_path)
+  store.save(_record_for_store(
+    execution_id="exec_before",
+    started_at="2026-05-20T10:00:00+00:00",
+  ))
+  store.save(_record_for_store(
+    execution_id="exec_after",
+    started_at="2026-05-24T10:00:00+00:00",
+  ))
+
+  records = store.list_records(
+    ArchitectureExecutionRecordFilters(
+      started_from=datetime(2026, 5, 23, tzinfo=timezone.utc),
+      started_to=datetime(2026, 5, 25, tzinfo=timezone.utc),
+    ),
+    limit=None,
+  )
+
+  assert [summary.execution_id for summary in records] == ["exec_after"]
+
+
+def test_architecture_execution_record_store_deletes_old_records(tmp_path) -> None:
+  """
+  Verify retention deletes only records older than the selected cutoff.
+  """
+  store = ArchitectureExecutionRecordStore(base_path=tmp_path)
+  store.save(_record_for_store(
+    execution_id="exec_old",
+    started_at="2026-05-20T10:00:00+00:00",
+  ))
+  store.save(_record_for_store(
+    execution_id="exec_recent",
+    started_at="2026-05-24T10:00:00+00:00",
+  ))
+
+  deleted = store.delete_older_than(
+    datetime(2026, 5, 22, tzinfo=timezone.utc),
+  )
+
+  assert deleted == 1
+  assert not (tmp_path / "exec_old.execution.json").exists()
+  assert (tmp_path / "exec_recent.execution.json").exists()

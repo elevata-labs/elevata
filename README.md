@@ -52,7 +52,7 @@ validated, and applied deterministically before execution.
 
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/elevata-labs/elevata/main/docs/elevata_v2_0_0.png" alt="elevata UI preview" width="700"/>
+  <img src="https://raw.githubusercontent.com/elevata-labs/elevata/main/docs/elevata_v2_1_0.png" alt="elevata UI preview" width="700"/>
   <br/>
   <em>Dataset detail view with lineage, metadata, and dialect-aware SQL previews</em>
 </p>
@@ -134,7 +134,8 @@ The Architecture Control UI makes approval state, scope, policy status, change s
 execution preview, dependency mode, captured output and execution records visible for controlled scopes.
 
 Users can inspect reports, download report JSON, create Approval Artifacts, verify approvals,  
-execute approved or no-change scopes, and inspect the resulting Architecture Execution Record.
+execute approved or no-change scopes, inspect the resulting Architecture Execution Record,  
+review stored execution history, download record JSON, and apply execution record retention.
 
 ---
 

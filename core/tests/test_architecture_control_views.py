@@ -452,7 +452,7 @@ def test_architecture_control_execute_emits_error_message(
   assert emitted == [
     (
       "error",
-      "Controlled execution failed. See Last controlled execution for details.",
+      "Controlled execution failed. See the execution record for details.",
     ),
   ]
   assert redirects[0].startswith(
@@ -465,3 +465,220 @@ def test_architecture_control_execute_emits_error_message(
     request.session["architecture_control_execution_results"][result_id]["status"]
     == "failed"
   )
+
+
+def test_architecture_control_view_renders_execution_history(
+  monkeypatch,
+) -> None:
+  """
+  Verify Architecture Control renders filtered execution history records.
+  """
+  _patch_scope_lists(monkeypatch)
+  rendered = _patch_render(monkeypatch)
+  status = _review_status()
+  history_records = (
+    SimpleNamespace(
+      execution_id="exec_123",
+      status="success",
+      scope_key="all",
+      dependency_mode="with_dependencies",
+    ),
+  )
+  calls: dict[str, Any] = {}
+
+  class FakeExecutionRecordStore:
+    """
+    Execution record store test double for history rendering.
+    """
+
+    def list_records(self, filters, *, limit: int | None = 50):
+      """
+      Capture history filters and return configured records.
+      """
+      calls["filters"] = filters
+      calls["limit"] = limit
+      return history_records
+
+  monkeypatch.setattr(
+    views,
+    "build_architecture_control_context",
+    lambda scope: SimpleNamespace(
+      scope=scope,
+      review_status=status,
+    ),
+  )
+  monkeypatch.setattr(
+    views,
+    "build_architecture_execution_preview",
+    lambda scope, *, control_context=None, no_deps=False: SimpleNamespace(
+      gate=SimpleNamespace(status="ready"),
+    ),
+  )
+  monkeypatch.setattr(
+    views,
+    "ArchitectureExecutionRecordStore",
+    lambda: FakeExecutionRecordStore(),
+  )
+
+  request = RequestFactory().get(
+    "/architecture-control/?scope_mode=all&history_status=success",
+  )
+  request.session = {}
+  response = _unwrap_view(views.architecture_control)(request)
+
+  assert response.status_code == 200
+  assert calls["filters"].scope_key == "all"
+  assert calls["filters"].status == "success"
+  assert calls["limit"] == 50
+  assert rendered["context"]["execution_history"] is history_records
+  assert rendered["context"]["execution_history_error"] is None
+  assert rendered["context"]["execution_history_filters"] == {
+    "history_scope": "scope",
+    "history_status": "success",
+    "history_dependency_mode": "",
+    "history_started_from": "",
+    "history_started_to": "",
+  }
+
+
+def test_architecture_execution_record_detail_renders_payload(
+  monkeypatch,
+) -> None:
+  """
+  Verify Architecture Execution Record detail rendering.
+  """
+  rendered = _patch_render(monkeypatch)
+
+  class FakeExecutionRecordStore:
+    """
+    Execution record store test double for detail rendering.
+    """
+
+    def load_payload(self, execution_id: str):
+      """
+      Return the stored payload for the requested execution identifier.
+      """
+      return {
+        "record_type": "architecture_execution_record",
+        "execution_id": execution_id,
+      }
+
+    def load_summary(self, execution_id: str):
+      """
+      Return the stored summary for the requested execution identifier.
+      """
+      return SimpleNamespace(execution_id=execution_id)
+
+  monkeypatch.setattr(
+    views,
+    "ArchitectureExecutionRecordStore",
+    lambda: FakeExecutionRecordStore(),
+  )
+
+  request = RequestFactory().get("/architecture-control/executions/exec_123/")
+  response = _unwrap_view(views.architecture_execution_record_detail)(
+    request,
+    "exec_123",
+  )
+
+  assert response.status_code == 200
+  assert rendered["template_name"] == (
+    "metadata/architecture/architecture_execution_record_detail.html"
+  )
+  assert rendered["context"]["execution_id"] == "exec_123"
+  assert rendered["context"]["payload"]["execution_id"] == "exec_123"
+  assert "exec_123" in rendered["context"]["payload_json"]
+
+
+def test_architecture_execution_record_download_returns_json_attachment(
+  monkeypatch,
+) -> None:
+  """
+  Verify Architecture Execution Record JSON download response.
+  """
+
+  class FakeExecutionRecordStore:
+    """
+    Execution record store test double for JSON download.
+    """
+
+    def load_payload(self, execution_id: str):
+      """
+      Return the stored payload for the requested execution identifier.
+      """
+      return {
+        "record_type": "architecture_execution_record",
+        "execution_id": execution_id,
+      }
+
+  monkeypatch.setattr(
+    views,
+    "ArchitectureExecutionRecordStore",
+    lambda: FakeExecutionRecordStore(),
+  )
+
+  request = RequestFactory().get(
+    "/architecture-control/executions/exec_123/download/",
+  )
+  response = _unwrap_view(views.architecture_execution_record_download)(
+    request,
+    "exec_123",
+  )
+
+  assert response.status_code == 200
+  assert response["Content-Type"] == "application/json; charset=utf-8"
+  assert b'"execution_id": "exec_123"' in response.content
+  assert response["Content-Disposition"] == (
+    'attachment; filename="exec_123_architecture_execution_record.json"'
+  )
+
+
+def test_architecture_execution_record_delete_old_emits_success_message(
+  monkeypatch,
+) -> None:
+  """
+  Verify execution record retention action messaging.
+  """
+  emitted = _patch_messages(monkeypatch)
+  redirects = _patch_redirect(monkeypatch)
+  calls: dict[str, Any] = {}
+
+  class FakeExecutionRecordStore:
+    """
+    Execution record store test double for retention.
+    """
+
+    def delete_older_than(self, cutoff):
+      """
+      Capture the retention cutoff and return a deletion count.
+      """
+      calls["cutoff"] = cutoff
+      return 2
+
+  monkeypatch.setattr(
+    views,
+    "ArchitectureExecutionRecordStore",
+    lambda: FakeExecutionRecordStore(),
+  )
+  monkeypatch.setattr(views, "reverse", lambda name: "/architecture-control/")
+
+  request = RequestFactory().post(
+    "/architecture-control/executions/delete-old/",
+    data={
+      "scope_mode": "all",
+      "retention_days": "30",
+    },
+  )
+  response = _unwrap_view(views.architecture_execution_record_delete_old)(request)
+
+  assert response.status_code == 302
+  assert calls["cutoff"] is not None
+  assert emitted == [
+    (
+      "success",
+      "Deleted 2 Architecture Execution Record(s) older than 30 days.",
+    ),
+  ]
+  assert redirects == [
+    "/architecture-control/?scope_mode=all#execution-history",
+  ]

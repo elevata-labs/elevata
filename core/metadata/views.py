@@ -22,6 +22,7 @@ Contact: <https://github.com/elevata-labs/elevata>.
 
 import re
 import traceback
+from datetime import datetime, timedelta, timezone
 from io import StringIO
 from typing import Any
 from urllib.parse import urlencode
@@ -62,6 +63,12 @@ from metadata.architecture.execution_preview import (
 from metadata.architecture.execution_control import (
   ArchitectureControlledExecutionError,
   execute_architecture_control_scope,
+)
+from metadata.architecture.execution_record import (
+  ArchitectureExecutionRecordFilters,
+  ArchitectureExecutionRecordStore,
+  format_architecture_execution_duration,
+  render_architecture_execution_record_payload_json,
 )
 from metadata.architecture.operations import (
   ArchitectureOperationsError,
@@ -160,6 +167,96 @@ def _architecture_control_report_filename(scope: ArchitectureControlScope) -> st
   dataset_token = _safe_download_token(scope.dataset_key, "dataset")
   dataset_token = dataset_token.replace(".", "_")
   return f"{dataset_token}_architecture_report.json"
+
+
+def _architecture_execution_record_filename(execution_id: str) -> str:
+  """
+  Build a stable download filename for an Architecture Execution Record.
+  """
+  token = _safe_download_token(execution_id, "execution")
+  return f"{token}_architecture_execution_record.json"
+
+
+def _parse_history_date(
+  value: str | None,
+  *,
+  end_of_day: bool = False,
+) -> datetime | None:
+  """
+  Parse a date filter value into a UTC timestamp.
+  """
+  raw_value = (value or "").strip()
+  if not raw_value:
+    return None
+
+  try:
+    parsed = datetime.strptime(raw_value, "%Y-%m-%d")
+  except ValueError:
+    return None
+
+  if end_of_day:
+    return parsed.replace(
+      hour=23,
+      minute=59,
+      second=59,
+      microsecond=999999,
+      tzinfo=timezone.utc,
+    )
+
+  return parsed.replace(tzinfo=timezone.utc)
+
+
+def _architecture_execution_history_filters(
+  request,
+  scope: ArchitectureControlScope | None,
+) -> tuple[ArchitectureExecutionRecordFilters, dict[str, str]]:
+  """
+  Build Architecture Execution Record history filters from request parameters.
+  """
+  values = request.GET
+  history_scope = (values.get("history_scope") or "scope").strip()
+  if history_scope not in {"scope", "all"}:
+    history_scope = "scope"
+
+  status = (values.get("history_status") or "").strip()
+  if status not in {"", "success", "failed"}:
+    status = ""
+
+  dependency_mode = (values.get("history_dependency_mode") or "").strip()
+  if dependency_mode not in {"", "with_dependencies", "target_only"}:
+    dependency_mode = ""
+
+  started_from = (values.get("history_started_from") or "").strip()
+  started_to = (values.get("history_started_to") or "").strip()
+
+  scope_key = None
+  if history_scope == "scope" and scope is not None:
+    scope_key = scope.key
+
+  filters = ArchitectureExecutionRecordFilters(
+    scope_key=scope_key,
+    status=status or None,
+    dependency_mode=dependency_mode or None,
+    started_from=_parse_history_date(started_from),
+    started_to=_parse_history_date(started_to, end_of_day=True),
+  )
+
+  filter_values = {
+    "history_scope": history_scope,
+    "history_status": status,
+    "history_dependency_mode": dependency_mode,
+    "history_started_from": started_from,
+    "history_started_to": started_to,
+  }
+
+  return filters, filter_values
+
+
+def _retention_cutoff(days: int) -> datetime:
+  """
+  Return the UTC cutoff timestamp for a retention window.
+  """
+  return datetime.now(timezone.utc) - timedelta(days=days)
 
 
 def _approval_actor_name(user) -> str:
@@ -268,6 +365,7 @@ def _architecture_control_redirect(
   params: dict[str, str],
   *,
   extra_params: dict[str, str] | None = None,
+  fragment: str | None = None,
 ):
   """
   Redirect to Architecture Control with the selected scope.
@@ -280,6 +378,10 @@ def _architecture_control_redirect(
   target_url = reverse("architecture_control")
   if querystring:
     target_url = f"{target_url}?{querystring}"
+
+  fragment_value = (fragment or "").strip().lstrip("#")
+  if fragment_value:
+    target_url = f"{target_url}#{fragment_value}"
 
   return redirect(target_url)
 
@@ -305,6 +407,9 @@ def _store_architecture_control_execution_result(request, result) -> str | None:
     "started_at": getattr(result, "started_at", ""),
     "finished_at": getattr(result, "finished_at", ""),
     "duration_ms": getattr(result, "duration_ms", 0),
+    "duration_label": format_architecture_execution_duration(
+      getattr(result, "duration_ms", 0),
+    ),
     "status": status,
     "succeeded": succeeded,
     "message": getattr(result, "message", ""),
@@ -840,6 +945,15 @@ def architecture_control(request):
   execution_preview = None
   execution_preview_error = None
   last_execution_result = None
+  execution_history = ()
+  execution_history_error = None
+  execution_history_filters = {
+    "history_scope": "scope",
+    "history_status": "",
+    "history_dependency_mode": "",
+    "history_started_from": "",
+    "history_started_to": "",
+  }
   error_message = None
 
   try:
@@ -858,6 +972,17 @@ def architecture_control(request):
       scope,
       report_fingerprint=report_fingerprint,
     )
+    history_filter_set, execution_history_filters = (
+      _architecture_execution_history_filters(request, scope)
+    )
+    try:
+      execution_history = ArchitectureExecutionRecordStore().list_records(
+        history_filter_set,
+        limit=50,
+      )
+    except Exception as exc:
+      logger.exception("Architecture Control execution history failed: %s", exc)
+      execution_history_error = str(exc)
     try:
       execution_preview = build_architecture_execution_preview(
         scope,
@@ -891,6 +1016,7 @@ def architecture_control(request):
     "scope_mode": scope_mode,
     "scope_params": scope_params,
     "scope_querystring": scope_querystring,
+    "control_back_querystring": request.GET.urlencode(),
     "selected_schema_short": selected_schema_short,
     "selected_target_dataset_pk": selected_target_dataset_pk,
     "execution_no_deps": execution_no_deps,
@@ -901,6 +1027,9 @@ def architecture_control(request):
     "execution_preview": execution_preview,
     "execution_preview_error": execution_preview_error,
     "last_execution_result": last_execution_result,
+    "execution_history": execution_history,
+    "execution_history_error": execution_history_error,
+    "execution_history_filters": execution_history_filters,
     "error_message": error_message,
   }
   return render(request, "metadata/architecture/architecture_control.html", ctx)
@@ -1052,7 +1181,23 @@ def architecture_control_execute(request):
     else:
       messages.error(
         request,
-        "Controlled execution failed. See Last controlled execution for details.",
+        "Controlled execution failed. See the execution record for details.",
+      )
+
+    execution_id = str(getattr(result, "execution_id", "") or "").strip()
+    if getattr(result, "execution_record_path", None) and execution_id:
+      back_querystring = urlencode(scope_params)
+      detail_querystring = urlencode({"back": back_querystring})
+      detail_url = reverse(
+        "architecture_execution_record_detail",
+        args=[execution_id],
+      )
+      return redirect(f"{detail_url}?{detail_querystring}")
+
+    if getattr(result, "execution_record_error", None):
+      messages.warning(
+        request,
+        "Controlled execution finished, but no execution record was stored.",
       )
   except (ArchitectureControlError, ArchitectureControlledExecutionError) as exc:
     messages.error(request, str(exc))
@@ -1067,6 +1212,126 @@ def architecture_control_execute(request):
   return _architecture_control_redirect(
     scope_params,
     extra_params=extra_params,
+    fragment="execution-history" if extra_params else None,
+  )
+
+
+@login_required
+@permission_required("metadata.view_targetdataset", raise_exception=True)
+def architecture_execution_record_detail(request, execution_id: str):
+  """
+  Render one stored Architecture Execution Record.
+  """
+  store = ArchitectureExecutionRecordStore()
+
+  try:
+    payload = store.load_payload(execution_id)
+    summary = store.load_summary(execution_id)
+  except FileNotFoundError:
+    raise Http404("Architecture Execution Record not found.")
+  except Exception as exc:
+    logger.exception("Architecture Execution Record detail failed: %s", exc)
+    return HttpResponse(
+      str(exc),
+      status=400,
+      content_type="text/plain; charset=utf-8",
+    )
+
+  back_querystring = (request.GET.get("back") or "").strip()
+  back_url = reverse("architecture_control")
+  if back_querystring:
+    back_url = f"{back_url}?{back_querystring}#execution-history"
+
+  output_lines = payload.get("output_lines")
+  error_lines = payload.get("error_lines")
+  has_output_lines = isinstance(output_lines, list)
+  has_error_lines = isinstance(error_lines, list)
+
+  ctx = {
+    "title": "Architecture Execution Record",
+    "execution_id": execution_id,
+    "record": summary,
+    "payload": payload,
+    "payload_json": render_architecture_execution_record_payload_json(payload),
+    "back_url": back_url,
+    "output_lines": output_lines if has_output_lines else None,
+    "error_lines": error_lines if has_error_lines else None,
+    "has_output_lines": has_output_lines,
+    "has_error_lines": has_error_lines,
+  }
+  return render(
+    request,
+    "metadata/architecture/architecture_execution_record_detail.html",
+    ctx,
+  )
+
+
+@login_required
+@permission_required("metadata.view_targetdataset", raise_exception=True)
+def architecture_execution_record_download(request, execution_id: str):
+  """
+  Download one stored Architecture Execution Record as deterministic JSON.
+  """
+  store = ArchitectureExecutionRecordStore()
+
+  try:
+    payload = store.load_payload(execution_id)
+    rendered = render_architecture_execution_record_payload_json(payload)
+  except FileNotFoundError:
+    raise Http404("Architecture Execution Record not found.")
+  except Exception as exc:
+    logger.exception("Architecture Execution Record download failed: %s", exc)
+    return HttpResponse(
+      str(exc),
+      status=400,
+      content_type="text/plain; charset=utf-8",
+    )
+
+  response = HttpResponse(rendered, content_type="application/json; charset=utf-8")
+  response["Content-Disposition"] = (
+    f'attachment; filename="{_architecture_execution_record_filename(execution_id)}"'
+  )
+  return response
+
+
+@login_required
+@permission_required("metadata.change_targetdataset", raise_exception=True)
+@require_POST
+def architecture_execution_record_delete_old(request):
+  """
+  Delete stored Architecture Execution Records older than the selected retention window.
+  """
+  scope_params = _architecture_control_scope_params(request)
+  retention_days = _safe_int(request.POST.get("retention_days"))
+  allowed_days = {7, 30, 90, 180, 365}
+
+  if retention_days not in allowed_days:
+    messages.error(request, "Unsupported execution record retention window.")
+    return _architecture_control_redirect(
+      scope_params,
+      fragment="execution-history",
+    )
+
+  cutoff = _retention_cutoff(retention_days)
+
+  try:
+    deleted = ArchitectureExecutionRecordStore().delete_older_than(cutoff)
+  except Exception as exc:
+    logger.exception("Architecture Execution Record retention failed: %s", exc)
+    messages.error(request, str(exc))
+    return _architecture_control_redirect(
+      scope_params,
+      fragment="execution-history",
+    )
+
+  messages.success(
+    request,
+    f"Deleted {deleted} Architecture Execution Record(s) older than {retention_days} days.",
+  )
+
+  return _architecture_control_redirect(
+    scope_params,
+    fragment="execution-history",
   )
 
 

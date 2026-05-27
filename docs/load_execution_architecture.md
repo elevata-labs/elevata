@@ -359,7 +359,8 @@ It provides:
 - approval-aware execution gating  
 - Architecture Guard enforcement  
 - controlled execution output capture  
-- Architecture Execution Record creation
+- Architecture Execution Record creation  
+- Architecture Execution Record history and retention
 
 Architecture Control supports the following execution scopes:
 
@@ -398,6 +399,9 @@ Architecture Execution Records are stored as JSON artifacts under:
 ```bash
 ELEVATA_ARCH_EXECUTION_DIR=.elevata/executions
 ```
+
+Architecture Control can list stored records, filter them by scope, status, date range and dependency mode,  
+show record details, download record JSON, and remove older stored records through retention cleanup.
 
 They complement the load run log and load run snapshot:
 

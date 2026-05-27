@@ -275,7 +275,11 @@ The Architecture Control UI provides controlled actions for architecture artifac
 - inspect the Execution Preview  
 - run controlled load execution  
 - inspect captured execution output  
-- inspect the Architecture Execution Record
+- inspect the Architecture Execution Record  
+- browse stored Architecture Execution Records  
+- filter execution history by scope, status, date range and dependency mode  
+- download stored execution record JSON  
+- apply retention cleanup for older execution records
 
 Approval Artifact creation records the logged-in reviewer, the decision timestamp,  
 and an optional review note. The artifact is stored in the configured approval artifact directory  
@@ -341,6 +345,11 @@ configured artifact directories.
 
 Architecture Execution Records use a table-shaped JSON contract. This keeps the file-backed store compact  
 while preserving a stable record structure for operational audit processing.
+
+Architecture Execution Record history is resolved from the configured execution record directory.  
+Retention cleanup removes stored execution record artifacts older than the selected retention window.  
+The cleanup operates on audit artifacts only and does not alter metadata definitions, approval artifacts,  
+Architecture State artifacts, load run logs or load run snapshots.
 
 ---
 
@@ -484,6 +493,10 @@ The record is stored as deterministic JSON:
 ```text
 <execution_id>.execution.json
 ```
+
+Stored records can be listed in Architecture Control, filtered by scope, status, date range and dependency mode,  
+opened as detail views, and downloaded as JSON audit artifacts. Retention cleanup removes older stored records  
+from the execution record store.
 
 Architecture Execution Records are audit artifacts. They complement load-run logs and snapshots:
 
