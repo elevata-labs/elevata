@@ -122,7 +122,35 @@ Schema evolution does not provision missing tables. Table provisioning is handle
 Preflight validation includes schema introspection and dialect-aware semantic equivalence rules  
 to suppress non-actionable type differences.
 
-### 🧩 2.7.2 Architecture Control
+### 🧩 2.7.2 Architecture Catalog
+
+Architecture Catalog provides the read-only discovery layer for metadata-defined
+executable architecture.
+
+It helps users inspect:
+
+- dataset inventory  
+- schema / layer placement  
+- materialization semantics  
+- incremental strategy  
+- ownership  
+- metadata health  
+- query logic  
+- upstream and downstream relationships  
+- column contract signals  
+- latest execution evidence references
+
+The Catalog links to dedicated pages for:
+
+- dataset details  
+- lineage  
+- query contracts  
+- Architecture Control  
+- execution history
+
+Architecture Catalog does not edit metadata and does not execute loads.
+
+### 🧩 2.7.3 Architecture Control
 
 Architecture Control makes metadata-defined architecture reviewable, approvable,  
 executable through controlled scopes, and auditable.

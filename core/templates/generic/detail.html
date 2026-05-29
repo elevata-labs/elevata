@@ -127,15 +127,23 @@ Contact: <https://github.com/elevata-labs/elevata>.
   <!-- Right: back button -->
   <div class="d-flex align-items-start">
     {% if model_name == 'targetdatasetreference' %}
-      <a class="btn btn-secondary btn-sm"
-         href="{% url 'targetdatasetreference_list' object.referencing_dataset.pk %}">
+      <button
+        type="button"
+        class="btn btn-secondary btn-sm"
+        data-default-back-url="{% url 'targetdatasetreference_list' object.referencing_dataset.pk %}"
+        onclick="window.elevataNavigateBack(this)"
+      >
         <i class="bi bi-arrow-left"></i> Back
-      </a>
+      </button>
     {% else %}
-      <a class="btn btn-secondary btn-sm"
-         href="{% url model_name|add:'_list' %}">
+      <button
+        type="button"
+        class="btn btn-secondary btn-sm"
+        data-default-back-url="{% url model_name|add:'_list' %}"
+        onclick="window.elevataNavigateBack(this)"
+      >
         <i class="bi bi-arrow-left"></i> Back
-      </a>
+      </button>
     {% endif %}
   </div>
 </div>

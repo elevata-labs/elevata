@@ -383,6 +383,15 @@ td .btn-group{ flex: none; }
   pointer-events: none;
 }
 
+.actions-cell .catalog-actions.btn-group > .btn:not(:first-child) {
+  margin-left: 0 !important;
+  border-left: 0;
+}
+
+.actions-cell .catalog-actions.btn-group > .btn:not(:first-child)::before {
+  content: none;
+}
+
 /* Limit width for long text columns (e.g., Description, Remark) */
 .table td.truncate {
   max-width: 250px;         /* Adjust width as needed */

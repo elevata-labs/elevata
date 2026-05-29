@@ -782,6 +782,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../architecture_catalog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ Architecture Catalog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../architecture_control_plane/" class="md-nav__link">
         
   
@@ -1510,6 +1538,298 @@ This project adheres to <a href="https://semver.org/">Semantic Versioning</a> an
 <p>🧾 Licensed under the <strong>AGPL-v3</strong> — open, governed, and community-driven.<br />
 💡 <em>elevata keeps evolving — one small, meaningful release at a time.</em></p>
 <hr />
+<h2 id="220-2026-05-29">[2.2.0] - 2026-05-29<a class="headerlink" href="#220-2026-05-29" title="Permanent link">&para;</a></h2>
+<p>This release introduces the <strong>Architecture Catalog</strong> as a read-only discovery layer<br />
+for metadata-defined executable architecture.</p>
+<p>The Catalog makes architecture easier to find, inspect and navigate without turning discovery<br />
+into editing or execution.</p>
+<hr />
+<h3 id="added">✨ Added<a class="headerlink" href="#added" title="Permanent link">&para;</a></h3>
+<h4 id="architecture-catalog">Architecture Catalog<a class="headerlink" href="#architecture-catalog" title="Permanent link">&para;</a></h4>
+<ul>
+<li>Added central Architecture Catalog workspace to the main navigation  </li>
+<li>Added read-only TargetDataset discovery with search and filters for:  <ul>
+<li>dataset key and name  </li>
+<li>schema / layer  </li>
+<li>owner  </li>
+<li>active status  </li>
+<li>system-managed status  </li>
+<li>materialization type  </li>
+<li>incremental strategy  </li>
+<li>query logic  </li>
+</ul>
+</li>
+<li>Added compact Catalog dataset summaries with:  <ul>
+<li>dataset key and description  </li>
+<li>architecture layer  </li>
+<li>effective materialization type  </li>
+<li>incremental strategy  </li>
+<li>ownership  </li>
+<li>upstream and downstream counts  </li>
+<li>metadata health  </li>
+<li>query logic  </li>
+<li>direct links to Details, Lineage, Query Contract and Architecture Control  </li>
+</ul>
+</li>
+<li>Added Architecture Catalog detail view for TargetDataset scopes  </li>
+<li>Added Catalog detail cards for architecture summary, ownership, health and execution evidence  </li>
+<li>Added Catalog detail upstream input and downstream consumer sections  </li>
+<li>Added Catalog detail column contract table  </li>
+<li>Added latest Architecture Execution Record summary on Catalog detail pages  </li>
+<li>Added direct link from Catalog detail to Architecture Control execution history  </li>
+</ul>
+<hr />
+<h3 id="improved">🔄 Improved<a class="headerlink" href="#improved" title="Permanent link">&para;</a></h3>
+<h4 id="architecture-navigation">Architecture Navigation<a class="headerlink" href="#architecture-navigation" title="Permanent link">&para;</a></h4>
+<ul>
+<li>Added context-aware back navigation across Catalog, Details, Lineage, Query Contract and Architecture Control  </li>
+<li>Kept Catalog navigation read-only and separate from execution actions  </li>
+<li>Improved button group consistency in Catalog action links  </li>
+<li>Added Query Contract back navigation for Catalog-driven workflows  </li>
+</ul>
+<h4 id="documentation">Documentation<a class="headerlink" href="#documentation" title="Permanent link">&para;</a></h4>
+<ul>
+<li>Added Architecture Catalog documentation  </li>
+<li>Added Architecture Catalog to documentation index and MkDocs navigation  </li>
+<li>Updated README with a compact Architecture Catalog summary  </li>
+<li>Updated Architecture Overview with Architecture Catalog positioning  </li>
+<li>Updated Architecture Control Plane documentation with Catalog boundary semantics  </li>
+<li>Updated Getting Started with Architecture Catalog UI entry point  </li>
+<li>Updated Platform Strategy with Architecture Catalog as discovery layer for the Architecture Runtime contract  </li>
+</ul>
+<hr />
+<h3 id="governance-determinism">🔒 Governance &amp; Determinism<a class="headerlink" href="#governance-determinism" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Architecture Catalog does not mutate metadata  </li>
+<li>Architecture Catalog does not execute loads  </li>
+<li>Architecture Control remains responsible for approval, execution, execution history and retention workflows  </li>
+<li>Latest execution evidence references do not change stored Architecture Execution Record payloads  </li>
+<li>Catalog views preserve the separation between discovery, control and execution  </li>
+</ul>
+<hr />
+<h3 id="quality-stability">🧪 Quality &amp; Stability<a class="headerlink" href="#quality-stability" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Added tests for Architecture Catalog context construction and filtering  </li>
+<li>Added tests for custom query logic filtering  </li>
+<li>Added tests for Catalog detail context construction  </li>
+<li>Added tests for Catalog detail execution evidence summary  </li>
+<li>Added view tests for Catalog workspace and Catalog detail rendering  </li>
+<li>Verified Catalog, Detail, Lineage, Query Contract and Architecture Control navigation in the UI  </li>
+</ul>
+<hr />
+<h2 id="210-2026-05-27">[2.1.0] - 2026-05-27<a class="headerlink" href="#210-2026-05-27" title="Permanent link">&para;</a></h2>
+<p>This release makes Architecture Execution Records operable from Architecture Control.</p>
+<p>Controlled UI executions are retained as deterministic audit artifacts and can be reviewed, filtered,<br />
+downloaded and governed through retention cleanup without changing the controlled execution path.</p>
+<hr />
+<h3 id="added_1">✨ Added<a class="headerlink" href="#added_1" title="Permanent link">&para;</a></h3>
+<h4 id="architecture-execution-history">Architecture Execution History<a class="headerlink" href="#architecture-execution-history" title="Permanent link">&para;</a></h4>
+<ul>
+<li>Added Architecture Execution Record history to Architecture Control  </li>
+<li>Added scope-aware history filtering for the selected Architecture Control scope  </li>
+<li>Added option to inspect records across all scopes  </li>
+<li>Added history filters for execution status, dependency mode and execution date range  </li>
+<li>Added stored execution record summaries with execution identifier, timestamps, duration,<br />
+status, scope, dependency mode and fingerprint references  </li>
+<li>Added Architecture Execution Record detail view  </li>
+<li>Added Architecture Execution Record JSON download  </li>
+<li>Added retention cleanup for stored execution records older than selected retention windows</li>
+</ul>
+<hr />
+<h3 id="improved_1">🔄 Improved<a class="headerlink" href="#improved_1" title="Permanent link">&para;</a></h3>
+<h4 id="architecture-control-workflow">Architecture Control Workflow<a class="headerlink" href="#architecture-control-workflow" title="Permanent link">&para;</a></h4>
+<ul>
+<li>Extended Architecture Control from last-result inspection to persisted execution history inspection  </li>
+<li>Kept execution history read-only except for explicit retention cleanup  </li>
+<li>Kept controlled execution, approval checks and Architecture Guard enforcement unchanged  </li>
+<li>Preserved Architecture Execution Records as compact file-backed audit artifacts</li>
+</ul>
+<h4 id="documentation_1">Documentation<a class="headerlink" href="#documentation_1" title="Permanent link">&para;</a></h4>
+<ul>
+<li>Updated Architecture Control Plane documentation with execution history and retention behavior  </li>
+<li>Updated Load Execution Architecture with Architecture Execution Record history semantics  </li>
+<li>Updated Determinism &amp; Execution Semantics with history and retention fingerprint behavior  </li>
+<li>Updated README Architecture Control summary</li>
+</ul>
+<hr />
+<h3 id="governance-determinism_1">🔒 Governance &amp; Determinism<a class="headerlink" href="#governance-determinism_1" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Architecture Execution Record fingerprints remain derived from canonical record payloads  </li>
+<li>History filtering and detail rendering do not change stored execution record payloads  </li>
+<li>Retention cleanup removes stored execution record artifacts only  </li>
+<li>Approval Artifacts, Architecture State artifacts, load run logs and load run snapshots<br />
+are not affected by execution record retention</li>
+</ul>
+<hr />
+<h3 id="quality-stability_1">🧪 Quality &amp; Stability<a class="headerlink" href="#quality-stability_1" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Added tests for execution record loading, summary construction, filtering and retention cleanup  </li>
+<li>Added tests for Architecture Control history rendering  </li>
+<li>Added tests for execution record detail rendering and JSON download  </li>
+<li>Added tests for retention action messaging</li>
+</ul>
+<hr />
+<h2 id="200-2026-05-25">[2.0.0] - 2026-05-25<a class="headerlink" href="#200-2026-05-25" title="Permanent link">&para;</a></h2>
+<p>This major release introduces <strong>Architecture Control</strong> for controlled, gated and auditable<br />
+execution of metadata-defined architecture from the UI.</p>
+<p>Architecture review workflows now extend into execution: users can select controlled scopes,<br />
+inspect the Execution Preview, verify approval readiness, run controlled loads, inspect captured<br />
+output, and retain deterministic Architecture Execution Records.</p>
+<p>The focus is closing the Architecture Runtime loop:</p>
+<pre><code class="language-text">Architecture State
+  ↓
+Architecture Change Report
+  ↓
+Architecture Approval Artifact
+  ↓
+Execution Preview
+  ↓
+Controlled Execution
+  ↓
+Architecture Execution Record
+</code></pre>
+<hr />
+<h3 id="added_2">✨ Added<a class="headerlink" href="#added_2" title="Permanent link">&para;</a></h3>
+<h4 id="architecture-control-ui">Architecture Control UI<a class="headerlink" href="#architecture-control-ui" title="Permanent link">&para;</a></h4>
+<ul>
+<li>Added a central Architecture Control workspace to the main navigation  </li>
+<li>Added settings-driven support for non-model main menu entries  </li>
+<li>Added scope-aware Architecture Control for:  <ul>
+<li>all active target datasets  </li>
+<li>schema scopes  </li>
+<li>TargetDataset scopes  </li>
+<li>TargetDataset scopes with target-only execution  </li>
+</ul>
+</li>
+<li>Kept TargetDataset-level Architecture Control as a contextual deep link  </li>
+<li>Added guided scope selection with automatic TargetDataset and schema context handling  </li>
+<li>Added UI controls for dependency mode selection where applicable  </li>
+<li>Added full-scope visibility for selected roots and execution order through expandable sections</li>
+</ul>
+<h4 id="execution-preview">Execution Preview<a class="headerlink" href="#execution-preview" title="Permanent link">&para;</a></h4>
+<ul>
+<li>Added Architecture Control Execution Preview for selected scopes  </li>
+<li>Added root dataset and execution-order inspection before execution  </li>
+<li>Added execution gate status for:  <ul>
+<li>ready  </li>
+<li>ready without architecture changes  </li>
+<li>pending approval  </li>
+<li>blocked by policy  </li>
+</ul>
+</li>
+<li>Added dependency mode visibility:  <ul>
+<li><code>with_dependencies</code>  </li>
+<li><code>target_only</code>  </li>
+</ul>
+</li>
+<li>Added deterministic preview fingerprints</li>
+</ul>
+<h4 id="controlled-execution">Controlled Execution<a class="headerlink" href="#controlled-execution" title="Permanent link">&para;</a></h4>
+<ul>
+<li>Added controlled UI execution for approved or no-change Architecture Control scopes  </li>
+<li>Added constrained <code>elevata_load --execute</code> invocation from Architecture Control  </li>
+<li>Added enforced Architecture Guard mode for UI-driven controlled execution  </li>
+<li>Added target-only execution for TargetDataset scopes  </li>
+<li>Added execution confirmation and in-page running feedback  </li>
+<li>Added captured command output and error output in the UI  </li>
+<li>Added expandable full captured output and error details  </li>
+<li>Added session-bound execution result display after redirect  </li>
+<li>Prevented stale execution results from appearing on unrelated or fresh Architecture Control page loads</li>
+</ul>
+<h4 id="architecture-execution-records">Architecture Execution Records<a class="headerlink" href="#architecture-execution-records" title="Permanent link">&para;</a></h4>
+<ul>
+<li>Added deterministic Architecture Execution Records for controlled Architecture Control executions  </li>
+<li>Added file-backed Architecture Execution Record store  </li>
+<li>Added configurable execution record directory via <code>ELEVATA_ARCH_EXECUTION_DIR</code>  </li>
+<li>Added execution record JSON payload with:  <ul>
+<li>execution identifier  </li>
+<li>operator  </li>
+<li>timestamps and duration  </li>
+<li>execution status and message  </li>
+<li>Architecture Control scope  </li>
+<li>dependency mode  </li>
+<li>report fingerprint  </li>
+<li>approval identifier  </li>
+<li>preview fingerprint  </li>
+<li>command invocation metadata  </li>
+<li>output and error tails  </li>
+<li>output and error line counts  </li>
+<li>deterministic record fingerprint  </li>
+</ul>
+</li>
+<li>Added UI display of stored execution record path and fingerprint</li>
+</ul>
+<h4 id="execution-output-usability">Execution Output Usability<a class="headerlink" href="#execution-output-usability" title="Permanent link">&para;</a></h4>
+<ul>
+<li>Added command output tail display for controlled executions  </li>
+<li>Added expandable captured output and captured error sections  </li>
+<li>Added ANSI escape sequence cleanup for captured command output  </li>
+<li>Added show/hide labels for expandable details sections  </li>
+<li>Added clearer controlled execution failure messages with details retained in the execution result panel</li>
+</ul>
+<hr />
+<h3 id="improved_2">🔄 Improved<a class="headerlink" href="#improved_2" title="Permanent link">&para;</a></h3>
+<h4 id="architecture-control-workflow_1">Architecture Control Workflow<a class="headerlink" href="#architecture-control-workflow_1" title="Permanent link">&para;</a></h4>
+<ul>
+<li>Renamed the UI concept from Architecture Operations to Architecture Control  </li>
+<li>Promoted Architecture Control from TargetDataset-only workflow to a central scope-aware workspace  </li>
+<li>Preserved TargetDataset deep links for direct contextual entry  </li>
+<li>Improved scope handling to avoid accidental all-dataset execution when a TargetDataset is selected  </li>
+<li>Improved schema and TargetDataset selection behavior for clearer user expectations  </li>
+<li>Kept target-only execution restricted to TargetDataset scopes  </li>
+<li>Kept schema and all-dataset execution lineage-aware by default</li>
+</ul>
+<h4 id="execution-semantics">Execution Semantics<a class="headerlink" href="#execution-semantics" title="Permanent link">&para;</a></h4>
+<ul>
+<li>Treated no-change Architecture Control scopes as executable without requiring an Approval Artifact  </li>
+<li>Kept controlled execution blocked when reports contain blocking policy decisions  </li>
+<li>Kept controlled execution blocked when architecture changes require but do not have matching approval  </li>
+<li>Ensured UI-driven execution uses the same load runner and guardrails as CLI execution  </li>
+<li>Kept arbitrary diagnostic and debug flags CLI-only</li>
+</ul>
+<h4 id="shadow-compare-and-guard-diagnostics">Shadow Compare and Guard Diagnostics<a class="headerlink" href="#shadow-compare-and-guard-diagnostics" title="Permanent link">&para;</a></h4>
+<ul>
+<li>Refined schema-operation shadow compare for Full Refresh scopes  </li>
+<li>Suppressed non-actionable Full Refresh <code>ALTER_COLUMN</code> expectations  </li>
+<li>Restricted expected schema-operation comparison to materialization-relevant datasets  </li>
+<li>Improved shadow-compare output with comparable action counts and suppression counters</li>
+</ul>
+<h4 id="documentation_2">Documentation<a class="headerlink" href="#documentation_2" title="Permanent link">&para;</a></h4>
+<ul>
+<li>Updated Architecture Control Plane documentation for controlled execution and execution records  </li>
+<li>Updated Architecture Overview for the Architecture Control runtime flow  </li>
+<li>Updated Load Execution Architecture with Architecture Control execution semantics  </li>
+<li>Updated Schema Evolution documentation with controlled execution and audit records  </li>
+<li>Updated Determinism &amp; Execution Semantics with Architecture Execution Record fingerprints  </li>
+<li>Updated Getting Started with Architecture Control workflow and execution record configuration  </li>
+<li>Updated Platform Strategy to reflect Architecture Runtime, Architecture Control and audit evidence  </li>
+<li>Updated README Architecture Control summary  </li>
+<li>Added <code>.env.example</code> entry for <code>ELEVATA_ARCH_EXECUTION_DIR</code></li>
+</ul>
+<hr />
+<h3 id="governance-determinism_2">🔒 Governance &amp; Determinism<a class="headerlink" href="#governance-determinism_2" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Architecture Control execution remains gated by report state, approval matching and policy decisions  </li>
+<li>Controlled execution does not bypass preflight validation, materialization policy checks or Architecture Guard enforcement  </li>
+<li>Architecture Execution Records provide deterministic audit references for controlled UI executions  </li>
+<li>Execution Preview fingerprints include scope, dependency mode, report fingerprint, approval state and execution dataset set  </li>
+<li>Approval Artifacts remain bound to exact Architecture Change Report fingerprints  </li>
+<li>Target-only execution is explicit, visible and restricted to TargetDataset scopes  </li>
+<li>Full captured output remains inspectable in the UI while persisted execution records retain compact audit payloads</li>
+</ul>
+<hr />
+<h3 id="quality-stability_2">🧪 Quality &amp; Stability<a class="headerlink" href="#quality-stability_2" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Added tests for Architecture Execution Preview gate behavior and target-only execution  </li>
+<li>Added tests for controlled Architecture Control execution command construction  </li>
+<li>Added tests for controlled execution failure handling and Architecture Guard enforcement  </li>
+<li>Added tests for Architecture Execution Record creation, rendering and storage  </li>
+<li>Added tests for scope-aware menu configuration  </li>
+<li>Added tests for Architecture Control view execution feedback and session-bound result handling  </li>
+<li>Updated shadow-compare tests for Full Refresh suppression behavior  </li>
+<li>Verified controlled execution through the UI for TargetDataset and target-only scopes</li>
+</ul>
+<hr />
 <h2 id="190-2026-05-21">[1.9.0] - 2026-05-21<a class="headerlink" href="#190-2026-05-21" title="Permanent link">&para;</a></h2>
 <p>This release introduces the <strong>Architecture Operations UI</strong> for the Architecture Control Plane.</p>
 <p>Architecture review workflows can now be operated directly from the TargetDataset Architecture Review page:<br />
@@ -1517,7 +1837,7 @@ reports can be generated, inspected, downloaded, approved, checked and refreshed
 <p>The focus is making architecture review workflows actionable while keeping load execution protected by<br />
 the load runner and materialization guardrails.</p>
 <hr />
-<h3 id="added">✨ Added<a class="headerlink" href="#added" title="Permanent link">&para;</a></h3>
+<h3 id="added_3">✨ Added<a class="headerlink" href="#added_3" title="Permanent link">&para;</a></h3>
 <h4 id="architecture-operations-ui">Architecture Operations UI<a class="headerlink" href="#architecture-operations-ui" title="Permanent link">&para;</a></h4>
 <ul>
 <li>Added an Architecture Operations panel to the TargetDataset Architecture Review page  </li>
@@ -1536,7 +1856,7 @@ the load runner and materialization guardrails.</p>
 <li>Added stored Approval Artifact checks with explicit valid, missing, drift and invalid outcomes  </li>
 <li>Added deterministic report rendering paths for UI preview and JSON download</li>
 </ul>
-<h3 id="improved">🔄 Improved<a class="headerlink" href="#improved" title="Permanent link">&para;</a></h3>
+<h3 id="improved_3">🔄 Improved<a class="headerlink" href="#improved_3" title="Permanent link">&para;</a></h3>
 <h4 id="architecture-review-workflow">Architecture Review Workflow<a class="headerlink" href="#architecture-review-workflow" title="Permanent link">&para;</a></h4>
 <ul>
 <li>Replaced manual command guidance on the Architecture Review page with UI-driven artifact actions  </li>
@@ -1546,14 +1866,14 @@ or already has a matching approval  </li>
 <li>Surfaced approval check results through standard UI messages  </li>
 <li>Added global message rendering for success, warning and error feedback</li>
 </ul>
-<h4 id="documentation">Documentation<a class="headerlink" href="#documentation" title="Permanent link">&para;</a></h4>
+<h4 id="documentation_3">Documentation<a class="headerlink" href="#documentation_3" title="Permanent link">&para;</a></h4>
 <ul>
 <li>Documented the Architecture Operations UI in the Architecture Control Plane guide  </li>
 <li>Documented server-side artifact storage semantics for shared deployments  </li>
 <li>Clarified persistent storage requirements for <code>ELEVATA_ARCH_STATE_DIR</code> and <code>ELEVATA_ARCH_APPROVAL_DIR</code>  </li>
 <li>Updated README Architecture Control Plane summary with UI-operable review workflows</li>
 </ul>
-<h3 id="governance-determinism">🔒 Governance &amp; Determinism<a class="headerlink" href="#governance-determinism" title="Permanent link">&para;</a></h3>
+<h3 id="governance-determinism_3">🔒 Governance &amp; Determinism<a class="headerlink" href="#governance-determinism_3" title="Permanent link">&para;</a></h3>
 <ul>
 <li>Architecture Operations UI actions operate on deterministic Architecture Control Plane artifacts  </li>
 <li>Report preview and JSON download use the scoped Architecture Change Report contract  </li>
@@ -1561,7 +1881,7 @@ or already has a matching approval  </li>
 <li>Approval checks compare stored artifacts against the current scoped report  </li>
 <li>Load execution remains separated from Architecture Operations UI actions</li>
 </ul>
-<h3 id="quality-stability">🧪 Quality &amp; Stability<a class="headerlink" href="#quality-stability" title="Permanent link">&para;</a></h3>
+<h3 id="quality-stability_3">🧪 Quality &amp; Stability<a class="headerlink" href="#quality-stability_3" title="Permanent link">&para;</a></h3>
 <ul>
 <li>Added tests for Architecture Operations service context construction  </li>
 <li>Added tests for report rendering through Architecture Operations service functions  </li>
@@ -1577,7 +1897,7 @@ original report fingerprint, and surfaced through a read-only Architecture Revie
 <p>The focus is closing the architecture review loop: planned architecture changes become reviewable,<br />
 approvable, verifiable, and visible as stable artifacts.</p>
 <hr />
-<h3 id="added_1">✨ Added<a class="headerlink" href="#added_1" title="Permanent link">&para;</a></h3>
+<h3 id="added_4">✨ Added<a class="headerlink" href="#added_4" title="Permanent link">&para;</a></h3>
 <h4 id="architecture-approval-artifacts">Architecture Approval Artifacts<a class="headerlink" href="#architecture-approval-artifacts" title="Permanent link">&para;</a></h4>
 <ul>
 <li>Added deterministic Architecture Approval Artifacts for Architecture Change Reports  </li>
@@ -1623,14 +1943,14 @@ approvable, verifiable, and visible as stable artifacts.</p>
   architecture scope, state fingerprints and change summary  </li>
 <li>Added TargetDataset navigation entry for Architecture Review Status</li>
 </ul>
-<h3 id="governance-determinism_1">🔒 Governance &amp; Determinism<a class="headerlink" href="#governance-determinism_1" title="Permanent link">&para;</a></h3>
+<h3 id="governance-determinism_4">🔒 Governance &amp; Determinism<a class="headerlink" href="#governance-determinism_4" title="Permanent link">&para;</a></h3>
 <ul>
 <li>Approval artifacts bind review decisions to exact Architecture Change Report fingerprints  </li>
 <li>Approval checks fail when the artifact payload, approval identifier, report reference or review decision is invalid  </li>
 <li>Approval does not override policy decisions or load execution guardrails  </li>
 <li>The Architecture Control Plane remains read-only; load execution remains protected by preflight and materialization checks</li>
 </ul>
-<h3 id="quality-stability_1">🧪 Quality &amp; Stability<a class="headerlink" href="#quality-stability_1" title="Permanent link">&para;</a></h3>
+<h3 id="quality-stability_4">🧪 Quality &amp; Stability<a class="headerlink" href="#quality-stability_4" title="Permanent link">&para;</a></h3>
 <ul>
 <li>Added tests for Architecture Approval Artifact determinism  </li>
 <li>Added tests for approval artifact store behavior and fingerprint validation  </li>
@@ -1644,7 +1964,7 @@ approvable, verifiable, and visible as stable artifacts.</p>
 architecture reports precise, self-contained, and fingerprint-stable for review and CI workflows.</p>
 <p>The focus is reliable scope semantics for deterministic architecture artifacts.</p>
 <hr />
-<h3 id="improved_1">🔄 Improved<a class="headerlink" href="#improved_1" title="Permanent link">&para;</a></h3>
+<h3 id="improved_4">🔄 Improved<a class="headerlink" href="#improved_4" title="Permanent link">&para;</a></h3>
 <h4 id="architecture-control-plane">Architecture Control Plane<a class="headerlink" href="#architecture-control-plane" title="Permanent link">&para;</a></h4>
 <ul>
 <li>Hardened scoped Architecture Change Reports so report payloads only contain<br />
@@ -1660,7 +1980,7 @@ architecture reports precise, self-contained, and fingerprint-stable for review 
 <li>Strengthened report fingerprints so scoped report fingerprints represent the<br />
   selected architecture scope precisely</li>
 </ul>
-<h3 id="documentation_1">📘 Documentation<a class="headerlink" href="#documentation_1" title="Permanent link">&para;</a></h3>
+<h3 id="documentation_4">📘 Documentation<a class="headerlink" href="#documentation_4" title="Permanent link">&para;</a></h3>
 <ul>
 <li>Documented Architecture Control Plane scope semantics for <code>all</code> and <code>scoped</code> 
   report modes  </li>
@@ -1669,7 +1989,7 @@ architecture reports precise, self-contained, and fingerprint-stable for review 
 <li>Added operational smoke checks for Architecture State, Architecture Change<br />
   Reports, Architecture Promotion Reports and no-change exit behavior</li>
 </ul>
-<h3 id="quality-stability_2">🧪 Quality &amp; Stability<a class="headerlink" href="#quality-stability_2" title="Permanent link">&para;</a></h3>
+<h3 id="quality-stability_5">🧪 Quality &amp; Stability<a class="headerlink" href="#quality-stability_5" title="Permanent link">&para;</a></h3>
 <ul>
 <li>Added tests for scoped report payload consistency  </li>
 <li>Added tests for <code>elevata_plan</code> scope mode behavior  </li>
@@ -1684,7 +2004,7 @@ Architecture State, Change Reports, and Promotion Reports expose stable fingerpr
 intent reviewable, comparable, and CI-friendly.</p>
 <p>The focus is controlled lifecycle management for executable architecture.</p>
 <hr />
-<h3 id="added_2">✨ Added<a class="headerlink" href="#added_2" title="Permanent link">&para;</a></h3>
+<h3 id="added_5">✨ Added<a class="headerlink" href="#added_5" title="Permanent link">&para;</a></h3>
 <h4 id="architecture-control-plane_1">Architecture Control Plane<a class="headerlink" href="#architecture-control-plane_1" title="Permanent link">&para;</a></h4>
 <ul>
 <li>Added deterministic Architecture Change Reports via <code>elevata_plan</code>  </li>
@@ -1721,7 +2041,7 @@ intent reviewable, comparable, and CI-friendly.</p>
 <li>Added deterministic report rendering helpers for architecture and promotion reports</li>
 </ul>
 <hr />
-<h3 id="improved_2">🔄 Improved<a class="headerlink" href="#improved_2" title="Permanent link">&para;</a></h3>
+<h3 id="improved_5">🔄 Improved<a class="headerlink" href="#improved_5" title="Permanent link">&para;</a></h3>
 <ul>
 <li><code>elevata_load</code> uses shared architecture scope resolution while preserving execution guard behavior  </li>
 <li><code>elevata_load</code> uses shared shadow-compare utilities while preserving enforce-mode blocking semantics  </li>
@@ -1733,7 +2053,7 @@ intent reviewable, comparable, and CI-friendly.</p>
 and deterministic fingerprints</li>
 </ul>
 <hr />
-<h3 id="governance-determinism_2">🔒 Governance &amp; Determinism<a class="headerlink" href="#governance-determinism_2" title="Permanent link">&para;</a></h3>
+<h3 id="governance-determinism_5">🔒 Governance &amp; Determinism<a class="headerlink" href="#governance-determinism_5" title="Permanent link">&para;</a></h3>
 <ul>
 <li>Architecture changes can be reviewed as deterministic artifacts before execution  </li>
 <li>Promotion comparisons use stable Architecture State files as input artifacts  </li>
@@ -1742,7 +2062,7 @@ and deterministic fingerprints</li>
 <li>Load execution remains protected by its own preflight and guard checks</li>
 </ul>
 <hr />
-<h3 id="quality-stability_3">🧪 Quality &amp; Stability<a class="headerlink" href="#quality-stability_3" title="Permanent link">&para;</a></h3>
+<h3 id="quality-stability_6">🧪 Quality &amp; Stability<a class="headerlink" href="#quality-stability_6" title="Permanent link">&para;</a></h3>
 <ul>
 <li>Added tests for Architecture Change Reports</li>
 <li>Added tests for Architecture Promotion Reports</li>
@@ -1760,7 +2080,7 @@ Schema evolution is now driven by Architecture State → Architecture Diff → M
 and the resulting materialization steps are applied deterministically before load SQL execution.</p>
 <p>The focus is turning architecture from an observable plan into an executable runtime contract.</p>
 <hr />
-<h3 id="added_3">✨ Added<a class="headerlink" href="#added_3" title="Permanent link">&para;</a></h3>
+<h3 id="added_6">✨ Added<a class="headerlink" href="#added_6" title="Permanent link">&para;</a></h3>
 <h4 id="architecture-driven-materialization">Architecture-driven Materialization<a class="headerlink" href="#architecture-driven-materialization" title="Permanent link">&para;</a></h4>
 <ul>
 <li>MigrationPlan is now the authoritative schema-evolution intent for materialization  </li>
@@ -1788,7 +2108,7 @@ and the resulting materialization steps are applied deterministically before loa
 <li>Rebuild steps remain policy-aware and are only applied after preflight validation</li>
 </ul>
 <hr />
-<h3 id="improved_3">🔄 Improved<a class="headerlink" href="#improved_3" title="Permanent link">&para;</a></h3>
+<h3 id="improved_6">🔄 Improved<a class="headerlink" href="#improved_6" title="Permanent link">&para;</a></h3>
 <ul>
 <li><code>elevata_load</code> now requires Architecture MigrationPlan intent for deterministic materialization paths  </li>
 <li>Preflight behavior is stricter and more explainable before DDL or DML execution starts  </li>
@@ -1806,7 +2126,7 @@ and the resulting materialization steps are applied deterministically before loa
 <li>Cleaned up outdated preview-only wording around MigrationPlan semantics</li>
 </ul>
 <hr />
-<h3 id="governance-determinism_3">🔒 Governance &amp; Determinism<a class="headerlink" href="#governance-determinism_3" title="Permanent link">&para;</a></h3>
+<h3 id="governance-determinism_6">🔒 Governance &amp; Determinism<a class="headerlink" href="#governance-determinism_6" title="Permanent link">&para;</a></h3>
 <ul>
 <li>Architecture is now the source of truth for schema evolution intent  </li>
 <li>Materialization is no longer driven by implicit planner-side schema changes  </li>
@@ -1818,7 +2138,7 @@ and the resulting materialization steps are applied deterministically before loa
 <p>This patch release improves developer experience and UI consistency.<br />
 It adds safe test isolation (preventing accidental writes to the metadata DB),<br />
 updates the recommended Python version, and polishes list view actions.</p>
-<h3 id="improved_4">🔄 Improved<a class="headerlink" href="#improved_4" title="Permanent link">&para;</a></h3>
+<h3 id="improved_7">🔄 Improved<a class="headerlink" href="#improved_7" title="Permanent link">&para;</a></h3>
 <ul>
 <li>Recommended Python version updated to <strong>3.14</strong> (supported: <strong>Python 3.11+</strong>)</li>
 <li>Safer test runner setup:<ul>
@@ -1840,7 +2160,7 @@ updates the recommended Python version, and polishes list view actions.</p>
 scoping changes to the executed dataset set, and introducing policy-gated destructive schema operations.</p>
 <p>The focus is deterministic, explainable schema evolution across supported warehouses.</p>
 <hr />
-<h3 id="added_4">✨ Added<a class="headerlink" href="#added_4" title="Permanent link">&para;</a></h3>
+<h3 id="added_7">✨ Added<a class="headerlink" href="#added_7" title="Permanent link">&para;</a></h3>
 <h4 id="architecture-state-diff-scoped">Architecture State &amp; Diff (scoped)<a class="headerlink" href="#architecture-state-diff-scoped" title="Permanent link">&para;</a></h4>
 <ul>
 <li>Architecture state persistence with stable fingerprinting  </li>
@@ -1855,7 +2175,7 @@ scoping changes to the executed dataset set, and introducing policy-gated destru
 <li>Minimal CLI notice when destructive DDL is planned/executed (prevents “silent cleanup” surprises)</li>
 </ul>
 <hr />
-<h3 id="improved_5">🔄 Improved<a class="headerlink" href="#improved_5" title="Permanent link">&para;</a></h3>
+<h3 id="improved_8">🔄 Improved<a class="headerlink" href="#improved_8" title="Permanent link">&para;</a></h3>
 <ul>
 <li>Clearer CLI output for architecture drift and migration intent  </li>
 <li>More robust cross-dialect type normalization and equivalence handling  </li>
@@ -1889,7 +2209,7 @@ created through ManyToMany relations and scoped metadata editing workflows.</p>
 <p>The focus of this release is to ensure that all metadata mutations performed within<br />
 elevata's architecture runtime are consistently attributed to the initiating user.</p>
 <hr />
-<h3 id="added_5">✨ Added<a class="headerlink" href="#added_5" title="Permanent link">&para;</a></h3>
+<h3 id="added_8">✨ Added<a class="headerlink" href="#added_8" title="Permanent link">&para;</a></h3>
 <h4 id="deterministic-audit-attribution-for-through-models">Deterministic Audit Attribution for Through Models<a class="headerlink" href="#deterministic-audit-attribution-for-through-models" title="Permanent link">&para;</a></h4>
 <ul>
 <li>Introduced automatic audit propagation for ManyToMany through models
@@ -1900,7 +2220,7 @@ elevata's architecture runtime are consistently attributed to the initiating use
   and Query Builder operations</li>
 </ul>
 <hr />
-<h3 id="improved_6">⚙ Improved<a class="headerlink" href="#improved_6" title="Permanent link">&para;</a></h3>
+<h3 id="improved_9">⚙ Improved<a class="headerlink" href="#improved_9" title="Permanent link">&para;</a></h3>
 <h4 id="metadata-mutation-audit-consistency">Metadata Mutation Audit Consistency<a class="headerlink" href="#metadata-mutation-audit-consistency" title="Permanent link">&para;</a></h4>
 <ul>
 <li>Hardened audit attribution across metadata CRUD operations,
@@ -1920,7 +2240,7 @@ dialect-specific SQL keyword registry.</p>
 <p>The focus of this release is deterministic, dialect-owned handling
 of reserved identifiers across all supported warehouses.</p>
 <hr />
-<h3 id="added_6">✨ Added<a class="headerlink" href="#added_6" title="Permanent link">&para;</a></h3>
+<h3 id="added_9">✨ Added<a class="headerlink" href="#added_9" title="Permanent link">&para;</a></h3>
 <h4 id="deterministic-sql-keyword-registry">Deterministic SQL Keyword Registry<a class="headerlink" href="#deterministic-sql-keyword-registry" title="Permanent link">&para;</a></h4>
 <ul>
 <li>Introduced dialect-specific reserved keyword modules<br />
@@ -1939,7 +2259,7 @@ of reserved identifiers across all supported warehouses.</p>
 <li>Optional core SQL overlay for defensive fallback safety</li>
 </ul>
 <hr />
-<h3 id="improved_7">🔄 Improved<a class="headerlink" href="#improved_7" title="Permanent link">&para;</a></h3>
+<h3 id="improved_10">🔄 Improved<a class="headerlink" href="#improved_10" title="Permanent link">&para;</a></h3>
 <ul>
 <li>Fully restored dialect-owned SQL rendering for keyword extraction  </li>
 <li>Ensured no vendor-specific SQL remains in management commands  </li>
@@ -1959,7 +2279,7 @@ of reserved identifiers across all supported warehouses.</p>
 while further strengthening deterministic, dialect-owned execution semantics<br />
 across all supported warehouses.</p>
 <hr />
-<h3 id="added_7">✨ Added<a class="headerlink" href="#added_7" title="Permanent link">&para;</a></h3>
+<h3 id="added_10">✨ Added<a class="headerlink" href="#added_10" title="Permanent link">&para;</a></h3>
 <h4 id="ingestion-framework-raw">Ingestion Framework (RAW)<a class="headerlink" href="#ingestion-framework-raw" title="Permanent link">&para;</a></h4>
 <ul>
 <li>Native RAW ingestion for REST APIs and file-based sources via <code>SourceDataset.ingestion_config</code>  </li>
@@ -1976,7 +2296,7 @@ across all supported warehouses.</p>
 <li>Unified ingestion dispatcher as single entry point (<code>ingest_raw_for_source_dataset(...)</code>)</li>
 </ul>
 <hr />
-<h3 id="improved_8">✨ Improved<a class="headerlink" href="#improved_8" title="Permanent link">&para;</a></h3>
+<h3 id="improved_11">✨ Improved<a class="headerlink" href="#improved_11" title="Permanent link">&para;</a></h3>
 <h4 id="dialect-owned-merge-rendering">Dialect-Owned Merge Rendering<a class="headerlink" href="#dialect-owned-merge-rendering" title="Permanent link">&para;</a></h4>
 <ul>
 <li>Refactored merge rendering to delegate SQL shape entirely to dialects  </li>
@@ -2008,7 +2328,7 @@ systems.</p>
 ensuring that users can immediately validate elevata orchestration against their own<br />
 target database without requiring additional infrastructure.</p>
 <hr />
-<h3 id="improved_9">✨ Improved<a class="headerlink" href="#improved_9" title="Permanent link">&para;</a></h3>
+<h3 id="improved_12">✨ Improved<a class="headerlink" href="#improved_12" title="Permanent link">&para;</a></h3>
 <h4 id="airflow-example-stability">Airflow Example Stability<a class="headerlink" href="#airflow-example-stability" title="Permanent link">&para;</a></h4>
 <ul>
 <li>Airflow example now installs backend-specific dependencies at container startup<br />
@@ -2062,7 +2382,7 @@ across platforms, rather than expanding modeling capabilities.</p>
 <p>Execution planning, schema evolution, and load execution are now aligned around a<br />
 deterministic preflight model that guarantees predictable outcomes before execution begins.</p>
 <hr />
-<h3 id="added_8">✨ Added<a class="headerlink" href="#added_8" title="Permanent link">&para;</a></h3>
+<h3 id="added_11">✨ Added<a class="headerlink" href="#added_11" title="Permanent link">&para;</a></h3>
 <h4 id="execution-safety-predictability">Execution Safety &amp; Predictability<a class="headerlink" href="#execution-safety-predictability" title="Permanent link">&para;</a></h4>
 <ul>
 <li>Introduced preflight validation phase before execution  </li>
@@ -2123,7 +2443,7 @@ deterministic preflight model that guarantees predictable outcomes before execut
 <li>Various internal consistency improvements in execution planning and validation</li>
 </ul>
 <hr />
-<h3 id="governance-determinism_4">🔒 Governance &amp; Determinism<a class="headerlink" href="#governance-determinism_4" title="Permanent link">&para;</a></h3>
+<h3 id="governance-determinism_7">🔒 Governance &amp; Determinism<a class="headerlink" href="#governance-determinism_7" title="Permanent link">&para;</a></h3>
 <ul>
 <li>Execution behavior is now fully determined before execution begins</li>
 <li>Unsafe schema changes are blocked deterministically</li>
@@ -2136,7 +2456,7 @@ deterministic preflight model that guarantees predictable outcomes before execut
 query-derived schema synchronization, and datatype inference.</p>
 <p>It significantly improves determinism, usability, and correctness of<br />
 metadata-driven query modeling while simplifying internal typing logic.</p>
-<h3 id="added_9">✨ Added<a class="headerlink" href="#added_9" title="Permanent link">&para;</a></h3>
+<h3 id="added_12">✨ Added<a class="headerlink" href="#added_12" title="Permanent link">&para;</a></h3>
 <h4 id="multi-platform-execution-support">Multi-platform execution support<a class="headerlink" href="#multi-platform-execution-support" title="Permanent link">&para;</a></h4>
 <ul>
 <li>Added native execution dialects for:  </li>
@@ -2193,7 +2513,7 @@ multiple modern cloud data warehouse platforms.</p>
 <li>Incorrect system-managed flag for query-derived columns  </li>
 <li>Multiple contract sync race conditions caused by partial state inference</li>
 </ul>
-<h3 id="governance-determinism_5">🔒 Governance &amp; Determinism<a class="headerlink" href="#governance-determinism_5" title="Permanent link">&para;</a></h3>
+<h3 id="governance-determinism_8">🔒 Governance &amp; Determinism<a class="headerlink" href="#governance-determinism_8" title="Permanent link">&para;</a></h3>
 <ul>
 <li>Query contract inference now consistently evaluates against query_head  </li>
 <li>Dataset schema always reflects effective query output contract  </li>
@@ -2205,7 +2525,7 @@ multiple modern cloud data warehouse platforms.</p>
 <p>This release introduces a major upgrade to the Query Builder and UNION workflow,<br />
 together with critical stability and governance improvements across metadata,<br />
 schema sync, and historization.</p>
-<h3 id="added_10">✨ Added<a class="headerlink" href="#added_10" title="Permanent link">&para;</a></h3>
+<h3 id="added_13">✨ Added<a class="headerlink" href="#added_13" title="Permanent link">&para;</a></h3>
 <h4 id="query-builder-union-workflow">Query Builder &amp; UNION workflow<a class="headerlink" href="#query-builder-union-workflow" title="Permanent link">&para;</a></h4>
 <ul>
 <li>Full UNION operator support with:  </li>
@@ -2292,7 +2612,7 @@ From this version onwards, interfaces, metadata structures and execution semanti
 </ul>
 <hr />
 <h2 id="091-2026-01-14">[0.9.1] – 2026-01-14<a class="headerlink" href="#091-2026-01-14" title="Permanent link">&para;</a></h2>
-<h3 id="improved_10">✨ Improved<a class="headerlink" href="#improved_10" title="Permanent link">&para;</a></h3>
+<h3 id="improved_13">✨ Improved<a class="headerlink" href="#improved_13" title="Permanent link">&para;</a></h3>
 <ul>
 <li>Refined lineage visualization with configurable multi-hop upstream and downstream views  </li>
 <li>Clearer lineage semantics distinguishing direct inputs from extended execution dependencies  </li>
@@ -2323,7 +2643,7 @@ business meaning, rules, and calculations as explicit metadata —<br />
 executed deterministically alongside technical datasets.</p>
 <p>Bizcore makes elevata <strong>business-capable by design</strong>, without introducing<br />
 BI-style semantic layers or query-time abstractions.</p>
-<h3 id="added_11">✨ Added<a class="headerlink" href="#added_11" title="Permanent link">&para;</a></h3>
+<h3 id="added_14">✨ Added<a class="headerlink" href="#added_14" title="Permanent link">&para;</a></h3>
 <ul>
 <li>Bizcore datasets and columns as first-class metadata objects  </li>
 <li>Multi-upstream join support for Bizcore datasets  </li>
@@ -2337,13 +2657,13 @@ BI-style semantic layers or query-time abstractions.</p>
 <li>SQL generation now fully respects semantic lineage in expressions  </li>
 <li>Join aliasing and qualification are applied consistently across layers</li>
 </ul>
-<h3 id="quality-stability_4">🧪 Quality &amp; Stability<a class="headerlink" href="#quality-stability_4" title="Permanent link">&para;</a></h3>
+<h3 id="quality-stability_7">🧪 Quality &amp; Stability<a class="headerlink" href="#quality-stability_7" title="Permanent link">&para;</a></h3>
 <ul>
 <li>Extensive validation of join correctness and expression rendering  </li>
 <li>Scoped and non-scoped UI flows aligned under a single metadata model  </li>
 <li>No breaking changes to existing Raw, Stage, or Core pipelines</li>
 </ul>
-<h3 id="improved_11">✨ Improved<a class="headerlink" href="#improved_11" title="Permanent link">&para;</a></h3>
+<h3 id="improved_14">✨ Improved<a class="headerlink" href="#improved_14" title="Permanent link">&para;</a></h3>
 <ul>
 <li>Manual expressions now automatically qualify unaliased column references<br />
   with the correct input alias during SQL generation.<br />
@@ -2361,7 +2681,7 @@ BI-style semantic layers or query-time abstractions.</p>
 establishing <strong>orchestration, failure semantics, and observability</strong> as first-class concerns in elevata.</p>
 <p>Execution is now planned, executed, and explained independently of SQL generation,<br />
 providing a robust foundation for platform-native orchestration and governance.</p>
-<h3 id="added_12">✨ Added<a class="headerlink" href="#added_12" title="Permanent link">&para;</a></h3>
+<h3 id="added_15">✨ Added<a class="headerlink" href="#added_15" title="Permanent link">&para;</a></h3>
 <ul>
 <li>Explicit <strong>Execution Plan</strong> model separating planning from execution  </li>
 <li>Dependency-graph–based dataset execution with deterministic ordering  </li>
@@ -2394,7 +2714,7 @@ providing a robust foundation for platform-native orchestration and governance.<
 <li>Fail-fast behavior is deterministic and explicitly reported  </li>
 <li>Execution observability is metadata-first and dialect-agnostic  </li>
 </ul>
-<h3 id="quality-stability_5">🧪 Quality &amp; Stability<a class="headerlink" href="#quality-stability_5" title="Permanent link">&para;</a></h3>
+<h3 id="quality-stability_8">🧪 Quality &amp; Stability<a class="headerlink" href="#quality-stability_8" title="Permanent link">&para;</a></h3>
 <ul>
 <li>Extensive unit tests for execution ordering, retries, fail-fast, and blocking  </li>
 <li>Guardrails for orchestration-only events and best-effort persistence  </li>
@@ -2413,7 +2733,7 @@ governance rules, and external orchestration integrations.</p>
 <strong>safe, deterministic schema evolution</strong> in target warehouses.</p>
 <p>Schema changes are now derived explicitly from metadata and applied in a<br />
 controlled, lineage-aware manner — without implicit inference from SQL.</p>
-<h3 id="added_13">✨ Added<a class="headerlink" href="#added_13" title="Permanent link">&para;</a></h3>
+<h3 id="added_16">✨ Added<a class="headerlink" href="#added_16" title="Permanent link">&para;</a></h3>
 <ul>
 <li>Metadata-driven materialization planning for target datasets  </li>
 <li>Automatic provisioning of missing target tables  </li>
@@ -2430,7 +2750,7 @@ controlled, lineage-aware manner — without implicit inference from SQL.</p>
 <li>Incremental loads reliably auto-provision target tables when required  </li>
 <li>History datasets are provisioned deterministically and stay structurally aligned with base tables</li>
 </ul>
-<h3 id="quality-stability_6">🧪 Quality &amp; Stability<a class="headerlink" href="#quality-stability_6" title="Permanent link">&para;</a></h3>
+<h3 id="quality-stability_9">🧪 Quality &amp; Stability<a class="headerlink" href="#quality-stability_9" title="Permanent link">&para;</a></h3>
 <ul>
 <li>Extensive unit tests for materialization planning and rename scenarios  </li>
 <li>Guardrails for ambiguous rename situations (multiple former matches)  </li>
@@ -2443,7 +2763,7 @@ future governance rules, and automated validation layers.</p>
 </blockquote>
 <hr />
 <h2 id="070-2025-12-21">[0.7.0] – 2025-12-21<a class="headerlink" href="#070-2025-12-21" title="Permanent link">&para;</a></h2>
-<h3 id="added_14">Added<a class="headerlink" href="#added_14" title="Permanent link">&para;</a></h3>
+<h3 id="added_17">Added<a class="headerlink" href="#added_17" title="Permanent link">&para;</a></h3>
 <ul>
 <li>Dataset-driven, lineage-aware execution with automatic dependency resolution  </li>
 <li>Unified RAW execution semantics via physical ingestion (Source → RAW)  </li>
@@ -2475,7 +2795,7 @@ future governance rules, and automated validation layers.</p>
 <li>Correct precision and scale mapping for <code>money</code> and <code>smallmoney</code> columns</li>
 <li>Stable and deterministic column ordering during metadata import</li>
 </ul>
-<h3 id="improved_12">Improved<a class="headerlink" href="#improved_12" title="Permanent link">&para;</a></h3>
+<h3 id="improved_15">Improved<a class="headerlink" href="#improved_15" title="Permanent link">&para;</a></h3>
 <ul>
 <li>Lossless ingestion of source datatypes via <code>source_datatype_raw</code></li>
 <li>Strict, fail-fast dialect-specific type rendering to prevent silent fallbacks</li>
@@ -2690,7 +3010,7 @@ dialect-aware pipeline.</p>
 <li>All Stage multi-source tests green after identity-mode rewrite.</li>
 </ul>
 <hr />
-<h2 id="documentation_2">📘 Documentation<a class="headerlink" href="#documentation_2" title="Permanent link">&para;</a></h2>
+<h2 id="documentation_5">📘 Documentation<a class="headerlink" href="#documentation_5" title="Permanent link">&para;</a></h2>
 <ul>
 <li>Updated architecture docs:</li>
 <li><em>Dialect System</em></li>
@@ -2772,7 +3092,7 @@ and extensive new documentation that sets the foundation for future multi-backen
 </ul>
 <p>This ensures reliable future extensions to new SQL dialects.</p>
 <hr />
-<h3 id="documentation_3">📘 Documentation<a class="headerlink" href="#documentation_3" title="Permanent link">&para;</a></h3>
+<h3 id="documentation_6">📘 Documentation<a class="headerlink" href="#documentation_6" title="Permanent link">&para;</a></h3>
 <p>Three major new documents added:</p>
 <ul>
 <li><strong>Dialect System</strong> — full architectural overview of dialect abstraction  </li>
@@ -2999,7 +3319,7 @@ elevata ≥ 0.2.2 operates entirely without dbt or its configuration files.<br /
 The foundation for native rendering and execution begins with v0.3.x.</p>
 <hr />
 <h2 id="021-2025-10-23">[0.2.1] – 2025-10-23<a class="headerlink" href="#021-2025-10-23" title="Permanent link">&para;</a></h2>
-<h3 id="improved_13">🪶 Improved<a class="headerlink" href="#improved_13" title="Permanent link">&para;</a></h3>
+<h3 id="improved_16">🪶 Improved<a class="headerlink" href="#improved_16" title="Permanent link">&para;</a></h3>
 <ul>
 <li>Added truncation for long text fields (<code>Description</code>, <code>Remark</code>) in list views to improve readability.  </li>
 <li>Full text now appears on hover for better UX.  </li>
@@ -3124,7 +3444,7 @@ from user login → to inline editing → to audit tracking — all running secu
 </ul>
 <hr />
 <h2 id="001-2025-10-06">[0.0.1] - 2025-10-06<a class="headerlink" href="#001-2025-10-06" title="Permanent link">&para;</a></h2>
-<h3 id="added_15">Added<a class="headerlink" href="#added_15" title="Permanent link">&para;</a></h3>
+<h3 id="added_18">Added<a class="headerlink" href="#added_18" title="Permanent link">&para;</a></h3>
 <ul>
 <li>Project documentation scaffold (<code>README.md</code>)</li>
 <li>License file (<code>LICENSE</code>) under AGPLv3</li>

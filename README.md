@@ -52,7 +52,7 @@ validated, and applied deterministically before execution.
 
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/elevata-labs/elevata/main/docs/elevata_v2_1_0.png" alt="elevata UI preview" width="700"/>
+  <img src="https://raw.githubusercontent.com/elevata-labs/elevata/main/docs/elevata_v2_2_0.png" alt="elevata UI preview" width="700"/>
   <br/>
   <em>Dataset detail view with lineage, metadata, and dialect-aware SQL previews</em>
 </p>
@@ -117,6 +117,26 @@ Behavior is deterministic and observable.
 Schema drift is reconciled through Architecture MigrationPlan-driven materialization:  
 renames, adds, type evolution and controlled rebuilds are derived from architecture state,  
 while destructive changes remain explicitly policy-gated.
+
+---
+
+## 🧭 Architecture Catalog
+
+elevata provides a read-only Architecture Catalog for discovering metadata-defined
+executable architecture.
+
+The Catalog shows what exists, how datasets are defined, how they are connected,  
+how they are controlled, and where execution evidence is available.
+
+Users can search and filter TargetDatasets by schema, owner, lifecycle status,  
+system-managed status, materialization type, incremental strategy and query logic.
+
+Catalog detail pages summarize architecture metadata, ownership, health, upstream inputs,  
+downstream consumers, column contract signals and the latest Architecture Execution Record  
+for the dataset scope.
+
+The Catalog does not edit metadata and does not execute loads. Architecture Control remains  
+responsible for approval, execution, execution records and retention workflows.
 
 ---
 

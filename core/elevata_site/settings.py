@@ -43,7 +43,7 @@ from utils.db import build_metadata_database_url
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(find_dotenv(filename=".env", raise_error_if_not_found=False))
 
-ELEVATA_VERSION = "2.1.0"
+ELEVATA_VERSION = "2.2.0"
 
 ELEVATA_PROFILES_PATH = os.getenv("ELEVATA_PROFILES_PATH", str((BASE_DIR.parent / "config" / "elevata_profiles.yaml")))
 
@@ -215,6 +215,13 @@ ELEVATA_CRUD = {
       "TargetColumn": "grid-2x2-check",
     },
     "menu_items": [
+      {
+        "label": "Architecture Catalog",
+        "url_name": "architecture_catalog",
+        "card_text": "Discover metadata-defined executable architecture.",
+        "icon": "library",
+        "position": "before:architecture_control",
+      },
       {
         "label": "Architecture Control",
         "url_name": "architecture_control",

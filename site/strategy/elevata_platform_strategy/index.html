@@ -784,6 +784,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../../architecture_catalog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ Architecture Catalog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../architecture_control_plane/" class="md-nav__link">
         
   
@@ -1398,10 +1426,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#from-sql-centric-pipelines-to-metadata-native-execution-and-business-semantics" class="md-nav__link">
+  <a href="#from-sql-centric-pipelines-to-architecture-runtime-and-business-semantics" class="md-nav__link">
     <span class="md-ellipsis">
       
-        From SQL-Centric Pipelines to Metadata-Native Execution and Business Semantics
+        From SQL-Centric Pipelines to Architecture Runtime and Business Semantics
       
     </span>
   </a>
@@ -1431,10 +1459,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#3-elevata-today" class="md-nav__link">
+  <a href="#3-elevata-as-architecture-runtime" class="md-nav__link">
     <span class="md-ellipsis">
       
-        🔧 3. elevata Today
+        🔧 3. elevata as Architecture Runtime
       
     </span>
   </a>
@@ -1486,10 +1514,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#8-long-term-vision" class="md-nav__link">
+  <a href="#8-strategic-direction" class="md-nav__link">
     <span class="md-ellipsis">
       
-        🔧 8. Long-Term Vision
+        🔧 8. Strategic Direction
       
     </span>
   </a>
@@ -1640,11 +1668,11 @@
 
 
 <h1 id="elevata-platform-strategy">⚙️ elevata Platform Strategy<a class="headerlink" href="#elevata-platform-strategy" title="Permanent link">&para;</a></h1>
-<h2 id="from-sql-centric-pipelines-to-metadata-native-execution-and-business-semantics">From SQL-Centric Pipelines to Metadata-Native Execution and Business Semantics<a class="headerlink" href="#from-sql-centric-pipelines-to-metadata-native-execution-and-business-semantics" title="Permanent link">&para;</a></h2>
+<h2 id="from-sql-centric-pipelines-to-architecture-runtime-and-business-semantics">From SQL-Centric Pipelines to Architecture Runtime and Business Semantics<a class="headerlink" href="#from-sql-centric-pipelines-to-architecture-runtime-and-business-semantics" title="Permanent link">&para;</a></h2>
 <blockquote>
 <p><strong>Document type:</strong> Strategy<br />
-<strong>Last updated:</strong> 2026-01<br />
-<strong>Applies since:</strong> elevata ≥ 0.8  </p>
+<strong>Last updated:</strong> 2026-05<br />
+<strong>Applies since:</strong> elevata ≥ 2.0  </p>
 </blockquote>
 <hr />
 <h2 id="1-motivation">🔧 1. Motivation<a class="headerlink" href="#1-motivation" title="Permanent link">&para;</a></h2>
@@ -1658,6 +1686,8 @@ but also business logic, execution semantics, and governance intent.</p>
 - strong dependency on external orchestration and semantic layers</p>
 <p>elevata addresses these limitations by treating <strong>metadata — not SQL —<br />
 as the primary control plane</strong> for data platforms.</p>
+<p>This control plane covers structure, lineage, execution semantics, review decisions,<br />
+controlled execution, and audit evidence.</p>
 <hr />
 <h2 id="2-architecture-runtime">🔧 2. Architecture Runtime<a class="headerlink" href="#2-architecture-runtime" title="Permanent link">&para;</a></h2>
 <p>An <strong>Architecture Runtime</strong> executes architecture declaratively.</p>
@@ -1669,21 +1699,48 @@ through SQL pipelines, orchestration configuration, and BI models.</p>
 <p>Datasets, dependencies, execution semantics, and business intent are<br />
 defined as structured metadata and compiled into deterministic execution plans.</p>
 <p>In this sense, elevata acts as an <strong>Architecture Runtime for modern data platforms</strong>.</p>
+<p>Architecture is not only modeled. It is reviewed, approved, executed, and recorded<br />
+through deterministic runtime artifacts.</p>
 <hr />
-<h2 id="3-elevata-today">🔧 3. elevata Today<a class="headerlink" href="#3-elevata-today" title="Permanent link">&para;</a></h2>
-<p>With the introduction of an explicit execution model,<br />
-elevata has evolved beyond SQL generation into a <strong>platform execution core</strong>.</p>
+<h2 id="3-elevata-as-architecture-runtime">🔧 3. elevata as Architecture Runtime<a class="headerlink" href="#3-elevata-as-architecture-runtime" title="Permanent link">&para;</a></h2>
+<p>elevata is not a SQL generator with metadata around it.</p>
+<p>It is an <strong>Architecture Runtime</strong> that turns metadata-defined architecture into deterministic plans,<br />
+controlled execution, and auditable runtime records.</p>
 <p>Key characteristics:<br />
 - deterministic execution planning<br />
 - explicit dependency graphs<br />
 - structured failure semantics (blocked vs aborted)<br />
 - batch-level execution identity (<code>batch_run_id</code>)<br />
-- execution snapshots and run-level observability</p>
-<p>Execution is now:<br />
+- execution snapshots and run-level observability<br />
+- deterministic Architecture State<br />
+- Architecture Change Reports<br />
+- Architecture Approval Artifacts<br />
+- Architecture Catalog<br />
+- scope-aware Architecture Control<br />
+- Architecture Execution Records</p>
+<p>Execution is:<br />
 - planned explicitly<br />
 - executed deterministically<br />
-- explainable independently of SQL rendering</p>
+- explainable independently of SQL rendering<br />
+- reviewable before execution<br />
+- auditable after controlled execution</p>
 <p>SQL is an output artifact — not the orchestration mechanism.</p>
+<p>Architecture Control closes the loop between architecture intent and runtime execution:</p>
+<pre><code class="language-text">Architecture State
+  ↓
+Architecture Change Report
+  ↓
+Architecture Approval Artifact
+  ↓
+Execution Preview
+  ↓
+Controlled Execution
+  ↓
+Architecture Execution Record
+</code></pre>
+<p>This makes architecture a governed runtime contract rather than a convention hidden inside transformation scripts.</p>
+<p>Architecture Catalog provides the read-only discovery layer for this contract:<br />
+it shows what exists, how it is connected, how it is controlled, and where execution evidence is available.</p>
 <hr />
 <h2 id="4-decoupling-business-logic-from-sql">🔧 4. Decoupling Business Logic from SQL<a class="headerlink" href="#4-decoupling-business-logic-from-sql" title="Permanent link">&para;</a></h2>
 <p>Traditional SQL-centric pipelines embed business meaning directly into SQL:<br />
@@ -1692,6 +1749,8 @@ elevata has evolved beyond SQL generation into a <strong>platform execution core
 - governance happens after execution</p>
 <p>elevata separates concerns by making <strong>business intent explicit and declarative</strong>,<br />
 while keeping execution deterministic and warehouse-native.</p>
+<p>Business rules, dataset dependencies, schema evolution intent, and execution control<br />
+are expressed through metadata and runtime artifacts rather than inferred from SQL text.</p>
 <hr />
 <h2 id="5-bizcore-business-semantics-without-a-semantic-layer">🔧 5. Bizcore: Business Semantics without a Semantic Layer<a class="headerlink" href="#5-bizcore-business-semantics-without-a-semantic-layer" title="Permanent link">&para;</a></h2>
 <p>Bizcore introduces a dedicated layer for <strong>business meaning</strong>.</p>
@@ -1710,6 +1769,13 @@ while keeping execution deterministic and warehouse-native.</p>
 - a query-time metrics engine<br />
 - a templating or macro system</p>
 <p>Bizcore defines <em>what data means</em> — not <em>how queries should behave</em>.</p>
+<p>Bizcore execution remains part of the same Architecture Runtime:</p>
+<ul>
+<li>lineage determines execution order  </li>
+<li>metadata determines generated SQL  </li>
+<li>Architecture Control determines review and execution readiness  </li>
+<li>Execution Records capture controlled runtime outcomes</li>
+</ul>
 <hr />
 <h2 id="6-separation-of-responsibilities">🔧 6. Separation of Responsibilities<a class="headerlink" href="#6-separation-of-responsibilities" title="Permanent link">&para;</a></h2>
 <table>
@@ -1744,18 +1810,29 @@ while keeping execution deterministic and warehouse-native.</p>
 <p>By combining:<br />
 - metadata-native execution<br />
 - explicit business semantics<br />
+- architecture review and approval<br />
+- controlled execution<br />
+- auditable execution records<br />
 - warehouse-native processing</p>
 <p>elevata becomes a <strong>platform backbone</strong>, not a transformation tool.</p>
 <p>External tools (orchestrators, BI platforms) integrate with elevata,<br />
 but do not define execution, semantics, or governance.</p>
+<p>They consume or trigger architecture that is defined, controlled, and recorded
+inside elevata.</p>
 <hr />
-<h2 id="8-long-term-vision">🔧 8. Long-Term Vision<a class="headerlink" href="#8-long-term-vision" title="Permanent link">&para;</a></h2>
-<p>elevata aims to become a <strong>metadata-native data platform engine</strong>:<br />
+<h2 id="8-strategic-direction">🔧 8. Strategic Direction<a class="headerlink" href="#8-strategic-direction" title="Permanent link">&para;</a></h2>
+<p>elevata is a <strong>metadata-native data platform engine</strong>:<br />
 a system where structure, execution, governance, and business intent<br />
-are derived from explicit definitions rather than implicit SQL behavior.  </p>
+are derived from explicit definitions rather than implicit SQL behavior.</p>
 <p>The goal is not to replace orchestration frameworks or BI tools,<br />
 but to provide a reliable, transparent core that makes data platforms<br />
 predictable, governable, and evolvable over time.</p>
+<p>Architecture Runtime is the central category:</p>
+<pre><code class="language-text">Metadata defines architecture.
+Architecture Control governs execution.
+Execution Records preserve audit evidence.
+SQL remains an artifact.
+</code></pre>
 
 
 

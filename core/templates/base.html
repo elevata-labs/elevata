@@ -241,6 +241,21 @@ Contact: <https://github.com/elevata-labs/elevata>.
       });
     </script>
     <script>
+      window.elevataNavigateBack = function(button) {
+        const defaultBackUrl = button ? button.getAttribute("data-default-back-url") : "";
+        const referrer = document.referrer || "";
+
+        if (referrer && referrer.startsWith(window.location.origin)) {
+          window.history.back();
+          return;
+        }
+
+        if (defaultBackUrl) {
+          window.location.href = defaultBackUrl;
+        }
+      };
+    </script>
+    <script>
       lucide.createIcons();
     </script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>

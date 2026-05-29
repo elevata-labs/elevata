@@ -16,7 +16,7 @@
         <link rel="prev" href="../target_backends/">
       
       
-        <link rel="next" href="../architecture_control_plane/">
+        <link rel="next" href="../architecture_catalog/">
       
       
         
@@ -1101,10 +1101,38 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#13-design-summary" class="md-nav__link">
+  <a href="#13-architecture-control-execution" class="md-nav__link">
     <span class="md-ellipsis">
       
-        🔧 13. Design Summary
+        🔧 13. Architecture Control Execution
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="🔧 13. Architecture Control Execution">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#131-architecture-execution-record" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🧩 13.1 Architecture Execution Record
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#14-design-summary" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🔧 14. Design Summary
       
     </span>
   </a>
@@ -1115,6 +1143,34 @@
   
 </nav>
       
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../architecture_catalog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ Architecture Catalog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
     </li>
   
 
@@ -1863,8 +1919,8 @@ Dialects remain adapters, never logic carriers.</p>
 <em>what should be executed</em> and <em>in which dependency order</em>.</p>
 <p>The plan contains:</p>
 <ul>
-<li>A stable <code>batch_run_id</code></li>
-<li>An ordered list of execution steps</li>
+<li>A stable <code>batch_run_id</code>  </li>
+<li>An ordered list of execution steps  </li>
 <li>Dataset-level dependencies (upstream relationships)</li>
 </ul>
 <p>The plan is derived from metadata only.
@@ -1872,16 +1928,18 @@ No SQL is rendered and no execution happens at this stage.</p>
 <h3 id="22-execution">🧩 2.2 Execution<a class="headerlink" href="#22-execution" title="Permanent link">&para;</a></h3>
 <p>Execution consumes an ExecutionPlan and applies:</p>
 <ul>
-<li>Execution policies (fail-fast vs continue-on-error)</li>
-<li>Retry semantics</li>
+<li>Execution policies (fail-fast vs continue-on-error)  </li>
+<li>Retry semantics  </li>
 <li>Dependency blocking rules</li>
 </ul>
 <p>Execution produces <strong>results</strong>, not SQL:
 status, timing, attempts, and failure reasons.</p>
 <h3 id="23-architecture-control-plane">🧩 2.3 Architecture Control Plane<a class="headerlink" href="#23-architecture-control-plane" title="Permanent link">&para;</a></h3>
-<p>The Architecture Control Plane provides read-only reports around architecture<br />
-state and schema evolution intent.</p>
-<p>It is separate from load execution and does not apply DDL or DML.</p>
+<p>The Architecture Control Plane provides controlled review, approval, execution preview,<br />
+and execution audit workflows around architecture state and schema evolution intent.</p>
+<p>Execution remains delegated to the load runner. The Architecture Control UI invokes the load runner<br />
+through constrained scopes and does not bypass preflight validation, materialization policy checks,<br />
+or Architecture Guard enforcement.</p>
 <p>The control plane commands are:</p>
 <table>
 <thead>
@@ -1903,6 +1961,14 @@ state and schema evolution intent.</p>
 <td><code>elevata_promote</code></td>
 <td>Compare two architecture state artifacts</td>
 </tr>
+<tr>
+<td><code>elevata_approve</code></td>
+<td>Create an approval artifact</td>
+</tr>
+<tr>
+<td><code>elevata_approval_check</code></td>
+<td>Verify an approval artifact</td>
+</tr>
 </tbody>
 </table>
 <p>The load runner remains responsible for execution safety. Before executing load SQL,<br />
@@ -1920,6 +1986,14 @@ MigrationPlan
 Policy Decisions
   ↓
 Architecture Report
+  ↓
+Approval Artifact
+  ↓
+Execution Preview
+  ↓
+Controlled Execution
+  ↓
+Architecture Execution Record
 </code></pre>
 <hr />
 <h2 id="3-materialization-preflight-stage">🔧 3. Materialization Preflight Stage<a class="headerlink" href="#3-materialization-preflight-stage" title="Permanent link">&para;</a></h2>
@@ -1955,8 +2029,8 @@ Architecture Report
 <h3 id="hist-dataset-synchronization">🧩 Hist Dataset Synchronization<a class="headerlink" href="#hist-dataset-synchronization" title="Permanent link">&para;</a></h3>
 <p>For rawcore datasets with historization enabled:</p>
 <ul>
-<li>base dataset materialization is planned first</li>
-<li>corresponding <code>_hist</code> dataset schema is synchronized afterwards</li>
+<li>base dataset materialization is planned first  </li>
+<li>corresponding <code>_hist</code> dataset schema is synchronized afterwards  </li>
 <li>synchronization is best-effort and does not block base execution</li>
 </ul>
 <p>The <code>_hist</code> synchronization uses the same schema evolution intent (MigrationPlan)<br />
@@ -1966,8 +2040,8 @@ so base and history schemas stay consistent and lineage-safe.</p>
 <p>Dataset dependencies are resolved into a directed acyclic graph (DAG).</p>
 <p>From this graph, elevata derives a <strong>deterministic execution order</strong>:</p>
 <ul>
-<li>Upstream datasets are always executed before downstream datasets</li>
-<li>Independent branches may be executed in parallel in the future</li>
+<li>Upstream datasets are always executed before downstream datasets  </li>
+<li>Independent branches may be executed in parallel in the future  </li>
 <li>The same metadata state always yields the same order</li>
 </ul>
 <p>Dependency resolution errors are treated as <strong>best-effort warnings</strong>
@@ -1977,7 +2051,7 @@ and never block execution planning.</p>
 <p>Execution behavior is controlled by an explicit <strong>ExecutionPolicy</strong>.</p>
 <p>Core policy parameters:</p>
 <ul>
-<li><code>continue_on_error</code></li>
+<li><code>continue_on_error</code>  </li>
 <li><code>max_retries</code></li>
 </ul>
 <p>Policies apply globally to a run and are evaluated consistently
@@ -1989,8 +2063,8 @@ All execution semantics are explicit and predictable.</p>
 <h3 id="61-retries">🧩 6.1 Retries<a class="headerlink" href="#61-retries" title="Permanent link">&para;</a></h3>
 <p>Retries apply <strong>only in execute mode</strong> (<code>--execute</code>).</p>
 <ul>
-<li>Dry-run failures are surfaced immediately</li>
-<li>Retries are counted per dataset</li>
+<li>Dry-run failures are surfaced immediately  </li>
+<li>Retries are counted per dataset  </li>
 <li><code>attempt_no</code> starts at 1 and is propagated to execution logic</li>
 </ul>
 <p>Retries are <strong>never hidden</strong>:
@@ -1998,7 +2072,7 @@ each attempt is observable and logged.</p>
 <h3 id="62-failure-handling">🧩 6.2 Failure Handling<a class="headerlink" href="#62-failure-handling" title="Permanent link">&para;</a></h3>
 <p>When a dataset fails after all retries:</p>
 <ul>
-<li>Its status becomes <code>error</code></li>
+<li>Its status becomes <code>error</code>  </li>
 <li>Downstream behavior depends on the execution policy</li>
 </ul>
 <hr />
@@ -2007,26 +2081,26 @@ each attempt is observable and logged.</p>
 <h3 id="71-blocked">🧩 7.1 Blocked<a class="headerlink" href="#71-blocked" title="Permanent link">&para;</a></h3>
 <p>A dataset is <strong>blocked</strong> if:</p>
 <ul>
-<li>One of its upstream dependencies failed</li>
+<li>One of its upstream dependencies failed  </li>
 <li>The dataset itself was never attempted</li>
 </ul>
 <p>Blocked datasets are reported as:</p>
 <ul>
-<li><code>status = skipped</code></li>
-<li><code>kind = blocked</code></li>
+<li><code>status = skipped</code>  </li>
+<li><code>kind = blocked</code>  </li>
 <li><code>blocked_by = &lt;upstream dataset&gt;</code></li>
 </ul>
 <p>This represents <em>dependency-based non-execution</em>.</p>
 <h3 id="72-aborted-fail-fast">🧩 7.2 Aborted (Fail-Fast)<a class="headerlink" href="#72-aborted-fail-fast" title="Permanent link">&para;</a></h3>
 <p>A dataset is <strong>aborted</strong> if:</p>
 <ul>
-<li>Execution stops early due to <code>continue_on_error = false</code></li>
+<li>Execution stops early due to <code>continue_on_error = false</code>  </li>
 <li>The dataset was not attempted due to fail-fast semantics</li>
 </ul>
 <p>Aborted datasets are reported as:</p>
 <ul>
-<li><code>status = skipped</code></li>
-<li><code>kind = aborted</code></li>
+<li><code>status = skipped</code>  </li>
+<li><code>kind = aborted</code>  </li>
 <li><code>status_reason = fail_fast_abort</code></li>
 </ul>
 <p>This represents <em>policy-based non-execution</em>.</p>
@@ -2036,15 +2110,15 @@ each attempt is observable and logged.</p>
 <p>The <strong>load run log</strong> is an append-only, event-level record of execution.</p>
 <p>Characteristics:</p>
 <ul>
-<li>Dataset- and attempt-granular</li>
-<li>One row per execution attempt or orchestration event</li>
+<li>Dataset- and attempt-granular  </li>
+<li>One row per execution attempt or orchestration event  </li>
 <li>Operational and time-oriented</li>
 </ul>
 <p>Typical events:</p>
 <ul>
-<li>Successful dataset execution</li>
-<li>Failed attempts</li>
-<li>Blocked datasets</li>
+<li>Successful dataset execution  </li>
+<li>Failed attempts  </li>
+<li>Blocked datasets  </li>
 <li>Aborted datasets</li>
 </ul>
 <p>The log answers the question:</p>
@@ -2056,16 +2130,16 @@ each attempt is observable and logged.</p>
 <p>The <strong>load run snapshot</strong> captures the declarative state of a load run.</p>
 <p>Characteristics:</p>
 <ul>
-<li>One row per batch run</li>
-<li>JSON-based snapshot document</li>
+<li>One row per batch run  </li>
+<li>JSON-based snapshot document  </li>
 <li>Explains <em>why</em> execution behaved the way it did</li>
 </ul>
 <p>The snapshot includes:</p>
 <ul>
-<li>Execution plan</li>
-<li>Execution policy</li>
-<li>Dependency structure</li>
-<li>Aggregated outcomes</li>
+<li>Execution plan  </li>
+<li>Execution policy  </li>
+<li>Dependency structure  </li>
+<li>Aggregated outcomes  </li>
 <li>Failure reasons and counts</li>
 </ul>
 <p>The snapshot answers the question:</p>
@@ -2105,22 +2179,22 @@ each attempt is observable and logged.</p>
 <p>A single invocation of <code>elevata_load</code> may execute multiple datasets.</p>
 <p>All datasets executed in one invocation share:</p>
 <ul>
-<li>The same <code>batch_run_id</code></li>
-<li>The same execution policy</li>
+<li>The same <code>batch_run_id</code>  </li>
+<li>The same execution policy  </li>
 <li>The same snapshot</li>
 </ul>
 <p>This enables:</p>
 <ul>
-<li>Consistent failure semantics</li>
-<li>Cross-dataset observability</li>
-<li>Future batch-level governance rules</li>
+<li>Consistent failure semantics  </li>
+<li>Cross-dataset observability  </li>
+<li>Batch-level governance rules</li>
 </ul>
 <hr />
 <h2 id="11-best-effort-guarantees">🔧 11. Best-Effort Guarantees<a class="headerlink" href="#11-best-effort-guarantees" title="Permanent link">&para;</a></h2>
 <p>Execution observability is <strong>best-effort by design</strong>.</p>
 <ul>
-<li>Logging and snapshot persistence must never block execution</li>
-<li>Meta-schema evolution is additive only</li>
+<li>Logging and snapshot persistence must never block execution  </li>
+<li>Meta-schema evolution is additive only  </li>
 <li>Failures in observability are swallowed, not propagated</li>
 </ul>
 <p>Execution correctness always takes precedence over observability.</p>
@@ -2128,27 +2202,117 @@ each attempt is observable and logged.</p>
 <h2 id="12-cli-integration-elevata_load">🔧 12. CLI Integration (<code>elevata_load</code>)<a class="headerlink" href="#12-cli-integration-elevata_load" title="Permanent link">&para;</a></h2>
 <p>The execution architecture is exposed through the CLI:</p>
 <ul>
-<li><code>--execute</code> enables real execution</li>
-<li><code>--continue-on-error</code> controls fail-fast behavior</li>
-<li><code>--max-retries</code> controls retry behavior</li>
-<li><code>--debug-execution</code> prints execution snapshots</li>
+<li><code>--execute</code> enables real execution  </li>
+<li><code>--continue-on-error</code> controls fail-fast behavior  </li>
+<li><code>--max-retries</code> controls retry behavior  </li>
+<li><code>--debug-execution</code> prints execution snapshots  </li>
 <li><code>--write-execution-snapshot</code> persists snapshots to disk</li>
 </ul>
 <p>The CLI is an adapter.
 All execution logic lives in the execution core.</p>
 <hr />
-<h2 id="13-design-summary">🔧 13. Design Summary<a class="headerlink" href="#13-design-summary" title="Permanent link">&para;</a></h2>
+<h2 id="13-architecture-control-execution">🔧 13. Architecture Control Execution<a class="headerlink" href="#13-architecture-control-execution" title="Permanent link">&para;</a></h2>
+<p>Architecture Control execution is a constrained UI path into the same load runner.</p>
+<p>It provides:</p>
+<ul>
+<li>scope-aware execution preview  </li>
+<li>approval-aware execution gating  </li>
+<li>Architecture Guard enforcement  </li>
+<li>controlled execution output capture  </li>
+<li>Architecture Execution Record creation  </li>
+<li>Architecture Execution Record history and retention</li>
+</ul>
+<p>Architecture Control supports the following execution scopes:</p>
+<table>
+<thead>
+<tr>
+<th>Scope</th>
+<th>Dependency behavior</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>All datasets</td>
+<td>Executes all active target datasets with dependency ordering</td>
+</tr>
+<tr>
+<td>Schema</td>
+<td>Executes selected schema roots with dependency ordering</td>
+</tr>
+<tr>
+<td>TargetDataset</td>
+<td>Executes the selected TargetDataset with dependency ordering</td>
+</tr>
+<tr>
+<td>TargetDataset, target-only</td>
+<td>Executes only the selected TargetDataset</td>
+</tr>
+</tbody>
+</table>
+<p>Target-only execution is restricted to TargetDataset scopes. It supports focused iteration<br />
+while keeping the default execution path lineage-aware.</p>
+<h3 id="131-architecture-execution-record">🧩 13.1 Architecture Execution Record<a class="headerlink" href="#131-architecture-execution-record" title="Permanent link">&para;</a></h3>
+<p>An Architecture Execution Record captures the audit context of a controlled UI execution.</p>
+<p>It contains:</p>
+<ul>
+<li>execution identifier  </li>
+<li>operator  </li>
+<li>timestamps and duration  </li>
+<li>status and message  </li>
+<li>Architecture Control scope  </li>
+<li>dependency mode  </li>
+<li>report fingerprint  </li>
+<li>approval identifier  </li>
+<li>preview fingerprint  </li>
+<li>command invocation metadata  </li>
+<li>output and error tails  </li>
+<li>output and error line counts  </li>
+<li>record fingerprint</li>
+</ul>
+<p>Architecture Execution Records are stored as JSON artifacts under:</p>
+<pre><code class="language-bash">ELEVATA_ARCH_EXECUTION_DIR=.elevata/executions
+</code></pre>
+<p>Architecture Control can list stored records, filter them by scope, status, date range and dependency mode,<br />
+show record details, download record JSON, and remove older stored records through retention cleanup.</p>
+<p>They complement the load run log and load run snapshot:</p>
+<table>
+<thead>
+<tr>
+<th>Artifact</th>
+<th>Granularity</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Load Run Log</td>
+<td>Dataset / attempt</td>
+<td>Operational event stream</td>
+</tr>
+<tr>
+<td>Load Run Snapshot</td>
+<td>Batch run</td>
+<td>Execution state and outcome summary</td>
+</tr>
+<tr>
+<td>Architecture Execution Record</td>
+<td>Architecture Control execution</td>
+<td>Review, approval, scope, command and audit eference</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="14-design-summary">🔧 14. Design Summary<a class="headerlink" href="#14-design-summary" title="Permanent link">&para;</a></h2>
 <p>The execution architecture of elevata is:</p>
 <ul>
-<li>Explicit, not implicit</li>
-<li>Deterministic, not heuristic</li>
-<li>Metadata-driven, not SQL-driven</li>
-<li>Observable by default</li>
+<li>Explicit, not implicit  </li>
+<li>Deterministic, not heuristic  </li>
+<li>Metadata-driven, not SQL-driven  </li>
+<li>Observable by default  </li>
 <li>Extensible without breaking changes</li>
 </ul>
-<p>This provides a robust foundation for:
-orchestration integrations, governance rules,
-and execution analytics in future versions.</p>
+<p>This provides a robust foundation for:<br />
+orchestration integrations, governance rules, and execution analytics.</p>
 <hr />
 <p>© 2025-2026 elevata Labs — Internal Technical Documentation</p>
 

@@ -65,6 +65,7 @@ Key characteristics:
 - deterministic Architecture State  
 - Architecture Change Reports  
 - Architecture Approval Artifacts  
+- Architecture Catalog  
 - scope-aware Architecture Control  
 - Architecture Execution Records
 
@@ -94,6 +95,9 @@ Architecture Execution Record
 ```
 
 This makes architecture a governed runtime contract rather than a convention hidden inside transformation scripts.
+
+Architecture Catalog provides the read-only discovery layer for this contract:  
+it shows what exists, how it is connected, how it is controlled, and where execution evidence is available.
 
 ---
 

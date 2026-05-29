@@ -1178,6 +1178,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../architecture_catalog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ Architecture Catalog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../architecture_control_plane/" class="md-nav__link">
         
   
@@ -1896,6 +1924,8 @@ and safe for downstream consumers.</p>
 <p>It is a deterministic reconciliation process between metadata and physical warehouse schemas,<br />
 designed to be safe, lineage-aware, and reproducible across environments.</p>
 <p>Architecture reports expose the same schema evolution intent before execution.</p>
+<p>Architecture Control makes this intent reviewable, approvable, executable through<br />
+controlled scopes, and auditable through Architecture Execution Records.</p>
 <hr />
 <h2 id="core-principles">🔧 Core Principles<a class="headerlink" href="#core-principles" title="Permanent link">&para;</a></h2>
 <ul>
@@ -2027,9 +2057,63 @@ Physical DDL is always rendered by the dialect and executed only when schema evo
 <li>policy decisions for destructive operations  </li>
 <li>deterministic report fingerprint</li>
 </ul>
-<p>Reports are read-only. They do not apply schema changes.</p>
-<p><code>elevata_load</code> remains responsible for execution preflight and applies schema changes<br />
+<p>Reports are review artifacts. They do not apply schema changes by themselves.</p>
+<p><code>elevata_load</code> remains responsible for execution preflight and applies schema changes
 only after guard checks pass.</p>
+<p>Architecture Control uses the same schema evolution intent and adds a controlled
+review and execution layer:</p>
+<pre><code class="language-text">Architecture Change Report
+  ↓
+Architecture Approval Artifact
+  ↓
+Execution Preview
+  ↓
+Controlled Execution
+  ↓
+Architecture Execution Record
+</code></pre>
+<p>Controlled execution does not bypass schema evolution guardrails.<br />
+It invokes the load runner through constrained Architecture Control scopes and keeps:</p>
+<ul>
+<li>preflight validation  </li>
+<li>materialization policy checks  </li>
+<li>Architecture Guard enforcement  </li>
+<li>approval matching  </li>
+<li>dialect-owned DDL rendering  </li>
+<li>deterministic execution records</li>
+</ul>
+<p>Execution scopes are explicit:</p>
+<table>
+<thead>
+<tr>
+<th>Scope</th>
+<th>Schema evolution behavior</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>All datasets</td>
+<td>Applies schema evolution for all active target datasets in dependency order</td>
+</tr>
+<tr>
+<td>Schema</td>
+<td>Applies schema evolution for selected schema roots and required dependencies</td>
+</tr>
+<tr>
+<td>TargetDataset</td>
+<td>Applies schema evolution for the selected TargetDataset and required dependencies</td>
+</tr>
+<tr>
+<td>TargetDataset, target-only</td>
+<td>Applies schema evolution only for the selected TargetDataset</td>
+</tr>
+</tbody>
+</table>
+<p>Target-only execution is available only for TargetDataset scopes. It supports focused iteration<br />
+when upstream data is already available.</p>
+<p>Architecture Execution Records capture who executed which controlled schema evolution scope,<br />
+with which dependency mode, report fingerprint, approval identifier, preview fingerprint,<br />
+command metadata and result status.</p>
 <hr />
 <h2 id="type-drift-detection-and-evolution">🔧 Type Drift Detection and Evolution<a class="headerlink" href="#type-drift-detection-and-evolution" title="Permanent link">&para;</a></h2>
 <p>elevata includes deterministic type drift detection as part of preflight validation.</p>
@@ -2143,7 +2227,8 @@ RENAME &lt;tmp&gt; → &lt;original&gt;
 <p>These require:<br />
 - Explicit policies<br />
 - Clear user intent<br />
-- Future controlled rollout</p>
+- Future controlled rollout
+- Controlled runtime execution</p>
 <p>Unsafe type drift can be explicitly allowed via <code>ELEVATA_ALLOW_TYPE_ALTER=true</code><br />
 (or <code>--allow-type-alter</code>) and is then executed via dialect-supported ALTER or deterministic rebuild.</p>
 <h3 id="policy-gated-column-drops">🧩 Policy-gated column drops<a class="headerlink" href="#policy-gated-column-drops" title="Permanent link">&para;</a></h3>
@@ -2160,7 +2245,8 @@ RENAME &lt;tmp&gt; → &lt;original&gt;
 <li>Previous name is added to <code>former_names</code>  </li>
 <li>Schema evolution detects rename  </li>
 <li>Physical schema is updated safely  </li>
-<li><code>_hist</code> table is kept in sync automatically</li>
+<li><code>_hist</code> table is kept in sync automatically  </li>
+<li>Architecture Control records the controlled execution result</li>
 </ol>
 <p>No SQL changes required.</p>
 <hr />
@@ -2192,6 +2278,14 @@ RENAME &lt;tmp&gt; → &lt;original&gt;
 <tr>
 <td>Historization</td>
 <td>✅ Always consistent</td>
+</tr>
+<tr>
+<td>Reviewability</td>
+<td>✅ Schema evolution intent is visible before execution</td>
+</tr>
+<tr>
+<td>Auditability</td>
+<td>✅ Controlled executions produce Architecture Execution Records</td>
 </tr>
 </tbody>
 </table>

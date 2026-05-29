@@ -548,15 +548,15 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#5-architecture-control-plane-commands" class="md-nav__link">
+  <a href="#5-architecture-control" class="md-nav__link">
     <span class="md-ellipsis">
       
-        🔧 5. Architecture Control Plane Commands
+        🔧 5. Architecture Control
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="🔧 5. Architecture Control Plane Commands">
+    <nav class="md-nav" aria-label="🔧 5. Architecture Control">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -586,6 +586,28 @@
     <span class="md-ellipsis">
       
         🧩 5.3 Compare Architecture State Artifacts
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#54-create-and-check-approval-artifacts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🧩 5.4 Create and Check Approval Artifacts
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#55-use-architecture-control-in-the-ui" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🧩 5.5 Use Architecture Control in the UI
       
     </span>
   </a>
@@ -1068,6 +1090,34 @@
     
   
     ⚙️ Load Execution & Orchestration Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../architecture_catalog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ Architecture Catalog
   
 
     
@@ -1867,6 +1917,12 @@ ELEVATA_ALLOW_AUTO_DROP_HIST_COLUMNS=false
 
 # Architecture state baseline directory
 ELEVATA_ARCH_STATE_DIR=.elevata/state
+
+# Architecture approval artifact directory
+ELEVATA_ARCH_APPROVAL_DIR=.elevata/approvals
+
+# Architecture execution record directory
+ELEVATA_ARCH_EXECUTION_DIR=.elevata/executions
 </code></pre>
 <p>Install the target backend you want to execute against:</p>
 <h4 id="bigquery-target">🔎 BigQuery target:<a class="headerlink" href="#bigquery-target" title="Permanent link">&para;</a></h4>
@@ -1937,11 +1993,14 @@ python manage.py createsuperuser
 - Inspect <strong>source datasets and columns</strong><br />
 - Define <strong>integration rules</strong> (<code>integrate = True</code>)<br />
 - Trigger <strong>target auto-generation</strong><br />
-- Preview <strong>auto-generated</strong> SQL renderings (starting with DuckDB dialect)</p>
+- Preview <strong>auto-generated</strong> SQL renderings (starting with DuckDB dialect)<br />
+- Open <strong>Architecture Catalog</strong> to discover datasets, lineage entry points,<br />
+  query contracts and execution evidence references
+- Open <strong>Architecture Control</strong> to review, approve, preview and execute controlled architecture scopes</p>
 <hr />
-<h2 id="5-architecture-control-plane-commands">🔧 5. Architecture Control Plane Commands<a class="headerlink" href="#5-architecture-control-plane-commands" title="Permanent link">&para;</a></h2>
-<p>elevata provides read-only commands for architecture state, review, and
-promotion workflows.</p>
+<h2 id="5-architecture-control">🔧 5. Architecture Control<a class="headerlink" href="#5-architecture-control" title="Permanent link">&para;</a></h2>
+<p>elevata provides deterministic commands and UI workflows for architecture state,<br />
+review, approval, controlled execution and audit records.</p>
 <h3 id="51-render-architecture-state">🧩 5.1 Render Architecture State<a class="headerlink" href="#51-render-architecture-state" title="Permanent link">&para;</a></h3>
 <p>Render the metadata-defined architecture state:</p>
 <pre><code class="language-bash">python manage.py elevata_state
@@ -1977,6 +2036,47 @@ promotion workflows.</p>
 --fail-on-blocked 
 --fail-on-destructive 
 </code></pre>
+<h3 id="54-create-and-check-approval-artifacts">🧩 5.4 Create and Check Approval Artifacts<a class="headerlink" href="#54-create-and-check-approval-artifacts" title="Permanent link">&para;</a></h3>
+<p>Create an Approval Artifact from an Architecture Change Report:</p>
+<pre><code class="language-bash">python manage.py elevata_plan rc_aw_customer \
+  --schema rawcore \
+  --format json \
+  --output .artifacts/architecture_plan_rc_aw_customer.json
+
+python manage.py elevata_approve .artifacts/architecture_plan_rc_aw_customer.json \
+  --approved-by &quot;Reviewer Name&quot; \
+  --note &quot;Reviewed for deployment.&quot; \
+  --store
+</code></pre>
+<p>Check a stored Approval Artifact:</p>
+<pre><code class="language-bash">python manage.py elevata_approval_check \
+  .artifacts/architecture_plan_rc_aw_customer.json \
+  .elevata/approvals/&lt;report_fingerprint&gt;.approval.json
+</code></pre>
+<h3 id="55-use-architecture-control-in-the-ui">🧩 5.5 Use Architecture Control in the UI<a class="headerlink" href="#55-use-architecture-control-in-the-ui" title="Permanent link">&para;</a></h3>
+<p>The Architecture Control UI provides a guided workflow for controlled architecture scopes.</p>
+<p>It supports:</p>
+<ul>
+<li>all-dataset scopes  </li>
+<li>schema scopes  </li>
+<li>TargetDataset scopes  </li>
+<li>TargetDataset scopes with target-only execution</li>
+</ul>
+<p>From Architecture Control, you can:</p>
+<ul>
+<li>inspect the Architecture Change Report  </li>
+<li>download report JSON  </li>
+<li>create and check Approval Artifacts  </li>
+<li>inspect the Execution Preview  </li>
+<li>run controlled load execution  </li>
+<li>inspect captured execution output  </li>
+<li>inspect the Architecture Execution Record</li>
+</ul>
+<p>Controlled execution uses the load runner and keeps preflight validation,<br />
+Architecture Guard enforcement, approval matching and dialect-owned SQL rendering in place.</p>
+<p>Architecture Execution Records are stored under:</p>
+<pre><code class="language-bash">ELEVATA_ARCH_EXECUTION_DIR=.elevata/executions
+</code></pre>
 <hr />
 <h2 id="6-secure-connectivity-optional">🔧 6. Secure Connectivity (optional)<a class="headerlink" href="#6-secure-connectivity-optional" title="Permanent link">&para;</a></h2>
 <p>If you’re connecting to production metadata systems,
@@ -2011,7 +2111,19 @@ use environment variables instead of plain-text passwords.</p>
 </tr>
 <tr>
 <td>Run tests</td>
-<td><code>pytest</code></td>
+<td><code>python runtests.py</code></td>
+</tr>
+<tr>
+<td>Render architecture state</td>
+<td><code>python manage.py elevata_state</code></td>
+</tr>
+<tr>
+<td>Render architecture report</td>
+<td><code>python manage.py elevata_plan --all</code></td>
+</tr>
+<tr>
+<td>Execute controlled architecture scope</td>
+<td>Use Architecture Control in the UI</td>
 </tr>
 </tbody>
 </table>
@@ -2019,8 +2131,9 @@ use environment variables instead of plain-text passwords.</p>
 <h2 id="next-steps">🔧 Next Steps<a class="headerlink" href="#next-steps" title="Permanent link">&para;</a></h2>
 <p>Once your metadata environment is ready, continue with:</p>
 <ul>
-<li><a href="../generation_logic/">Automatic Target Generation Logic</a></li>
-<li><a href="../sql_rendering_conventions/">SQL Rendering &amp; Alias Conventions</a></li>
+<li><a href="../generation_logic/">Automatic Target Generation Logic</a>  </li>
+<li><a href="../architecture_control_plane/">Architecture Control Plane</a>  </li>
+<li><a href="../sql_rendering_conventions/">SQL Rendering &amp; Alias Conventions</a>  </li>
 <li><a href="../logical_plan/">Lineage Model &amp; Logical Plan</a></li>
 </ul>
 <hr />

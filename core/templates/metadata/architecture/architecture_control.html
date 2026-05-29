@@ -34,6 +34,16 @@ Contact: <https://github.com/elevata-labs/elevata>.
       </span>
     {% endif %}
   </span>
+  <span class="d-flex gap-2">
+    <button
+      type="button"
+      class="btn btn-sm btn-outline-secondary"
+      data-default-back-url="{% url 'architecture_catalog' %}"
+      onclick="window.elevataNavigateBack(this)"
+    >
+      <i class="bi bi-arrow-left"></i> Back
+    </button>
+  </span>
 </h1>
 
 <div class="small text-muted mb-4">

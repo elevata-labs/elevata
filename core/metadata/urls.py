@@ -28,6 +28,7 @@ from django.utils.text import slugify
 from generic import GenericCRUDView
 # HTMX views for the import
 from . import views
+from . import views_catalog
 from . import views_inline_api
 from metadata.models import SourceDataset, System
 
@@ -153,6 +154,11 @@ urlpatterns += [
   path("source-type-hint/", views.source_type_hint, name="source_type_hint"),
   path("generate-targets/", views.generate_targets, name="generate_targets"),
   path("api/targetcolumns/upstream-meta/", views.targetcolumn_upstream_meta, name="targetcolumn_upstream_meta"),
+  path("architecture-catalog/", views_catalog.architecture_catalog, name="architecture_catalog"),
+  path("architecture-catalog/<int:pk>/",
+    views_catalog.architecture_catalog_detail,
+    name="architecture_catalog_detail",
+  ),
   path("architecture-control/", views.architecture_control, name="architecture_control"),
   path("architecture-control/report/", views.architecture_control_report, name="architecture_control_report"),
   path("architecture-control/report/download/", views.architecture_control_report_download, name="architecture_control_report_download"),

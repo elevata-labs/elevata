@@ -15,6 +15,10 @@ It turns architecture state into explicit artifacts:
 These artifacts make structural architecture changes reviewable, policy-aware, approvable, verifiable,  
 executable through controlled scopes, visible in the UI, and suitable for CI pipelines.
 
+Architecture Catalog complements the control plane as a read-only discovery surface.  
+It shows how datasets are defined, connected, controlled and linked to execution evidence  
+without creating approvals or executing loads.
+
 ---
 
 ## 🔧 1. Purpose

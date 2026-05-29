@@ -40,6 +40,14 @@ Contact: <https://github.com/elevata-labs/elevata>.
     <a href="{% url 'targetdataset_detail' object.pk %}" class="btn btn-sm btn-outline-primary">
       <i class="bi bi-notepad-text"></i> Details
     </a>
+    <button
+      type="button"
+      class="btn btn-sm btn-outline-secondary"
+      data-default-back-url="{% url 'targetdataset_detail' object.pk %}"
+      onclick="window.elevataNavigateBack(this)"
+    >
+      <i class="bi bi-arrow-left"></i> Back
+    </button>
   </div>
 </h1>
 

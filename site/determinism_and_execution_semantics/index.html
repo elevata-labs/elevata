@@ -784,6 +784,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../architecture_catalog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ Architecture Catalog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../architecture_control_plane/" class="md-nav__link">
         
   
@@ -1067,10 +1095,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#5-window-functions" class="md-nav__link">
+  <a href="#5-architecture-control-execution-semantics" class="md-nav__link">
     <span class="md-ellipsis">
       
-        🔧 5. Window functions
+        🔧 5. Architecture Control Execution Semantics
       
     </span>
   </a>
@@ -1078,10 +1106,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#6-aggregation-determinism" class="md-nav__link">
+  <a href="#6-window-functions" class="md-nav__link">
     <span class="md-ellipsis">
       
-        🔧 6. Aggregation determinism
+        🔧 6. Window functions
       
     </span>
   </a>
@@ -1089,10 +1117,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#7-contract-stability-and-collisions" class="md-nav__link">
+  <a href="#7-aggregation-determinism" class="md-nav__link">
     <span class="md-ellipsis">
       
-        🔧 7. Contract stability and collisions
+        🔧 7. Aggregation determinism
       
     </span>
   </a>
@@ -1100,10 +1128,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#8-why-elevata-is-not-a-semantic-layer" class="md-nav__link">
+  <a href="#8-contract-stability-and-collisions" class="md-nav__link">
     <span class="md-ellipsis">
       
-        🔧 8. Why elevata is not a semantic layer
+        🔧 8. Contract stability and collisions
       
     </span>
   </a>
@@ -1111,10 +1139,21 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#9-references" class="md-nav__link">
+  <a href="#9-why-elevata-is-not-a-semantic-layer" class="md-nav__link">
     <span class="md-ellipsis">
       
-        🔧 9. References
+        🔧 9. Why elevata is not a semantic layer
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#10-references" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🔧 10. References
       
     </span>
   </a>
@@ -1689,6 +1728,7 @@ It applies to both standard generation and custom query logic (Query Trees).</p>
 <li>CI checks must be stable  </li>
 <li>the same metadata must produce the same output across runs  </li>
 <li>architecture reports must produce stable fingerprints  </li>
+<li>architecture execution records must preserve stable audit references  </li>
 <li>multi-dialect rendering must not introduce semantic drift</li>
 </ul>
 <p>Determinism is therefore treated as a correctness requirement, not a “best practice”.</p>
@@ -1747,7 +1787,8 @@ produce the same report fingerprint.</p>
 <li>Architecture State fingerprint  </li>
 <li>Architecture Change Report fingerprint  </li>
 <li>Architecture Promotion Report fingerprint  </li>
-<li>Architecture Approval Artifact fingerprint</li>
+<li>Architecture Approval Artifact fingerprint  </li>
+<li>Architecture Execution Record fingerprint</li>
 </ul>
 <p>These fingerprints are derived from canonical JSON representations.</p>
 <p>Approval artifact fingerprints are derived from the approval payload and review decision.<br />
@@ -1768,9 +1809,76 @@ and summary counts are restricted to the selected scope.</p>
 engines.</p>
 <p>Approval artifacts do not alter execution policy. A matching approval confirms that an Architecture Change Report<br />
 was reviewed, while load execution remains protected by preflight checks, policy decisions and materialization guardrails.</p>
-<p>The Architecture Review Status UI displays the resulting review state without executing DDL or DML.</p>
+<p>Architecture Control displays the resulting review state, execution readiness, dependency mode,<br />
+controlled execution output, and Architecture Execution Record.</p>
 <hr />
-<h2 id="5-window-functions">🔧 5. Window functions<a class="headerlink" href="#5-window-functions" title="Permanent link">&para;</a></h2>
+<h2 id="5-architecture-control-execution-semantics">🔧 5. Architecture Control Execution Semantics<a class="headerlink" href="#5-architecture-control-execution-semantics" title="Permanent link">&para;</a></h2>
+<p>Architecture Control provides a constrained UI path into the same deterministic load runner.</p>
+<p>It does not bypass:</p>
+<ul>
+<li>preflight validation  </li>
+<li>schema evolution policy checks  </li>
+<li>Architecture Guard enforcement  </li>
+<li>approval matching  </li>
+<li>dialect-owned SQL rendering</li>
+</ul>
+<p>The Architecture Control UI exposes controlled execution scopes:</p>
+<table>
+<thead>
+<tr>
+<th>Scope</th>
+<th>Dependency behavior</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>All datasets</td>
+<td>Executes all active target datasets with dependency ordering</td>
+</tr>
+<tr>
+<td>Schema</td>
+<td>Executes selected schema roots with dependency ordering</td>
+</tr>
+<tr>
+<td>TargetDataset</td>
+<td>Executes the selected TargetDataset with dependency ordering</td>
+</tr>
+<tr>
+<td>TargetDataset, target-only</td>
+<td>Executes only the selected TargetDataset</td>
+</tr>
+</tbody>
+</table>
+<p>The default execution path remains lineage-aware.</p>
+<p>Target-only execution is restricted to TargetDataset scopes and is intended for focused iteration<br />
+when upstream data is already available.</p>
+<p>Controlled execution produces an Architecture Execution Record.</p>
+<p>The record captures:</p>
+<ul>
+<li>execution identifier  </li>
+<li>operator  </li>
+<li>timestamps and duration  </li>
+<li>execution status  </li>
+<li>Architecture Control scope  </li>
+<li>dependency mode  </li>
+<li>report fingerprint  </li>
+<li>approval identifier  </li>
+<li>preview fingerprint  </li>
+<li>command invocation metadata  </li>
+<li>output and error tails  </li>
+<li>output and error line counts  </li>
+<li>deterministic record fingerprint</li>
+</ul>
+<p>Architecture Execution Records are deterministic audit artifacts. They answer:</p>
+<pre><code class="language-text">Who executed which controlled architecture scope, under which review and dependency context, and what happened?
+</code></pre>
+<p>The record fingerprint is derived from the canonical JSON representation of the execution record.</p>
+<p>Stored Architecture Execution Records remain deterministic audit artifacts when displayed through<br />
+Architecture Control history, opened as detail views, downloaded as JSON, or removed by retention cleanup.<br />
+History filtering and retention operate on stored record metadata and do not change the canonical record payload<br />
+or its fingerprint.</p>
+<hr />
+<h2 id="6-window-functions">🔧 6. Window functions<a class="headerlink" href="#6-window-functions" title="Permanent link">&para;</a></h2>
 <p>Some window functions are inherently nondeterministic without ordering.</p>
 <p>Rule:</p>
 <ul>
@@ -1789,7 +1897,7 @@ was reviewed, while load execution remains protected by preflight checks, policy
 <li>missing ORDER BY is usually ok → optional warning depending on policy</li>
 </ul>
 <hr />
-<h2 id="6-aggregation-determinism">🔧 6. Aggregation determinism<a class="headerlink" href="#6-aggregation-determinism" title="Permanent link">&para;</a></h2>
+<h2 id="7-aggregation-determinism">🔧 7. Aggregation determinism<a class="headerlink" href="#7-aggregation-determinism" title="Permanent link">&para;</a></h2>
 <p>Aggregations can become nondeterministic if result ordering is undefined in the aggregation semantics.</p>
 <p>Rule patterns:</p>
 <ul>
@@ -1798,7 +1906,7 @@ was reviewed, while load execution remains protected by preflight checks, policy
 </ul>
 <p>Other aggregates (SUM, COUNT, MIN, MAX, AVG) are deterministic without ordering.</p>
 <hr />
-<h2 id="7-contract-stability-and-collisions">🔧 7. Contract stability and collisions<a class="headerlink" href="#7-contract-stability-and-collisions" title="Permanent link">&para;</a></h2>
+<h2 id="8-contract-stability-and-collisions">🔧 8. Contract stability and collisions<a class="headerlink" href="#8-contract-stability-and-collisions" title="Permanent link">&para;</a></h2>
 <p>The output contract must be stable and unambiguous.</p>
 <p>Rules:</p>
 <ul>
@@ -1807,7 +1915,7 @@ was reviewed, while load execution remains protected by preflight checks, policy
 <li>Cycles in the Query Tree → <strong>ERROR</strong></li>
 </ul>
 <hr />
-<h2 id="8-why-elevata-is-not-a-semantic-layer">🔧 8. Why elevata is not a semantic layer<a class="headerlink" href="#8-why-elevata-is-not-a-semantic-layer" title="Permanent link">&para;</a></h2>
+<h2 id="9-why-elevata-is-not-a-semantic-layer">🔧 9. Why elevata is not a semantic layer<a class="headerlink" href="#9-why-elevata-is-not-a-semantic-layer" title="Permanent link">&para;</a></h2>
 <p>elevata does not implement query-time semantics (like BI semantic layers or metric stores).<br />
 Instead, elevata materializes semantics into datasets deterministically:</p>
 <ul>
@@ -1817,7 +1925,7 @@ Instead, elevata materializes semantics into datasets deterministically:</p>
 </ul>
 <p>This avoids tool-specific logic and ensures reproducible pipelines.</p>
 <hr />
-<h2 id="9-references">🔧 9. References<a class="headerlink" href="#9-references" title="Permanent link">&para;</a></h2>
+<h2 id="10-references">🔧 10. References<a class="headerlink" href="#10-references" title="Permanent link">&para;</a></h2>
 <ul>
 <li><a href="../query_builder_and_query_tree/">Query Tree &amp; Query Builder</a>    </li>
 <li><a href="../logical_plan/">Lineage Model &amp; Logical Plan</a>   </li>

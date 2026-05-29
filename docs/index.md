@@ -64,6 +64,10 @@ This index gives you an overview of all major topics and how they fit together.
 - [Load Execution & Orchestration Architecture](load_execution_architecture.md)  
   How elevata executes load plans: dependency graphs, retries, failure semantics, load run logging and execution snapshots.
 
+- [Architecture Catalog](architecture_catalog.md)  
+  Read-only discovery layer for metadata-defined executable architecture, including dataset search,  
+  catalog detail pages, lineage entry points, query contract links and execution evidence references.
+
 - [Architecture Control Plane](architecture_control_plane.md)  
   Deterministic architecture state, change reports, promotion reports,  
   approval artifacts, policy decisions and fingerprints for review, CI,

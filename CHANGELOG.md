@@ -12,6 +12,91 @@ This project adheres to [Semantic Versioning](https://semver.org/) and [Keep a C
 
 ---
 
+## [2.2.0] - 2026-05-29
+
+This release introduces the **Architecture Catalog** as a read-only discovery layer  
+for metadata-defined executable architecture.
+
+The Catalog makes architecture easier to find, inspect and navigate without turning discovery  
+into editing or execution.
+
+---
+
+### ✨ Added
+
+#### Architecture Catalog
+
+- Added central Architecture Catalog workspace to the main navigation  
+- Added read-only TargetDataset discovery with search and filters for:  
+    - dataset key and name  
+    - schema / layer  
+    - owner  
+    - active status  
+    - system-managed status  
+    - materialization type  
+    - incremental strategy  
+    - query logic  
+- Added compact Catalog dataset summaries with:  
+    - dataset key and description  
+    - architecture layer  
+    - effective materialization type  
+    - incremental strategy  
+    - ownership  
+    - upstream and downstream counts  
+    - metadata health  
+    - query logic  
+    - direct links to Details, Lineage, Query Contract and Architecture Control  
+- Added Architecture Catalog detail view for TargetDataset scopes  
+- Added Catalog detail cards for architecture summary, ownership, health and execution evidence  
+- Added Catalog detail upstream input and downstream consumer sections  
+- Added Catalog detail column contract table  
+- Added latest Architecture Execution Record summary on Catalog detail pages  
+- Added direct link from Catalog detail to Architecture Control execution history  
+
+---
+
+### 🔄 Improved
+
+#### Architecture Navigation
+
+- Added context-aware back navigation across Catalog, Details, Lineage, Query Contract and Architecture Control  
+- Kept Catalog navigation read-only and separate from execution actions  
+- Improved button group consistency in Catalog action links  
+- Added Query Contract back navigation for Catalog-driven workflows  
+
+#### Documentation
+
+- Added Architecture Catalog documentation  
+- Added Architecture Catalog to documentation index and MkDocs navigation  
+- Updated README with a compact Architecture Catalog summary  
+- Updated Architecture Overview with Architecture Catalog positioning  
+- Updated Architecture Control Plane documentation with Catalog boundary semantics  
+- Updated Getting Started with Architecture Catalog UI entry point  
+- Updated Platform Strategy with Architecture Catalog as discovery layer for the Architecture Runtime contract  
+
+---
+
+### 🔒 Governance & Determinism
+
+- Architecture Catalog does not mutate metadata  
+- Architecture Catalog does not execute loads  
+- Architecture Control remains responsible for approval, execution, execution history and retention workflows  
+- Latest execution evidence references do not change stored Architecture Execution Record payloads  
+- Catalog views preserve the separation between discovery, control and execution  
+
+---
+
+### 🧪 Quality & Stability
+
+- Added tests for Architecture Catalog context construction and filtering  
+- Added tests for custom query logic filtering  
+- Added tests for Catalog detail context construction  
+- Added tests for Catalog detail execution evidence summary  
+- Added view tests for Catalog workspace and Catalog detail rendering  
+- Verified Catalog, Detail, Lineage, Query Contract and Architecture Control navigation in the UI  
+
+---
+
 ## [2.1.0] - 2026-05-27
 
 This release makes Architecture Execution Records operable from Architecture Control.

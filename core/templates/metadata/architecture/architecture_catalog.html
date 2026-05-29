@@ -1,0 +1,311 @@
+<!--
+elevata - Metadata-driven Data Platform Framework
+Copyright © 2025-2026 Ilona Tag
+
+This file is part of elevata.
+
+elevata is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of
+the License, or (at your option) any later version.
+
+elevata is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with elevata. If not, see <https://www.gnu.org/licenses/>.
+
+Contact: <https://github.com/elevata-labs/elevata>.
+-->
+
+{% extends "base.html" %}
+
+{% block title %}Architecture Catalog · elevata{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-start justify-content-between gap-3 mb-3">
+  <div>
+    <h1 class="h4 mb-1">Architecture Catalog</h1>
+    <div class="small text-muted">
+      Read-only discovery layer for metadata-defined executable architecture.
+    </div>
+  </div>
+  <span class="badge text-bg-secondary">
+    {{ filtered_count }} / {{ total_count }} datasets
+  </span>
+</div>
+
+<div class="alert alert-info small mb-4">
+  <div class="fw-semibold mb-1">Discovery only</div>
+  <div>
+    The Architecture Catalog shows what exists, how it is defined, how it is connected,
+    and where its control and evidence pages are located. It does not edit metadata and
+    does not execute loads.
+  </div>
+</div>
+
+<div class="card mb-4">
+  <div class="card-body">
+    <form method="get" action="{% url 'architecture_catalog' %}">
+      <div class="row g-3 align-items-end">
+        <div class="col-lg-3">
+          <label for="catalog-search" class="form-label small fw-semibold">
+            Search
+          </label>
+          <input
+            id="catalog-search"
+            name="q"
+            class="form-control form-control-sm"
+            value="{{ filters.search }}"
+            placeholder="Dataset, key, schema, owner"
+          >
+        </div>
+
+        <div class="col-lg-2">
+          <label for="catalog-schema" class="form-label small fw-semibold">
+            Schema / Layer
+          </label>
+          <select id="catalog-schema" name="schema_short" class="form-select form-select-sm">
+            <option value="">All schemas</option>
+            {% for option in schema_options %}
+              <option value="{{ option.value }}" {% if option.selected %}selected{% endif %}>
+                {{ option.label }}
+              </option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="col-lg-2">
+          <label for="catalog-owner" class="form-label small fw-semibold">
+            Owner
+          </label>
+          <select id="catalog-owner" name="owner_id" class="form-select form-select-sm">
+            <option value="">All owners</option>
+            {% for option in owner_options %}
+              <option value="{{ option.value }}" {% if option.selected %}selected{% endif %}>
+                {{ option.label }}
+              </option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="col-lg-2">
+          <label for="catalog-status" class="form-label small fw-semibold">
+            Status
+          </label>
+          <select id="catalog-status" name="status" class="form-select form-select-sm">
+            <option value="active" {% if filters.status == "active" %}selected{% endif %}>Active</option>
+            <option value="inactive" {% if filters.status == "inactive" %}selected{% endif %}>Inactive</option>
+            <option value="all" {% if filters.status == "all" %}selected{% endif %}>All</option>
+          </select>
+        </div>
+
+        <div class="col-lg-3">
+          <label for="catalog-system-managed" class="form-label small fw-semibold">
+            Management
+          </label>
+          <select id="catalog-system-managed" name="system_managed" class="form-select form-select-sm">
+            <option value="all" {% if filters.system_managed == "all" %}selected{% endif %}>All</option>
+            <option value="yes" {% if filters.system_managed == "yes" %}selected{% endif %}>System-managed</option>
+            <option value="no" {% if filters.system_managed == "no" %}selected{% endif %}>User-managed</option>
+          </select>
+        </div>
+
+        <div class="col-lg-3">
+          <label for="catalog-materialization" class="form-label small fw-semibold">
+            Materialization
+          </label>
+          <select id="catalog-materialization" name="materialization_type" class="form-select form-select-sm">
+            <option value="">All materializations</option>
+            {% for option in materialization_options %}
+              <option value="{{ option.value }}" {% if option.selected %}selected{% endif %}>
+                {{ option.label }}
+              </option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="col-lg-3">
+          <label for="catalog-incremental-strategy" class="form-label small fw-semibold">
+            Incremental strategy
+          </label>
+          <select id="catalog-incremental-strategy" name="incremental_strategy" class="form-select form-select-sm">
+            <option value="">All strategies</option>
+            {% for option in incremental_strategy_options %}
+              <option value="{{ option.value }}" {% if option.selected %}selected{% endif %}>
+                {{ option.label }}
+              </option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="col-lg-3">
+          <label for="catalog-query-logic" class="form-label small fw-semibold">
+            Query logic
+          </label>
+          <select id="catalog-query-logic" name="query_logic" class="form-select form-select-sm">
+            <option value="all" {% if filters.query_logic == "all" %}selected{% endif %}>All</option>
+            <option value="custom" {% if filters.query_logic == "custom" %}selected{% endif %}>Custom query</option>
+            <option value="standard" {% if filters.query_logic == "standard" %}selected{% endif %}>Standard</option>
+          </select>
+        </div>
+
+        <div class="col-lg-3 d-flex gap-2">
+          <button type="submit" class="btn btn-sm btn-primary flex-fill">
+            <i class="bi bi-search"></i>
+            Apply filters
+          </button>
+          <a href="{{ clear_url }}" class="btn btn-sm btn-outline-secondary">
+            Clear
+          </a>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-striped table-hover align-middle mb-0">
+        <thead>
+          <tr>
+            <th>Dataset</th>
+            <th>Architecture</th>
+            <th>Ownership</th>
+            <th>Lineage</th>
+            <th>Health</th>
+            <th>Query</th>
+            <th class="text-end">Links</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for dataset in datasets %}
+            <tr>
+              <td>
+                <div class="fw-semibold">
+                  <a href="{{ dataset.catalog_detail_url }}" class="text-decoration-none">
+                    <code>{{ dataset.dataset_key }}</code>
+                  </a>
+                </div>
+                {% if dataset.description %}
+                  <div class="small text-muted mt-1">
+                    {{ dataset.description }}
+                  </div>
+                {% endif %}
+              </td>
+
+              <td>
+                <div class="badge-row badge-row--tight">
+                  <span class="badge badge-lineage-layer">
+                    {{ dataset.schema_short }}
+                  </span>
+                  <span class="badge badge-lineage-materialization">
+                    {{ dataset.effective_materialization }}
+                  </span>
+                  <span class="badge badge-lineage-incremental">
+                    {{ dataset.incremental_strategy }}
+                  </span>
+                </div>
+                <div class="small text-muted mt-1">
+                  {{ dataset.status_label }} · {{ dataset.management_label }}
+                </div>
+              </td>
+
+              <td>
+                {% if dataset.owner_labels %}
+                  {% for owner_label in dataset.owner_labels %}
+                    <div class="small">{{ owner_label }}</div>
+                  {% endfor %}
+                {% else %}
+                  <span class="small text-muted">No owner</span>
+                {% endif %}
+              </td>
+
+              <td>
+                <div class="small">
+                  Upstream: <strong>{{ dataset.upstream_count }}</strong>
+                </div>
+                <div class="small">
+                  Downstream: <strong>{{ dataset.downstream_count }}</strong>
+                </div>
+              </td>
+
+              <td>
+                {% if dataset.health_level == "ok" %}
+                  <span class="badge badge-health-ok">Health: {{ dataset.health_label }}</span>
+                {% elif dataset.health_level == "warning" %}
+                  <span class="badge badge-health-warning">Health: {{ dataset.health_label }}</span>
+                {% elif dataset.health_level == "error" %}
+                  <span class="badge badge-health-error">Health: {{ dataset.health_label }}</span>
+                {% else %}
+                  <span class="badge text-bg-secondary">Health: {{ dataset.health_label }}</span>
+                {% endif %}
+
+                {% if dataset.health_issue_count %}
+                  <div class="small text-muted mt-1">
+                    {{ dataset.health_issue_count }} finding(s)
+                  </div>
+                {% endif %}
+              </td>
+
+              <td>
+                {% if dataset.has_query_root %}
+                  <span class="badge badge-lineage-ref">
+                    {{ dataset.query_logic_label }}
+                  </span>
+                {% else %}
+                  <span class="badge badge-lineage-inactive">
+                    Standard
+                  </span>
+                {% endif %}
+              </td>
+
+              <td class="text-end actions-cell">
+                <div class="btn-group btn-group-sm catalog-actions" role="group">
+                  <a
+                    href="{{ dataset.detail_url }}"
+                    class="btn btn-outline-secondary"
+                    title="Dataset details"
+                  >
+                    Details
+                  </a>
+                  <a
+                    href="{{ dataset.lineage_url }}"
+                    class="btn btn-outline-secondary"
+                    title="Lineage"
+                  >
+                    Lineage
+                  </a>
+                  <a
+                    href="{{ dataset.query_contract_url }}"
+                    class="btn btn-outline-secondary"
+                    title="Query contract"
+                  >
+                    Contract
+                  </a>
+                  <a
+                    href="{{ dataset.architecture_control_url }}"
+                    class="btn btn-outline-primary"
+                    title="Architecture Control"
+                  >
+                    Control
+                  </a>
+                </div>
+              </td>
+            </tr>
+          {% empty %}
+            <tr>
+              <td colspan="7" class="text-center text-muted py-5">
+                No datasets match the selected Catalog filters.
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

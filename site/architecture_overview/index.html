@@ -784,6 +784,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../architecture_catalog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ Architecture Catalog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../architecture_control_plane/" class="md-nav__link">
         
   
@@ -1039,10 +1067,21 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#272-architecture-control-plane" class="md-nav__link">
+  <a href="#272-architecture-catalog" class="md-nav__link">
     <span class="md-ellipsis">
       
-        🧩 2.7.2 Architecture Control Plane
+        🧩 2.7.2 Architecture Catalog
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#273-architecture-control" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🧩 2.7.3 Architecture Control
       
     </span>
   </a>
@@ -1817,9 +1856,25 @@ DDL Applier (safe DDL only)
 <blockquote>
 <p><strong>Metadata → Logical Plan → Dialect-aware SQL → Warehouse</strong></p>
 </blockquote>
-<p>The Architecture Control Plane provides read-only review and comparison
+<p>Architecture Control provides review, approval, controlled execution, and audit
 artifacts around the same architecture state:</p>
-<pre><code class="language-text">Architecture State → Architecture Diff → MigrationPlan → Policy Decisions
+<pre><code class="language-text">+Architecture State
++  ↓
++Architecture Diff
++  ↓
++MigrationPlan
++  ↓
++Policy Decisions
++  ↓
++Architecture Change Report
++  ↓
++Architecture Approval Artifact
++  ↓
++Execution Preview
++  ↓
++Controlled Execution
++  ↓
++Architecture Execution Record
 </code></pre>
 <hr />
 <h2 id="2-architecture-layers">🔧 2. Architecture Layers<a class="headerlink" href="#2-architecture-layers" title="Permanent link">&para;</a></h2>
@@ -1886,18 +1941,47 @@ Schema evolution does not provision missing tables. Table provisioning is handle
 (<code>ensure_target_table(...)</code>) and executed via the target execution engine.</p>
 <p>Preflight validation includes schema introspection and dialect-aware semantic equivalence rules<br />
 to suppress non-actionable type differences.</p>
-<h3 id="272-architecture-control-plane">🧩 2.7.2 Architecture Control Plane<a class="headerlink" href="#272-architecture-control-plane" title="Permanent link">&para;</a></h3>
-<p>The Architecture Control Plane makes metadata-defined architecture reviewable<br />
-before load execution applies schema or data changes.</p>
+<h3 id="272-architecture-catalog">🧩 2.7.2 Architecture Catalog<a class="headerlink" href="#272-architecture-catalog" title="Permanent link">&para;</a></h3>
+<p>Architecture Catalog provides the read-only discovery layer for metadata-defined
+executable architecture.</p>
+<p>It helps users inspect:</p>
+<ul>
+<li>dataset inventory  </li>
+<li>schema / layer placement  </li>
+<li>materialization semantics  </li>
+<li>incremental strategy  </li>
+<li>ownership  </li>
+<li>metadata health  </li>
+<li>query logic  </li>
+<li>upstream and downstream relationships  </li>
+<li>column contract signals  </li>
+<li>latest execution evidence references</li>
+</ul>
+<p>The Catalog links to dedicated pages for:</p>
+<ul>
+<li>dataset details  </li>
+<li>lineage  </li>
+<li>query contracts  </li>
+<li>Architecture Control  </li>
+<li>execution history</li>
+</ul>
+<p>Architecture Catalog does not edit metadata and does not execute loads.</p>
+<h3 id="273-architecture-control">🧩 2.7.3 Architecture Control<a class="headerlink" href="#273-architecture-control" title="Permanent link">&para;</a></h3>
+<p>Architecture Control makes metadata-defined architecture reviewable, approvable,<br />
+executable through controlled scopes, and auditable.</p>
 <p>It provides deterministic artifacts for:</p>
 <ul>
 <li>Architecture State  </li>
 <li>Architecture Change Reports  </li>
 <li>Architecture Promotion Reports  </li>
+<li>Architecture Approval Artifacts  </li>
+<li>Architecture Execution Records  </li>
 <li>policy decisions  </li>
 <li>report fingerprints</li>
 </ul>
-<p>The control plane is read-only. It does not execute SQL and does not apply DDL.</p>
+<p>Controlled execution is delegated to the load runner. Architecture Control does not bypass<br />
+preflight validation, materialization policy checks, Architecture Guard enforcement,<br />
+or dialect-owned SQL rendering.</p>
 <p>Command responsibilities:</p>
 <table>
 <thead>
@@ -1908,26 +1992,88 @@ before load execution applies schema or data changes.</p>
 </thead>
 <tbody>
 <tr>
-<td>elevata_state</td>
+<td><code>elevata_state</code></td>
 <td>Render the metadata-defined architecture state</td>
 </tr>
 <tr>
-<td>elevata_plan</td>
+<td><code>elevata_plan</code></td>
 <td>Render architecture change intent and policy decisions</td>
 </tr>
 <tr>
-<td>elevata_promote</td>
+<td><code>elevata_promote</code></td>
 <td>Compare two architecture state artifacts</td>
 </tr>
 <tr>
-<td>elevata_load</td>
+<td><code>elevata_approve</code></td>
+<td>Create architecture approval artifacts</td>
+</tr>
+<tr>
+<td><code>elevata_approval_check</code></td>
+<td>Verify approval artifacts</td>
+</tr>
+<tr>
+<td><code>elevata_load</code></td>
 <td>Execute loads with preflight and guard checks</td>
 </tr>
 </tbody>
 </table>
-<p>Architecture reports use the same semantic path as execution:</p>
+<p>Architecture Control uses the same semantic path as execution:</p>
 <pre><code class="language-text">Architecture State → Architecture Diff → MigrationPlan → Policy Decisions
 </code></pre>
+<p>The Architecture Control UI adds a constrained operational layer:</p>
+<ul>
+<li>scope-aware report and review status  </li>
+<li>approval artifact creation and verification  </li>
+<li>execution preview  </li>
+<li>controlled load execution  </li>
+<li>target-only execution for TargetDataset scopes  </li>
+<li>captured execution output  </li>
+<li>persisted Architecture Execution Records</li>
+</ul>
+<p>Execution scopes are explicit:</p>
+<table>
+<thead>
+<tr>
+<th>Scope</th>
+<th>Execution behavior</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>All datasets</td>
+<td>Executes all active target datasets with dependency ordering</td>
+</tr>
+<tr>
+<td>Schema</td>
+<td>Executes selected schema roots with dependency ordering</td>
+</tr>
+<tr>
+<td>TargetDataset</td>
+<td>Executes the selected TargetDataset with dependency ordering</td>
+</tr>
+<tr>
+<td>TargetDataset, target-only</td>
+<td>Executes only the selected TargetDataset</td>
+</tr>
+</tbody>
+</table>
+<p>The default execution path remains lineage-aware. Target-only execution is available only<br />
+for TargetDataset scopes and is intended for focused iteration when upstream data is already available.</p>
+<p>Architecture Execution Records capture the audit context of controlled execution:</p>
+<ul>
+<li>execution identifier  </li>
+<li>operator  </li>
+<li>timestamps and duration  </li>
+<li>status and message  </li>
+<li>Architecture Control scope  </li>
+<li>dependency mode  </li>
+<li>report fingerprint  </li>
+<li>approval identifier  </li>
+<li>preview fingerprint  </li>
+<li>command invocation metadata  </li>
+<li>output and error tails  </li>
+<li>deterministic record fingerprint</li>
+</ul>
 <h2 id="3-bizcore-business-semantics-as-metadata">🔧 3. Bizcore — Business Semantics as Metadata<a class="headerlink" href="#3-bizcore-business-semantics-as-metadata" title="Permanent link">&para;</a></h2>
 <p>elevata introduces a dedicated <strong>Bizcore layer</strong> for modeling business meaning,
 rules, and calculations as <strong>first-class metadata</strong>.</p>

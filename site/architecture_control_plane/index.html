@@ -13,7 +13,7 @@
       
       
       
-        <link rel="prev" href="../load_execution_architecture/">
+        <link rel="prev" href="../architecture_catalog/">
       
       
         <link rel="next" href="../architecture_overview/">
@@ -783,6 +783,34 @@
                 
   
   
+  
+  
+    <li class="md-nav__item">
+      <a href="../architecture_catalog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ Architecture Catalog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
     
   
   
@@ -901,10 +929,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#6-architecture-operations-ui" class="md-nav__link">
+  <a href="#6-architecture-control-ui" class="md-nav__link">
     <span class="md-ellipsis">
       
-        🔧 6. Architecture Operations UI
+        🔧 6. Architecture Control UI
       
     </span>
   </a>
@@ -956,10 +984,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#11-deterministic-fingerprints" class="md-nav__link">
+  <a href="#11-architecture-execution-record" class="md-nav__link">
     <span class="md-ellipsis">
       
-        🔧 11. Deterministic Fingerprints
+        🔧 11. Architecture Execution Record
       
     </span>
   </a>
@@ -967,10 +995,21 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#12-operational-smoke-checks" class="md-nav__link">
+  <a href="#12-deterministic-fingerprints" class="md-nav__link">
     <span class="md-ellipsis">
       
-        🔧 12. Operational Smoke Checks
+        🔧 12. Deterministic Fingerprints
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#13-operational-smoke-checks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🔧 13. Operational Smoke Checks
       
     </span>
   </a>
@@ -1681,10 +1720,14 @@ for metadata-defined architecture.</p>
 <li>Architecture Change Report  </li>
 <li>Architecture Promotion Report  </li>
 <li>Architecture Approval Artifact  </li>
+<li>Architecture Execution Record  </li>
 <li>deterministic report fingerprints</li>
 </ul>
-<p>These artifacts make structural architecture changes reviewable, policy-aware,
-approvable, verifiable, visible in the UI, and suitable for CI pipelines.</p>
+<p>These artifacts make structural architecture changes reviewable, policy-aware, approvable, verifiable,<br />
+executable through controlled scopes, visible in the UI, and suitable for CI pipelines.</p>
+<p>Architecture Catalog complements the control plane as a read-only discovery surface.<br />
+It shows how datasets are defined, connected, controlled and linked to execution evidence<br />
+without creating approvals or executing loads.</p>
 <hr />
 <h2 id="1-purpose">🔧 1. Purpose<a class="headerlink" href="#1-purpose" title="Permanent link">&para;</a></h2>
 <p>elevata treats architecture as executable metadata.</p>
@@ -1701,6 +1744,10 @@ Policy Decisions
 Architecture Change Report
   ↓
 Architecture Approval Artifact
+  ↓
+Controlled Execution
+  ↓
+Architecture Execution Record
 </code></pre>
 <p>This makes schema evolution intent explicit before load execution applies any
 DDL or DML.</p>
@@ -1863,45 +1910,100 @@ TargetDataset architecture scope.</p>
 <p>Review states include approved, pending review, approval drift, blocked by policy, no architecture changes,<br />
 and invalid approval artifact.</p>
 <hr />
-<h2 id="6-architecture-operations-ui">🔧 6. Architecture Operations UI<a class="headerlink" href="#6-architecture-operations-ui" title="Permanent link">&para;</a></h2>
-<p>The Architecture Operations UI makes Architecture Control Plane artifact workflows operable<br />
-from the TargetDataset architecture review page.</p>
-<p>It supports the selected TargetDataset architecture scope and provides controlled actions<br />
-for architecture artifacts:</p>
+<h2 id="6-architecture-control-ui">🔧 6. Architecture Control UI<a class="headerlink" href="#6-architecture-control-ui" title="Permanent link">&para;</a></h2>
+<p>The Architecture Control UI makes Architecture Control Plane workflows operable<br />
+across controlled architecture scopes.</p>
+<p>It supports:</p>
+<ul>
+<li>all-dataset scopes  </li>
+<li>schema scopes  </li>
+<li>TargetDataset scopes  </li>
+<li>TargetDataset scopes with target-only execution</li>
+</ul>
+<p>The Architecture Control UI provides controlled actions for architecture artifacts and execution:</p>
 <ul>
 <li>show the scoped Architecture Change Report  </li>
 <li>download the scoped Architecture Change Report as JSON  </li>
 <li>create an Architecture Approval Artifact  </li>
-<li>check the stored Approval Artifact against the current report  </li>
-<li>refresh the Architecture Review Status</li>
+<li>check the stored Approval Artifact against the report  </li>
+<li>refresh the Architecture Review Status  </li>
+<li>inspect the Execution Preview  </li>
+<li>run controlled load execution  </li>
+<li>inspect captured execution output  </li>
+<li>inspect the Architecture Execution Record  </li>
+<li>browse stored Architecture Execution Records  </li>
+<li>filter execution history by scope, status, date range and dependency mode  </li>
+<li>download stored execution record JSON  </li>
+<li>apply retention cleanup for older execution records</li>
 </ul>
-<p>The report shown and downloaded by the UI uses the same scoped Architecture Change Report<br />
-contract as <code>elevata_plan</code>.</p>
 <p>Approval Artifact creation records the logged-in reviewer, the decision timestamp,<br />
 and an optional review note. The artifact is stored in the configured approval artifact directory<br />
-and is bound to the current report fingerprint.</p>
+and is bound to the report fingerprint.</p>
 <p>Approval checks compare the stored Approval Artifact with the current scoped Architecture Change Report<br />
 and surface the result in the UI.</p>
-<p>Architecture Operations UI actions operate on Architecture Control Plane artifacts.<br />
-They do not execute loads and do not override policy decisions.</p>
+<p>Controlled execution runs through the load runner. It does not bypass preflight validation,<br />
+materialization policy checks, Architecture Guard enforcement, or approval matching.</p>
+<p>Execution uses the selected Architecture Control scope:</p>
+<table>
+<thead>
+<tr>
+<th>Scope</th>
+<th>Execution behavior</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>All datasets</td>
+<td>Executes all active target datasets with dependency ordering</td>
+</tr>
+<tr>
+<td>Schema</td>
+<td>Executes selected schema roots with dependency ordering</td>
+</tr>
+<tr>
+<td>TargetDataset</td>
+<td>Executes the selected TargetDataset with dependency ordering</td>
+</tr>
+<tr>
+<td>TargetDataset, target-only</td>
+<td>Executes only the selected TargetDataset</td>
+</tr>
+</tbody>
+</table>
+<p>Target-only execution is available only for TargetDataset scopes.<br />
+It is intended for focused iteration when upstream data is already available.</p>
+<p>Controlled execution produces an Architecture Execution Record.</p>
 <hr />
 <h2 id="7-artifact-storage-for-shared-deployments">🔧 7. Artifact Storage for Shared Deployments<a class="headerlink" href="#7-artifact-storage-for-shared-deployments" title="Permanent link">&para;</a></h2>
 <p>Architecture Control Plane artifacts are stored on the server-side filesystem.</p>
 <p>The Architecture State Store uses <code>ELEVATA_ARCH_STATE_DIR</code> and stores the persisted architecture state<br />
 as JSON. The Approval Artifact Store uses <code>ELEVATA_ARCH_APPROVAL_DIR</code> and stores deterministic<br />
-approval artifacts as JSON files.</p>
+approval artifacts as JSON files. The Architecture Execution Record Store uses <code>ELEVATA_ARCH_EXECUTION_DIR</code><br />
+and stores controlled execution records as JSON files.</p>
+<p>Default artifact directories:</p>
+<pre><code class="language-bash">ELEVATA_ARCH_STATE_DIR=.elevata/state
+ELEVATA_ARCH_APPROVAL_DIR=.elevata/approvals
+ELEVATA_ARCH_EXECUTION_DIR=.elevata/executions
+</code></pre>
 <p>For single-instance environments, the default <code>.elevata</code> paths provide a compact artifact layout<br />
-inside the elevata runtime directory. For shared deployments, both directories must point to<br />
+inside the elevata runtime directory. For shared deployments, these directories must point to<br />
 persistent server-side storage that is available to every application instance serving the same metadata database.</p>
 <p>Recommended deployment pattern:</p>
 <pre><code class="language-bash">ELEVATA_ARCH_STATE_DIR=/var/lib/elevata/state
 ELEVATA_ARCH_APPROVAL_DIR=/var/lib/elevata/approvals
+ELEVATA_ARCH_EXECUTION_DIR=/var/lib/elevata/executions
 </code></pre>
 <p>In containerized or multi-instance deployments, these paths are backed by a shared persistent volume.<br />
-This ensures that Architecture State, Approval Artifacts, Review Status, and Approval Checks are resolved<br />
-consistently for all users of the shared metadata application.</p>
+This ensures that Architecture State, Approval Artifacts, Review Status, Approval Checks,<br />
+and Architecture Execution Records are resolved consistently for all users of the shared metadata application.</p>
 <p>The metadata database stores metadata definitions. Architecture Control Plane artifacts are stored in the<br />
 configured artifact directories.</p>
+<p>Architecture Execution Records use a table-shaped JSON contract. This keeps the file-backed store compact<br />
+while preserving a stable record structure for operational audit processing.</p>
+<p>Architecture Execution Record history is resolved from the configured execution record directory.<br />
+Retention cleanup removes stored execution record artifacts older than the selected retention window.<br />
+The cleanup operates on audit artifacts only and does not alter metadata definitions, approval artifacts,<br />
+Architecture State artifacts, load run logs or load run snapshots.</p>
 <hr />
 <h2 id="8-architecture-promotion-report">🔧 8. Architecture Promotion Report<a class="headerlink" href="#8-architecture-promotion-report" title="Permanent link">&para;</a></h2>
 <p>An Architecture Promotion Report compares two Architecture State artifacts.</p>
@@ -1976,7 +2078,8 @@ The embedded Architecture Change Report exposes the effective scope in JSON and 
 </code></pre>
 <hr />
 <h2 id="10-execution-guardrails">🔧 10. Execution Guardrails<a class="headerlink" href="#10-execution-guardrails" title="Permanent link">&para;</a></h2>
-<p>The Architecture Control Plane separates artifact operations from load execution.</p>
+<p>The Architecture Control Plane separates architecture review, approval, execution control,<br />
+and load-run enforcement.</p>
 <p>Load execution remains protected by the load runner. <code>elevata_load</code> performs its own preflight checks<br />
 before DDL or DML can be executed.</p>
 <p>This preserves a strict separation:</p>
@@ -2014,14 +2117,68 @@ before DDL or DML can be executed.</p>
 </tr>
 </tbody>
 </table>
+<p>The Architecture Control UI invokes the same load runner through a constrained execution path.<br />
+The UI does not expose arbitrary load runner flags. It exposes controlled scope selection, approval status,<br />
+execution preview, target-only execution for TargetDataset scopes, captured output, and execution records.</p>
 <hr />
-<h2 id="11-deterministic-fingerprints">🔧 11. Deterministic Fingerprints<a class="headerlink" href="#11-deterministic-fingerprints" title="Permanent link">&para;</a></h2>
-<p>Architecture State, Architecture Change Report, Architecture Promotion Report, and Architecture Approval Artifact<br />
-each expose deterministic fingerprints.</p>
+<h2 id="11-architecture-execution-record">🔧 11. Architecture Execution Record<a class="headerlink" href="#11-architecture-execution-record" title="Permanent link">&para;</a></h2>
+<p>An Architecture Execution Record describes one controlled Architecture Control execution.</p>
+<p>It captures:</p>
+<ul>
+<li>execution identifier  </li>
+<li>reviewer or operator  </li>
+<li>timestamps and duration  </li>
+<li>execution status  </li>
+<li>Architecture Control scope  </li>
+<li>dependency mode  </li>
+<li>report fingerprint  </li>
+<li>approval identifier  </li>
+<li>preview fingerprint  </li>
+<li>command invocation metadata  </li>
+<li>output and error tails  </li>
+<li>output and error line counts  </li>
+<li>deterministic record fingerprint</li>
+</ul>
+<p>Execution records answer:</p>
+<pre><code class="language-text">Who executed which approved architecture scope, with which dependency mode, and what happened?
+</code></pre>
+<p>The record is stored as deterministic JSON:</p>
+<pre><code class="language-text">&lt;execution_id&gt;.execution.json
+</code></pre>
+<p>Stored records can be listed in Architecture Control, filtered by scope, status, date range and dependency mode,<br />
+opened as detail views, and downloaded as JSON audit artifacts. Retention cleanup removes older stored records<br />
+from the execution record store.</p>
+<p>Architecture Execution Records are audit artifacts. They complement load-run logs and snapshots:</p>
+<table>
+<thead>
+<tr>
+<th>Artifact</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Load Run Log</td>
+<td>Dataset- and attempt-level operational events</td>
+</tr>
+<tr>
+<td>Load Run Snapshot</td>
+<td>Batch-level execution state and outcomes</td>
+</tr>
+<tr>
+<td>Architecture Execution Record</td>
+<td>Architecture Control execution decision and result</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="12-deterministic-fingerprints">🔧 12. Deterministic Fingerprints<a class="headerlink" href="#12-deterministic-fingerprints" title="Permanent link">&para;</a></h2>
+<p>Architecture State, Architecture Change Report, Architecture Promotion Report, Architecture Approval Artifact,<br />
+and Architecture Execution Record each expose deterministic fingerprints.</p>
 <p>Fingerprints are derived from canonical JSON representations and allow CI, review processes,<br />
-approval decisions, and promotion workflows to reference exact architecture artifacts.</p>
+approval decisions, promotion workflows, and audit processes to reference exact architecture artifacts.</p>
 <hr />
-<h2 id="12-operational-smoke-checks">🔧 12. Operational Smoke Checks<a class="headerlink" href="#12-operational-smoke-checks" title="Permanent link">&para;</a></h2>
+<h2 id="13-operational-smoke-checks">🔧 13. Operational Smoke Checks<a class="headerlink" href="#13-operational-smoke-checks" title="Permanent link">&para;</a></h2>
 <p>The following commands provide a compact validation set for architecture artifacts.</p>
 <p>Export the current architecture state:</p>
 <pre><code class="language-bash">python manage.py elevata_state --output .artifacts/current_architecture_state.json
