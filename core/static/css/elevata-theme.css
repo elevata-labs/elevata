@@ -718,3 +718,20 @@ details[open] .details-closed-label {
 details:not([open]) .details-open-label {
   display: none;
 }
+
+.catalog-insight-more summary {
+  cursor: pointer;
+  user-select: none;
+}
+
+.catalog-insight-more .catalog-insight-summary-open {
+  display: none;
+}
+
+.catalog-insight-more[open] .catalog-insight-summary-closed {
+  display: none;
+}
+
+.catalog-insight-more[open] .catalog-insight-summary-open {
+  display: inline;
+}

@@ -138,7 +138,9 @@ It helps users inspect:
 - query logic  
 - upstream and downstream relationships  
 - column contract signals  
-- latest execution evidence references
+- latest execution evidence references  
+- architecture quality and governance insights  
+- Architecture Control review status summaries
 
 The Catalog links to dedicated pages for:
 
@@ -149,6 +151,11 @@ The Catalog links to dedicated pages for:
 - execution history
 
 Architecture Catalog does not edit metadata and does not execute loads.
+
+Catalog Insights provide read-only signals for ownership gaps, metadata health findings,  
+custom query logic, downstream consumer visibility, inactive datasets with consumers,  
+and missing execution evidence. Dataset-specific insight signals are also shown on
+Catalog detail pages.
 
 ### 🧩 2.7.3 Architecture Control
 

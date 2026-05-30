@@ -23,6 +23,7 @@ Contact: <https://github.com/elevata-labs/elevata>.
 from __future__ import annotations
 
 from dataclasses import dataclass
+import logging
 from typing import Any, Mapping
 from urllib.parse import urlencode
 
@@ -33,6 +34,10 @@ from metadata.architecture.execution_record import (
   ArchitectureExecutionRecordFilters,
   ArchitectureExecutionRecordStore,
 )
+from metadata.architecture.review_status import (
+  ArchitectureReviewStatusError,
+  build_target_dataset_architecture_review_status,
+)
 from metadata.models import (
   Person,
   TargetColumn,
@@ -42,6 +47,9 @@ from metadata.models import (
   TargetSchema,
 )
 from metadata.generation.validators import summarize_targetdataset_health
+
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -209,6 +217,41 @@ class ArchitectureCatalogExecutionSummary:
 
 
 @dataclass(frozen=True)
+class ArchitectureCatalogReviewStatusSummary:
+  """
+  Read-only Architecture Catalog summary for Architecture Control review status.
+  """
+  status: str
+  label: str
+  message: str
+  badge_class: str
+  icon: str
+  report_fingerprint: str
+  approval_id: str | None
+  has_changes: bool
+  is_blocked: bool
+  architecture_control_url: str
+
+  @property
+  def fingerprint_short(self) -> str:
+    """
+    Return a compact report fingerprint label.
+    """
+    return self.report_fingerprint[:12] if self.report_fingerprint else ""
+
+
+@dataclass(frozen=True)
+class ArchitectureCatalogDetailInsight:
+  """
+  Read-only dataset-specific Catalog Insight signal.
+  """
+  key: str
+  label: str
+  message: str
+  badge_class: str
+
+
+@dataclass(frozen=True)
 class ArchitectureCatalogDetailContext:
   """
   Template context for one Architecture Catalog dataset detail view.
@@ -219,7 +262,11 @@ class ArchitectureCatalogDetailContext:
   upstream_inputs: tuple[ArchitectureCatalogInputSummary, ...]
   downstream_consumers: tuple[ArchitectureCatalogInputSummary, ...]
   latest_execution_record: ArchitectureCatalogExecutionSummary | None
+  detail_insights: tuple[ArchitectureCatalogDetailInsight, ...]
+  review_status: ArchitectureCatalogReviewStatusSummary | None
+  review_status_error: str
   health_messages: tuple[str, ...]
+  insights_url: str
   catalog_url: str
 
 
@@ -306,6 +353,14 @@ def build_architecture_catalog_detail_context(
 
   _health_level, health_messages = summarize_targetdataset_health(dataset)
   summary = _summarize_dataset(dataset)
+  latest_execution_record = _latest_execution_record_summary(
+    summary.dataset_key,
+  )
+  review_status, review_status_error = _review_status_summary(
+    dataset,
+    architecture_control_url=summary.architecture_control_url,
+  )
+  health_message_tuple = tuple(health_messages)
 
   context = ArchitectureCatalogDetailContext(
     object=dataset,
@@ -313,8 +368,17 @@ def build_architecture_catalog_detail_context(
     columns=_column_summaries(dataset),
     upstream_inputs=_upstream_input_summaries(dataset),
     downstream_consumers=_downstream_consumer_summaries(dataset),
-    latest_execution_record=_latest_execution_record_summary(summary.dataset_key),
-    health_messages=tuple(health_messages),
+    latest_execution_record=latest_execution_record,
+    detail_insights=_detail_insights(
+      summary,
+      latest_execution_record,
+      review_status,
+      health_message_tuple,
+    ),
+    review_status=review_status,
+    review_status_error=review_status_error,
+    health_messages=health_message_tuple,
+    insights_url=reverse("architecture_catalog_insights"),
     catalog_url=reverse("architecture_catalog"),
   )
   return context.__dict__
@@ -553,6 +617,171 @@ def _latest_execution_record_summary(
     dependency_mode=record.dependency_mode,
     record_fingerprint=record.record_fingerprint,
   )
+
+
+def _detail_insights(
+  dataset: ArchitectureCatalogDatasetSummary,
+  latest_execution_record: ArchitectureCatalogExecutionSummary | None,
+  review_status: ArchitectureCatalogReviewStatusSummary | None,
+  health_messages: tuple[str, ...],
+) -> tuple[ArchitectureCatalogDetailInsight, ...]:
+  """
+  Return dataset-specific Catalog Insight signals for the detail view.
+  """
+  insights = []
+
+  if not dataset.owner_labels:
+    insights.append(
+      ArchitectureCatalogDetailInsight(
+        key="missing_owner",
+        label="Missing owner",
+        message="No owner is assigned to this dataset.",
+        badge_class="text-bg-warning",
+      ),
+    )
+
+  if dataset.health_level == "error":
+    insights.append(
+      ArchitectureCatalogDetailInsight(
+        key="health_error",
+        label="Health issues",
+        message=_health_insight_message(
+          health_messages,
+          fallback="Metadata health checks found issues.",
+        ),
+        badge_class="text-bg-danger",
+      ),
+    )
+  elif dataset.health_level == "warning":
+    insights.append(
+      ArchitectureCatalogDetailInsight(
+        key="health_warning",
+        label="Health warnings",
+        message=_health_insight_message(
+          health_messages,
+          fallback="Metadata health checks found warnings.",
+        ),
+        badge_class="text-bg-warning",
+      ),
+    )
+
+  review_insight = _review_status_detail_insight(review_status)
+  if review_insight is not None:
+    insights.append(review_insight)
+
+  if dataset.has_query_root:
+    insights.append(
+      ArchitectureCatalogDetailInsight(
+        key="custom_query_logic",
+        label="Custom query logic",
+        message="This dataset output is defined by a Query Tree.",
+        badge_class="text-bg-info",
+      ),
+    )
+
+  if dataset.active and dataset.downstream_count == 0:
+    insights.append(
+      ArchitectureCatalogDetailInsight(
+        key="without_downstream_consumers",
+        label="No downstream consumers",
+        message="No active TargetDataset consumers are linked downstream.",
+        badge_class="text-bg-secondary",
+      ),
+    )
+
+  if not dataset.active and dataset.downstream_count > 0:
+    insights.append(
+      ArchitectureCatalogDetailInsight(
+        key="inactive_with_downstream",
+        label="Inactive with consumers",
+        message=(
+          f"This inactive dataset still has {dataset.downstream_count} "
+          "active downstream consumer(s)."
+        ),
+        badge_class="text-bg-warning",
+      ),
+    )
+
+  if dataset.active and latest_execution_record is None:
+    insights.append(
+      ArchitectureCatalogDetailInsight(
+        key="missing_execution_evidence",
+        label="No execution evidence",
+        message="No Architecture Execution Record exists for this dataset scope.",
+        badge_class="text-bg-secondary",
+      ),
+    )
+
+  return tuple(insights)
+
+
+def _review_status_summary(
+  target_dataset: TargetDataset,
+  *,
+  architecture_control_url: str,
+) -> tuple[ArchitectureCatalogReviewStatusSummary | None, str]:
+  """
+  Return the read-only Architecture Control review status for Catalog detail.
+  """
+  try:
+    review_status = build_target_dataset_architecture_review_status(
+      target_dataset,
+    )
+  except ArchitectureReviewStatusError as exc:
+    return None, str(exc)
+  except Exception as exc:
+    logger.exception("Catalog review status summary failed: %s", exc)
+    return None, str(exc)
+
+  return (
+    ArchitectureCatalogReviewStatusSummary(
+      status=review_status.status,
+      label=review_status.label,
+      message=review_status.message,
+      badge_class=review_status.badge_class,
+      icon=review_status.icon,
+      report_fingerprint=review_status.report_fingerprint,
+      approval_id=review_status.approval_id,
+      has_changes=review_status.has_changes,
+      is_blocked=review_status.is_blocked,
+      architecture_control_url=architecture_control_url,
+    ),
+    "",
+  )
+
+
+def _review_status_detail_insight(
+  review_status: ArchitectureCatalogReviewStatusSummary | None,
+) -> ArchitectureCatalogDetailInsight | None:
+  """
+  Return a dataset-specific review status signal for Catalog detail.
+  """
+  if review_status is None:
+    return None
+
+  if review_status.status not in {"blocked", "pending", "drift", "invalid"}:
+    return None
+
+  return ArchitectureCatalogDetailInsight(
+    key=f"review_{review_status.status}",
+    label=f"Review: {review_status.label}",
+    message=review_status.message,
+    badge_class=review_status.badge_class,
+  )
+
+
+def _health_insight_message(
+  health_messages: tuple[str, ...],
+  *,
+  fallback: str,
+) -> str:
+  """
+  Return a compact health insight message for the Catalog detail view.
+  """
+  if health_messages:
+    return f"{len(health_messages)} metadata health finding(s)."
+
+  return fallback
 
 
 def _input_summary(

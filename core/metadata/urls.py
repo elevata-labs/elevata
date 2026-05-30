@@ -155,6 +155,11 @@ urlpatterns += [
   path("generate-targets/", views.generate_targets, name="generate_targets"),
   path("api/targetcolumns/upstream-meta/", views.targetcolumn_upstream_meta, name="targetcolumn_upstream_meta"),
   path("architecture-catalog/", views_catalog.architecture_catalog, name="architecture_catalog"),
+  path(
+    "architecture-catalog/insights/",
+    views_catalog.architecture_catalog_insights,
+    name="architecture_catalog_insights",
+  ),
   path("architecture-catalog/<int:pk>/",
     views_catalog.architecture_catalog_detail,
     name="architecture_catalog_detail",

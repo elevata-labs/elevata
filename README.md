@@ -52,7 +52,7 @@ validated, and applied deterministically before execution.
 
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/elevata-labs/elevata/main/docs/elevata_v2_2_0.png" alt="elevata UI preview" width="700"/>
+  <img src="https://raw.githubusercontent.com/elevata-labs/elevata/main/docs/elevata_v2_3_0.png" alt="elevata UI preview" width="900"/>
   <br/>
   <em>Dataset detail view with lineage, metadata, and dialect-aware SQL previews</em>
 </p>
@@ -126,7 +126,8 @@ elevata provides a read-only Architecture Catalog for discovering metadata-defin
 executable architecture.
 
 The Catalog shows what exists, how datasets are defined, how they are connected,  
-how they are controlled, and where execution evidence is available.
+how they are controlled, where execution evidence is available, and which architecture quality  
+and governance signals need attention.
 
 Users can search and filter TargetDatasets by schema, owner, lifecycle status,  
 system-managed status, materialization type, incremental strategy and query logic.
@@ -134,6 +135,10 @@ system-managed status, materialization type, incremental strategy and query logi
 Catalog detail pages summarize architecture metadata, ownership, health, upstream inputs,  
 downstream consumers, column contract signals and the latest Architecture Execution Record  
 for the dataset scope.
+
+Catalog Insights highlight ownership gaps, metadata health findings, custom query logic,  
+downstream consumer visibility, inactive datasets with consumers, missing execution evidence,  
+and dataset-specific Architecture Control review status summaries.
 
 The Catalog does not edit metadata and does not execute loads. Architecture Control remains  
 responsible for approval, execution, execution records and retention workflows.

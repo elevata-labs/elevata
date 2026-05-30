@@ -1,0 +1,154 @@
+<!--
+elevata - Metadata-driven Data Platform Framework
+Copyright © 2025-2026 Ilona Tag
+
+This file is part of elevata.
+
+elevata is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of
+the License, or (at your option) any later version.
+
+elevata is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with elevata. If not, see <https://www.gnu.org/licenses/>.
+
+Contact: <https://github.com/elevata-labs/elevata>.
+-->
+
+{% extends "base.html" %}
+
+{% block title %}Architecture Catalog Insights · elevata{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-start justify-content-between gap-3 mb-3">
+  <div>
+    <h1 class="h4 mb-1">Architecture Catalog Insights</h1>
+    <div class="small text-muted">
+      Read-only architecture quality and governance signals.
+    </div>
+  </div>
+
+  <div class="d-flex align-items-center justify-content-end gap-2 flex-wrap">
+    <a href="{{ catalog_url }}" class="btn btn-sm btn-outline-secondary">
+      <i class="bi bi-arrow-left"></i>
+      Catalog
+    </a>
+    <span class="badge text-bg-secondary">
+      {{ active_dataset_count }} active / {{ total_dataset_count }} datasets
+    </span>
+  </div>
+</div>
+
+<div class="alert alert-info small mb-4">
+  <div class="fw-semibold mb-1">Signals only</div>
+  <div>
+    Catalog Insights summarize architecture quality and governance signals from
+    existing metadata, lineage, health checks and execution evidence. They do not
+    edit metadata and do not execute loads.
+  </div>
+</div>
+
+<div class="row g-4">
+  {% for card in insight_cards %}
+    <div class="col-xl-4 col-lg-6">
+      <div class="card h-100">
+        <div class="card-body">
+          <div class="d-flex align-items-start justify-content-between gap-3 mb-3">
+            <div>
+              <div class="fw-semibold">
+                {{ card.title }}
+              </div>
+              <div class="small text-muted">
+                {{ card.description }}
+              </div>
+            </div>
+            <span class="badge {{ card.badge_class }}">
+              {{ card.count }}
+            </span>
+          </div>
+
+          {% if card.items %}
+            <div class="list-group list-group-flush">
+              {% for item in card.items %}
+                <div class="list-group-item px-0">
+                  <div class="d-flex align-items-start justify-content-between gap-3">
+                    <div>
+                      <a
+                        href="{{ item.catalog_detail_url }}"
+                        class="text-decoration-none"
+                      >
+                        <code>{{ item.dataset_key }}</code>
+                      </a>
+                      <div class="small text-muted mt-1">
+                        {{ item.reason }}
+                      </div>
+                    </div>
+                    <span class="badge badge-lineage-layer">
+                      {{ item.schema_short }}
+                    </span>
+                  </div>
+                </div>
+              {% endfor %}
+            </div>
+
+            {% if card.has_more %}
+              <details class="catalog-insight-more mt-3">
+                <summary class="small text-muted">
+                  <span class="catalog-insight-summary-closed">
+                    Showing {{ card.items|length }} of {{ card.count }} datasets
+                    · show remaining {{ card.remaining_items|length }}
+                  </span>
+                  <span class="catalog-insight-summary-open">
+                    Showing all {{ card.count }} datasets
+                    · show first {{ card.items|length }} only
+                  </span>
+                </summary>
+
+                <div class="list-group list-group-flush mt-2">
+                  {% for item in card.remaining_items %}
+                    <div class="list-group-item px-0">
+                      <div class="d-flex align-items-start justify-content-between gap-3">
+                        <div>
+                          <a
+                            href="{{ item.catalog_detail_url }}"
+                            class="text-decoration-none"
+                          >
+                            <code>{{ item.dataset_key }}</code>
+                          </a>
+                          <div class="small text-muted mt-1">
+                            {{ item.reason }}
+                          </div>
+                        </div>
+                        <span class="badge badge-lineage-layer">
+                          {{ item.schema_short }}
+                        </span>
+                      </div>
+                    </div>
+                  {% endfor %}
+                </div>
+              </details>
+            {% endif %}
+          {% else %}
+            <div class="small text-muted">
+              {{ card.empty_label }}
+            </div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  {% empty %}
+    <div class="col-12">
+      <div class="card">
+        <div class="card-body text-center text-muted py-5">
+          No Catalog Insights are available.
+        </div>
+      </div>
+    </div>
+  {% endfor %}
+</div>
+{% endblock %}

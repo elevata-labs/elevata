@@ -49,15 +49,6 @@ Contact: <https://github.com/elevata-labs/elevata>.
   </div>
 
   <div class="d-flex gap-2">
-    <button
-      type="button"
-      class="btn btn-sm btn-outline-secondary"
-      data-default-back-url="{{ catalog_url }}"
-      onclick="window.elevataNavigateBack(this)"
-    >
-      <i class="bi bi-arrow-left"></i>
-      Catalog
-    </button>
     <a href="{{ dataset.detail_url }}" class="btn btn-sm btn-outline-secondary">
       <i class="bi bi-notepad-text"></i>
       Details
@@ -74,6 +65,19 @@ Contact: <https://github.com/elevata-labs/elevata>.
       <i class="bi bi-shield-check"></i>
       Control
     </a>
+    <a href="{{ insights_url }}" class="btn btn-sm btn-outline-secondary">
+      <i class="bi bi-graph-up-arrow"></i>
+      Insights
+    </a>
+    <button
+      type="button"
+      class="btn btn-sm btn-outline-secondary"
+      data-default-back-url="{{ catalog_url }}"
+      onclick="window.elevataNavigateBack(this)"
+    >
+      <i class="bi bi-arrow-left"></i>
+      Catalog
+    </button>
   </div>
 </div>
 
@@ -84,6 +88,39 @@ Contact: <https://github.com/elevata-labs/elevata>.
     and column contract signals. Editing and execution stay on their dedicated pages.
   </div>
 </div>
+
+{% if detail_insights %}
+  <div class="card mb-4">
+    <div class="card-body">
+      <div class="d-flex align-items-start justify-content-between gap-3 mb-3">
+        <div>
+          <div class="fw-semibold">Catalog insight signals</div>
+          <div class="small text-muted">
+            Dataset-specific quality and governance signals from the Architecture Catalog.
+          </div>
+        </div>
+        <span class="badge text-bg-secondary">
+          {{ detail_insights|length }}
+        </span>
+      </div>
+
+      <div class="row g-3">
+        {% for insight in detail_insights %}
+          <div class="col-xl-4 col-lg-6">
+            <div class="border rounded p-3 h-100 bg-light">
+              <span class="badge {{ insight.badge_class }} mb-2">
+                {{ insight.label }}
+              </span>
+              <div class="small text-muted">
+                {{ insight.message }}
+              </div>
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+{% endif %}
 
 <div class="row g-4 mb-4">
   <div class="col-xl-3 col-lg-6">
@@ -155,6 +192,62 @@ Contact: <https://github.com/elevata-labs/elevata>.
         {% else %}
           <div class="small text-muted mt-3">
             No health findings.
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="col-xl-3 col-lg-6">
+    <div class="card h-100">
+      <div class="card-body">
+        <div class="small text-muted mb-1">Review status</div>
+
+        {% if review_status %}
+          <span class="badge {{ review_status.badge_class }}">
+            <i class="bi {{ review_status.icon }}"></i>
+            {{ review_status.label }}
+          </span>
+
+          <div class="small text-muted mt-3">
+            {{ review_status.message }}
+          </div>
+
+          {% if review_status.fingerprint_short %}
+            <dl class="row small mt-3 mb-0">
+              <dt class="col-5 text-muted">Report</dt>
+              <dd class="col-7">
+                <code>{{ review_status.fingerprint_short }}</code>
+              </dd>
+
+              <dt class="col-5 text-muted">Changes</dt>
+              <dd class="col-7">
+                {% if review_status.has_changes %}Yes{% else %}No{% endif %}
+              </dd>
+
+              <dt class="col-5 text-muted">Policy</dt>
+              <dd class="col-7">
+                {% if review_status.is_blocked %}Blocked{% else %}Allowed{% endif %}
+              </dd>
+            </dl>
+          {% endif %}
+
+          <a
+            href="{{ review_status.architecture_control_url }}"
+            class="btn btn-sm btn-outline-secondary mt-3"
+          >
+            <i class="bi bi-shield-check"></i>
+            Open Control
+          </a>
+        {% elif review_status_error %}
+          <span class="badge text-bg-warning">Unavailable</span>
+          <div class="small text-muted mt-3">
+            {{ review_status_error }}
+          </div>
+        {% else %}
+          <span class="badge text-bg-secondary">Unavailable</span>
+          <div class="small text-muted mt-3">
+            Review status is not available for this dataset.
           </div>
         {% endif %}
       </div>

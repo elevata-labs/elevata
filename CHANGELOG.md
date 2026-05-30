@@ -12,6 +12,93 @@ This project adheres to [Semantic Versioning](https://semver.org/) and [Keep a C
 
 ---
 
+## [2.3.0] - 2026-05-30
+
+This release extends the **Architecture Catalog** with **Catalog Insights**:  
+read-only architecture quality and governance signals for metadata-defined executable architecture.
+
+The Catalog now highlights where ownership, metadata health, lineage usage, review state  
+and execution evidence need attention without turning discovery into editing or execution.
+
+---
+
+### ✨ Added
+
+#### Architecture Catalog Insights
+
+- Added dedicated Architecture Catalog Insights page  
+- Added read-only insight cards for:  
+    - datasets without assigned ownership  
+    - datasets with metadata health issues  
+    - datasets with metadata health warnings  
+    - datasets with custom query logic  
+    - datasets without downstream consumers  
+    - inactive datasets with downstream consumers  
+    - datasets without Architecture Execution Record evidence  
+- Added expandable insight card lists for complete dataset visibility  
+- Added direct links from insight items to Catalog detail pages
+
+#### Catalog Detail Insight Signals
+
+- Added dataset-specific Catalog insight signals to Catalog detail pages  
+- Added signals for missing ownership, metadata health findings, custom query logic,  
+missing downstream consumers, inactive consumer relationships and missing execution evidence  
+- Added relevant Architecture Control review states as dataset-specific Catalog detail signals  
+- Added read-only Architecture Control review status summary on Catalog detail pages  
+- Added review state, review message, report fingerprint, change indicator and policy status  
+to Catalog detail context  
+- Added direct Catalog detail link to the selected Architecture Control scope
+
+---
+
+### 🔄 Improved
+
+#### Architecture Catalog Navigation
+
+- Added direct navigation from Architecture Catalog to Catalog Insights  
+- Added direct navigation from Catalog Detail to Catalog Insights  
+- Improved Catalog Detail action button ordering  
+- Improved expanded insight list labels with clear show/collapse behavior  
+- Kept review status evaluation off the main Catalog list to preserve lightweight discovery
+
+#### Documentation
+
+- Updated Architecture Catalog documentation with Catalog Insights, dataset-specific insight signals  
+and review status summaries  
+- Updated Architecture Overview with Catalog Insights positioning  
+- Updated README Architecture Catalog summary with quality and governance signals
+
+---
+
+### 🔒 Governance & Determinism
+
+- Architecture Catalog Insights remain read-only  
+- Catalog Insights do not mutate metadata  
+- Catalog Insights do not create Approval Artifacts  
+- Catalog Insights do not run approval checks  
+- Catalog Insights do not execute loads  
+- Catalog Insights do not delete execution records  
+- Architecture Control remains responsible for approval, execution, execution records,  
+execution history and retention workflows  
+- Review status is surfaced in Catalog detail context without moving Architecture Control  
+responsibilities into the Catalog
+
+---
+
+### 🧪 Quality & Stability
+
+- Added tests for Catalog Insights context construction  
+- Added tests for ownership, health, query logic and execution evidence signal grouping  
+- Added tests for collapsed and expanded insight item handling  
+- Added tests for Catalog Insights view rendering  
+- Added tests for Catalog Detail dataset-specific insight signals  
+- Added tests for Catalog Detail review status summaries  
+- Added tests for Catalog Detail navigation additions  
+- Verified Catalog, Insights page, Catalog Detail, Review Status, Architecture Control links  
+and expandable insight lists in the UI
+
+---
+
 ## [2.2.0] - 2026-05-29
 
 This release introduces the **Architecture Catalog** as a read-only discovery layer  

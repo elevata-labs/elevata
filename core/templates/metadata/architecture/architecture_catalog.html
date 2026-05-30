@@ -32,9 +32,18 @@ Contact: <https://github.com/elevata-labs/elevata>.
       Read-only discovery layer for metadata-defined executable architecture.
     </div>
   </div>
-  <span class="badge text-bg-secondary">
-    {{ filtered_count }} / {{ total_count }} datasets
-  </span>
+  <div class="d-flex align-items-center justify-content-end gap-2 flex-wrap">
+    <a
+      href="{% url 'architecture_catalog_insights' %}"
+      class="btn btn-sm btn-outline-primary"
+    >
+      <i class="bi bi-graph-up-arrow"></i>
+      Insights
+    </a>
+    <span class="badge text-bg-secondary">
+      {{ filtered_count }} / {{ total_count }} datasets
+    </span>
+  </div>
 </div>
 
 <div class="alert alert-info small mb-4">
