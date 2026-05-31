@@ -48,7 +48,7 @@ Contact: <https://github.com/elevata-labs/elevata>.
     {% endif %}
   </div>
 
-  <div class="d-flex gap-2">
+  <div class="d-flex gap-2 flex-wrap justify-content-end">
     <a href="{{ dataset.detail_url }}" class="btn btn-sm btn-outline-secondary">
       <i class="bi bi-notepad-text"></i>
       Details
@@ -68,6 +68,10 @@ Contact: <https://github.com/elevata-labs/elevata>.
     <a href="{{ insights_url }}" class="btn btn-sm btn-outline-secondary">
       <i class="bi bi-graph-up-arrow"></i>
       Insights
+    </a>
+    <a href="{% url 'architecture_catalog_map' %}" class="btn btn-sm btn-outline-secondary">
+      <i class="bi bi-map"></i>
+      Map
     </a>
     <button
       type="button"

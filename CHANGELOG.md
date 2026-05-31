@@ -12,6 +12,87 @@ This project adheres to [Semantic Versioning](https://semver.org/) and [Keep a C
 
 ---
 
+## [2.4.0] - 2026-05-31
+
+This release extends the **Architecture Catalog** with **Catalog Maps**:  
+a read-only architecture lens across layers and direct TargetDataset dependencies.
+
+The Catalog now shows not only which datasets exist and where architecture signals need attention,  
+but also how metadata-defined architecture is structured across populated schemas and layer transitions.
+
+---
+
+### ✨ Added
+
+#### Architecture Catalog Maps
+
+- Added dedicated Architecture Catalog Map page  
+- Added layer summary cards grouped by schema / layer  
+- Added canonical layer ordering for raw, stage, rawcore, bizcore and serving  
+- Added compact dataset examples per layer with Catalog detail and lineage links  
+- Added expandable layer dataset lists for complete layer visibility  
+- Added layer flow overview across populated architecture layers  
+- Added direct dependency counts between adjacent populated layers  
+- Added source-to-target layer dependency matrix  
+- Added layer transition groups for direct TargetDataset dependencies  
+- Added expandable transition examples with source, target and lineage links
+
+---
+
+### 🔄 Improved
+
+#### Architecture Catalog Navigation
+
+- Added direct navigation from Architecture Catalog to Catalog Map  
+- Added direct navigation from Catalog Detail to Catalog Map  
+- Added direct navigation between Catalog Map, Catalog Insights and Catalog workspace  
+- Kept Catalog Map separate from Catalog Insights to preserve clear discovery responsibilities  
+- Improved Catalog Map readability with compact cards, matrix layout and expandable details
+
+#### Theme and Documentation Styling
+
+- Centralized custom UI color values in the main elevata theme stylesheet  
+- Replaced scattered custom color literals with theme variables  
+- Separated the MkDocs Material documentation theme from the Django application theme  
+- Renamed the documentation-specific theme file to make the styling boundary explicit  
+- Preserved the visual appearance of the documentation while improving theme maintainability
+
+#### Documentation
+
+- Updated Architecture Catalog documentation with Catalog Maps  
+- Updated Architecture Overview with Catalog Map positioning  
+- Updated documentation index with Catalog Maps  
+- Updated README Architecture Catalog summary with layer map and dependency matrix visibility
+
+---
+
+### 🔒 Governance & Determinism
+
+- Architecture Catalog Maps remain read-only  
+- Catalog Maps do not mutate metadata  
+- Catalog Maps do not create Approval Artifacts  
+- Catalog Maps do not run approval checks  
+- Catalog Maps do not execute loads  
+- Catalog Maps use direct TargetDataset dependencies without replacing dedicated lineage views  
+- Architecture Control remains responsible for approval, execution, execution records,  
+execution history and retention workflows
+
+---
+
+### 🧪 Quality & Stability
+
+- Added tests for Catalog Map context construction  
+- Added tests for layer summary grouping and layer ordering  
+- Added tests for layer flow overview construction  
+- Added tests for dependency matrix counts  
+- Added tests for collapsed and expanded layer dataset handling  
+- Added tests for collapsed and expanded transition example handling  
+- Added tests for Catalog Map view rendering and navigation links  
+- Verified Catalog Map, Catalog, Catalog Insights, Catalog Detail and Lineage navigation in the UI  
+- Verified the documentation theme separation with MkDocs rendering
+
+---
+
 ## [2.3.0] - 2026-05-30
 
 This release extends the **Architecture Catalog** with **Catalog Insights**:  

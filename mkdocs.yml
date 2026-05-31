@@ -38,7 +38,7 @@ theme:
         name: Switch to light mode
 
 extra_css:
-  - styles/elevata-theme.css
+  - styles/elevata-docs.css
 
 plugins:
   - search

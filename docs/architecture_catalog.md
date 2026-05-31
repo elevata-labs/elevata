@@ -11,6 +11,7 @@ It helps users understand:
 - how they are connected  
 - how they are controlled  
 - where execution evidence is available  
+- how architecture flows across layers  
 - which architecture quality and governance signals need attention
 
 The Catalog does not edit metadata and does not execute loads.
@@ -68,7 +69,8 @@ Each catalog row shows:
 - metadata health  
 - query logic  
 - direct navigation links  
-- entry point to Catalog Insights
+- entry point to Catalog Insights  
+- entry point to Catalog Map
 
 The workspace links to:
 
@@ -76,7 +78,8 @@ The workspace links to:
 - lineage  
 - query contract  
 - Architecture Control  
-- Catalog detail
+- Catalog detail  
+- Catalog Map
 
 ---
 
@@ -105,7 +108,33 @@ execution records, or mutate metadata.
 
 ---
 
-## 🔧 4. Catalog Detail View
+## 🔧 4. Catalog Map
+
+The Architecture Catalog Map provides a read-only architecture lens across schemas,  
+layers and direct TargetDataset dependencies.
+
+It helps users understand:
+
+- how datasets are distributed across architecture layers  
+- how populated layers connect to each other  
+- which direct TargetDataset dependencies cross layer boundaries  
+- where custom query logic appears in layer context  
+- which datasets and dependency examples explain each layer transition
+
+The Catalog Map includes:
+
+- layer summary cards grouped by schema / layer  
+- layer flow overview for populated architecture layers  
+- source-to-target layer dependency matrix  
+- layer transition groups with expandable dependency examples  
+- dataset links to Catalog detail pages and lineage pages
+
+The Catalog Map uses direct TargetDataset dependencies. It does not replace the dedicated lineage view  
+and does not introduce graph editing, execution controls or metadata mutations.
+
+---
+
+## 🔧 5. Catalog Detail View
 
 The Catalog detail view summarizes one TargetDataset as an architecture object.
 
@@ -126,7 +155,7 @@ metadata pages. Execution and approval workflows stay in Architecture Control.
 
 ---
 
-## 🔧 5. Review Status
+## 🔧 6. Review Status
 
 For TargetDataset scopes, the Catalog detail view surfaces the Architecture Control review status  
 as a read-only summary.
@@ -145,7 +174,7 @@ They do not create approvals and do not run approval checks.
 
 ---
 
-## 🔧 6. Execution Evidence
+## 🔧 7. Execution Evidence
 
 For TargetDataset scopes, the Catalog detail view surfaces the latest Architecture Execution Record summary when one exists.
 
@@ -166,7 +195,7 @@ duplicating the execution history workspace.
 
 ---
 
-## 🔧 7. Lineage and Contract Signals
+## 🔧 8. Lineage and Contract Signals
 
 The Catalog shows direct upstream and downstream relationships.
 
@@ -192,7 +221,7 @@ or metadata editing pages.
 
 ---
 
-## 🔧 8. Governance Boundary
+## 🔧 9. Governance Boundary
 
 The Architecture Catalog is a discovery surface.
 

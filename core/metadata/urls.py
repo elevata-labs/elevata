@@ -160,6 +160,11 @@ urlpatterns += [
     views_catalog.architecture_catalog_insights,
     name="architecture_catalog_insights",
   ),
+  path(
+    "architecture-catalog/map/",
+    views_catalog.architecture_catalog_map,
+    name="architecture_catalog_map",
+  ),
   path("architecture-catalog/<int:pk>/",
     views_catalog.architecture_catalog_detail,
     name="architecture_catalog_detail",

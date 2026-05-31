@@ -30,6 +30,9 @@ from metadata.architecture.catalog import (
 from metadata.architecture.catalog_insights import (
   build_architecture_catalog_insights_context,
 )
+from metadata.architecture.catalog_map import (
+  build_architecture_catalog_map_context,
+)
 from metadata.models import TargetDataset
 
 
@@ -57,6 +60,20 @@ def architecture_catalog_insights(request):
   return render(
     request,
     "metadata/architecture/architecture_catalog_insights.html",
+    context,
+  )
+
+
+@login_required
+@permission_required("metadata.view_targetdataset", raise_exception=True)
+def architecture_catalog_map(request):
+  """
+  Render the read-only Architecture Catalog Map page.
+  """
+  context = build_architecture_catalog_map_context()
+  return render(
+    request,
+    "metadata/architecture/architecture_catalog_map.html",
     context,
   )
 

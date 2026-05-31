@@ -66,7 +66,7 @@ This index gives you an overview of all major topics and how they fit together.
 
 - [Architecture Catalog](architecture_catalog.md)  
   Read-only discovery layer for metadata-defined executable architecture, including dataset search,  
-  catalog detail pages, lineage entry points, query contract links and execution evidence references.
+  Catalog Maps, Catalog Insights, lineage entry points, query contract links and execution evidence references.
 
 - [Architecture Control Plane](architecture_control_plane.md)  
   Deterministic architecture state, change reports, promotion reports,  
@@ -189,7 +189,7 @@ A personal open-source initiative exploring the future of declarative data archi
 
 ---
 
-_Last updated: 2026-05-16_
+_Last updated: 2026-05-31_
 
 © 2025-2026 elevata Labs — Internal Technical Documentation
 Built with purpose. Rendered with precision. 🪶

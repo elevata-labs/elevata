@@ -31,6 +31,7 @@ from django.test import RequestFactory
 
 import metadata.architecture.catalog as catalog
 import metadata.architecture.catalog_insights as catalog_insights
+import metadata.architecture.catalog_map as catalog_map
 import metadata.views_catalog as views_catalog
 from metadata.models import (
   QueryNode,
@@ -68,6 +69,9 @@ def _patch_reverse(monkeypatch) -> None:
     if name == "architecture_catalog_insights":
       return "/architecture-catalog/insights/"
 
+    if name == "architecture_catalog_map":
+      return "/architecture-catalog/map/"
+
     if name == "architecture_control":
       return "/architecture-control/"
 
@@ -80,6 +84,7 @@ def _patch_reverse(monkeypatch) -> None:
 
   monkeypatch.setattr(catalog, "reverse", fake_reverse)
   monkeypatch.setattr(catalog_insights, "reverse", fake_reverse)
+  monkeypatch.setattr(catalog_map, "reverse", fake_reverse)
 
 
 def _get_or_create_target_schema(
@@ -498,6 +503,195 @@ def test_architecture_catalog_insights_context_groups_catalog_signals(
   )
 
 
+@pytest.mark.django_db
+def test_architecture_catalog_map_context_groups_layers_and_transitions(
+  monkeypatch,
+) -> None:
+  """
+  Verify Architecture Catalog Map context construction.
+  """
+  _patch_reverse(monkeypatch)
+
+  raw = _get_or_create_target_schema(
+    "raw",
+    display_name="Raw",
+  )
+  stage = _get_or_create_target_schema(
+    "stage",
+    display_name="Stage",
+  )
+  rawcore = _get_or_create_target_schema(
+    "rawcore",
+    display_name="Rawcore",
+  )
+  serving = _get_or_create_target_schema(
+    "serving",
+    display_name="Serving",
+    default_materialization_type="view",
+  )
+
+  raw_customer = TargetDataset.objects.create(
+    target_schema=raw,
+    target_dataset_name="catalog_map_raw_customer",
+    description="Raw customer landing dataset",
+  )
+  stage_customer = TargetDataset.objects.create(
+    target_schema=stage,
+    target_dataset_name="catalog_map_stage_customer",
+  )
+  rawcore_customer = TargetDataset.objects.create(
+    target_schema=rawcore,
+    target_dataset_name="catalog_map_rawcore_customer",
+  )
+  serving_customer = TargetDataset.objects.create(
+    target_schema=serving,
+    target_dataset_name="catalog_map_serving_customer",
+    active=False,
+  )
+
+  TargetDatasetInput.objects.create(
+    target_dataset=stage_customer,
+    upstream_target_dataset=raw_customer,
+    role="primary",
+  )
+  TargetDatasetInput.objects.create(
+    target_dataset=rawcore_customer,
+    upstream_target_dataset=stage_customer,
+    role="primary",
+  )
+  TargetDatasetInput.objects.create(
+    target_dataset=serving_customer,
+    upstream_target_dataset=rawcore_customer,
+    role="primary",
+  )
+
+  context = catalog_map.build_architecture_catalog_map_context()
+  layers = {
+    layer.schema_short: layer
+    for layer in context["layer_summaries"]
+  }
+  transitions = {
+    (transition.source_schema_short, transition.target_schema_short): transition
+    for transition in context["transitions"]
+  }
+
+  assert context["total_dataset_count"] == 4
+  assert context["active_dataset_count"] == 3
+  assert context["catalog_url"] == "/architecture-catalog/"
+  assert context["insights_url"] == "/architecture-catalog/insights/"
+  assert [
+    step.schema_short
+    for step in context["layer_flow_steps"]
+  ] == ["raw", "stage", "rawcore", "serving"]
+  assert context["layer_flow_steps"][0].next_schema_short == "stage"
+  assert context["layer_flow_steps"][0].next_transition_count == 1
+  assert context["layer_flow_steps"][1].next_schema_short == "rawcore"
+  assert context["layer_flow_steps"][1].next_transition_count == 1
+  assert context["layer_flow_steps"][2].next_schema_short == "serving"
+  assert context["layer_flow_steps"][2].next_transition_count == 1
+  assert context["layer_flow_steps"][3].has_next_layer is False
+  matrix_rows = {
+    row.source_schema_short: row
+    for row in context["layer_matrix_rows"]
+  }
+  raw_matrix_counts = {
+    cell.target_schema_short: cell.count
+    for cell in matrix_rows["raw"].cells
+  }
+  stage_matrix_counts = {
+    cell.target_schema_short: cell.count
+    for cell in matrix_rows["stage"].cells
+  }
+  rawcore_matrix_counts = {
+    cell.target_schema_short: cell.count
+    for cell in matrix_rows["rawcore"].cells
+  }
+  assert context["matrix_total_dependency_count"] == 3
+  assert matrix_rows["raw"].total_count == 1
+  assert raw_matrix_counts["stage"] == 1
+  assert raw_matrix_counts["rawcore"] == 0
+  assert stage_matrix_counts["rawcore"] == 1
+  assert rawcore_matrix_counts["serving"] == 1
+  assert layers["raw"].dataset_count == 1
+  assert layers["raw"].outgoing_transition_count == 1
+  assert layers["stage"].incoming_transition_count == 1
+  assert layers["stage"].outgoing_transition_count == 1
+  assert layers["serving"].inactive_dataset_count == 1
+  assert layers["raw"].dataset_examples[0].dataset_key == (
+    "raw.catalog_map_raw_customer"
+  )
+  assert transitions[("raw", "stage")].count == 1
+  assert transitions[("stage", "rawcore")].count == 1
+  assert transitions[("rawcore", "serving")].examples[0].target_dataset_key == (
+    "serving.catalog_map_serving_customer"
+  )
+  assert transitions[("rawcore", "serving")].examples[0].target_lineage_url == (
+    f"/targetdataset_lineage/{serving_customer.pk}/"
+  )
+
+
+@pytest.mark.django_db
+def test_architecture_catalog_map_context_keeps_collapsed_items(
+  monkeypatch,
+) -> None:
+  """
+  Verify Catalog Map collapsed layer and transition items are available.
+  """
+  _patch_reverse(monkeypatch)
+
+  raw = _get_or_create_target_schema(
+    "raw",
+    display_name="Raw",
+  )
+  stage = _get_or_create_target_schema(
+    "stage",
+    display_name="Stage",
+  )
+
+  dataset_count = catalog_map.LAYER_DATASET_LIMIT + 2
+  for index in range(dataset_count):
+    raw_dataset = TargetDataset.objects.create(
+      target_schema=raw,
+      target_dataset_name=f"catalog_map_expand_raw_{index:02d}",
+    )
+    stage_dataset = TargetDataset.objects.create(
+      target_schema=stage,
+      target_dataset_name=f"catalog_map_expand_stage_{index:02d}",
+    )
+    TargetDatasetInput.objects.create(
+      target_dataset=stage_dataset,
+      upstream_target_dataset=raw_dataset,
+      role="primary",
+    )
+
+  context = catalog_map.build_architecture_catalog_map_context()
+  layers = {
+    layer.schema_short: layer
+    for layer in context["layer_summaries"]
+  }
+  transitions = {
+    (transition.source_schema_short, transition.target_schema_short): transition
+    for transition in context["transitions"]
+  }
+
+  assert layers["raw"].dataset_count == dataset_count
+  assert len(layers["raw"].dataset_examples) == catalog_map.LAYER_DATASET_LIMIT
+  assert layers["raw"].remaining_dataset_count == 2
+  assert len(layers["raw"].remaining_datasets) == 2
+  assert layers["raw"].remaining_datasets[0].dataset_key == (
+    "raw.catalog_map_expand_raw_05"
+  )
+  assert transitions[("raw", "stage")].count == dataset_count
+  assert len(transitions[("raw", "stage")].examples) == (
+    catalog_map.TRANSITION_EXAMPLE_LIMIT
+  )
+  assert transitions[("raw", "stage")].remaining_example_count == 2
+  assert len(transitions[("raw", "stage")].remaining_examples) == 2
+  assert transitions[("raw", "stage")].remaining_examples[0].target_dataset_key == (
+    "stage.catalog_map_expand_stage_05"
+  )
+
+
 def test_architecture_catalog_view_renders_catalog_template(
   monkeypatch,
 ) -> None:
@@ -571,6 +765,50 @@ def test_architecture_catalog_insights_view_renders_insights_template(
   )
   assert rendered["context"]["active_dataset_count"] == 0
   assert rendered["context"]["total_dataset_count"] == 0
+
+
+def test_architecture_catalog_map_view_renders_map_template(
+  monkeypatch,
+) -> None:
+  """
+  Verify Architecture Catalog Map view rendering.
+  """
+  rendered: dict[str, Any] = {}
+
+  def fake_render(request, template_name: str, context: dict[str, Any]):
+    """
+    Store render arguments and return a simple response.
+    """
+    rendered["template_name"] = template_name
+    rendered["context"] = context
+    return HttpResponse("ok")
+
+  monkeypatch.setattr(views_catalog, "render", fake_render)
+  monkeypatch.setattr(
+    views_catalog,
+    "build_architecture_catalog_map_context",
+    lambda: {
+      "layer_summaries": (),
+      "layer_flow_steps": (),
+      "layer_matrix_columns": (),
+      "layer_matrix_rows": (),
+      "matrix_total_dependency_count": 0,
+      "transitions": (),
+      "active_dataset_count": 0,
+      "total_dataset_count": 0,
+    },
+  )
+
+  request = RequestFactory().get("/architecture-catalog/map/")
+  response = _unwrap_view(views_catalog.architecture_catalog_map)(request)
+
+  assert response.status_code == 200
+  assert rendered["template_name"] == (
+    "metadata/architecture/architecture_catalog_map.html"
+  )
+  assert rendered["context"]["layer_flow_steps"] == ()
+  assert rendered["context"]["layer_matrix_rows"] == ()
+  assert rendered["context"]["transitions"] == ()
 
 
 def test_architecture_catalog_detail_view_renders_detail_template(

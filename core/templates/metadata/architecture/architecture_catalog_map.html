@@ -1,0 +1,433 @@
+<!--
+elevata - Metadata-driven Data Platform Framework
+Copyright © 2025-2026 Ilona Tag
+
+This file is part of elevata.
+
+elevata is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of
+the License, or (at your option) any later version.
+
+elevata is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with elevata. If not, see <https://www.gnu.org/licenses/>.
+
+Contact: <https://github.com/elevata-labs/elevata>.
+-->
+
+{% extends "base.html" %}
+
+{% block title %}Architecture Catalog Map · elevata{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-start justify-content-between gap-3 mb-3">
+  <div>
+    <h1 class="h4 mb-1">Architecture Catalog Map</h1>
+    <div class="small text-muted">
+      Read-only architecture lens across layers and direct TargetDataset dependencies.
+    </div>
+  </div>
+
+  <div class="d-flex align-items-center justify-content-end gap-2 flex-wrap">
+    <a href="{{ insights_url }}" class="btn btn-sm btn-outline-secondary">
+      <i class="bi bi-graph-up-arrow"></i>
+      Insights
+    </a>
+    <a href="{{ catalog_url }}" class="btn btn-sm btn-outline-secondary">
+      <i class="bi bi-arrow-left"></i>
+      Catalog
+    </a>
+    <span class="badge text-bg-secondary">
+      {{ active_dataset_count }} active / {{ total_dataset_count }} datasets
+    </span>
+  </div>
+</div>
+
+<div class="alert alert-info small mb-4">
+  <div class="fw-semibold mb-1">Layer lens only</div>
+  <div>
+    The Architecture Catalog Map groups datasets by schema/layer and summarizes direct
+    TargetDataset-to-TargetDataset dependencies. It does not edit metadata and does not
+    execute loads.
+  </div>
+</div>
+
+{% if layer_flow_steps %}
+  <div class="card mb-4">
+    <div class="card-body">
+      <div class="d-flex align-items-start justify-content-between gap-3 mb-3">
+        <div>
+          <div class="fw-semibold">Layer flow overview</div>
+          <div class="small text-muted">
+            Compact path across populated layers and adjacent direct dependencies.
+          </div>
+        </div>
+        <span class="badge text-bg-secondary">
+          {{ layer_flow_steps|length }} layer step(s)
+        </span>
+      </div>
+
+      <div class="architecture-map-flow-overview">
+        {% for step in layer_flow_steps %}
+          <div class="architecture-map-flow-step">
+            <span class="badge badge-lineage-layer mb-2">
+              {{ step.schema_short }}
+            </span>
+            <div class="fw-semibold">
+              {{ step.display_name }}
+            </div>
+            <div class="small text-muted">
+              {{ step.active_dataset_count }} active / {{ step.dataset_count }} datasets
+            </div>
+          </div>
+
+          {% if step.has_next_layer %}
+            <div class="architecture-map-flow-edge">
+              <span class="architecture-map-arrow">→</span>
+              <span class="small text-muted">
+                {{ step.next_transition_count }} direct
+              </span>
+            </div>
+          {% endif %}
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+{% endif %}
+
+{% if layer_matrix_rows %}
+  <div class="card mb-4">
+    <div class="card-body p-0">
+      <div class="d-flex align-items-start justify-content-between gap-3 p-3 border-bottom">
+        <div>
+          <div class="fw-semibold">Layer dependency matrix</div>
+          <div class="small text-muted">
+            Direct TargetDataset dependencies by source layer and target layer.
+          </div>
+        </div>
+        <span class="badge text-bg-secondary">
+          {{ matrix_total_dependency_count }} direct dependenc{{ matrix_total_dependency_count|pluralize:"y,ies" }}
+        </span>
+      </div>
+
+      <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0 architecture-map-matrix">
+          <thead>
+            <tr>
+              <th>Source \ Target</th>
+              {% for column in layer_matrix_columns %}
+                <th class="text-center">
+                  <span class="badge badge-lineage-layer">
+                    {{ column.schema_short }}
+                  </span>
+                </th>
+              {% endfor %}
+              <th class="text-center">Outgoing</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in layer_matrix_rows %}
+              <tr>
+                <th scope="row">
+                  <span class="badge badge-lineage-layer me-2">
+                    {{ row.source_schema_short }}
+                  </span>
+                  <span class="small text-muted">
+                    {{ row.source_display_name }}
+                  </span>
+                </th>
+                {% for cell in row.cells %}
+                  <td class="text-center {% if cell.has_count %}architecture-map-matrix-active{% endif %}">
+                    {% if cell.has_count %}
+                      <strong>{{ cell.count }}</strong>
+                    {% else %}
+                      <span class="text-muted">—</span>
+                    {% endif %}
+                  </td>
+                {% endfor %}
+                <td class="text-center">
+                  {% if row.has_count %}
+                    <strong>{{ row.total_count }}</strong>
+                  {% else %}
+                    <span class="text-muted">—</span>
+                  {% endif %}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+{% endif %}
+
+<div class="row g-4 mb-4">
+  {% for layer in layer_summaries %}
+    <div class="col-xxl-3 col-xl-4 col-lg-6">
+      <div class="card h-100 architecture-map-layer-card">
+        <div class="card-body">
+          <div class="d-flex align-items-start justify-content-between gap-3 mb-3">
+            <div>
+              <span class="badge badge-lineage-layer mb-2">
+                {{ layer.schema_short }}
+              </span>
+              <div class="fw-semibold">
+                {{ layer.display_name }}
+              </div>
+              {% if layer.description %}
+                <div class="small text-muted mt-1">
+                  {{ layer.description }}
+                </div>
+              {% endif %}
+            </div>
+            <span class="badge text-bg-secondary">
+              {{ layer.dataset_count }}
+            </span>
+          </div>
+
+          <div class="architecture-map-stats mb-3">
+            <div>
+              <span class="text-muted">Active</span>
+              <strong>{{ layer.active_dataset_count }}</strong>
+            </div>
+            <div>
+              <span class="text-muted">Inactive</span>
+              <strong>{{ layer.inactive_dataset_count }}</strong>
+            </div>
+            <div>
+              <span class="text-muted">Incoming</span>
+              <strong>{{ layer.incoming_transition_count }}</strong>
+            </div>
+            <div>
+              <span class="text-muted">Outgoing</span>
+              <strong>{{ layer.outgoing_transition_count }}</strong>
+            </div>
+          </div>
+
+          {% if layer.custom_query_count %}
+            <span class="badge badge-lineage-ref mb-3">
+              {{ layer.custom_query_count }} custom query dataset(s)
+            </span>
+          {% endif %}
+
+          {% if layer.dataset_examples %}
+            <div class="list-group list-group-flush architecture-map-dataset-list">
+              {% for dataset in layer.dataset_examples %}
+                <div class="list-group-item px-0">
+                  <div class="d-flex align-items-start justify-content-between gap-3">
+                    <div>
+                      <a href="{{ dataset.catalog_detail_url }}" class="text-decoration-none">
+                        <code>{{ dataset.dataset_key }}</code>
+                      </a>
+                      {% if dataset.description %}
+                        <div class="small text-muted mt-1">
+                          {{ dataset.description }}
+                        </div>
+                      {% endif %}
+                      <div class="small text-muted mt-1">
+                        Upstream {{ dataset.upstream_count }} · Downstream {{ dataset.downstream_count }}
+                      </div>
+                    </div>
+                    <div class="text-end">
+                      {% if dataset.active %}
+                        <span class="badge badge-health-ok">Active</span>
+                      {% else %}
+                        <span class="badge badge-health-warning">Inactive</span>
+                      {% endif %}
+                      <div class="mt-2">
+                        <a href="{{ dataset.lineage_url }}" class="btn btn-sm btn-outline-secondary">
+                          Lineage
+                        </a>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              {% endfor %}
+            </div>
+
+            {% if layer.has_more %}
+              <details class="catalog-insight-more mt-3">
+                <summary class="small text-muted">
+                  <span class="catalog-insight-summary-closed">
+                    Showing {{ layer.dataset_examples|length }} of {{ layer.dataset_count }} datasets
+                    · show remaining {{ layer.remaining_datasets|length }}
+                  </span>
+                  <span class="catalog-insight-summary-open">
+                    Showing all {{ layer.dataset_count }} datasets
+                    · show first {{ layer.dataset_examples|length }} only
+                  </span>
+                </summary>
+
+                <div class="list-group list-group-flush architecture-map-dataset-list mt-2">
+                  {% for dataset in layer.remaining_datasets %}
+                    <div class="list-group-item px-0">
+                      <div class="d-flex align-items-start justify-content-between gap-3">
+                        <div>
+                          <a href="{{ dataset.catalog_detail_url }}" class="text-decoration-none">
+                            <code>{{ dataset.dataset_key }}</code>
+                          </a>
+                          {% if dataset.description %}
+                            <div class="small text-muted mt-1">
+                              {{ dataset.description }}
+                            </div>
+                          {% endif %}
+                          <div class="small text-muted mt-1">
+                            Upstream {{ dataset.upstream_count }} · Downstream {{ dataset.downstream_count }}
+                          </div>
+                        </div>
+                        <div class="text-end">
+                          {% if dataset.active %}
+                            <span class="badge badge-health-ok">Active</span>
+                          {% else %}
+                            <span class="badge badge-health-warning">Inactive</span>
+                          {% endif %}
+                          <div class="mt-2">
+                            <a href="{{ dataset.lineage_url }}" class="btn btn-sm btn-outline-secondary">
+                              Lineage
+                            </a>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  {% endfor %}
+                </div>
+              </details>
+            {% endif %}
+          {% else %}
+            <div class="small text-muted">
+              No datasets in this layer.
+            </div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  {% endfor %}
+</div>
+
+<div class="card">
+  <div class="card-body p-0">
+    <div class="d-flex align-items-start justify-content-between gap-3 p-3 border-bottom">
+      <div>
+        <div class="fw-semibold">Layer transitions</div>
+        <div class="small text-muted">
+          Direct active TargetDataset dependencies grouped by source and target layer.
+        </div>
+      </div>
+      <span class="badge text-bg-secondary">
+        {{ transitions|length }} transition group(s)
+      </span>
+    </div>
+
+    <div class="table-responsive">
+      <table class="table table-striped table-hover align-middle mb-0">
+        <thead>
+          <tr>
+            <th>Flow</th>
+            <th>Direct dependencies</th>
+            <th>Examples</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for transition in transitions %}
+            <tr>
+              <td>
+                <div class="architecture-map-flow">
+                  <span class="badge badge-lineage-layer">
+                    {{ transition.source_schema_short }}
+                  </span>
+                  <span class="architecture-map-arrow">→</span>
+                  <span class="badge badge-lineage-layer">
+                    {{ transition.target_schema_short }}
+                  </span>
+                </div>
+              </td>
+              <td>
+                <strong>{{ transition.count }}</strong>
+              </td>
+              <td>
+                <div class="list-group list-group-flush architecture-map-transition-list">
+                  {% for example in transition.examples %}
+                    <div class="list-group-item px-0">
+                      <div class="d-flex align-items-start justify-content-between gap-3">
+                        <div>
+                          <a href="{{ example.source_catalog_detail_url }}" class="text-decoration-none">
+                            <code>{{ example.source_dataset_key }}</code>
+                          </a>
+                          <span class="text-muted">→</span>
+                          <a href="{{ example.target_catalog_detail_url }}" class="text-decoration-none">
+                            <code>{{ example.target_dataset_key }}</code>
+                          </a>
+                          {% if example.role_label %}
+                            <div class="small text-muted mt-1">
+                              {{ example.role_label }}
+                            </div>
+                          {% endif %}
+                        </div>
+                        <a href="{{ example.target_lineage_url }}" class="btn btn-sm btn-outline-secondary">
+                          Lineage
+                        </a>
+                      </div>
+                    </div>
+                  {% endfor %}
+                </div>
+
+                {% if transition.has_more %}
+                  <details class="catalog-insight-more mt-2">
+                    <summary class="small text-muted">
+                      <span class="catalog-insight-summary-closed">
+                        Showing {{ transition.examples|length }} of {{ transition.count }} dependencies
+                        · show remaining {{ transition.remaining_examples|length }}
+                      </span>
+                      <span class="catalog-insight-summary-open">
+                        Showing all {{ transition.count }} dependencies
+                        · show first {{ transition.examples|length }} only
+                      </span>
+                    </summary>
+
+                    <div class="list-group list-group-flush architecture-map-transition-list mt-2">
+                      {% for example in transition.remaining_examples %}
+                        <div class="list-group-item px-0">
+                          <div class="d-flex align-items-start justify-content-between gap-3">
+                            <div>
+                              <a href="{{ example.source_catalog_detail_url }}" class="text-decoration-none">
+                                <code>{{ example.source_dataset_key }}</code>
+                              </a>
+                              <span class="text-muted">→</span>
+                              <a href="{{ example.target_catalog_detail_url }}" class="text-decoration-none">
+                                <code>{{ example.target_dataset_key }}</code>
+                              </a>
+                              {% if example.role_label %}
+                                <div class="small text-muted mt-1">
+                                  {{ example.role_label }}
+                                </div>
+                              {% endif %}
+                            </div>
+                            <a href="{{ example.target_lineage_url }}" class="btn btn-sm btn-outline-secondary">
+                              Lineage
+                            </a>
+                          </div>
+                        </div>
+                      {% endfor %}
+                    </div>
+                  </details>
+                {% endif %}
+              </td>
+            </tr>
+          {% empty %}
+            <tr>
+              <td colspan="3" class="text-center text-muted py-5">
+                No direct TargetDataset dependency links are defined.
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

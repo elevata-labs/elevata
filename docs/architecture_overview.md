@@ -138,6 +138,7 @@ It helps users inspect:
 - query logic  
 - upstream and downstream relationships  
 - column contract signals  
+- layer maps and dependency matrices  
 - latest execution evidence references  
 - architecture quality and governance insights  
 - Architecture Control review status summaries
@@ -156,6 +157,10 @@ Catalog Insights provide read-only signals for ownership gaps, metadata health f
 custom query logic, downstream consumer visibility, inactive datasets with consumers,  
 and missing execution evidence. Dataset-specific insight signals are also shown on
 Catalog detail pages.
+
+Catalog Maps provide a read-only architecture lens across populated schemas and direct TargetDataset  
+dependencies. Layer cards, layer flow overview, dependency matrix and transition examples make architecture  
+structure visible without introducing graph editing, execution controls or metadata mutation.
 
 ### 🧩 2.7.3 Architecture Control
 

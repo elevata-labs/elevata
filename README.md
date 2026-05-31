@@ -52,9 +52,9 @@ validated, and applied deterministically before execution.
 
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/elevata-labs/elevata/main/docs/elevata_v2_3_0.png" alt="elevata UI preview" width="900"/>
+  <img src="https://raw.githubusercontent.com/elevata-labs/elevata/main/docs/elevata_v2_4_0.png" alt="elevata UI preview" width="900"/>
   <br/>
-  <em>Dataset detail view with lineage, metadata, and dialect-aware SQL previews</em>
+  <em>Architecture Runtime UI for discovering, controlling, modeling, and executing metadata-defined data architecture</em>
 </p>
 
 
@@ -139,6 +139,9 @@ for the dataset scope.
 Catalog Insights highlight ownership gaps, metadata health findings, custom query logic,  
 downstream consumer visibility, inactive datasets with consumers, missing execution evidence,  
 and dataset-specific Architecture Control review status summaries.
+
+Catalog Maps show architecture across layers using layer cards, a layer flow overview,  
+a source-to-target layer dependency matrix and expandable direct dependency examples.
 
 The Catalog does not edit metadata and does not execute loads. Architecture Control remains  
 responsible for approval, execution, execution records and retention workflows.

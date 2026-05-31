@@ -22,6 +22,26 @@ SPDX-License-Identifier: AGPL-3.0-only
   --elevata-grey:                    #6c757d;
   --elevata-red:                     #c1121f;
   --elevata-white:                   #fff;
+  /* Effects */
+  --elevata-focus-ring:              rgba(0, 181, 173, 0.25);
+  --elevata-primary-focus-ring:      rgba(var(--bs-primary-rgb), 0.25);
+  --elevata-primary-glow:            rgba(var(--bs-primary-rgb), 0.4);
+  --elevata-success-glow:            rgba(var(--bs-success-rgb), 0.4);
+  --elevata-card-shadow:             rgba(0, 0, 0, 0.05);
+  --elevata-hover-shadow:            rgba(0, 0, 0, 0.08);
+  --elevata-hover-shadow-strong:     rgba(0, 0, 0, 0.1);
+  --elevata-subtle-divider:          rgba(0, 0, 0, 0.05);
+  --elevata-map-active-bg:           rgba(0, 181, 173, 0.08);
+  /* Health */
+  --elevata-health-ok-bg:            #d1e7dd;
+  --elevata-health-ok-text:          #0f5132;
+  --elevata-health-ok-border:        #badbcc;
+  --elevata-health-warning-bg:       #fff3cd;
+  --elevata-health-warning-text:     #664d03;
+  --elevata-health-warning-border:   #ffe69c;
+  --elevata-health-error-bg:         #f8d7da;
+  --elevata-health-error-text:       #842029;
+  --elevata-health-error-border:     #f5c2c7;
 }
 
 /* General layout */
@@ -91,7 +111,7 @@ body {
 .card {
   border: 1px solid var(--elevata-border);
   border-radius: 10px;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  box-shadow: 0 2px 4px var(--elevata-card-shadow);
 }
 
 .table-striped > tbody > tr:nth-of-type(odd) {
@@ -122,7 +142,7 @@ form input:focus,
 form select:focus,
 form textarea:focus {
   border-color: var(--elevata-accent);
-  box-shadow: 0 0 0 0.2rem rgba(0, 181, 173, 0.25);
+  box-shadow: 0 0 0 0.2rem var(--elevata-focus-ring);
 }
 
 /* === Scoped form styling: affects only .elevata-form === */
@@ -178,7 +198,7 @@ form textarea:focus {
 .elevata-form select:focus,
 .elevata-form textarea:focus {
   border-color: var(--elevata-accent);
-  box-shadow: 0 0 0 0.2rem rgba(0, 181, 173, 0.25);
+  box-shadow: 0 0 0 0.2rem var(--elevata-focus-ring);
   outline: none;
 }
 
@@ -226,7 +246,7 @@ form textarea:focus {
 .elevata-form-inline textarea:focus {
   outline: none;
   border-color: var(--elevata-accent);
-  box-shadow: 0 0 0 0.2rem rgba(0,181,173,.25);
+  box-shadow: 0 0 0 0.2rem var(--elevata-focus-ring);
 }
 
 .elevata-form .form-row input[type="checkbox"],
@@ -255,7 +275,7 @@ form textarea:focus {
 .elevata-form-inline input[type="checkbox"],
 .elevata-form input[type="radio"],
 .elevata-form-inline input[type="radio"] {
-  accent-color: var(--bs-primary); /* nutzt deine Bootstrap-Primärfarbe */
+  accent-color: var(--bs-primary); /* uses Bootstrap primary color */
   transition: transform 0.1s ease-in-out, box-shadow 0.15s ease-in-out;
 }
 
@@ -270,7 +290,7 @@ form textarea:focus {
 .elevata-form-inline input[type="checkbox"]:focus-visible,
 .elevata-form input[type="radio"]:focus-visible,
 .elevata-form-inline input[type="radio"]:focus-visible {
-  box-shadow: 0 0 0 3px rgba(var(--bs-primary-rgb), 0.25);
+  box-shadow: 0 0 0 3px var(--elevata-primary-focus-ring);
   outline: none;
 }
 
@@ -315,7 +335,7 @@ tr.htmx-swapping td {
 
 .hover-lift:hover {
   transform: translateY(-4px);
-  box-shadow: 0 0.75rem 1.25rem rgba(0, 0, 0, 0.08);
+  box-shadow: 0 0.75rem 1.25rem var(--elevata-hover-shadow);
 }
 
 /* colored title when hover */
@@ -330,7 +350,7 @@ tr.htmx-swapping td {
 }
 
 .hover-glow:hover {
-  box-shadow: 0 0.25rem 0.75rem rgba(var(--bs-primary-rgb), 0.4);
+  box-shadow: 0 0.25rem 0.75rem var(--elevata-primary-glow);
   filter: brightness(1.07);
 }
 
@@ -342,7 +362,7 @@ td .ec-chip + .ec-chip{margin-left:.35rem}
 /* action column: prevent wrapping + subtle separator + tighter button spacing */
 .actions-cell {
   white-space: nowrap;
-  border-left: 1px solid rgba(0,0,0,0.05);
+  border-left: 1px solid var(--elevata-subtle-divider);
 }
 .actions-cell .btn {
   margin-left: 0;
@@ -407,7 +427,7 @@ td .btn-group{ flex: none; }
   background-color: var(--elevata-light);
   z-index: 2;
   position: relative;
-  box-shadow: 0 0 4px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 0 4px var(--elevata-hover-shadow-strong);
 }
 
 /* HTMX loading indicator behavior:
@@ -501,7 +521,7 @@ th i.bi-tags:hover {
 
 /* Integration toggle active state */
 .btn-success.text-white {
-  box-shadow: 0 0 0.25rem rgba(25, 135, 84, 0.4);
+  box-shadow: 0 0 0.25rem var(--elevata-success-glow);
 }
 
 /* Clean seams in action button groups: avoid shadow + normalize divider color */
@@ -540,46 +560,46 @@ td .badge + .badge {
 
 /* OK: green */
 .badge-health-ok {
-  background-color: #d1e7dd;  /* Bootstrap success bg */
-  color: #0f5132;             /* Bootstrap success text */
-  border: 1px solid #badbcc;
+  background-color: var(--elevata-health-ok-bg);
+  color: var(--elevata-health-ok-text);
+  border: 1px solid var(--elevata-health-ok-border);
 }
 
 /* Warning: yellow/orange */
 .badge-health-warning {
-  background-color: #fff3cd;  /* Bootstrap warning bg */
-  color: #664d03;             /* Bootstrap warning text */
-  border: 1px solid #ffe69c;
+  background-color: var(--elevata-health-warning-bg);
+  color: var(--elevata-health-warning-text);
+  border: 1px solid var(--elevata-health-warning-border);
 }
 
 /* Error: red */
 .badge-health-error {
-  background-color: #f8d7da;  /* Bootstrap danger bg */
-  color: #842029;             /* Bootstrap danger text */
-  border: 1px solid #f5c2c7;
+  background-color: var(--elevata-health-error-bg);
+  color: var(--elevata-health-error-text);
+  border: 1px solid var(--elevata-health-error-border);
 }
 
 /* === Health alert boxes (matching badges) ====================== */
 
 /* OK */
 .alert-health-ok {
-  background-color: #d1e7dd;
-  border-color: #badbcc;
-  color: #0f5132;
+  background-color: var(--elevata-health-ok-bg);
+  border-color: var(--elevata-health-ok-border);
+  color: var(--elevata-health-ok-text);
 }
 
 /* Warning */
 .alert-health-warning {
-  background-color: #fff3cd;
-  border-color: #ffe69c;
-  color: #664d03;
+  background-color: var(--elevata-health-warning-bg);
+  border-color: var(--elevata-health-warning-border);
+  color: var(--elevata-health-warning-text);
 }
 
 /* Error */
 .alert-health-error {
-  background-color: #f8d7da;
-  border-color: #f5c2c7;
-  color: #842029;
+  background-color: var(--elevata-health-error-bg);
+  border-color: var(--elevata-health-error-border);
+  color: var(--elevata-health-error-text);
 }
 
 .alert-sql {
@@ -734,4 +754,75 @@ details:not([open]) .details-open-label {
 
 .catalog-insight-more[open] .catalog-insight-summary-open {
   display: inline;
+}
+
+/* Architecture Catalog Map */
+.architecture-map-layer-card .list-group-item:first-child,
+.architecture-map-transition-list .list-group-item:first-child {
+  border-top: 0;
+}
+
+.architecture-map-stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: .5rem;
+}
+
+.architecture-map-stats > div {
+  border: 1px solid var(--elevata-border);
+  border-radius: .5rem;
+  padding: .5rem;
+  background-color: var(--elevata-background);
+  font-size: .8rem;
+}
+
+.architecture-map-stats span,
+.architecture-map-stats strong {
+  display: block;
+}
+
+.architecture-map-flow {
+  display: inline-flex;
+  align-items: center;
+  gap: .5rem;
+  white-space: nowrap;
+}
+
+.architecture-map-arrow {
+  color: var(--elevata-primary);
+  font-weight: 700;
+}
+
+.architecture-map-flow-overview {
+  display: flex;
+  align-items: stretch;
+  gap: .75rem;
+  overflow-x: auto;
+  padding-bottom: .25rem;
+}
+
+.architecture-map-flow-step {
+  min-width: 11rem;
+  border: 1px solid var(--elevata-border);
+  border-radius: .5rem;
+  padding: .75rem;
+  background-color: var(--elevata-background);
+}
+
+.architecture-map-flow-edge {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-width: 4rem;
+  text-align: center;
+}
+
+.architecture-map-matrix th,
+.architecture-map-matrix td {
+  white-space: nowrap;
+}
+
+.architecture-map-matrix-active {
+  background-color: var(--elevata-map-active-bg);
 }
