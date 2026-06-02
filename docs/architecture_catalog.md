@@ -12,6 +12,7 @@ It helps users understand:
 - how they are controlled  
 - where execution evidence is available  
 - how architecture flows across layers  
+- which serving-layer datasets are ready for trusted consumption  
 - which architecture quality and governance signals need attention
 
 The Catalog does not edit metadata and does not execute loads.
@@ -69,6 +70,7 @@ Each catalog row shows:
 - metadata health  
 - query logic  
 - direct navigation links  
+- entry point to Catalog Data Products  
 - entry point to Catalog Insights  
 - entry point to Catalog Map
 
@@ -79,6 +81,7 @@ The workspace links to:
 - query contract  
 - Architecture Control  
 - Catalog detail  
+- Catalog Data Products  
 - Catalog Map
 
 ---
@@ -108,7 +111,42 @@ execution records, or mutate metadata.
 
 ---
 
-## 🔧 4. Catalog Map
+## 🔧 4. Catalog Data Products
+
+Architecture Catalog Data Products provide a read-only consumer-readiness
+perspective for serving-layer datasets.
+
+They help users understand which metadata-defined architecture objects are ready for trusted consumption  
+by combining existing signals from:
+
+- ownership  
+- metadata health  
+- query contract columns  
+- upstream and downstream relationships  
+- Architecture Control review state  
+- latest Architecture Execution Record evidence  
+- lifecycle status  
+- query logic transparency
+
+Readiness is shown through transparent groups:
+
+- Consumption-ready  
+- Review recommended  
+- Not consumption-ready
+
+Catalog Data Products focus on the serving layer. Bizcore remains the business logic implementation layer  
+and stays visible in the Architecture Catalog, Catalog Insights and Catalog Maps without being presented  
+as a consumer-facing Data Product.
+
+Catalog detail pages also show dataset-specific Consumer Readiness, so users can understand why a dataset  
+is ready for consumption or why it belongs to a non-consumer architecture layer.
+
+Catalog Data Products derive readiness from existing architecture metadata.  
+They do not edit metadata, request access or execute loads.
+
+---
+
+## 🔧 5. Catalog Map
 
 The Architecture Catalog Map provides a read-only architecture lens across schemas,  
 layers and direct TargetDataset dependencies.
@@ -134,7 +172,7 @@ and does not introduce graph editing, execution controls or metadata mutations.
 
 ---
 
-## 🔧 5. Catalog Detail View
+## 🔧 6. Catalog Detail View
 
 The Catalog detail view summarizes one TargetDataset as an architecture object.
 
@@ -147,6 +185,7 @@ It displays:
 - upstream inputs  
 - downstream consumers  
 - column contract signals  
+- dataset-specific Consumer Readiness  
 - dataset-specific Catalog insight signals  
 - Architecture Control review status summary
 
@@ -155,7 +194,7 @@ metadata pages. Execution and approval workflows stay in Architecture Control.
 
 ---
 
-## 🔧 6. Review Status
+## 🔧 7. Review Status
 
 For TargetDataset scopes, the Catalog detail view surfaces the Architecture Control review status  
 as a read-only summary.
@@ -174,7 +213,7 @@ They do not create approvals and do not run approval checks.
 
 ---
 
-## 🔧 7. Execution Evidence
+## 🔧 8. Execution Evidence
 
 For TargetDataset scopes, the Catalog detail view surfaces the latest Architecture Execution Record summary when one exists.
 
@@ -195,7 +234,7 @@ duplicating the execution history workspace.
 
 ---
 
-## 🔧 8. Lineage and Contract Signals
+## 🔧 9. Lineage and Contract Signals
 
 The Catalog shows direct upstream and downstream relationships.
 
@@ -221,7 +260,7 @@ or metadata editing pages.
 
 ---
 
-## 🔧 9. Governance Boundary
+## 🔧 10. Governance Boundary
 
 The Architecture Catalog is a discovery surface.
 
@@ -229,6 +268,7 @@ It does not:
 
 - create Approval Artifacts  
 - check approvals  
+- request access  
 - execute loads  
 - delete execution records  
 - mutate metadata

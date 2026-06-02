@@ -1,0 +1,322 @@
+<!--
+elevata - Metadata-driven Data Platform Framework
+Copyright © 2025-2026 Ilona Tag
+
+This file is part of elevata.
+
+elevata is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of
+the License, or (at your option) any later version.
+
+elevata is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with elevata. If not, see <https://www.gnu.org/licenses/>.
+
+Contact: <https://github.com/elevata-labs/elevata>.
+-->
+
+{% extends "base.html" %}
+
+{% block title %}Architecture Catalog Data Products · elevata{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-start justify-content-between gap-3 mb-3">
+  <div>
+    <h1 class="h4 mb-1">Architecture Catalog Data Products</h1>
+    <div class="small text-muted">
+      Read-only consumer readiness for metadata-defined architecture objects.
+    </div>
+  </div>
+
+  <div class="d-flex align-items-center justify-content-end gap-2 flex-wrap">
+    <a href="{{ map_url }}" class="btn btn-sm btn-outline-secondary">
+      <i class="bi bi-map"></i>
+      Map
+    </a>
+    <a href="{{ insights_url }}" class="btn btn-sm btn-outline-secondary">
+      <i class="bi bi-graph-up-arrow"></i>
+      Insights
+    </a>
+    <a href="{{ catalog_url }}" class="btn btn-sm btn-outline-secondary">
+      <i class="bi bi-collection"></i>
+      Catalog
+    </a>
+    <span class="badge text-bg-secondary">
+      {{ filtered_count }} / {{ total_candidate_count }} data products
+    </span>
+  </div>
+</div>
+
+<div class="alert alert-info small mb-4">
+  <div class="fw-semibold mb-1">Consumer readiness only</div>
+  <div>
+    Catalog Data Products show which serving datasets are ready for trusted
+    consumption. Bizcore implements business logic; serving exposes
+    consumer-facing assets. The page derives readiness from existing metadata,
+    health, lineage, review state and execution evidence. It does not edit
+    metadata, request access or execute loads.
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+  {% for group in readiness_counts %}
+    <div class="col-lg-4">
+      <div class="card h-100">
+        <div class="card-body d-flex align-items-start justify-content-between gap-3">
+          <div>
+            <div class="small text-muted mb-1">Readiness</div>
+            <div class="fw-semibold">{{ group.label }}</div>
+          </div>
+          <span class="badge {{ group.badge_class }}">
+            {{ group.count }}
+          </span>
+        </div>
+      </div>
+    </div>
+  {% endfor %}
+</div>
+
+<div class="card mb-4">
+  <div class="card-body">
+    <form method="get" action="{% url 'architecture_catalog_data_products' %}">
+      <div class="row g-3 align-items-end">
+        <div class="col-lg-3">
+          <label for="data-product-search" class="form-label small fw-semibold">
+            Search
+          </label>
+          <input
+            id="data-product-search"
+            name="q"
+            class="form-control form-control-sm"
+            value="{{ filters.search }}"
+            placeholder="Dataset, key, owner, description"
+          >
+        </div>
+
+        <div class="col-lg-2">
+          <label for="data-product-schema" class="form-label small fw-semibold">
+            Layer
+          </label>
+          <select id="data-product-schema" name="schema_short" class="form-select form-select-sm">
+            <option value="">All consumer layers</option>
+            {% for option in schema_options %}
+              <option value="{{ option.value }}" {% if option.selected %}selected{% endif %}>
+                {{ option.label }}
+              </option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="col-lg-2">
+          <label for="data-product-readiness" class="form-label small fw-semibold">
+            Readiness
+          </label>
+          <select id="data-product-readiness" name="readiness" class="form-select form-select-sm">
+            <option value="all" {% if filters.readiness == "all" %}selected{% endif %}>All</option>
+            <option value="ready" {% if filters.readiness == "ready" %}selected{% endif %}>Consumption-ready</option>
+            <option value="review" {% if filters.readiness == "review" %}selected{% endif %}>Review recommended</option>
+            <option value="not_ready" {% if filters.readiness == "not_ready" %}selected{% endif %}>Not consumption-ready</option>
+          </select>
+        </div>
+
+        <div class="col-lg-2">
+          <label for="data-product-status" class="form-label small fw-semibold">
+            Status
+          </label>
+          <select id="data-product-status" name="status" class="form-select form-select-sm">
+            <option value="active" {% if filters.status == "active" %}selected{% endif %}>Active</option>
+            <option value="inactive" {% if filters.status == "inactive" %}selected{% endif %}>Inactive</option>
+            <option value="all" {% if filters.status == "all" %}selected{% endif %}>All</option>
+          </select>
+        </div>
+
+        <div class="col-lg-3 d-flex gap-2">
+          <button type="submit" class="btn btn-sm btn-primary flex-fill">
+            <i class="bi bi-search"></i>
+            Apply filters
+          </button>
+          <a href="{{ clear_url }}" class="btn btn-sm btn-outline-secondary">
+            Clear
+          </a>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="row g-4">
+  {% for data_product in data_products %}
+    <div class="col-12">
+      <div class="card h-100">
+        <div class="card-body">
+          <div class="d-flex align-items-start justify-content-between gap-3 mb-3">
+            <div>
+              <div class="d-flex align-items-center gap-2 flex-wrap mb-1">
+                <a href="{{ data_product.catalog_detail_url }}" class="fw-semibold text-decoration-none">
+                  <code>{{ data_product.dataset_key }}</code>
+                </a>
+                <span class="badge badge-lineage-layer">
+                  {{ data_product.schema_short }}
+                </span>
+                <span class="badge {{ data_product.readiness_badge_class }}">
+                  {{ data_product.readiness_label }}
+                </span>
+              </div>
+              {% if data_product.description %}
+                <div class="small text-muted">
+                  {{ data_product.description }}
+                </div>
+              {% else %}
+                <div class="small text-muted">
+                  No business-facing description available.
+                </div>
+              {% endif %}
+            </div>
+
+            <div class="btn-group btn-group-sm catalog-actions" role="group">
+              <a href="{{ data_product.catalog_detail_url }}" class="btn btn-outline-primary">
+                Details
+              </a>
+              <a href="{{ data_product.lineage_url }}" class="btn btn-outline-secondary">
+                Lineage
+              </a>
+              <a href="{{ data_product.query_contract_url }}" class="btn btn-outline-secondary">
+                Contract
+              </a>
+              <a href="{{ data_product.architecture_control_url }}" class="btn btn-outline-secondary">
+                Control
+              </a>
+            </div>
+          </div>
+
+          <div class="architecture-data-product-stats mb-3">
+            <div>
+              <span>Owners</span>
+              <strong>{{ data_product.owner_labels|length }}</strong>
+            </div>
+            <div>
+              <span>Contract columns</span>
+              <strong>{{ data_product.contract_column_count }}</strong>
+            </div>
+            <div>
+              <span>Upstream</span>
+              <strong>{{ data_product.upstream_count }}</strong>
+            </div>
+            <div>
+              <span>Downstream</span>
+              <strong>{{ data_product.downstream_count }}</strong>
+            </div>
+            <div>
+              <span>Health</span>
+              <strong>{{ data_product.health_label }}</strong>
+            </div>
+            <div>
+              <span>Query</span>
+              <strong>{{ data_product.query_logic_label }}</strong>
+            </div>
+          </div>
+
+          <div class="row g-3">
+            <div class="col-lg-4">
+              <div class="border rounded p-3 h-100 bg-light">
+                <div class="fw-semibold small mb-2">Ownership</div>
+                {% if data_product.owner_labels %}
+                  {% for owner_label in data_product.owner_labels %}
+                    <div class="small">{{ owner_label }}</div>
+                  {% endfor %}
+                {% else %}
+                  <div class="small text-muted">No owner assigned.</div>
+                {% endif %}
+              </div>
+            </div>
+
+            <div class="col-lg-4">
+              <div class="border rounded p-3 h-100 bg-light">
+                <div class="fw-semibold small mb-2">Review state</div>
+                {% if data_product.review_status %}
+                  <span class="badge {{ data_product.review_status.badge_class }}">
+                    <i class="bi {{ data_product.review_status.icon }}"></i>
+                    {{ data_product.review_status.label }}
+                  </span>
+                  <div class="small text-muted mt-2">
+                    {{ data_product.review_status.message }}
+                  </div>
+                {% elif data_product.review_status_error %}
+                  <span class="badge badge-health-warning">Unavailable</span>
+                  <div class="small text-muted mt-2">
+                    {{ data_product.review_status_error }}
+                  </div>
+                {% else %}
+                  <span class="badge badge-lineage-inactive">Unavailable</span>
+                {% endif %}
+              </div>
+            </div>
+
+            <div class="col-lg-4">
+              <div class="border rounded p-3 h-100 bg-light">
+                <div class="fw-semibold small mb-2">Execution evidence</div>
+                {% if data_product.latest_execution_record %}
+                  {% if data_product.latest_execution_record.status == "success" %}
+                    <span class="badge text-bg-success">success</span>
+                  {% elif data_product.latest_execution_record.status == "failed" %}
+                    <span class="badge text-bg-danger">failed</span>
+                  {% else %}
+                    <span class="badge text-bg-secondary">
+                      {{ data_product.latest_execution_record.status }}
+                    </span>
+                  {% endif %}
+                  <div class="small text-muted mt-2">
+                    {{ data_product.latest_execution_record.started_at }}
+                    {% if data_product.latest_execution_record.fingerprint_short %}
+                      · <code>{{ data_product.latest_execution_record.fingerprint_short }}</code>
+                    {% endif %}
+                  </div>
+                {% else %}
+                  <span class="badge badge-health-warning">No evidence</span>
+                  <div class="small text-muted mt-2">
+                    No Architecture Execution Record found for this dataset scope.
+                  </div>
+                {% endif %}
+              </div>
+            </div>
+          </div>
+
+          <details class="catalog-insight-more mt-3">
+            <summary class="small text-muted">
+              <span class="catalog-insight-summary-closed">Show readiness signals</span>
+              <span class="catalog-insight-summary-open">Hide readiness signals</span>
+            </summary>
+            <div class="row g-2 mt-2">
+              {% for signal in data_product.signals %}
+                <div class="col-xl-3 col-lg-4 col-md-6">
+                  <div class="border rounded p-2 h-100 bg-light">
+                    <span class="badge {{ signal.badge_class }} mb-2">
+                      {{ signal.label }}
+                    </span>
+                    <div class="small text-muted">
+                      {{ signal.message }}
+                    </div>
+                  </div>
+                </div>
+              {% endfor %}
+            </div>
+          </details>
+        </div>
+      </div>
+    </div>
+  {% empty %}
+    <div class="col-12">
+      <div class="card">
+        <div class="card-body text-center text-muted py-5">
+          No data products match the selected filters.
+        </div>
+      </div>
+    </div>
+  {% endfor %}
+</div>
+{% endblock %}

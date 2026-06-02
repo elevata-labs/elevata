@@ -30,6 +30,9 @@ from urllib.parse import urlencode
 from django.db.models import Count, Prefetch, Q
 from django.urls import reverse
 
+from metadata.architecture.catalog_data_products import (
+  build_architecture_catalog_consumer_readiness_for_dataset,
+)
 from metadata.architecture.execution_record import (
   ArchitectureExecutionRecordFilters,
   ArchitectureExecutionRecordStore,
@@ -265,7 +268,9 @@ class ArchitectureCatalogDetailContext:
   detail_insights: tuple[ArchitectureCatalogDetailInsight, ...]
   review_status: ArchitectureCatalogReviewStatusSummary | None
   review_status_error: str
+  consumer_readiness: Any
   health_messages: tuple[str, ...]
+  data_products_url: str
   insights_url: str
   catalog_url: str
 
@@ -377,7 +382,11 @@ def build_architecture_catalog_detail_context(
     ),
     review_status=review_status,
     review_status_error=review_status_error,
+    consumer_readiness=build_architecture_catalog_consumer_readiness_for_dataset(
+      dataset,
+    ),
     health_messages=health_message_tuple,
+    data_products_url=reverse("architecture_catalog_data_products"),
     insights_url=reverse("architecture_catalog_insights"),
     catalog_url=reverse("architecture_catalog"),
   )

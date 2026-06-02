@@ -13,10 +13,10 @@
       
       
       
-        <link rel="prev" href="../historization_architecture/">
+        <link rel="prev" href="../architecture_catalog/">
       
       
-        <link rel="next" href="../sql_rendering_conventions/">
+        <link rel="next" href="../architecture_control_plane/">
       
       
         
@@ -27,7 +27,7 @@
     
     
       
-        <title>⚙️ Schema Evolution - elevata</title>
+        <title>⚙️ Architecture Catalog Data Products - elevata</title>
       
     
     
@@ -80,7 +80,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#schema-evolution" class="md-skip">
+        <a href="#architecture-catalog-data-products" class="md-skip">
           Skip to content
         </a>
       
@@ -116,7 +116,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              ⚙️ Schema Evolution
+              ⚙️ Architecture Catalog Data Products
             
           </span>
         </div>
@@ -374,20 +374,18 @@
       
   
   
-    
   
   
-  
     
     
     
     
     
-    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
         
           
           <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
@@ -408,7 +406,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
           <label class="md-nav__title" for="__nav_3">
             <span class="md-nav__icon md-icon"></span>
             
@@ -535,37 +533,10 @@
                 
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    ⚙️ Schema Evolution
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../schema_evolution/" class="md-nav__link">
         
   
   
@@ -581,371 +552,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#core-principles" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        🔧 Core Principles
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#type-authority" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        🔧 Type authority
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#column-and-dataset-renames" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        🔧 Column and Dataset Renames
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="🔧 Column and Dataset Renames">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#dataset-renames" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        🧩 Dataset Renames
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="🧩 Dataset Renames">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#behavior" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        🔎 Behavior
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#guarantees" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        🔎 Guarantees
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#column-renames" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        🧩 Column Renames
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="🧩 Column Renames">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#behavior_1" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        🔎 Behavior
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#duplicate-detection" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        🔎 Duplicate Detection
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#historization-awareness" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        🧩 Historization Awareness
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="🧩 Historization Awareness">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#guarantees_1" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        🔎 Guarantees
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#type-drift-semantic-equivalence" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        🧩 Type Drift &amp; Semantic Equivalence
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="🧩 Type Drift &amp; Semantic Equivalence">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#design-rationale" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        🔎 Design rationale
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#architecture-change-reports" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        🔧 Architecture Change Reports
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#type-drift-detection-and-evolution" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        🔧 Type Drift Detection and Evolution
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="🔧 Type Drift Detection and Evolution">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#canonical-type-comparison" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        🧩 Canonical Type Comparison
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#drift-classification" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        🧩 Drift Classification
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#equivalent" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        🧩 Equivalent
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="🧩 Equivalent">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#widening-safe" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        🔎 Widening (Safe)
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#narrowing-incompatible-unsafe" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        🔎 Narrowing / Incompatible (Unsafe)
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#evolution-strategy" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        🧩 Evolution Strategy
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#deterministic-blocking" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        🧩 Deterministic Blocking
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#incremental-pipelines-schema-evolution" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        🔧 Incremental Pipelines &amp; Schema Evolution
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#non-goals-by-design" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        🔧 Non-Goals (By Design)
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="🔧 Non-Goals (By Design)">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#policy-gated-column-drops" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        🧩 Policy-gated column drops
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#example-workflow" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        🔧 Example Workflow
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#guarantees-summary" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        🔧 Guarantees Summary
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -1100,18 +706,20 @@
       
   
   
+    
   
   
+  
     
     
     
     
     
-    <li class="md-nav__item md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" checked>
         
           
           <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
@@ -1132,7 +740,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="true">
           <label class="md-nav__title" for="__nav_5">
             <span class="md-nav__icon md-icon"></span>
             
@@ -1203,10 +811,37 @@
                 
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../architecture_catalog_data_products/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ Architecture Catalog Data Products
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -1222,6 +857,114 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-purpose" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🔧 1. Purpose
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-serving-layer-scope" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🔧 2. Serving-Layer Scope
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-readiness-groups" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🔧 3. Readiness Groups
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-readiness-signals" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🔧 4. Readiness Signals
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-data-product-cards" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🔧 5. Data Product Cards
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-catalog-detail-consumer-readiness" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🔧 6. Catalog Detail Consumer Readiness
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-relationship-to-data-marketplace-concepts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🔧 7. Relationship to Data Marketplace Concepts
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-governance-boundary" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🔧 8. Governance Boundary
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -1941,385 +1684,176 @@
 
 
 
-<h1 id="schema-evolution">⚙️ Schema Evolution<a class="headerlink" href="#schema-evolution" title="Permanent link">&para;</a></h1>
-<p>Schema evolution in <strong>elevata</strong> is <strong>metadata-driven, deterministic, and lineage-safe</strong>.  </p>
-<p>Structural changes are never inferred implicitly from generated SQL.<br />
-Instead, all physical changes are derived explicitly from metadata and<br />
-applied in a controlled, auditable manner.</p>
-<p>This ensures that evolving target schemas remain stable, reproducible,<br />
-and safe for downstream consumers.</p>
-<p>Schema evolution in elevata is not a migration tool and not a best-effort heuristic.</p>
-<p>It is a deterministic reconciliation process between metadata and physical warehouse schemas,<br />
-designed to be safe, lineage-aware, and reproducible across environments.</p>
-<p>Architecture reports expose the same schema evolution intent before execution.</p>
-<p>Architecture Control makes this intent reviewable, approvable, executable through<br />
-controlled scopes, and auditable through Architecture Execution Records.</p>
+<h1 id="architecture-catalog-data-products">⚙️ Architecture Catalog Data Products<a class="headerlink" href="#architecture-catalog-data-products" title="Permanent link">&para;</a></h1>
+<p>Architecture Catalog Data Products provide a read-only consumer-readiness
+perspective for serving-layer datasets.</p>
+<p>They help users understand which metadata-defined architecture objects are ready for trusted consumption<br />
+and which ones need attention before they are exposed as consumer-facing assets.</p>
+<p>Data Product readiness is derived from existing architecture metadata. It is not
+a separate declaration layer.</p>
 <hr />
-<h2 id="core-principles">🔧 Core Principles<a class="headerlink" href="#core-principles" title="Permanent link">&para;</a></h2>
-<ul>
-<li>
-<p><strong>Metadata is the single source of truth</strong><br />
-  Physical schemas always converge towards metadata definitions.</p>
-</li>
-<li>
-<p><strong>No implicit inference</strong><br />
-  elevata never infers schema changes from SQL output or source structures.</p>
-</li>
-<li>
-<p><strong>Deterministic behavior</strong><br />
-  Given the same metadata state, schema evolution always produces the same result.</p>
-</li>
-<li>
-<p><strong>Lineage-aware safety</strong><br />
-  Renames and structural changes preserve lineage and avoid duplicate objects.</p>
-</li>
-<li>
-<p><strong>Non-destructive by default</strong><br />
-  Existing data is never dropped or rewritten implicitly.</p>
-</li>
-</ul>
-<hr />
-<h2 id="type-authority">🔧 Type authority<a class="headerlink" href="#type-authority" title="Permanent link">&para;</a></h2>
-<p>The TargetColumn datatype defined in metadata is authoritative.</p>
-<p>Upstream datatypes are treated as advisory input during initial column creation,<br />
-but do not override explicit datatype changes made at the TargetColumn level.</p>
-<p>This allows controlled schema evolution (widening, rebuild, and type alignment)<br />
-without upstream schema changes forcing unintended reversions.</p>
-<hr />
-<h2 id="column-and-dataset-renames">🔧 Column and Dataset Renames<a class="headerlink" href="#column-and-dataset-renames" title="Permanent link">&para;</a></h2>
-<p>Renames are handled explicitly via metadata:</p>
-<ul>
-<li>datasets and columns track historical names via <code>former_names</code></li>
-<li>physical <code>RENAME TABLE</code> / <code>RENAME COLUMN</code> statements are generated where supported</li>
-<li>duplicate table or column creation is prevented</li>
-<li>ambiguous rename situations are detected and surfaced</li>
-</ul>
-<p>This guarantees stable evolution without breaking downstream dependencies.</p>
-<h3 id="dataset-renames">🧩 Dataset Renames<a class="headerlink" href="#dataset-renames" title="Permanent link">&para;</a></h3>
-<p>Dataset renames are managed via:</p>
-<ul>
-<li><code>TargetDataset.target_dataset_name</code>  </li>
-<li><code>TargetDataset.former_names</code></li>
-</ul>
-<h4 id="behavior">🔎 Behavior<a class="headerlink" href="#behavior" title="Permanent link">&para;</a></h4>
-<ul>
-<li>Physical tables are renamed using <code>RENAME TABLE</code>  </li>
-<li>No new table is created  </li>
-<li>No data is copied or lost  </li>
-<li>Lineage remains intact via <code>lineage_key</code></li>
-</ul>
-<h4 id="guarantees">🔎 Guarantees<a class="headerlink" href="#guarantees" title="Permanent link">&para;</a></h4>
-<ul>
-<li>Idempotent  </li>
-<li>Safe across multiple consecutive renames  </li>
-<li>Works for base and <code>_hist</code> datasets</li>
-</ul>
-<hr />
-<h3 id="column-renames">🧩 Column Renames<a class="headerlink" href="#column-renames" title="Permanent link">&para;</a></h3>
-<p>Column renames are managed via:</p>
-<ul>
-<li><code>TargetColumn.target_column_name</code>  </li>
-<li><code>TargetColumn.former_names</code>  </li>
-</ul>
-<h4 id="behavior_1">🔎 Behavior<a class="headerlink" href="#behavior_1" title="Permanent link">&para;</a></h4>
-<ul>
-<li>Schema evolution emits <code>RENAME COLUMN</code> (derived from <code>former_names</code> and MigrationPlan intent)  </li>
-<li>No duplicate columns are created  </li>
-<li>Former names are preserved for future renames</li>
-</ul>
-<h4 id="duplicate-detection">🔎 Duplicate Detection<a class="headerlink" href="#duplicate-detection" title="Permanent link">&para;</a></h4>
-<p>If both the desired column name <strong>and</strong> a former name exist physically,<br />
-the runtime will:</p>
-<ul>
-<li>Emit a warning  </li>
-<li>Skip automatic changes  </li>
-<li>Require manual intervention  </li>
-</ul>
-<p>This prevents silent data corruption.</p>
-<h3 id="historization-awareness">🧩 Historization Awareness<a class="headerlink" href="#historization-awareness" title="Permanent link">&para;</a></h3>
-<p>Historized datasets (<code>*_hist</code>) are treated as <strong>structural mirrors</strong> of their
-base datasets.</p>
-<h4 id="guarantees_1">🔎 Guarantees<a class="headerlink" href="#guarantees_1" title="Permanent link">&para;</a></h4>
-<ul>
-<li>Column renames propagate automatically  </li>
-<li>Dataset renames propagate automatically  </li>
-<li>No duplicate history columns are created  </li>
-<li>No accidental base → hist renames occur</li>
-</ul>
-<p>This is enforced by:<br />
-- Lineage-based dataset lookup<br />
-- Guardrails on <code>former_names</code><br />
-- Deterministic guard logic</p>
-<h3 id="type-drift-semantic-equivalence">🧩 Type Drift &amp; Semantic Equivalence<a class="headerlink" href="#type-drift-semantic-equivalence" title="Permanent link">&para;</a></h3>
-<p>elevata detects type drift by comparing metadata-defined column types<br />
-with physically introspected types in the target warehouse.</p>
-<p>However, certain type differences are treated as <strong>semantically equivalent</strong><br />
-and do <strong>not</strong> trigger warnings or schema changes.</p>
-<p>Examples include:</p>
-<ul>
-<li><code>bool</code> ↔ <code>boolean</code>  </li>
-<li><code>int64</code> ↔ <code>integer</code>  </li>
-<li><code>timestamp</code> ↔ <code>timestamptz</code> (PostgreSQL)  </li>
-<li><code>varchar(n)</code> ↔ <code>varchar</code> (DuckDB)</li>
-</ul>
-<p>These equivalence rules are applied during <strong>preflight schema drift detection</strong><br />
-and are intentionally <strong>dialect-aware</strong>.</p>
-<h4 id="design-rationale">🔎 Design rationale<a class="headerlink" href="#design-rationale" title="Permanent link">&para;</a></h4>
-<ul>
-<li>safe widening should not create noise  </li>
-<li>vendor-specific type spellings should not create drift churn  </li>
-<li>semantic equivalence reduces false-positive drift warnings</li>
-</ul>
-<p>Type equivalence is used for drift classification and noise reduction.<br />
-Physical DDL is always rendered by the dialect and executed only when schema evolution intent requires it.</p>
-<hr />
-<h2 id="architecture-change-reports">🔧 Architecture Change Reports<a class="headerlink" href="#architecture-change-reports" title="Permanent link">&para;</a></h2>
-<p>Architecture Change Reports describe schema evolution intent before execution.</p>
-<p>They are derived from:</p>
-<pre><code class="language-text">Architecture State → Architecture Diff → MigrationPlan → Policy Decisions
+<h2 id="1-purpose">🔧 1. Purpose<a class="headerlink" href="#1-purpose" title="Permanent link">&para;</a></h2>
+<p>Modern data platforms often expose many datasets, tables and views.</p>
+<p>The Architecture Catalog Data Products view focuses on a narrower question:</p>
+<pre><code class="language-text">Which serving-layer datasets are ready for trusted consumption?
 </code></pre>
-<p>The report includes:</p>
+<p>This perspective brings together signals that already exist in elevata:</p>
 <ul>
-<li>dataset and column changes  </li>
-<li>MigrationPlan actions  </li>
-<li>policy decisions for destructive operations  </li>
-<li>deterministic report fingerprint</li>
+<li>ownership  </li>
+<li>metadata health  </li>
+<li>query contract columns  </li>
+<li>upstream lineage  </li>
+<li>downstream consumers  </li>
+<li>Architecture Control review state  </li>
+<li>Architecture Execution Record evidence  </li>
+<li>lifecycle status  </li>
+<li>query logic transparency</li>
 </ul>
-<p>Reports are review artifacts. They do not apply schema changes by themselves.</p>
-<p><code>elevata_load</code> remains responsible for execution preflight and applies schema changes
-only after guard checks pass.</p>
-<p>Architecture Control uses the same schema evolution intent and adds a controlled
-review and execution layer:</p>
-<pre><code class="language-text">Architecture Change Report
-  ↓
-Architecture Approval Artifact
-  ↓
-Execution Preview
-  ↓
-Controlled Execution
-  ↓
-Architecture Execution Record
+<p>The result is a consumer-oriented view of executable architecture without adding
+a separate marketplace workflow.</p>
+<hr />
+<h2 id="2-serving-layer-scope">🔧 2. Serving-Layer Scope<a class="headerlink" href="#2-serving-layer-scope" title="Permanent link">&para;</a></h2>
+<p>Catalog Data Products focus on serving-layer datasets.</p>
+<pre><code class="language-text">bizcore  = business logic implementation
+serving  = consumer-facing presentation and consumption layer
 </code></pre>
-<p>Controlled execution does not bypass schema evolution guardrails.<br />
-It invokes the load runner through constrained Architecture Control scopes and keeps:</p>
-<ul>
-<li>preflight validation  </li>
-<li>materialization policy checks  </li>
-<li>Architecture Guard enforcement  </li>
-<li>approval matching  </li>
-<li>dialect-owned DDL rendering  </li>
-<li>deterministic execution records</li>
-</ul>
-<p>Execution scopes are explicit:</p>
+<p>Bizcore datasets remain visible in the Architecture Catalog, Catalog Insights and Catalog Maps.<br />
+They are part of the executable architecture, but they are not presented as consumer-facing Data Products.</p>
+<p>Serving datasets represent the architecture layer where curated, presentation-ready
+assets are exposed for consumption.</p>
+<hr />
+<h2 id="3-readiness-groups">🔧 3. Readiness Groups<a class="headerlink" href="#3-readiness-groups" title="Permanent link">&para;</a></h2>
+<p>Each Data Product candidate is assigned to one transparent readiness group:</p>
 <table>
 <thead>
 <tr>
-<th>Scope</th>
-<th>Schema evolution behavior</th>
+<th>Group</th>
+<th>Meaning</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>All datasets</td>
-<td>Applies schema evolution for all active target datasets in dependency order</td>
+<td>Consumption-ready</td>
+<td>No blocking or review-level readiness signals are present</td>
 </tr>
 <tr>
-<td>Schema</td>
-<td>Applies schema evolution for selected schema roots and required dependencies</td>
+<td>Review recommended</td>
+<td>The dataset is usable for inspection but has signals that need review</td>
 </tr>
 <tr>
-<td>TargetDataset</td>
-<td>Applies schema evolution for the selected TargetDataset and required dependencies</td>
-</tr>
-<tr>
-<td>TargetDataset, target-only</td>
-<td>Applies schema evolution only for the selected TargetDataset</td>
+<td>Not consumption-ready</td>
+<td>Blocking signals prevent trusted consumption</td>
 </tr>
 </tbody>
 </table>
-<p>Target-only execution is available only for TargetDataset scopes. It supports focused iteration<br />
-when upstream data is already available.</p>
-<p>Architecture Execution Records capture who executed which controlled schema evolution scope,<br />
-with which dependency mode, report fingerprint, approval identifier, preview fingerprint,<br />
-command metadata and result status.</p>
+<p>The groups are derived from visible signals. They are not a hidden score.</p>
 <hr />
-<h2 id="type-drift-detection-and-evolution">🔧 Type Drift Detection and Evolution<a class="headerlink" href="#type-drift-detection-and-evolution" title="Permanent link">&para;</a></h2>
-<p>elevata includes deterministic type drift detection as part of preflight validation.</p>
-<p>Type drift occurs when the physical column datatype differs from the datatype defined in metadata.</p>
-<h3 id="canonical-type-comparison">🧩 Canonical Type Comparison<a class="headerlink" href="#canonical-type-comparison" title="Permanent link">&para;</a></h3>
-<p>Type comparison is performed using canonical types instead of dialect-specific physical types.</p>
-<p>Physical types are mapped to canonical types during introspection.</p>
-<p>Example:</p>
+<h2 id="4-readiness-signals">🔧 4. Readiness Signals<a class="headerlink" href="#4-readiness-signals" title="Permanent link">&para;</a></h2>
+<p>Consumer readiness uses explicit signals that can be inspected per dataset.</p>
+<p>Signal areas include:</p>
+<ul>
+<li>active lifecycle state  </li>
+<li>serving-layer suitability  </li>
+<li>business-facing description  </li>
+<li>ownership assignment  </li>
+<li>metadata health  </li>
+<li>query contract column availability  </li>
+<li>direct upstream lineage  </li>
+<li>downstream consumer visibility  </li>
+<li>Architecture Control review state  </li>
+<li>latest Architecture Execution Record evidence  </li>
+<li>query logic transparency</li>
+</ul>
+<p>Signals are displayed with clear severity:</p>
 <table>
 <thead>
 <tr>
-<th>Physical Type (Dialect)</th>
-<th>Canonical Type</th>
+<th>Severity</th>
+<th>Meaning</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>INT (MSSQL)</td>
-<td>INTEGER</td>
+<td>OK</td>
+<td>The signal supports trusted consumption</td>
 </tr>
 <tr>
-<td>NUMBER(38,0) (Snowflake)</td>
-<td>BIGINT</td>
+<td>Warning</td>
+<td>The signal deserves review before broad consumption</td>
 </tr>
 <tr>
-<td>BIGINT</td>
-<td>BIGINT</td>
+<td>Blocking</td>
+<td>The signal prevents consumption readiness</td>
 </tr>
 <tr>
-<td>VARCHAR(100)</td>
-<td>STRING</td>
-</tr>
-<tr>
-<td>TEXT</td>
-<td>STRING</td>
+<td>Info</td>
+<td>The signal adds transparency without reducing readiness</td>
 </tr>
 </tbody>
 </table>
-<p>This allows consistent drift detection across different warehouses.</p>
-<p>Canonical types represent the logical datatype used by elevata for
-schema comparison and drift classification.</p>
-<p>They are independent of physical database representations.</p>
-<h3 id="drift-classification">🧩 Drift Classification<a class="headerlink" href="#drift-classification" title="Permanent link">&para;</a></h3>
-<p>Type drift is classified into three categories:</p>
-<h3 id="equivalent">🧩 Equivalent<a class="headerlink" href="#equivalent" title="Permanent link">&para;</a></h3>
-<p>No effective change. Execution continues without action.</p>
-<p>Examples:</p>
-<ul>
-<li>INT vs INTEGER  </li>
-<li>VARCHAR vs STRING (dialect alias)</li>
-</ul>
-<h4 id="widening-safe">🔎 Widening (Safe)<a class="headerlink" href="#widening-safe" title="Permanent link">&para;</a></h4>
-<p>The target type can safely represent all existing values.</p>
-<p>Examples:</p>
-<ul>
-<li>INT → BIGINT  </li>
-<li>VARCHAR(100) → VARCHAR(200)  </li>
-<li>DECIMAL(10,2) → DECIMAL(18,4)</li>
-</ul>
-<p>Safe widening changes are automatically remediated.</p>
-<h4 id="narrowing-incompatible-unsafe">🔎 Narrowing / Incompatible (Unsafe)<a class="headerlink" href="#narrowing-incompatible-unsafe" title="Permanent link">&para;</a></h4>
-<p>The new type may truncate or invalidate existing data.</p>
-<p>Examples:</p>
-<ul>
-<li>BIGINT → INT  </li>
-<li>VARCHAR(200) → VARCHAR(50)  </li>
-<li>DECIMAL(18,4) → DECIMAL(10,2)</li>
-</ul>
-<p>Unsafe drift blocks execution deterministically.</p>
+<p>This keeps Data Product readiness explainable and auditable.</p>
 <hr />
-<h3 id="evolution-strategy">🧩 Evolution Strategy<a class="headerlink" href="#evolution-strategy" title="Permanent link">&para;</a></h3>
-<p>When widening drift is detected:</p>
-<ol>
-<li>If the dialect supports <code>ALTER COLUMN TYPE</code>, elevata generates an ALTER statement.  </li>
-<li>Otherwise, elevata performs a deterministic rebuild:</li>
-</ol>
-<pre><code class="language-sql">CREATE TABLE &lt;table&gt;__rebuild_tmp
-INSERT INTO &lt;tmp&gt; SELECT CAST(...) FROM &lt;original&gt;
-DROP TABLE &lt;original&gt;
-RENAME &lt;tmp&gt; → &lt;original&gt;
+<h2 id="5-data-product-cards">🔧 5. Data Product Cards<a class="headerlink" href="#5-data-product-cards" title="Permanent link">&para;</a></h2>
+<p>The Data Products page displays one card per serving-layer candidate.</p>
+<p>Each card shows:</p>
+<ul>
+<li>dataset key  </li>
+<li>schema / layer  </li>
+<li>readiness group  </li>
+<li>description  </li>
+<li>owner count and owner labels  </li>
+<li>contract column count  </li>
+<li>upstream and downstream counts  </li>
+<li>metadata health state  </li>
+<li>query logic state  </li>
+<li>Architecture Control review state  </li>
+<li>latest execution evidence summary  </li>
+<li>expandable readiness signals</li>
+</ul>
+<p>Each card links to:</p>
+<ul>
+<li>Catalog detail  </li>
+<li>lineage  </li>
+<li>query contract  </li>
+<li>Architecture Control</li>
+</ul>
+<p>The page supports filtering by search term, consumer layer, readiness group and
+lifecycle status.</p>
+<hr />
+<h2 id="6-catalog-detail-consumer-readiness">🔧 6. Catalog Detail Consumer Readiness<a class="headerlink" href="#6-catalog-detail-consumer-readiness" title="Permanent link">&para;</a></h2>
+<p>Catalog detail pages include a dataset-specific Consumer Readiness card.</p>
+<p>This card uses the same signal model as the Data Products page and shows the readiness context<br />
+for the selected TargetDataset.</p>
+<p>For serving datasets, the card explains consumption readiness.</p>
+<p>For non-consumer layers, the card explains why the selected dataset is part of the executable architecture<br />
+but is not offered as a consumer-facing Data Product.</p>
+<hr />
+<h2 id="7-relationship-to-data-marketplace-concepts">🔧 7. Relationship to Data Marketplace Concepts<a class="headerlink" href="#7-relationship-to-data-marketplace-concepts" title="Permanent link">&para;</a></h2>
+<p>Catalog Data Products provide a foundation for marketplace-style transparency without turning elevata<br />
+into a generic marketplace, request-access portal or business glossary platform.</p>
+<p>The view focuses on architecture-derived readiness:</p>
+<pre><code class="language-text">metadata-defined architecture
+  → ownership, health, lineage, contracts, review and evidence
+  → trusted consumption readiness
 </code></pre>
-<p>The rebuild strategy guarantees identical results across dialects.</p>
-<h3 id="deterministic-blocking">🧩 Deterministic Blocking<a class="headerlink" href="#deterministic-blocking" title="Permanent link">&para;</a></h3>
-<p>Execution is blocked when:</p>
+<p>This keeps the Architecture Catalog aligned with elevata's Architecture Runtime model:<br />
+Data Products are not declared separately from architecture. They are recognized through the<br />
+architecture signals that make consumption trustworthy.</p>
+<hr />
+<h2 id="8-governance-boundary">🔧 8. Governance Boundary<a class="headerlink" href="#8-governance-boundary" title="Permanent link">&para;</a></h2>
+<p>Architecture Catalog Data Products are part of the read-only Architecture Catalog.</p>
+<p>They do not:</p>
 <ul>
-<li>narrowing drift is detected  </li>
-<li>incompatible type change detected  </li>
-<li>dialect cannot safely evolve schema</li>
+<li>edit metadata  </li>
+<li>request access  </li>
+<li>create approvals  </li>
+<li>run approval checks  </li>
+<li>execute loads  </li>
+<li>create execution records  </li>
+<li>delete execution records</li>
 </ul>
-<p>Blocking occurs during preflight, before any SQL execution.</p>
-<hr />
-<h2 id="incremental-pipelines-schema-evolution">🔧 Incremental Pipelines &amp; Schema Evolution<a class="headerlink" href="#incremental-pipelines-schema-evolution" title="Permanent link">&para;</a></h2>
-<p>Schema evolution is fully compatible with incremental execution:</p>
-<ul>
-<li>Missing tables are auto-provisioned before MERGE  </li>
-<li>The runtime distinguishes schema creation from table provisioning  </li>
-<li>Incremental MERGE never runs against a non-existent table</li>
-</ul>
-<p>This ensures:<br />
-- First-run incremental datasets work correctly<br />
-- Renames do not break MERGE semantics</p>
-<hr />
-<h2 id="non-goals-by-design">🔧 Non-Goals (By Design)<a class="headerlink" href="#non-goals-by-design" title="Permanent link">&para;</a></h2>
-<p>The following operations are <strong>explicitly not automated</strong>:</p>
-<ul>
-<li>❌ Column drops (by default)  </li>
-<li>❌ Unsafe type narrowing/incompatible changes (unless explicitly allowed)  </li>
-<li>❌ Constraint changes  </li>
-<li>❌ Implicit destructive operations</li>
-</ul>
-<p>These require:<br />
-- Explicit policies<br />
-- Clear user intent<br />
-- Future controlled rollout
-- Controlled runtime execution</p>
-<p>Unsafe type drift can be explicitly allowed via <code>ELEVATA_ALLOW_TYPE_ALTER=true</code><br />
-(or <code>--allow-type-alter</code>) and is then executed via dialect-supported ALTER or deterministic rebuild.</p>
-<h3 id="policy-gated-column-drops">🧩 Policy-gated column drops<a class="headerlink" href="#policy-gated-column-drops" title="Permanent link">&para;</a></h3>
-<p>Column drops are disabled by default and require explicit configuration:</p>
-<ul>
-<li>Base tables: <code>ELEVATA_ALLOW_AUTO_DROP_COLUMNS=true</code> enables physical <code>DROP COLUMN</code> when metadata no longer contains a column  </li>
-<li><code>_hist</code> tables: physical drops additionally require <code>ELEVATA_ALLOW_AUTO_DROP_HIST_COLUMNS=true</code>  </li>
-</ul>
-<p>Without the hist flag, removed business columns in <code>_hist</code> are preserved as retired (inactive + detached lineage).</p>
-<hr />
-<h2 id="example-workflow">🔧 Example Workflow<a class="headerlink" href="#example-workflow" title="Permanent link">&para;</a></h2>
-<ol>
-<li>Rename column in metadata UI or API  </li>
-<li>Previous name is added to <code>former_names</code>  </li>
-<li>Schema evolution detects rename  </li>
-<li>Physical schema is updated safely  </li>
-<li><code>_hist</code> table is kept in sync automatically  </li>
-<li>Architecture Control records the controlled execution result</li>
-</ol>
-<p>No SQL changes required.</p>
-<hr />
-<h2 id="guarantees-summary">🔧 Guarantees Summary<a class="headerlink" href="#guarantees-summary" title="Permanent link">&para;</a></h2>
-<table>
-<thead>
-<tr>
-<th>Aspect</th>
-<th>Guarantee</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>Data safety</td>
-<td>✅ No data loss</td>
-</tr>
-<tr>
-<td>Determinism</td>
-<td>✅ Same metadata → same plan</td>
-</tr>
-<tr>
-<td>Incremental safety</td>
-<td>✅ MERGE never breaks</td>
-</tr>
-<tr>
-<td>Cross-dialect</td>
-<td>✅ BigQuery, Databricks, DuckDB, Fabric Warehouse, MSSQL, Postgres, Snowflake</td>
-</tr>
-<tr>
-<td>Historization</td>
-<td>✅ Always consistent</td>
-</tr>
-<tr>
-<td>Reviewability</td>
-<td>✅ Schema evolution intent is visible before execution</td>
-</tr>
-<tr>
-<td>Auditability</td>
-<td>✅ Controlled executions produce Architecture Execution Records</td>
-</tr>
-</tbody>
-</table>
-<hr />
-<p>Schema evolution in elevata is designed to be <strong>boring, predictable, and safe</strong> —<br />
-exactly what you want in production pipelines.</p>
+<p>Architecture Control remains responsible for approval state, execution preview, controlled execution,<br />
+execution records, execution history and retention cleanup.</p>
 <hr />
 <p>© 2025-2026 elevata Labs — Internal Technical Documentation</p>
 

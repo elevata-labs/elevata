@@ -156,6 +156,11 @@ urlpatterns += [
   path("api/targetcolumns/upstream-meta/", views.targetcolumn_upstream_meta, name="targetcolumn_upstream_meta"),
   path("architecture-catalog/", views_catalog.architecture_catalog, name="architecture_catalog"),
   path(
+    "architecture-catalog/data-products/",
+    views_catalog.architecture_catalog_data_products,
+    name="architecture_catalog_data_products",
+  ),
+  path(
     "architecture-catalog/insights/",
     views_catalog.architecture_catalog_insights,
     name="architecture_catalog_insights",

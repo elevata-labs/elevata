@@ -198,8 +198,8 @@ You can now:
 - Define **integration rules** (`integrate = True`)  
 - Trigger **target auto-generation**  
 - Preview **auto-generated** SQL renderings (starting with DuckDB dialect)  
-- Open **Architecture Catalog** to discover datasets, lineage entry points,  
-  query contracts and execution evidence references
+- Open **Architecture Catalog** to discover datasets, Data Products, maps, insights,  
+  lineage entry points, query contracts and execution evidence references
 - Open **Architecture Control** to review, approve, preview and execute controlled architecture scopes
 
 ---

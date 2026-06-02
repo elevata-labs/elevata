@@ -52,7 +52,7 @@ validated, and applied deterministically before execution.
 
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/elevata-labs/elevata/main/docs/elevata_v2_4_0.png" alt="elevata UI preview" width="900"/>
+  <img src="https://raw.githubusercontent.com/elevata-labs/elevata/main/docs/elevata_v2_5_0.png" alt="elevata UI preview" width="900"/>
   <br/>
   <em>Architecture Runtime UI for discovering, controlling, modeling, and executing metadata-defined data architecture</em>
 </p>
@@ -135,6 +135,10 @@ system-managed status, materialization type, incremental strategy and query logi
 Catalog detail pages summarize architecture metadata, ownership, health, upstream inputs,  
 downstream consumers, column contract signals and the latest Architecture Execution Record  
 for the dataset scope.
+
+Catalog Data Products show which serving-layer datasets are ready for trusted consumption.  
+Readiness is derived from ownership, metadata health, query contracts, lineage, Architecture  
+Control review state and execution evidence.
 
 Catalog Insights highlight ownership gaps, metadata health findings, custom query logic,  
 downstream consumer visibility, inactive datasets with consumers, missing execution evidence,  

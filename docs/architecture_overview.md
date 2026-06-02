@@ -138,6 +138,7 @@ It helps users inspect:
 - query logic  
 - upstream and downstream relationships  
 - column contract signals  
+- serving-layer Data Product readiness  
 - layer maps and dependency matrices  
 - latest execution evidence references  
 - architecture quality and governance insights  
@@ -148,10 +149,15 @@ The Catalog links to dedicated pages for:
 - dataset details  
 - lineage  
 - query contracts  
+- Catalog Data Products  
 - Architecture Control  
 - execution history
 
 Architecture Catalog does not edit metadata and does not execute loads.
+
+Catalog Data Products provide a read-only consumer-readiness perspective for serving-layer datasets.  
+They combine ownership, metadata health, query contracts, lineage, review state and execution evidence  
+into transparent readiness groups: Consumption-ready, Review recommended and Not consumption-ready.
 
 Catalog Insights provide read-only signals for ownership gaps, metadata health findings,  
 custom query logic, downstream consumer visibility, inactive datasets with consumers,  

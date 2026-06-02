@@ -65,6 +65,10 @@ Contact: <https://github.com/elevata-labs/elevata>.
       <i class="bi bi-shield-check"></i>
       Control
     </a>
+    <a href="{{ data_products_url }}" class="btn btn-sm btn-outline-primary">
+      <i class="bi bi-box-seam"></i>
+      Data Products
+    </a>
     <a href="{{ insights_url }}" class="btn btn-sm btn-outline-secondary">
       <i class="bi bi-graph-up-arrow"></i>
       Insights
@@ -73,6 +77,10 @@ Contact: <https://github.com/elevata-labs/elevata>.
       <i class="bi bi-map"></i>
       Map
     </a>
+    <a href="{{ catalog_url }}" class="btn btn-sm btn-outline-secondary">
+      <i class="bi bi-collection"></i>
+      Catalog
+    </a>
     <button
       type="button"
       class="btn btn-sm btn-outline-secondary"
@@ -80,7 +88,7 @@ Contact: <https://github.com/elevata-labs/elevata>.
       onclick="window.elevataNavigateBack(this)"
     >
       <i class="bi bi-arrow-left"></i>
-      Catalog
+      Back
     </button>
   </div>
 </div>
@@ -92,6 +100,77 @@ Contact: <https://github.com/elevata-labs/elevata>.
     and column contract signals. Editing and execution stay on their dedicated pages.
   </div>
 </div>
+
+{% if consumer_readiness %}
+  <div class="card mb-4">
+    <div class="card-body">
+      <div class="d-flex align-items-start justify-content-between gap-3 mb-3">
+        <div>
+          <div class="fw-semibold">Consumer readiness</div>
+          <div class="small text-muted">
+            Consumption-oriented readiness derived from existing Catalog, Control,
+            health, lineage and execution evidence signals.
+          </div>
+        </div>
+        <span class="badge {{ consumer_readiness.readiness_badge_class }}">
+          {{ consumer_readiness.readiness_label }}
+        </span>
+      </div>
+
+      <div class="small text-muted mb-3">
+        {{ consumer_readiness.readiness_message }}
+      </div>
+
+      <div class="architecture-data-product-stats mb-3">
+        <div>
+          <span>Owners</span>
+          <strong>{{ consumer_readiness.owner_labels|length }}</strong>
+        </div>
+        <div>
+          <span>Contract columns</span>
+          <strong>{{ consumer_readiness.contract_column_count }}</strong>
+        </div>
+        <div>
+          <span>Upstream</span>
+          <strong>{{ consumer_readiness.upstream_count }}</strong>
+        </div>
+        <div>
+          <span>Downstream</span>
+          <strong>{{ consumer_readiness.downstream_count }}</strong>
+        </div>
+        <div>
+          <span>Warnings</span>
+          <strong>{{ consumer_readiness.warning_signal_count }}</strong>
+        </div>
+        <div>
+          <span>Blocking</span>
+          <strong>{{ consumer_readiness.blocking_signal_count }}</strong>
+        </div>
+      </div>
+
+      <details class="catalog-insight-more">
+        <summary class="small text-muted">
+          <span class="catalog-insight-summary-closed">Show consumer readiness signals</span>
+          <span class="catalog-insight-summary-open">Hide consumer readiness signals</span>
+        </summary>
+        <div class="row g-2 mt-2">
+          {% for signal in consumer_readiness.signals %}
+            <div class="col-xl-3 col-lg-4 col-md-6">
+              <div class="border rounded p-2 h-100 bg-light">
+                <span class="badge {{ signal.badge_class }} mb-2">
+                  {{ signal.label }}
+                </span>
+                <div class="small text-muted">
+                  {{ signal.message }}
+                </div>
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+      </details>
+    </div>
+  </div>
+{% endif %}
 
 {% if detail_insights %}
   <div class="card mb-4">

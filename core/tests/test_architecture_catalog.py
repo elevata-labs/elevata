@@ -30,6 +30,7 @@ from django.http import HttpResponse
 from django.test import RequestFactory
 
 import metadata.architecture.catalog as catalog
+import metadata.architecture.catalog_data_products as catalog_data_products
 import metadata.architecture.catalog_insights as catalog_insights
 import metadata.architecture.catalog_map as catalog_map
 import metadata.views_catalog as views_catalog
@@ -66,6 +67,9 @@ def _patch_reverse(monkeypatch) -> None:
     if name == "architecture_catalog":
       return "/architecture-catalog/"
 
+    if name == "architecture_catalog_data_products":
+      return "/architecture-catalog/data-products/"
+
     if name == "architecture_catalog_insights":
       return "/architecture-catalog/insights/"
 
@@ -83,6 +87,7 @@ def _patch_reverse(monkeypatch) -> None:
     return f"/{name}/{pk}/"
 
   monkeypatch.setattr(catalog, "reverse", fake_reverse)
+  monkeypatch.setattr(catalog_data_products, "reverse", fake_reverse)
   monkeypatch.setattr(catalog_insights, "reverse", fake_reverse)
   monkeypatch.setattr(catalog_map, "reverse", fake_reverse)
 
@@ -315,6 +320,23 @@ def test_architecture_catalog_detail_context_contains_dataset_evidence(
       is_blocked=False,
     ),
   )
+  monkeypatch.setattr(
+    catalog,
+    "build_architecture_catalog_consumer_readiness_for_dataset",
+    lambda target_dataset: SimpleNamespace(
+      readiness_key="review",
+      readiness_label="Review recommended",
+      readiness_badge_class="text-bg-warning",
+      readiness_message="1 readiness signal needs review.",
+      owner_labels=(),
+      contract_column_count=1,
+      upstream_count=1,
+      downstream_count=1,
+      warning_signal_count=1,
+      blocking_signal_count=0,
+      signals=(),
+    ),
+  )
 
   context = catalog.build_architecture_catalog_detail_context(target_dataset)
 
@@ -332,6 +354,8 @@ def test_architecture_catalog_detail_context_contains_dataset_evidence(
   assert context["review_status"].label == "Pending"
   assert context["review_status"].fingerprint_short == "reviewreport"
   assert context["review_status_error"] == ""
+  assert context["consumer_readiness"].readiness_label == "Review recommended"
+  assert context["data_products_url"] == "/architecture-catalog/data-products/"
   assert context["insights_url"] == "/architecture-catalog/insights/"
   assert context["upstream_inputs"][0].label == "serving.catalog_test_detail_upstream"
   assert context["downstream_consumers"][0].label == (
@@ -344,6 +368,213 @@ def test_architecture_catalog_detail_context_contains_dataset_evidence(
   assert "missing_owner" in insight_keys
   assert "review_pending" in insight_keys
   assert "missing_execution_evidence" not in insight_keys
+
+
+@pytest.mark.django_db
+def test_architecture_catalog_data_products_context_groups_readiness(
+  monkeypatch,
+) -> None:
+  """
+  Verify Catalog Data Products context construction.
+  """
+  _patch_reverse(monkeypatch)
+
+  rawcore = _get_or_create_target_schema(
+    "rawcore",
+    display_name="Rawcore",
+  )
+  bizcore = _get_or_create_target_schema(
+    "bizcore",
+    display_name="Bizcore",
+  )
+  serving = _get_or_create_target_schema(
+    "serving",
+    display_name="Serving",
+    default_materialization_type="view",
+  )
+
+  upstream_dataset = TargetDataset.objects.create(
+    target_schema=rawcore,
+    target_dataset_name="catalog_data_product_upstream",
+  )
+  downstream_dataset = TargetDataset.objects.create(
+    target_schema=rawcore,
+    target_dataset_name="catalog_data_product_downstream",
+  )
+  ready_dataset = TargetDataset.objects.create(
+    target_schema=serving,
+    target_dataset_name="catalog_data_product_ready",
+    description="Trusted customer overview for consumption.",
+  )
+  review_dataset = TargetDataset.objects.create(
+    target_schema=serving,
+    target_dataset_name="catalog_data_product_review",
+    description="Customer overview needing review.",
+  )
+  not_ready_dataset = TargetDataset.objects.create(
+    target_schema=serving,
+    target_dataset_name="catalog_data_product_not_ready",
+    description="Serving dataset without contract columns.",
+  )
+  business_logic_dataset = TargetDataset.objects.create(
+    target_schema=bizcore,
+    target_dataset_name="catalog_data_product_business_logic",
+    description="Business core implementation dataset.",
+  )
+
+  owner, _ = Person.objects.get_or_create(
+    email="catalog-data-products-owner@example.com",
+    defaults={
+      "name": "Catalog Data Products Owner",
+    },
+  )
+  for dataset in (ready_dataset, not_ready_dataset):
+    TargetDatasetOwnership.objects.create(
+      target_dataset=dataset,
+      person=owner,
+      role="owner",
+      is_primary_owner=True,
+    )
+
+  TargetColumn.objects.create(
+    target_dataset=ready_dataset,
+    target_column_name="customer_key",
+    ordinal_position=1,
+    datatype="string",
+  )
+  TargetColumn.objects.create(
+    target_dataset=review_dataset,
+    target_column_name="customer_key",
+    ordinal_position=1,
+    datatype="string",
+  )
+
+  TargetDatasetInput.objects.create(
+    target_dataset=ready_dataset,
+    upstream_target_dataset=upstream_dataset,
+    role="primary",
+  )
+  TargetDatasetInput.objects.create(
+    target_dataset=downstream_dataset,
+    upstream_target_dataset=ready_dataset,
+    role="primary",
+  )
+
+  def fake_review_status(target_dataset):
+    """
+    Return deterministic review statuses for Data Product tests.
+    """
+    if target_dataset.target_dataset_name == "catalog_data_product_ready":
+      return SimpleNamespace(
+        status="no_changes",
+        label="No architecture changes",
+        message="No architecture changes are present for this dataset scope.",
+        badge_class="badge-lineage-inactive",
+        icon="bi-check2-circle",
+        has_changes=False,
+        is_blocked=False,
+      )
+
+    if target_dataset.target_dataset_name == "catalog_data_product_not_ready":
+      return SimpleNamespace(
+        status="blocked",
+        label="Blocked by policy",
+        message="The architecture report contains blocking policy decisions.",
+        badge_class="badge-health-error",
+        icon="bi-shield-exclamation",
+        has_changes=True,
+        is_blocked=True,
+      )
+
+    return SimpleNamespace(
+      status="pending",
+      label="Pending review",
+      message="Architecture changes are present and have no matching approval.",
+      badge_class="badge-health-warning",
+      icon="bi-hourglass-split",
+      has_changes=True,
+      is_blocked=False,
+    )
+
+  class FakeExecutionRecordStore:
+    """
+    Execution record store test double for Catalog Data Products.
+    """
+
+    def list_records(self, filters=None, *, limit: int | None = 50):
+      """
+      Return one stored execution record for the ready dataset scope.
+      """
+      return (
+        SimpleNamespace(
+          scope_key="serving.catalog_data_product_ready",
+          execution_id="exec_ready",
+          started_at="2026-05-31T10:00:00+00:00",
+          status="success",
+          duration_label="1.000 s",
+          dependency_mode="with_dependencies",
+          record_fingerprint="readyfingerprint123",
+        ),
+      )
+
+  monkeypatch.setattr(
+    catalog_data_products,
+    "build_target_dataset_architecture_review_status",
+    fake_review_status,
+  )
+  monkeypatch.setattr(
+    catalog_data_products,
+    "summarize_targetdataset_health",
+    lambda target_dataset: ("ok", ()),
+  )
+  monkeypatch.setattr(
+    catalog_data_products,
+    "ArchitectureExecutionRecordStore",
+    FakeExecutionRecordStore,
+  )
+
+  context = catalog_data_products.build_architecture_catalog_data_products_context({
+    "q": "catalog_data_product",
+  })
+  data_products = {
+    data_product.dataset_key: data_product
+    for data_product in context["data_products"]
+  }
+  readiness_counts = {
+    group["key"]: group["count"]
+    for group in context["readiness_counts"]
+  }
+
+  assert context["total_candidate_count"] == 3
+  assert context["filtered_count"] == 3
+  assert context["catalog_url"] == "/architecture-catalog/"
+  assert context["insights_url"] == "/architecture-catalog/insights/"
+  assert context["map_url"] == "/architecture-catalog/map/"
+  assert readiness_counts == {
+    "ready": 1,
+    "review": 1,
+    "not_ready": 1,
+  }
+  assert data_products["serving.catalog_data_product_ready"].readiness_key == "ready"
+  assert data_products["serving.catalog_data_product_ready"].is_consumption_ready is True
+  assert data_products["serving.catalog_data_product_ready"].contract_column_count == 1
+  assert data_products["serving.catalog_data_product_ready"].latest_execution_record.execution_id == "exec_ready"
+  assert data_products["serving.catalog_data_product_review"].readiness_key == "review"
+  assert data_products["serving.catalog_data_product_not_ready"].readiness_key == "not_ready"
+  assert "bizcore.catalog_data_product_business_logic" not in data_products
+  assert [option["value"] for option in context["schema_options"]] == [
+    "serving",
+  ]
+
+  ready_context = catalog_data_products.build_architecture_catalog_data_products_context({
+    "q": "catalog_data_product",
+    "readiness": "ready",
+  })
+
+  assert ready_context["filtered_count"] == 1
+  assert ready_context["data_products"][0].dataset_key == (
+    "serving.catalog_data_product_ready"
+  )
 
 
 @pytest.mark.django_db
@@ -725,6 +956,43 @@ def test_architecture_catalog_view_renders_catalog_template(
   assert response.status_code == 200
   assert rendered["template_name"] == (
     "metadata/architecture/architecture_catalog.html"
+  )
+  assert rendered["context"]["filtered_count"] == 0
+
+
+def test_architecture_catalog_data_products_view_renders_template(
+  monkeypatch,
+) -> None:
+  """
+  Verify Architecture Catalog Data Products view rendering.
+  """
+  rendered: dict[str, Any] = {}
+
+  def fake_render(request, template_name: str, context: dict[str, Any]):
+    """
+    Store render arguments and return a simple response.
+    """
+    rendered["template_name"] = template_name
+    rendered["context"] = context
+    return HttpResponse("ok")
+
+  monkeypatch.setattr(views_catalog, "render", fake_render)
+  monkeypatch.setattr(
+    views_catalog,
+    "build_architecture_catalog_data_products_context",
+    lambda values: {
+      "data_products": (),
+      "filtered_count": 0,
+      "total_candidate_count": 0,
+    },
+  )
+
+  request = RequestFactory().get("/architecture-catalog/data-products/")
+  response = _unwrap_view(views_catalog.architecture_catalog_data_products)(request)
+
+  assert response.status_code == 200
+  assert rendered["template_name"] == (
+    "metadata/architecture/architecture_catalog_data_products.html"
   )
   assert rendered["context"]["filtered_count"] == 0
 

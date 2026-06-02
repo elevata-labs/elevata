@@ -826,3 +826,35 @@ details:not([open]) .details-open-label {
 .architecture-map-matrix-active {
   background-color: var(--elevata-map-active-bg);
 }
+
+/* Architecture Catalog Data Products */
+.architecture-data-product-stats {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: .5rem;
+}
+
+.architecture-data-product-stats > div {
+  border: 1px solid var(--elevata-border);
+  border-radius: .5rem;
+  padding: .5rem;
+  background-color: var(--elevata-background);
+  font-size: .8rem;
+}
+
+.architecture-data-product-stats span,
+.architecture-data-product-stats strong {
+  display: block;
+}
+
+@media (max-width: 991.98px) {
+  .architecture-data-product-stats {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 575.98px) {
+  .architecture-data-product-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

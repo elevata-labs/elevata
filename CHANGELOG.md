@@ -12,6 +12,89 @@ This project adheres to [Semantic Versioning](https://semver.org/) and [Keep a C
 
 ---
 
+## [2.5.0] - 2026-06-02
+
+This release extends the **Architecture Catalog** with **Catalog Data Products**:  
+a read-only consumer-readiness perspective for serving-layer datasets.
+
+The Catalog now connects discoverable architecture with trusted consumption by showing which serving assets  
+have the ownership, health, lineage, contracts, review state and execution evidence needed for responsible use.
+
+---
+
+### ✨ Added
+
+#### Architecture Catalog Data Products
+
+- Added dedicated Architecture Catalog Data Products page  
+- Added serving-layer Data Product candidate selection  
+- Added transparent consumer-readiness groups:  
+    - Consumption-ready  
+    - Review recommended  
+    - Not consumption-ready  
+- Added Data Product cards with dataset key, layer, description and readiness state  
+- Added ownership, contract column, upstream, downstream, health and query logic summaries  
+- Added Architecture Control review state summary per Data Product  
+- Added latest Architecture Execution Record evidence summary per Data Product  
+- Added expandable readiness signals for each Data Product  
+- Added filters for search, consumer layer, readiness group and lifecycle status  
+- Added direct links from Data Product cards to Catalog detail, lineage, query contract and Architecture Control
+
+#### Catalog Detail Consumer Readiness
+
+- Added dataset-specific Consumer Readiness card to Catalog detail pages  
+- Added readiness signal summaries for selected TargetDataset scopes  
+- Added non-consumer layer explanations for datasets outside the serving layer  
+- Added direct navigation between Catalog Detail and Catalog Data Products
+
+---
+
+### 🔄 Improved
+
+#### Architecture Catalog Navigation
+
+- Added direct navigation from Architecture Catalog to Catalog Data Products  
+- Added direct navigation from Catalog Insights to Catalog Data Products  
+- Added direct navigation from Catalog Map to Catalog Data Products  
+- Added explicit Catalog and Back navigation on Catalog Detail pages  
+- Improved Data Product card action labels for clearer dataset-level navigation  
+- Kept Data Products as a Catalog perspective instead of a separate workflow
+
+#### Documentation
+
+- Added Architecture Catalog Data Products documentation  
+- Updated Architecture Catalog documentation with Data Product readiness  
+- Updated Architecture Overview with consumer-readiness positioning  
+- Updated documentation index and MkDocs navigation  
+- Updated README Architecture Catalog summary with Catalog Data Products  
+- Updated Getting Started with Catalog Data Products entry point
+
+---
+
+### 🔒 Governance & Determinism
+
+- Catalog Data Products derive readiness from existing architecture metadata  
+- Readiness groups are transparent and signal-based rather than hidden scores  
+- Serving remains the consumer-facing layer; bizcore remains the business logic implementation layer  
+- Architecture Catalog remains read-only  
+- Architecture Control remains responsible for approval, execution, execution records,  
+execution history and retention workflows
+
+---
+
+### 🧪 Quality & Stability
+
+- Added tests for Catalog Data Products context construction  
+- Added tests for serving-layer candidate selection  
+- Added tests for readiness group counts  
+- Added tests for ownership, contract, lineage, review and execution evidence signals  
+- Added tests for excluding bizcore datasets from the Data Products list  
+- Added tests for Catalog Detail Consumer Readiness context  
+- Added tests for Catalog Data Products view rendering  
+- Verified Catalog Data Products, Catalog Detail, Lineage, Query Contract and Architecture Control navigation in the UI
+
+---
+
 ## [2.4.0] - 2026-05-31
 
 This release extends the **Architecture Catalog** with **Catalog Maps**:  
