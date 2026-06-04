@@ -39,6 +39,7 @@ from metadata.architecture.execution_record import (
 )
 from metadata.architecture.review_status import (
   ArchitectureReviewStatusError,
+  build_architecture_review_status_context,
   build_target_dataset_architecture_review_status,
 )
 from metadata.models import (
@@ -54,6 +55,33 @@ from metadata.generation.validators import summarize_targetdataset_health
 
 logger = logging.getLogger(__name__)
 
+CATALOG_SIGNAL_DEFINITIONS = {
+  "missing_ownership": {
+    "label": "Missing ownership",
+    "description": "Active datasets without assigned ownership.",
+  },
+  "missing_contract": {
+    "label": "Missing contract",
+    "description": "Active datasets without defined contract columns.",
+  },
+  "health_attention": {
+    "label": "Health attention",
+    "description": "Active datasets with metadata health warnings or issues.",
+  },
+  "review_attention": {
+    "label": "Review attention",
+    "description": "Active dataset scopes needing Architecture Control attention.",
+  },
+  "missing_execution_evidence": {
+    "label": "Missing execution evidence",
+    "description": "Active datasets without Architecture Execution Record evidence.",
+  },
+  "inactive_with_consumers": {
+    "label": "Inactive with consumers",
+    "description": "Inactive datasets still referenced by active downstream links.",
+  },
+}
+
 
 @dataclass(frozen=True)
 class ArchitectureCatalogFilters:
@@ -68,6 +96,7 @@ class ArchitectureCatalogFilters:
   materialization_type: str = ""
   incremental_strategy: str = ""
   query_logic: str = "all"
+  catalog_signal: str = ""
 
   @classmethod
   def from_values(cls, values: Mapping[str, Any]) -> "ArchitectureCatalogFilters":
@@ -89,6 +118,11 @@ class ArchitectureCatalogFilters:
       allowed={"all", "custom", "standard"},
       fallback="all",
     )
+    catalog_signal = _clean_choice(
+      values.get("catalog_signal"),
+      allowed=set(CATALOG_SIGNAL_DEFINITIONS),
+      fallback="",
+    )
 
     return cls(
       search=str(values.get("q") or "").strip(),
@@ -99,6 +133,7 @@ class ArchitectureCatalogFilters:
       materialization_type=str(values.get("materialization_type") or "").strip(),
       incremental_strategy=str(values.get("incremental_strategy") or "").strip(),
       query_logic=query_logic,
+      catalog_signal=catalog_signal,
     )
 
 
@@ -286,6 +321,8 @@ class ArchitectureCatalogContext:
   owner_options: tuple[dict[str, Any], ...]
   materialization_options: tuple[dict[str, Any], ...]
   incremental_strategy_options: tuple[dict[str, Any], ...]
+  active_signal: dict[str, str] | None
+  active_filter: dict[str, str] | None
   total_count: int
   filtered_count: int
   clear_url: str
@@ -299,7 +336,11 @@ def build_architecture_catalog_context(
   """
   filters = ArchitectureCatalogFilters.from_values(values)
   queryset = _build_dataset_queryset(filters)
-  datasets = tuple(_summarize_dataset(dataset) for dataset in queryset)
+  target_datasets = _apply_runtime_catalog_signal_filter(
+    tuple(queryset),
+    filters.catalog_signal,
+  )
+  datasets = tuple(_summarize_dataset(dataset) for dataset in target_datasets)
 
   context = ArchitectureCatalogContext(
     filters=filters,
@@ -316,6 +357,8 @@ def build_architecture_catalog_context(
       "incremental_strategy",
       filters.incremental_strategy,
     ),
+    active_signal=_catalog_signal_context(filters.catalog_signal),
+    active_filter=_catalog_filter_context(filters),
     total_count=TargetDataset.objects.count(),
     filtered_count=len(datasets),
     clear_url=reverse("architecture_catalog"),
@@ -328,6 +371,8 @@ def build_architecture_catalog_context(
     "owner_options": context.owner_options,
     "materialization_options": context.materialization_options,
     "incremental_strategy_options": context.incremental_strategy_options,
+    "active_signal": context.active_signal,
+    "active_filter": context.active_filter,
     "total_count": context.total_count,
     "filtered_count": context.filtered_count,
     "clear_url": context.clear_url,
@@ -425,6 +470,8 @@ def _build_dataset_queryset(
       Prefetch("target_dataset_ownerships", queryset=ownership_queryset),
     )
     .annotate(
+      owner_count=Count("target_dataset_ownerships", distinct=True),
+      contract_column_count=Count("target_columns", distinct=True),
       upstream_target_count=Count(
         "input_links",
         filter=Q(
@@ -490,7 +537,174 @@ def _build_dataset_queryset(
   elif filters.query_logic == "standard":
     queryset = queryset.filter(query_root__isnull=True)
 
+  if filters.catalog_signal == "missing_ownership":
+    queryset = queryset.filter(owner_count=0)
+  elif filters.catalog_signal == "missing_contract":
+    queryset = queryset.filter(contract_column_count=0)
+
   return queryset.distinct()
+
+
+def _apply_runtime_catalog_signal_filter(
+  datasets: tuple[TargetDataset, ...],
+  catalog_signal: str,
+) -> tuple[TargetDataset, ...]:
+  """
+  Return datasets matching a runtime-derived Catalog signal.
+  """
+  if catalog_signal == "health_attention":
+    return tuple(
+      dataset
+      for dataset in datasets
+      if _health_summary(dataset)[0] in {"warning", "error"}
+    )
+
+  if catalog_signal == "review_attention":
+    return _review_attention_datasets(datasets)
+
+  if catalog_signal == "missing_execution_evidence":
+    execution_scope_keys = _execution_scope_keys()
+    return tuple(
+      dataset
+      for dataset in datasets
+      if _dataset_key(dataset) not in execution_scope_keys
+    )
+  
+  if catalog_signal == "inactive_with_consumers":
+    return tuple(
+      dataset
+      for dataset in datasets
+      if not dataset.active and _downstream_target_count(dataset) > 0
+    )
+
+  return datasets
+
+
+def _catalog_signal_context(catalog_signal: str) -> dict[str, str] | None:
+  """
+  Return the active Catalog signal context for the template.
+  """
+  definition = CATALOG_SIGNAL_DEFINITIONS.get(catalog_signal)
+  if definition is None:
+    return None
+
+  return {
+    "key": catalog_signal,
+    "label": definition["label"],
+    "description": definition["description"],
+  }
+
+
+def _catalog_filter_context(
+  filters: ArchitectureCatalogFilters,
+) -> dict[str, str] | None:
+  """
+  Return the active Catalog filter context for reset guidance.
+  """
+  signal_context = _catalog_signal_context(filters.catalog_signal)
+  if signal_context is not None:
+    return {
+      "label": f"Portfolio worklist: {signal_context['label']}",
+      "description": signal_context["description"],
+    }
+
+  if not _has_non_default_catalog_filter(filters):
+    return None
+
+  return {
+    "label": "Catalog filter active",
+    "description": "The Catalog is filtered by selected search or filter criteria.",
+  }
+
+
+def _has_non_default_catalog_filter(filters: ArchitectureCatalogFilters) -> bool:
+  """
+  Return whether the Catalog is filtered beyond its default active dataset view.
+  """
+  return any((
+    bool(filters.search),
+    bool(filters.schema_short),
+    bool(filters.owner_id),
+    filters.status != "active",
+    filters.system_managed != "all",
+    bool(filters.materialization_type),
+    bool(filters.incremental_strategy),
+    filters.query_logic != "all",
+  ))
+
+
+def _review_attention_datasets(
+  datasets: tuple[TargetDataset, ...],
+) -> tuple[TargetDataset, ...]:
+  """
+  Return datasets whose Architecture Control review state needs attention.
+  """
+  try:
+    build_context = build_architecture_review_status_context()
+  except Exception as exc:
+    logger.exception("Catalog signal review context failed: %s", exc)
+    return datasets
+
+  return tuple(
+    dataset
+    for dataset in datasets
+    if _dataset_needs_review_attention(dataset, build_context=build_context)
+  )
+
+
+def _dataset_needs_review_attention(
+  target_dataset: TargetDataset,
+  *,
+  build_context: Any,
+) -> bool:
+  """
+  Return whether a dataset scope needs Architecture Control review attention.
+  """
+  try:
+    review_status = build_target_dataset_architecture_review_status(
+      target_dataset,
+      build_context=build_context,
+    )
+  except ArchitectureReviewStatusError as exc:
+    logger.info("Catalog signal review status unavailable: %s", exc)
+    return True
+  except Exception as exc:
+    logger.exception("Catalog signal review status failed: %s", exc)
+    return True
+
+  return str(getattr(review_status, "status", "") or "") not in {
+    "approved",
+    "no_changes",
+  }
+
+
+def _execution_scope_keys() -> set[str]:
+  """
+  Return scope keys with stored Architecture Execution Records.
+  """
+  return {
+    str(getattr(record, "scope_key", "") or "")
+    for record in ArchitectureExecutionRecordStore().list_records(limit=None)
+    if getattr(record, "scope_key", "")
+  }
+
+
+def _dataset_key(target_dataset: TargetDataset) -> str:
+  """
+  Return the stable Catalog key for a TargetDataset.
+  """
+  return (
+    f"{target_dataset.target_schema.short_name}."
+    f"{target_dataset.target_dataset_name}"
+  )
+
+
+def _health_summary(target_dataset: TargetDataset) -> tuple[str, tuple[str, ...]]:
+  """
+  Return normalized metadata health findings for one TargetDataset.
+  """
+  health_level, messages = summarize_targetdataset_health(target_dataset)
+  return str(health_level or "ok"), tuple(messages or ())
 
 
 def _summarize_dataset(

@@ -66,7 +66,11 @@ This index gives you an overview of all major topics and how they fit together.
 
 - [Architecture Catalog](architecture_catalog.md)  
   Read-only discovery layer for metadata-defined executable architecture, including dataset search,  
-  Catalog Maps, Catalog Insights, lineage entry points, query contract links and execution evidence references.
+  Portfolio, Catalog Maps, Catalog Insights, lineage entry points, query contract links and execution evidence references.
+
+- [Architecture Catalog Portfolio](architecture_catalog_portfolio.md)  
+  Executive architecture posture lens across readiness, ownership, contracts, health, review state,  
+  execution evidence and layer distribution.
 
 - [Architecture Catalog Data Products](architecture_catalog_data_products.md)  
   Consumer-readiness perspective for serving-layer datasets, derived from ownership, health,  
@@ -193,7 +197,7 @@ A personal open-source initiative exploring the future of declarative data archi
 
 ---
 
-_Last updated: 2026-05-31_
+_Last updated: 2026-06-04_
 
 © 2025-2026 elevata Labs — Internal Technical Documentation
 Built with purpose. Rendered with precision. 🪶

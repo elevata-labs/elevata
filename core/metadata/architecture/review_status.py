@@ -74,8 +74,36 @@ class ArchitectureReviewStatus:
   summary: dict[str, Any]
 
 
+@dataclass(frozen=True)
+class ArchitectureReviewStatusBuildContext:
+  """
+  Shared inputs for evaluating architecture review status.
+  """
+  current_state: dict[str, Any]
+  previous_state: dict[str, Any]
+  policy: Any
+  approval_store: ArchitectureApprovalStore
+
+
+def build_architecture_review_status_context(
+  *,
+  approval_store: ArchitectureApprovalStore | None = None,
+) -> ArchitectureReviewStatusBuildContext:
+  """
+  Build shared review status inputs for multiple architecture scopes.
+  """
+  return ArchitectureReviewStatusBuildContext(
+    current_state=ArchitectureStateService().build_current_state(),
+    previous_state=ArchitectureStateStore().load(),
+    policy=load_materialization_policy(),
+    approval_store=approval_store or ArchitectureApprovalStore(),
+  )
+
+
 def build_target_dataset_architecture_review_status(
   target_dataset,
+  *,
+  build_context: ArchitectureReviewStatusBuildContext | None = None,
 ) -> ArchitectureReviewStatus:
   """
   Build the architecture review status for a TargetDataset.
@@ -95,10 +123,9 @@ def build_target_dataset_architecture_review_status(
   dataset_key = f"{schema_short}.{target_name}"
 
   try:
-    current_state = ArchitectureStateService().build_current_state()
-    previous_state = ArchitectureStateStore().load()
+    context = build_context or build_architecture_review_status_context()
     relevant_dataset_keys = resolve_dataset_keys_from_state(
-      state=current_state,
+      state=context.current_state,
       target_name=target_name,
       schema_short=schema_short,
       all_datasets=False,
@@ -107,9 +134,9 @@ def build_target_dataset_architecture_review_status(
     raise ArchitectureReviewStatusError(str(exc)) from exc
 
   report = build_architecture_change_report(
-    previous_state=previous_state,
-    current_state=current_state,
-    policy=load_materialization_policy(),
+    previous_state=context.previous_state,
+    current_state=context.current_state,
+    policy=context.policy,
     relevant_dataset_keys=relevant_dataset_keys,
     schema_short=schema_short,
     target_name=target_name,
@@ -119,7 +146,7 @@ def build_target_dataset_architecture_review_status(
   return build_architecture_review_status_for_report(
     dataset_key=dataset_key,
     report=report,
-    approval_store=ArchitectureApprovalStore(),
+    approval_store=context.approval_store,
   )
 
 

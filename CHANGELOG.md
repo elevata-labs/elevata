@@ -12,6 +12,101 @@ This project adheres to [Semantic Versioning](https://semver.org/) and [Keep a C
 
 ---
 
+## [2.6.0] - 2026-06-04
+
+This release extends the **Architecture Catalog** with **Architecture Catalog Portfolio**:  
+a read-only executive lens across metadata-defined executable architecture.
+
+The Portfolio summarizes architecture posture across readiness, ownership, contracts, health,  
+review state, execution evidence and layer distribution without becoming a second Insights page  
+or an Architecture Control workflow.
+
+---
+
+### ✨ Added
+
+#### Architecture Catalog Portfolio
+
+- Added dedicated Architecture Catalog Portfolio page  
+- Added portfolio-level KPI cards for:  
+    - active datasets  
+    - ownership coverage  
+    - contract coverage  
+    - metadata health clearance  
+    - Architecture Control review clearance  
+    - Architecture Execution Record evidence coverage  
+- Added Data Product readiness distribution to the Portfolio page  
+- Added Portfolio attention areas for aggregated governance and quality posture  
+- Added layer portfolio overview with ownership, contract, health, execution evidence and custom query signals  
+- Added drill-down links from actionable Portfolio KPIs to filtered Catalog worklists  
+- Added drill-down links from layer rows to filtered Catalog layer views  
+- Added clickable Portfolio attention areas for actionable worklists  
+- Added full Catalog reset link for Portfolio worklists and other active Catalog filters  
+- Added direct Portfolio navigation across Catalog, Data Products, Insights, Map and Catalog Detail pages
+
+#### Catalog Worklist Filters
+
+- Added Portfolio-oriented Catalog signal filters for:  
+    - missing ownership  
+    - missing contract columns  
+    - metadata health attention  
+    - Architecture Control review attention  
+    - missing Architecture Execution Record evidence  
+    - inactive datasets with active downstream consumers  
+- Added active filter context for Catalog worklist views  
+- Added full Catalog reset handling for schema and signal-driven filtered Catalog views
+
+---
+
+### 🔄 Improved
+
+#### Architecture Catalog Navigation
+
+- Improved Catalog-to-Portfolio navigation consistency across Catalog lenses  
+- Kept Portfolio actions as filtered read-only worklists instead of operational forms  
+- Kept completed KPI cards non-actionable to avoid empty drill-downs  
+- Improved Portfolio metric readability and removed redundant general navigation buttons  
+- Improved Portfolio rendering compatibility with editor HTML validation  
+- Optimized Portfolio review-state aggregation by reusing shared Architecture Control review context
+
+#### Documentation
+
+- Added Architecture Catalog Portfolio documentation  
+- Updated Architecture Catalog documentation with Portfolio positioning and worklist drill-downs  
+- Updated Architecture Catalog Data Products documentation with Portfolio relationship  
+- Updated documentation index with Architecture Catalog Portfolio  
+- Updated README Architecture Catalog summary with Portfolio posture and worklist visibility  
+- Updated CHANGELOG with v2.6.0 release notes
+
+---
+
+### 🔒 Governance & Determinism
+
+- Architecture Catalog Portfolio remains read-only  
+- Portfolio does not mutate metadata  
+- Portfolio does not create Approval Artifacts  
+- Portfolio does not run approval checks  
+- Portfolio does not execute loads  
+- Portfolio drill-downs use existing Catalog, Data Product and Architecture Control boundaries  
+- Architecture Control remains responsible for approval state, execution preview, controlled execution,  
+execution records, execution history and retention workflows
+
+---
+
+### 🧪 Quality & Stability
+
+- Added tests for Architecture Catalog Portfolio context construction  
+- Added tests for Portfolio metric aggregation  
+- Added tests for Data Product readiness distribution inside Portfolio  
+- Added tests for layer portfolio summaries and drill-down URLs  
+- Added tests for Portfolio Catalog signal worklist filters  
+- Added tests for active Catalog filter reset context  
+- Added tests for Architecture Catalog Portfolio view rendering  
+- Verified Portfolio, Catalog worklists, Data Products, Insights, Map and Catalog Detail navigation in the UI  
+- Verified Portfolio page load performance after shared review-context optimization
+
+---
+
 ## [2.5.0] - 2026-06-02
 
 This release extends the **Architecture Catalog** with **Catalog Data Products**:  

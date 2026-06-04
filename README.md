@@ -52,7 +52,7 @@ validated, and applied deterministically before execution.
 
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/elevata-labs/elevata/main/docs/elevata_v2_5_0.png" alt="elevata UI preview" width="900"/>
+  <img src="https://raw.githubusercontent.com/elevata-labs/elevata/main/docs/elevata_v2_6_0.png" alt="elevata UI preview" width="900"/>
   <br/>
   <em>Architecture Runtime UI for discovering, controlling, modeling, and executing metadata-defined data architecture</em>
 </p>
@@ -126,8 +126,8 @@ elevata provides a read-only Architecture Catalog for discovering metadata-defin
 executable architecture.
 
 The Catalog shows what exists, how datasets are defined, how they are connected,  
-how they are controlled, where execution evidence is available, and which architecture quality  
-and governance signals need attention.
+how they are controlled, where execution evidence is available, how portfolio posture looks,  
+and which architecture quality and governance signals need attention.
 
 Users can search and filter TargetDatasets by schema, owner, lifecycle status,  
 system-managed status, materialization type, incremental strategy and query logic.
@@ -135,6 +135,11 @@ system-managed status, materialization type, incremental strategy and query logi
 Catalog detail pages summarize architecture metadata, ownership, health, upstream inputs,  
 downstream consumers, column contract signals and the latest Architecture Execution Record  
 for the dataset scope.
+
+Catalog Portfolio summarizes architecture posture across readiness, ownership, contracts,  
+health, review state, execution evidence and layer distribution. Actionable Portfolio KPIs  
+open filtered Catalog worklists so users can inspect affected datasets before navigating to  
+dataset detail or Architecture Control.
 
 Catalog Data Products show which serving-layer datasets are ready for trusted consumption.  
 Readiness is derived from ownership, metadata health, query contracts, lineage, Architecture  

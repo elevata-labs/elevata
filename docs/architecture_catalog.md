@@ -12,6 +12,7 @@ It helps users understand:
 - how they are controlled  
 - where execution evidence is available  
 - how architecture flows across layers  
+- how portfolio posture looks across governance and execution evidence  
 - which serving-layer datasets are ready for trusted consumption  
 - which architecture quality and governance signals need attention
 
@@ -31,7 +32,8 @@ It complements Architecture Control:
 ```text
 Architecture Catalog
   = What exists, why it exists, how it is defined, how it is connected,
-    how it is controlled, and where its execution evidence is.
+    how it is controlled, where its execution evidence is,
+    and how portfolio posture looks across the architecture.
 
 Architecture Control
   = Review, approve, preview, execute and inspect execution evidence.
@@ -54,7 +56,8 @@ It supports filtering by:
 - system-managed status  
 - materialization type  
 - incremental strategy  
-- query logic
+- query logic  
+- Portfolio worklist signals
 
 Each catalog row shows:
 
@@ -70,6 +73,7 @@ Each catalog row shows:
 - metadata health  
 - query logic  
 - direct navigation links  
+- entry point to Catalog Portfolio  
 - entry point to Catalog Data Products  
 - entry point to Catalog Insights  
 - entry point to Catalog Map
@@ -81,12 +85,48 @@ The workspace links to:
 - query contract  
 - Architecture Control  
 - Catalog detail  
+- Catalog Portfolio  
 - Catalog Data Products  
 - Catalog Map
 
 ---
 
-## 🔧 3. Catalog Insights
+## 🔧 3. Catalog Portfolio
+
+The Architecture Catalog Portfolio provides a read-only executive lens across
+metadata-defined executable architecture.
+
+It answers the portfolio-level question:
+
+```text
+What is the overall architecture posture across readiness, ownership,
+contracts, health, review state, execution evidence and layers?
+```
+
+The Portfolio shows:
+
+- active dataset coverage  
+- ownership coverage  
+- contract coverage  
+- metadata health clearance  
+- Architecture Control review clearance  
+- Architecture Execution Record evidence coverage  
+- Data Product readiness distribution  
+- aggregated attention areas  
+- layer-level ownership, contract, health, execution evidence and custom query signals
+
+Portfolio metrics are aggregated posture signals rather than dataset lists.  
+When a metric needs action, its button opens a filtered Catalog worklist with the affected TargetDatasets.  
+Users can then inspect each dataset in Catalog Detail and navigate to the existing Details, Contract,  
+Lineage or Architecture Control entry points.
+
+Portfolio layer rows link to filtered Catalog layer views.
+
+The Portfolio does not edit metadata, create approvals, check approvals or execute loads.
+
+---
+
+## 🔧 4. Catalog Insights
 
 Architecture Catalog Insights provide read-only architecture quality and governance
 signals across TargetDatasets.
@@ -111,7 +151,7 @@ execution records, or mutate metadata.
 
 ---
 
-## 🔧 4. Catalog Data Products
+## 🔧 5. Catalog Data Products
 
 Architecture Catalog Data Products provide a read-only consumer-readiness
 perspective for serving-layer datasets.
@@ -146,7 +186,7 @@ They do not edit metadata, request access or execute loads.
 
 ---
 
-## 🔧 5. Catalog Map
+## 🔧 6. Catalog Map
 
 The Architecture Catalog Map provides a read-only architecture lens across schemas,  
 layers and direct TargetDataset dependencies.
@@ -172,7 +212,7 @@ and does not introduce graph editing, execution controls or metadata mutations.
 
 ---
 
-## 🔧 6. Catalog Detail View
+## 🔧 7. Catalog Detail View
 
 The Catalog detail view summarizes one TargetDataset as an architecture object.
 
@@ -194,7 +234,7 @@ metadata pages. Execution and approval workflows stay in Architecture Control.
 
 ---
 
-## 🔧 7. Review Status
+## 🔧 8. Review Status
 
 For TargetDataset scopes, the Catalog detail view surfaces the Architecture Control review status  
 as a read-only summary.
@@ -213,7 +253,7 @@ They do not create approvals and do not run approval checks.
 
 ---
 
-## 🔧 8. Execution Evidence
+## 🔧 9. Execution Evidence
 
 For TargetDataset scopes, the Catalog detail view surfaces the latest Architecture Execution Record summary when one exists.
 
@@ -234,7 +274,7 @@ duplicating the execution history workspace.
 
 ---
 
-## 🔧 9. Lineage and Contract Signals
+## 🔧 10. Lineage and Contract Signals
 
 The Catalog shows direct upstream and downstream relationships.
 
@@ -260,7 +300,7 @@ or metadata editing pages.
 
 ---
 
-## 🔧 10. Governance Boundary
+## 🔧 11. Governance Boundary
 
 The Architecture Catalog is a discovery surface.
 

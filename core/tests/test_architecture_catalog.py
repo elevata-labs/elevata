@@ -33,6 +33,7 @@ import metadata.architecture.catalog as catalog
 import metadata.architecture.catalog_data_products as catalog_data_products
 import metadata.architecture.catalog_insights as catalog_insights
 import metadata.architecture.catalog_map as catalog_map
+import metadata.architecture.catalog_portfolio as catalog_portfolio
 import metadata.views_catalog as views_catalog
 from metadata.models import (
   QueryNode,
@@ -44,6 +45,37 @@ from metadata.models import (
   TargetSchema,
   Person,
 )
+
+
+def test_architecture_catalog_portfolio_metric_action_requires_gap() -> None:
+  """
+  Verify Portfolio metric actions only appear for non-empty worklists.
+  """
+  complete_metric = catalog_portfolio.ArchitectureCatalogPortfolioMetric(
+    key="contract_coverage",
+    label="Contract coverage",
+    value=10,
+    total=10,
+    badge_class="text-bg-success",
+    description="All active datasets have contract columns.",
+    url="/architecture-catalog/?status=active&catalog_signal=missing_contract",
+    action_label="Review missing",
+  )
+  attention_metric = catalog_portfolio.ArchitectureCatalogPortfolioMetric(
+    key="ownership_coverage",
+    label="Ownership coverage",
+    value=8,
+    total=10,
+    badge_class="text-bg-success",
+    description="Some active datasets have ownership gaps.",
+    url="/architecture-catalog/?status=active&catalog_signal=missing_ownership",
+    action_label="Review missing",
+  )
+
+  assert complete_metric.action_count == 0
+  assert complete_metric.has_action is False
+  assert attention_metric.action_count == 2
+  assert attention_metric.has_action is True
 
 
 def _unwrap_view(view_func):
@@ -66,6 +98,9 @@ def _patch_reverse(monkeypatch) -> None:
     """
     if name == "architecture_catalog":
       return "/architecture-catalog/"
+
+    if name == "architecture_catalog_portfolio":
+      return "/architecture-catalog/portfolio/"
 
     if name == "architecture_catalog_data_products":
       return "/architecture-catalog/data-products/"
@@ -90,6 +125,7 @@ def _patch_reverse(monkeypatch) -> None:
   monkeypatch.setattr(catalog_data_products, "reverse", fake_reverse)
   monkeypatch.setattr(catalog_insights, "reverse", fake_reverse)
   monkeypatch.setattr(catalog_map, "reverse", fake_reverse)
+  monkeypatch.setattr(catalog_portfolio, "reverse", fake_reverse)
 
 
 def _get_or_create_target_schema(
@@ -232,6 +268,173 @@ def test_architecture_catalog_context_filters_custom_query_logic(
 
   assert f"serving.{custom_dataset.target_dataset_name}" in dataset_keys
   assert f"serving.{standard_dataset.target_dataset_name}" not in dataset_keys
+
+
+@pytest.mark.django_db
+def test_architecture_catalog_context_filters_portfolio_signals(
+  monkeypatch,
+) -> None:
+  """
+  Verify Catalog worklist filtering for Portfolio signals.
+  """
+  _patch_reverse(monkeypatch)
+
+  serving = _get_or_create_target_schema(
+    "serving",
+    display_name="Serving",
+    default_materialization_type="view",
+  )
+  ready = TargetDataset.objects.create(
+    target_schema=serving,
+    target_dataset_name="catalog_signal_ready",
+  )
+  ownerless = TargetDataset.objects.create(
+    target_schema=serving,
+    target_dataset_name="catalog_signal_ownerless",
+  )
+  contractless = TargetDataset.objects.create(
+    target_schema=serving,
+    target_dataset_name="catalog_signal_contractless",
+  )
+  health_attention = TargetDataset.objects.create(
+    target_schema=serving,
+    target_dataset_name="catalog_signal_health_attention",
+  )
+  review_attention = TargetDataset.objects.create(
+    target_schema=serving,
+    target_dataset_name="catalog_signal_review_attention",
+  )
+  missing_execution = TargetDataset.objects.create(
+    target_schema=serving,
+    target_dataset_name="catalog_signal_missing_execution",
+  )
+  inactive_with_consumers = TargetDataset.objects.create(
+    target_schema=serving,
+    target_dataset_name="catalog_signal_inactive_with_consumers",
+    active=False,
+  )
+  inactive_consumer = TargetDataset.objects.create(
+    target_schema=serving,
+    target_dataset_name="catalog_signal_inactive_consumer",
+  )
+  TargetDatasetInput.objects.create(
+    target_dataset=inactive_consumer,
+    upstream_target_dataset=inactive_with_consumers,
+    role="primary",
+  )
+
+  owner, _ = Person.objects.get_or_create(
+    email="catalog-signal-owner@example.com",
+    defaults={
+      "name": "Catalog Signal Owner",
+    },
+  )
+  for dataset in (
+    ready,
+    contractless,
+    health_attention,
+    review_attention,
+    missing_execution,
+    inactive_consumer,
+  ):
+    TargetDatasetOwnership.objects.create(
+      target_dataset=dataset,
+      person=owner,
+      role="owner",
+      is_primary_owner=True,
+    )
+
+  for dataset in (
+    ready,
+    ownerless,
+    health_attention,
+    review_attention,
+    missing_execution,
+    inactive_consumer,
+  ):
+    TargetColumn.objects.create(
+      target_dataset=dataset,
+      target_column_name="dataset_key",
+      ordinal_position=1,
+      datatype="string",
+    )
+
+  def fake_health(target_dataset):
+    """
+    Return deterministic health states for Catalog signal tests.
+    """
+    if target_dataset.target_dataset_name == "catalog_signal_health_attention":
+      return "warning", ("Review metadata completeness.",)
+    return "ok", ()
+
+  def fake_review_status(target_dataset, *, build_context=None):
+    """
+    Return deterministic review states for Catalog signal tests.
+    """
+    if target_dataset.target_dataset_name == "catalog_signal_review_attention":
+      return SimpleNamespace(status="pending")
+    return SimpleNamespace(status="no_changes")
+
+  class FakeExecutionRecordStore:
+    """
+    Provide deterministic Architecture Execution Records for Catalog signals.
+    """
+
+    def list_records(self, filters=None, *, limit=50):
+      """
+      Return stored execution record summaries for all but one dataset.
+      """
+      return tuple(
+        SimpleNamespace(scope_key=f"serving.{dataset.target_dataset_name}")
+        for dataset in (
+          ready,
+          ownerless,
+          contractless,
+          health_attention,
+          review_attention,
+          inactive_consumer,
+        )
+      )
+
+  monkeypatch.setattr(catalog, "summarize_targetdataset_health", fake_health)
+  monkeypatch.setattr(
+    catalog,
+    "build_architecture_review_status_context",
+    lambda: object(),
+  )
+  monkeypatch.setattr(
+    catalog,
+    "build_target_dataset_architecture_review_status",
+    fake_review_status,
+  )
+  monkeypatch.setattr(
+    catalog,
+    "ArchitectureExecutionRecordStore",
+    FakeExecutionRecordStore,
+  )
+
+  expected_keys = {
+    "missing_ownership": f"serving.{ownerless.target_dataset_name}",
+    "missing_contract": f"serving.{contractless.target_dataset_name}",
+    "health_attention": f"serving.{health_attention.target_dataset_name}",
+    "review_attention": f"serving.{review_attention.target_dataset_name}",
+    "missing_execution_evidence": f"serving.{missing_execution.target_dataset_name}",
+    "inactive_with_consumers": (
+      f"serving.{inactive_with_consumers.target_dataset_name}"
+    ),
+  }
+
+  for signal, expected_key in expected_keys.items():
+    request_values = {"catalog_signal": signal}
+    if signal == "inactive_with_consumers":
+      request_values["status"] = "inactive"
+
+    context = catalog.build_architecture_catalog_context(request_values)
+    dataset_keys = [item.dataset_key for item in context["datasets"]]
+
+    assert dataset_keys == [expected_key]
+    assert context["active_signal"]["key"] == signal
+    assert context["filters"].catalog_signal == signal
 
 
 @pytest.mark.django_db
@@ -460,7 +663,7 @@ def test_architecture_catalog_data_products_context_groups_readiness(
     role="primary",
   )
 
-  def fake_review_status(target_dataset):
+  def fake_review_status(target_dataset, *, build_context=None):
     """
     Return deterministic review statuses for Data Product tests.
     """
@@ -923,6 +1126,186 @@ def test_architecture_catalog_map_context_keeps_collapsed_items(
   )
 
 
+@pytest.mark.django_db
+def test_architecture_catalog_portfolio_context_summarizes_metrics(
+  monkeypatch,
+) -> None:
+  """
+  Verify Architecture Catalog Portfolio metric aggregation.
+  """
+  _patch_reverse(monkeypatch)
+
+  rawcore = _get_or_create_target_schema(
+    "rawcore",
+    display_name="Rawcore",
+  )
+  serving = _get_or_create_target_schema(
+    "serving",
+    display_name="Serving",
+    default_materialization_type="view",
+  )
+
+  ready = TargetDataset.objects.create(
+    target_schema=serving,
+    target_dataset_name="catalog_portfolio_ready",
+    description="Ready data product",
+    materialization_type="view",
+  )
+  attention = TargetDataset.objects.create(
+    target_schema=rawcore,
+    target_dataset_name="catalog_portfolio_attention",
+    description="Dataset with attention signals",
+  )
+  inactive = TargetDataset.objects.create(
+    target_schema=rawcore,
+    target_dataset_name="catalog_portfolio_inactive",
+    active=False,
+  )
+  TargetDatasetInput.objects.create(
+    target_dataset=ready,
+    upstream_target_dataset=inactive,
+    role="primary",
+  )
+
+  TargetColumn.objects.create(
+    target_dataset=ready,
+    target_column_name="customer_key",
+    ordinal_position=1,
+    datatype="string",
+  )
+
+  owner, _ = Person.objects.get_or_create(
+    email="portfolio-owner@example.com",
+    defaults={
+      "name": "Portfolio Owner",
+    },
+  )
+  TargetDatasetOwnership.objects.create(
+    target_dataset=ready,
+    person=owner,
+    role="owner",
+    is_primary_owner=True,
+  )
+
+  def fake_health(target_dataset):
+    """
+    Return deterministic health findings for Portfolio tests.
+    """
+    if target_dataset.target_dataset_name.endswith("attention"):
+      return "warning", ("Review metadata completeness.",)
+    return "ok", ()
+
+  def fake_review_status(target_dataset, *, build_context=None):
+    """
+    Return deterministic review status for Portfolio tests.
+    """
+    if target_dataset.target_dataset_name.endswith("ready"):
+      return SimpleNamespace(status="no_changes")
+    return SimpleNamespace(status="blocked")
+
+  class FakeExecutionRecordStore:
+    """
+    Provide deterministic Architecture Execution Records for Portfolio tests.
+    """
+    def list_records(self, filters=None, *, limit=50):
+      """
+      Return stored execution record summaries.
+      """
+      return (
+        SimpleNamespace(scope_key="serving.catalog_portfolio_ready"),
+      )
+
+  monkeypatch.setattr(
+    catalog_portfolio,
+    "summarize_targetdataset_health",
+    fake_health,
+  )
+  monkeypatch.setattr(
+    catalog_portfolio,
+    "build_architecture_review_status_context",
+    lambda: object(),
+  )
+  monkeypatch.setattr(
+    catalog_portfolio,
+    "build_target_dataset_architecture_review_status",
+    fake_review_status,
+  )
+  monkeypatch.setattr(
+    catalog_portfolio,
+    "ArchitectureExecutionRecordStore",
+    FakeExecutionRecordStore,
+  )
+  monkeypatch.setattr(
+    catalog_portfolio,
+    "_data_product_readiness_groups",
+    lambda: (
+      (
+        catalog_portfolio.ArchitectureCatalogPortfolioReadinessGroup(
+          key="ready",
+          label="Consumption-ready",
+          count=1,
+          total=1,
+          badge_class="text-bg-success",
+          url="/architecture-catalog/data-products/?readiness=ready&status=active",
+        ),
+      ),
+      1,
+    ),
+  )
+
+  context = catalog_portfolio.build_architecture_catalog_portfolio_context()
+  metrics = {metric.key: metric for metric in context["metrics"]}
+  hotspots = {hotspot.key: hotspot for hotspot in context["hotspots"]}
+  layers = {layer.schema_short: layer for layer in context["layer_summaries"]}
+
+  assert context["total_dataset_count"] == 3
+  assert context["active_dataset_count"] == 2
+  assert context["data_product_count"] == 1
+  assert metrics["ownership_coverage"].value == 1
+  assert metrics["contract_coverage"].value == 1
+  assert metrics["health_clearance"].value == 1
+  assert metrics["review_clearance"].value == 1
+  assert metrics["execution_evidence"].value == 1
+  assert metrics["active_datasets"].has_action is False
+  assert metrics["ownership_coverage"].url == (
+    "/architecture-catalog/?status=active&catalog_signal=missing_ownership"
+  )
+  assert metrics["contract_coverage"].url == (
+    "/architecture-catalog/?status=active&catalog_signal=missing_contract"
+  )
+  assert metrics["health_clearance"].url == (
+    "/architecture-catalog/?status=active&catalog_signal=health_attention"
+  )
+  assert metrics["review_clearance"].url == (
+    "/architecture-catalog/?status=active&catalog_signal=review_attention"
+  )
+  assert metrics["execution_evidence"].url == (
+    "/architecture-catalog/?status=active&catalog_signal=missing_execution_evidence"
+  )
+  assert metrics["ownership_coverage"].action_label == "Review missing"
+  assert metrics["health_clearance"].action_label == "Review attention"
+  assert hotspots["missing_ownership"].count == 1
+  assert hotspots["missing_contract"].count == 1
+  assert hotspots["health_attention"].count == 1
+  assert hotspots["review_attention"].count == 1
+  assert hotspots["missing_execution_evidence"].count == 1
+  assert hotspots["inactive_with_consumers"].count == 1
+  assert hotspots["inactive_with_consumers"].url == (
+    "/architecture-catalog/?status=inactive&catalog_signal=inactive_with_consumers"
+  )
+  assert layers["serving"].owner_coverage_count == 1
+  assert layers["serving"].contract_coverage_count == 1
+  assert layers["serving"].execution_coverage_count == 1
+  assert layers["serving"].catalog_url == (
+    "/architecture-catalog/?status=all&schema_short=serving"
+  )
+  assert layers["rawcore"].contract_coverage_count == 0
+  assert layers["rawcore"].health_attention_count == 1
+  assert layers["rawcore"].catalog_url == (
+    "/architecture-catalog/?status=all&schema_short=rawcore"
+  )
+
+
 def test_architecture_catalog_view_renders_catalog_template(
   monkeypatch,
 ) -> None:
@@ -958,6 +1341,46 @@ def test_architecture_catalog_view_renders_catalog_template(
     "metadata/architecture/architecture_catalog.html"
   )
   assert rendered["context"]["filtered_count"] == 0
+
+
+def test_architecture_catalog_portfolio_view_renders_portfolio_template(
+  monkeypatch,
+) -> None:
+  """
+  Verify Architecture Catalog Portfolio view rendering.
+  """
+  rendered: dict[str, Any] = {}
+
+  def fake_render(request, template_name: str, context: dict[str, Any]):
+    """
+    Store render arguments and return a simple response.
+    """
+    rendered["template_name"] = template_name
+    rendered["context"] = context
+    return HttpResponse("ok")
+
+  monkeypatch.setattr(views_catalog, "render", fake_render)
+  monkeypatch.setattr(
+    views_catalog,
+    "build_architecture_catalog_portfolio_context",
+    lambda: {
+      "metrics": (),
+      "hotspots": (),
+      "layer_summaries": (),
+      "active_dataset_count": 0,
+      "total_dataset_count": 0,
+    },
+  )
+
+  request = RequestFactory().get("/architecture-catalog/portfolio/")
+  response = _unwrap_view(views_catalog.architecture_catalog_portfolio)(request)
+
+  assert response.status_code == 200
+  assert rendered["template_name"] == (
+    "metadata/architecture/architecture_catalog_portfolio.html"
+  )
+  assert rendered["context"]["active_dataset_count"] == 0
+  assert rendered["context"]["total_dataset_count"] == 0
 
 
 def test_architecture_catalog_data_products_view_renders_template(

@@ -164,7 +164,20 @@ architecture signals that make consumption trustworthy.
 
 ---
 
-## 🔧 8. Governance Boundary
+## 🔧 8. Relationship to Architecture Catalog Portfolio
+
+Architecture Catalog Portfolio uses Data Product readiness as one portfolio-level signal among ownership,  
+contracts, health, review state, execution evidence and layer distribution.
+
+Data Products answer which serving-layer datasets are ready for trusted consumption.  
+Portfolio summarizes how that readiness contributes to the overall architecture posture.
+
+The separation keeps Data Products focused on consumer readiness and Portfolio focused on aggregated  
+architecture posture.
+
+---
+
++## 🔧 9. Governance Boundary
 
 Architecture Catalog Data Products are part of the read-only Architecture Catalog.
 

@@ -1,0 +1,280 @@
+<!--
+elevata - Metadata-driven Data Platform Framework
+Copyright © 2025-2026 Ilona Tag
+
+This file is part of elevata.
+
+elevata is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of
+the License, or (at your option) any later version.
+
+elevata is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with elevata. If not, see <https://www.gnu.org/licenses/>.
+
+Contact: <https://github.com/elevata-labs/elevata>.
+-->
+
+{% extends "base.html" %}
+
+{% block title %}Architecture Catalog Portfolio · elevata{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-start justify-content-between gap-3 mb-3">
+  <div>
+    <h1 class="h4 mb-1">Architecture Catalog Portfolio</h1>
+    <div class="small text-muted">
+      Read-only executive lens across metadata-defined executable architecture.
+    </div>
+  </div>
+
+  <div class="d-flex align-items-center justify-content-end gap-2 flex-wrap">
+    <a href="{{ data_products_url }}" class="btn btn-sm btn-outline-primary">
+      <i class="bi bi-box-seam"></i>
+      Data Products
+    </a>
+    <a href="{{ map_url }}" class="btn btn-sm btn-outline-secondary">
+      <i class="bi bi-map"></i>
+      Map
+    </a>
+    <a href="{{ insights_url }}" class="btn btn-sm btn-outline-secondary">
+      <i class="bi bi-graph-up-arrow"></i>
+      Insights
+    </a>
+    <a href="{{ catalog_url }}" class="btn btn-sm btn-outline-secondary">
+      <i class="bi bi-collection"></i>
+      Catalog
+    </a>
+    <span class="badge text-bg-secondary">
+      {{ active_dataset_count }} active / {{ total_dataset_count }} datasets
+    </span>
+  </div>
+</div>
+
+<div class="alert alert-info small mb-4">
+  <div class="fw-semibold mb-1">Portfolio lens only</div>
+  <div>
+    The Architecture Catalog Portfolio summarizes readiness, ownership, contracts,
+    health, review state, execution evidence and layer distribution. It does not edit
+    metadata, approve changes or execute loads.
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+  {% for metric in metrics %}
+    <div class="col-xl col-md-6">
+      <div class="card h-100">
+        <div class="card-body">
+          <div class="d-flex align-items-start justify-content-between gap-3 mb-2">
+            <div>
+              <div class="small text-muted">{{ metric.label }}</div>
+              <div class="h4 mb-0">{{ metric.value_label }}</div>
+            </div>
+            <span class="badge {{ metric.badge_class }}">
+              {{ metric.percentage_label }}
+            </span>
+          </div>
+          <div
+            class="progress mb-2"
+            role="progressbar"
+            aria-label="{{ metric.label }}"
+            aria-valuenow="{{ metric.percentage_value }}"
+            aria-valuemin="0"
+            aria-valuemax="100"
+          >
+            <div
+              class="progress-bar"
+              data-progress-value="{{ metric.percentage_value }}"
+            ></div>
+          </div>
+          <div class="small text-muted">
+            {{ metric.description }}
+          </div>
+          {% if metric.has_action %}
+            <a href="{{ metric.url }}" class="btn btn-sm btn-outline-primary">
+              {{ metric.action_label }}
+            </a>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  {% endfor %}
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-lg-5">
+    <div class="card h-100">
+      <div class="card-body">
+        <div class="d-flex align-items-start justify-content-between gap-3 mb-3">
+          <div>
+            <div class="fw-semibold">Data Product readiness</div>
+            <div class="small text-muted">
+              Consumer readiness distribution across serving-layer data products.
+            </div>
+          </div>
+          <span class="badge text-bg-secondary">
+            {{ data_product_count }} data product(s)
+          </span>
+        </div>
+
+        <div class="d-grid gap-2">
+          {% for group in readiness_groups %}
+            <a
+              href="{{ group.url }}"
+              class="border rounded p-3 text-decoration-none text-body"
+            >
+              <div class="d-flex align-items-center justify-content-between gap-3">
+                <div>
+                  <div class="fw-semibold">{{ group.label }}</div>
+                  <div class="small text-muted">
+                    {{ group.share_label }} of active data products
+                  </div>
+                </div>
+                <span class="badge {{ group.badge_class }}">
+                  {{ group.count }}
+                </span>
+              </div>
+            </a>
+          {% empty %}
+            <div class="text-muted small">
+              No serving-layer data products are available.
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-7">
+    <div class="card h-100">
+      <div class="card-body">
+        <div class="mb-3">
+          <div class="fw-semibold">Portfolio attention areas</div>
+          <div class="small text-muted">
+            Aggregated signals across Catalog, Insights and Control.
+          </div>
+        </div>
+
+        <div class="table-responsive">
+          <table class="table table-sm align-middle mb-0">
+            <thead>
+              <tr>
+                <th>Signal</th>
+                <th class="text-end">Count</th>
+                <th>Meaning</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for hotspot in hotspots %}
+                <tr>
+                  <td class="fw-semibold">
+                    {% if hotspot.has_attention %}
+                      <a
+                        href="{{ hotspot.url }}"
+                        class="text-decoration-none"
+                      >
+                        {{ hotspot.label }}
+                      </a>
+                    {% else %}
+                      {{ hotspot.label }}
+                    {% endif %}
+                  </td>
+                  <td class="text-end">
+                    <span class="badge {{ hotspot.badge_class }}">
+                      {{ hotspot.count }}
+                    </span>
+                  </td>
+                  <td class="small text-muted">{{ hotspot.message }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card mb-4">
+  <div class="card-body">
+    <div class="mb-3">
+      <div class="fw-semibold">Layer portfolio overview</div>
+      <div class="small text-muted">
+        Dataset distribution and coverage signals by architecture layer.
+      </div>
+    </div>
+
+    <div class="table-responsive">
+      <table class="table table-sm align-middle mb-0">
+        <thead>
+          <tr>
+            <th>Layer</th>
+            <th class="text-end">Datasets</th>
+            <th class="text-end">Active</th>
+            <th class="text-end">Ownership</th>
+            <th class="text-end">Contract</th>
+            <th class="text-end">Health attention</th>
+            <th class="text-end">Execution evidence</th>
+            <th class="text-end">Custom query</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for layer in layer_summaries %}
+            <tr>
+              <td>
+                <a
+                  href="{{ layer.catalog_url }}"
+                  class="fw-semibold text-decoration-none"
+                >
+                  {{ layer.schema_short }}
+                </a>
+                <div class="small text-muted">{{ layer.display_name }}</div>
+              </td>
+              <td class="text-end">{{ layer.dataset_count }}</td>
+              <td class="text-end">{{ layer.active_dataset_count }}</td>
+              <td class="text-end">{{ layer.owner_coverage_label }}</td>
+              <td class="text-end">{{ layer.contract_coverage_label }}</td>
+              <td class="text-end">
+                {% if layer.health_attention_count %}
+                  <span class="badge text-bg-warning">
+                    {{ layer.health_attention_count }}
+                  </span>
+                {% else %}
+                  <span class="badge text-bg-success">
+                    {{ layer.health_attention_count }}
+                  </span>
+                {% endif %}
+              </td>
+              <td class="text-end">{{ layer.execution_coverage_label }}</td>
+              <td class="text-end">{{ layer.custom_query_count }}</td>
+            </tr>
+          {% empty %}
+            <tr>
+              <td colspan="8" class="text-muted small">
+                No TargetDatasets are available.
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+<script>
+  (() => {
+    const progressBars = document.querySelectorAll("[data-progress-value]");
+
+    progressBars.forEach((progressBar) => {
+      const value = Number.parseFloat(progressBar.dataset.progressValue || "0");
+      const boundedValue = Math.min(100, Math.max(0, value));
+
+      progressBar.style.width = `${boundedValue}%`;
+    });
+  })();
+</script>
+{% endblock %}
