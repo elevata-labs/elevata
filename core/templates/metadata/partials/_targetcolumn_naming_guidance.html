@@ -1,0 +1,94 @@
+<!--
+elevata - Metadata-driven Data Platform Framework
+Copyright © 2025-2026 Ilona Tag
+
+This file is part of elevata.
+
+elevata is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of
+the License, or (at your option) any later version.
+
+elevata is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with elevata. If not, see <https://www.gnu.org/licenses/>.
+
+Contact: <https://github.com/elevata-labs/elevata>.
+-->
+
+{% if naming_guidance %}
+  {% for guidance in naming_guidance %}
+    {% if guidance.has_usage %}
+      <div class="border rounded p-2 mt-2 bg-light">
+        <div class="d-flex align-items-center gap-2 mb-1 small fw-semibold">
+          <i class="bi bi-lightbulb"></i>
+          <span>Naming guidance</span>
+          <span class="badge text-bg-light border">{{ guidance.source_column_name }}</span>
+        </div>
+
+        {% if guidance.status == "suggested" %}
+          <form
+            class="small mb-2"
+            hx-post="{% url 'api_targetcolumn_rename' pk=col.id %}"
+            hx-target="#tc-cell-{{ col.id }}"
+            hx-swap="outerHTML"
+          >
+            {% csrf_token %}
+            <input
+              type="hidden"
+              name="target_column_name"
+              value="{{ guidance.recommended_target_column_name }}"
+            />
+            <button
+              type="submit"
+              class="btn btn-primary btn-sm d-inline-flex flex-wrap align-items-center gap-2 text-start"
+              title="Use recommended name"
+            >
+              <span>Recommended:</span>
+              <code class="fs-6 mb-0 text-white fw-bold">{{ guidance.recommended_target_column_name }}</code>
+              {% if new_name == guidance.recommended_target_column_name %}
+                <span class="badge text-bg-success">selected</span>
+              {% endif %}
+            </button>
+          </form>
+        {% elif guidance.status == "conflict" %}
+          <div class="small mb-2">
+            Existing metadata uses different target names for this source column.
+          </div>
+        {% endif %}
+
+        <div class="small text-muted mb-1">Known target names</div>
+        <ul class="list-unstyled small mb-0">
+          {% for candidate in guidance.candidates %}
+            <li class="mb-1">
+              <div class="d-flex flex-wrap align-items-center gap-2">
+                <code>{{ candidate.target_column_name }}</code>
+                <span class="text-muted">{{ candidate.usage_label }}</span>
+                {% if candidate.target_column_name == guidance.recommended_target_column_name %}
+                  <span class="badge text-bg-primary">recommended</span>
+                {% endif %}
+                {% if new_name == candidate.target_column_name %}
+                  <span class="badge text-bg-success">selected</span>
+                {% endif %}
+              </div>
+
+              {% if candidate.examples %}
+                <ul class="list-unstyled ms-3 mb-1 text-muted">
+                  {% for example in candidate.examples %}
+                    <li>
+                      <span>{{ example.target_dataset_key }}</span>
+                    </li>
+                  {% endfor %}
+                </ul>
+              {% endif %}
+            </li>
+          {% endfor %}
+        </ul>
+      </div>
+    {% endif %}
+  {% endfor %}
+{% endif %}

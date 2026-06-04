@@ -1,6 +1,6 @@
 <!--
 elevata - Metadata-driven Data Platform Framework
-Copyright © 2025 Ilona Tag
+Copyright © 2025-2026 Ilona Tag
 
 This file is part of elevata.
 
@@ -45,6 +45,8 @@ Contact: <https://github.com/elevata-labs/elevata>.
       <div>No downstream model impacts detected.</div>
     {% endif %}
 
+    {% include "metadata/partials/_targetcolumn_naming_guidance.html" with naming_guidance=naming_guidance new_name=new_name col=col only %}
+
     <form
       class="mt-2 d-flex gap-2"
       hx-post="{% url 'api_targetcolumn_rename' pk=col.id %}"
@@ -86,5 +88,7 @@ Contact: <https://github.com/elevata-labs/elevata>.
         <li>{{ e }}</li>
       {% endfor %}
     </ul>
+
+    {% include "metadata/partials/_targetcolumn_naming_guidance.html" with naming_guidance=naming_guidance new_name=new_name col=col only %}
   </div>
 {% endif %}

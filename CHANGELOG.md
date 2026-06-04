@@ -12,6 +12,86 @@ This project adheres to [Semantic Versioning](https://semver.org/) and [Keep a C
 
 ---
 
+## [2.7.0] - 2026-06-04
+
+This release adds **Metadata Naming Guidance**:  
+deterministic, project-specific naming assistance for TargetColumn modeling.
+
+Naming Guidance helps modelers reuse already established column naming decisions directly while editing columns.  
+It learns from existing metadata mappings without AI, without a global dictionary and without enforcing rules.
+
+---
+
+### ✨ Added
+
+#### Metadata Naming Guidance
+
+- Added deterministic Naming Guidance service for TargetColumn modeling  
+- Added guidance states for:  
+    - new  
+    - suggested  
+    - conflict  
+- Added usage counts for known target names  
+- Added transparent example datasets behind each known target name  
+- Added dominant-name detection for clear naming patterns  
+- Added TargetColumn inline rename integration  
+- Added one-click recommendation button that applies the recommended column name through the existing rename flow  
+- Added advisory guidance display for both valid rename previews and validation feedback
+
+---
+
+### 🔄 Improved
+
+#### TargetColumn Modeling UX
+
+- Improved TargetColumn rename workflow with immediate, context-aware naming suggestions  
+- Reused existing HTMX rename preview instead of adding a separate workflow  
+- Kept recommendation application aligned with existing validation, collision checks, audit fields and former-name handling  
+- Reduced manual lookup effort when standardizing cryptic source-system field names such as SAP-style technical columns  
+- Kept guidance compact by hiding empty new-state guidance in the UI
+
+#### Guidance Scope
+
+- Naming Guidance now uses the immediate input-column name for the current modeling step  
+- Direct source inputs use the SourceColumn name  
+- Upstream target inputs use the immediate upstream TargetColumn name  
+- Guidance is scoped to rawcore and bizcore technical naming decisions  
+- Serving-layer friendly names are excluded from technical naming suggestions  
+- Historized rawcore datasets are excluded because they are synchronized from their base datasets  
+- Ambiguous multi-input column cases are excluded from recommendation evidence
+
+---
+
+### 🔒 Governance & Determinism
+
+- Naming Guidance is advisory only  
+- Naming Guidance does not enforce column names  
+- Naming Guidance does not mutate metadata while building suggestions  
+- Naming Guidance does not introduce AI-based inference  
+- Naming Guidance does not use a global dictionary or glossary workflow  
+- Naming Guidance does not add new database models or migrations  
+- Existing TargetColumn rename validation remains authoritative  
+- Recommendations are derived transparently from existing TargetColumnInput metadata
+
+---
+
+### 🧪 Quality & Stability
+
+- Added tests for empty guidance  
+- Added tests for single known naming usage  
+- Added tests for conflicting known target names  
+- Added tests for dominant naming usage  
+- Added tests for immediate upstream input-name behavior  
+- Added tests for excluding current TargetColumn usage  
+- Added tests for excluding historized datasets  
+- Added tests for excluding serving-layer friendly names  
+- Added tests for excluding ambiguous multi-input evidence  
+- Added tests for read-only service behavior  
+- Added tests for inline UI guidance context  
+- Verified TargetColumn rename preview, recommendation button and existing apply/cancel flow in the UI
+
+---
+
 ## [2.6.0] - 2026-06-04
 
 This release extends the **Architecture Catalog** with **Architecture Catalog Portfolio**:  

@@ -27,7 +27,17 @@ from django.contrib.auth.decorators import login_required
 from metadata.models import TargetColumn, TargetDataset
 from metadata.services.rename_targetdataset import dry_run_targetdataset_rename, commit_targetdataset_rename
 from metadata.services.rename_targetcolumn import dry_run_targetcolumn_rename, commit_targetcolumn_rename
+from metadata.services.naming_guidance import build_naming_guidance_for_target_column
 from metadata.generation.target_generation_service import TargetGenerationService
+
+
+def _targetcolumn_naming_guidance_context(col: TargetColumn) -> dict:
+  """
+  Build the advisory naming guidance context for a TargetColumn inline rename.
+  """
+  return {
+    "naming_guidance": build_naming_guidance_for_target_column(col),
+  }
 
 
 @login_required
@@ -49,6 +59,7 @@ def targetcolumn_rename(request, pk: int):
         "impacts": result.get("impacts", {}),
         "col": col,
         "new_name": new_name,
+        **_targetcolumn_naming_guidance_context(col),
       },
     )
 
@@ -64,6 +75,7 @@ def targetcolumn_rename(request, pk: int):
         "impacts": {},
         "col": col,
         "new_name": new_name,
+        **_targetcolumn_naming_guidance_context(col),
       },
     )
 

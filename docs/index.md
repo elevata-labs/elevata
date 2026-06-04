@@ -28,6 +28,9 @@ This index gives you an overview of all major topics and how they fit together.
   How metadata is transformed into Logical Plans and final SQL.  
   Includes dataset types (RAW, STAGE, CORE, …), dependencies and generation rules.
 
+- [Metadata Naming Guidance](metadata_naming_guidance.md)  
+  Deterministic, project-specific naming assistance for TargetColumn modeling based on existing mappings.
+
 - [Incremental Load Architecture](incremental_load.md)  
   Incremental patterns, MERGE semantics, deletion handling, and how elevata models change propagation.  
 

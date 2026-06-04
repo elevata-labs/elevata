@@ -52,7 +52,7 @@ validated, and applied deterministically before execution.
 
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/elevata-labs/elevata/main/docs/elevata_v2_6_0.png" alt="elevata UI preview" width="900"/>
+  <img src="https://raw.githubusercontent.com/elevata-labs/elevata/main/docs/elevata_v2_7_0.png" alt="elevata UI preview" width="900"/>
   <br/>
   <em>Architecture Runtime UI for discovering, controlling, modeling, and executing metadata-defined data architecture</em>
 </p>
@@ -187,6 +187,26 @@ These operators are represented as metadata objects, not as opaque SQL fragments
 The Query Builder models transformations explicitly using structured metadata.
 
 It produces deterministic SQL with stable contracts and field-level lineage.
+
+---
+
+## 🏷️ Metadata Naming Guidance
+
+elevata supports deterministic Metadata Naming Guidance while editing TargetColumns.
+
+Guidance is derived from existing column mappings and previously used target names.  
+It helps modelers reuse project-specific naming decisions without AI, without a global dictionary  
+and without enforcing naming rules.
+
+For direct source inputs, elevata uses the technical SourceColumn name.  
+For upstream target inputs, it uses the immediate upstream TargetColumn name, so guidance follows  
+the current modeling step instead of tracing back to the original source-system field.
+
+Naming Guidance focuses on rawcore and bizcore technical naming decisions.  
+Serving-layer friendly names and historized rawcore datasets are excluded from recommendation evidence.
+
+Recommended names can be applied directly from the TargetColumn inline editor, but they remain advisory.  
+Existing validation, collision checks and rename handling stay authoritative.
 
 ---
 

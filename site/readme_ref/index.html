@@ -452,6 +452,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../metadata_naming_guidance/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ⚙️ Metadata Naming Guidance
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../incremental_load/" class="md-nav__link">
         
   
@@ -1623,7 +1651,7 @@ and executes warehouse-native pipelines.</p>
 <p>Schema evolution, incremental loads and historization are planned,<br />
 validated, and applied deterministically before execution.</p>
 <p align="center">
-  <img src="https://raw.githubusercontent.com/elevata-labs/elevata/main/docs/elevata_v2_6_0.png" alt="elevata UI preview" width="900"/>
+  <img src="https://raw.githubusercontent.com/elevata-labs/elevata/main/docs/elevata_v2_7_0.png" alt="elevata UI preview" width="900"/>
   <br/>
   <em>Architecture Runtime UI for discovering, controlling, modeling, and executing metadata-defined data architecture</em>
 </p>
@@ -1718,6 +1746,19 @@ operators such as SELECT, JOIN, AGGREGATE, UNION and WINDOW.<br />
 These operators are represented as metadata objects, not as opaque SQL fragments.</p>
 <p>The Query Builder models transformations explicitly using structured metadata.</p>
 <p>It produces deterministic SQL with stable contracts and field-level lineage.</p>
+<hr />
+<h2 id="metadata-naming-guidance">🏷️ Metadata Naming Guidance<a class="headerlink" href="#metadata-naming-guidance" title="Permanent link">&para;</a></h2>
+<p>elevata supports deterministic Metadata Naming Guidance while editing TargetColumns.</p>
+<p>Guidance is derived from existing column mappings and previously used target names.<br />
+It helps modelers reuse project-specific naming decisions without AI, without a global dictionary<br />
+and without enforcing naming rules.</p>
+<p>For direct source inputs, elevata uses the technical SourceColumn name.<br />
+For upstream target inputs, it uses the immediate upstream TargetColumn name, so guidance follows<br />
+the current modeling step instead of tracing back to the original source-system field.</p>
+<p>Naming Guidance focuses on rawcore and bizcore technical naming decisions.<br />
+Serving-layer friendly names and historized rawcore datasets are excluded from recommendation evidence.</p>
+<p>Recommended names can be applied directly from the TargetColumn inline editor, but they remain advisory.<br />
+Existing validation, collision checks and rename handling stay authoritative.</p>
 <hr />
 <h2 id="roadmap">🔮 Roadmap<a class="headerlink" href="#roadmap" title="Permanent link">&para;</a></h2>
 <p>elevata evolves along three strategic axes:</p>
