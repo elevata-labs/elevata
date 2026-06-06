@@ -11,6 +11,7 @@
 # elevata
 core/.artifacts/
 core/.elevata/
+site/
 
 # Python
 __pycache__/
