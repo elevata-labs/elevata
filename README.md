@@ -84,6 +84,17 @@ The same architecture executes across supported warehouses without changing data
 
 ---
 
+## 📖 Architecture Runtime Publications
+
+The Architecture Runtime concept behind elevata is described in the publication section:
+
+- [Architecture Runtime Manifesto](https://github.com/elevata-labs/elevata/blob/main/publications/architecture-runtime/architecture-runtime-manifesto.md)  
+- [Why Modern Data Platforms Need an Architecture Runtime](https://github.com/elevata-labs/elevata/blob/main/publications/architecture-runtime/architecture-runtime-essay.md)
+
+These publications explain why modern data platforms need metadata-defined, deterministic, controllable, executable, and auditable architecture.
+
+---
+
 ## 🧩 Architecture Overview
 
 elevata consists of four layers:
