@@ -7,7 +7,8 @@ elevata is the open-source reference implementation of this idea for modern data
 ## Publications
 
 - [Architecture Runtime Manifesto](architecture-runtime-manifesto.md)  
-- [Architecture Runtime Essay](architecture-runtime-essay.md)
+- [Architecture Runtime Essay](architecture-runtime-essay.md)  
+- [Architecture Runtime Media & Speaking Kit](media-and-speaking-kit.md)
 
 ## Core idea
 
