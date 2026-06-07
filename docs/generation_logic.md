@@ -33,13 +33,15 @@ The generation logic depends heavily on the dataset type.
 STAGE layers unify multiple upstream sources:
 
 #### 🔎 Identity Mode
-Used when the upstream provides a `source_identity_id`.  
+Used when the upstream provides a `source_identity_id`.
+
 - No ranking logic  
 - Multi-source is handled via `UNION ALL`  
 - Each branch injects a literal identity ID
 
 #### 🔎 Non-Identity Mode
-Used when multiple upstream sources require conflict resolution.  
+Used when multiple upstream sources require conflict resolution.
+
 - All branches are UNIONed  
 - Wrapped into a subquery  
 - A `ROW_NUMBER() OVER (...)` window assigns a rank  
@@ -61,19 +63,18 @@ Used when multiple upstream sources require conflict resolution.
 - naming: `<rawcore_name>_hist`.  
 - generated automatically and fully system-managed.  
 - schema structure:  
-  - `<rawcore_name>_hist_key` (history SK),  
-  - 1:1 copy of rawcore columns (including rawcore SK),  
-  - version_started_at, version_ended_at, version_state, load_run_id.  
+    - `<rawcore_name>_hist_key` (history SK),  
+    - 1:1 copy of rawcore columns (including rawcore SK),  
+    - version_started_at, version_ended_at, version_state, load_run_id.  
 - linkage:  
-  - dataset-level via lineage_key (rename-safe),
-  - column-level via TargetColumnInput from rawcore → hist.
+    - dataset-level via lineage_key (rename-safe),
+    - column-level via TargetColumnInput from rawcore → hist.
 
 #### 🔎 Execution Semantics
 
 History datasets generate fully executable SCD Type 2 SQL.
 
-The historization pipeline is rendered via the active SqlDialect and
-includes:
+The historization pipeline is rendered via the active SqlDialect and includes:
 
 - closing changed versions (UPDATE)  
 - closing deleted versions (UPDATE)  
@@ -86,7 +87,7 @@ History SQL is execution-ready.
 
 ## 🔧 3. Column Expression Generation
 
-Each target column is associated with a **Column Mapping** and an expression. Expressions are built using the **Expression DSL** and then parsed into the Expression AST.  
+Each target column is associated with a **Column Mapping** and an expression. Expressions are built using the **Expression DSL** and then parsed into the Expression AST.
 
 Example DSL:
 ```text
@@ -110,7 +111,7 @@ The builder never writes SQL directly.
 - Used as inputs to surrogate key expressions
 
 ### 🧩 4.2 Surrogate Key Expression
-Surrogate keys use a fully dialect-agnostic hashing pattern:  
+Surrogate keys use a fully dialect-agnostic hashing pattern:
 
 - Each BK yields a *pair expression*: `CONCAT(name, '~', COALESCE(value, 'null_replaced'))`  
 - All pairs joined via `CONCAT_WS('|', ...)`  
@@ -125,7 +126,8 @@ The resulting Expression AST is rendered differently depending on the dialect.
 
 Foreign keys reuse the exact same hashing structure as the parent surrogate key, but with child column references.
 
-Process:  
+Process:
+
 1. Inspect parent BK columns  
 2. Build pair expressions with child columns  
 3. Build ordered AST structure  
@@ -135,8 +137,7 @@ This guarantees SK/FK parity across dialects.
 
 ### 🧩 Foreign Key Rename Safety
 
-Foreign key columns are system-managed and bound to their originating  
-TargetDatasetReference via a stable internal lineage key.
+Foreign key columns are system-managed and bound to their originating TargetDatasetReference via a stable internal lineage key.
 
 This ensures that:
 
@@ -144,14 +145,14 @@ This ensures that:
 - existing FK columns are reused instead of duplicated  
 - multiple references per child dataset are handled safely
 
-Physical FK column renames are emitted via schema evolution (MigrationPlan-driven)  
-using `RENAME COLUMN`, preserving data and lineage.
+Physical FK column renames are emitted via schema evolution (MigrationPlan-driven) using `RENAME COLUMN`, preserving data and lineage.
 
 ---
 
 ## 🔧 6. Expression AST
 
-All expressions use a vendor-neutral AST:  
+All expressions use a vendor-neutral AST:
+
 - `ColumnRef`  
 - `Literal`  
 - `ExprRef`  
@@ -167,9 +168,10 @@ The AST is consumed by the dialect renderer, which decides on actual SQL syntax.
 
 ## 🔧 7. Logical Plan Construction
 
-Logical Plans represent SQL structures without dialect specifics.  
+Logical Plans represent SQL structures without dialect specifics.
 
-Main node types:  
+Main node types:
+
 - `LogicalSelect`  
 - `LogicalUnion`  
 - `SubquerySource`  
@@ -215,7 +217,8 @@ After Logical Plan + AST construction, SQL is produced by:
 dialect.render_select(logical_select)
 ```
 
-Dialect responsibilities:  
+Dialect responsibilities:
+
 - identifier quoting  
 - literal rendering  
 - hashing syntax  
@@ -229,7 +232,7 @@ The Logical Plan and AST guarantee correctness; the dialect guarantees syntactic
 
 ## 🔧 8.5 Schema Evolution & Renames (MigrationPlan)
 
-elevata supports safe schema evolution driven by metadata:  
+elevata supports safe schema evolution driven by metadata:
 
 - `TargetDataset.former_names` tracks previous physical table names  
   → schema evolution emits `RENAME TABLE` when the new table name is missing but a former name exists.
@@ -238,23 +241,23 @@ elevata supports safe schema evolution driven by metadata:
   → schema evolution emits `RENAME COLUMN` when the desired column is missing but a former name exists.
 
 - For historization tables (`*_hist`), schema sync is derived from the corresponding base dataset.  
-  Column renames are therefore expected to be reflected in the hist metadata as well,  
-  so schema evolution can rename instead of adding duplicate columns.
+  Column renames are therefore expected to be reflected in the hist metadata as well, so schema evolution can rename instead of adding duplicate columns.
 
-Schema evolution never provisions missing tables. Provisioning is handled by the load runner  
-via `ensure_target_table(...)` before executing DML.
+Schema evolution never provisions missing tables. Provisioning is handled by the load runner via `ensure_target_table(...)` before executing DML.
 
 ---
 
 ## 🔧 10. Deterministic Generation
 
-elevata enforces determinism:  
+elevata enforces determinism:
+
 - Sorted BK pairs  
 - Stable column ordering  
 - Consistent naming of technical fields (e.g. `__src_rank_ord`)  
 - Identical AST for SK/FK  
 
-This ensures:  
+This ensures:
+
 - reproducible SQL  
 - stable diffs  
 - predictable behavior across dialects
@@ -263,8 +266,7 @@ This ensures:
 
 ## 🔧 11. Bizcore Generation Semantics
 
-Bizcore datasets follow the **same generation pipeline**
-as Raw, Stage, Core, and Serving datasets.
+Bizcore datasets follow the **same generation pipeline** as Raw, Stage, Core, and Serving datasets.
 
 There is no special-case SQL generation for Bizcore.
 
@@ -288,7 +290,8 @@ Bizcore is therefore a **semantic layer by metadata**, not by execution logic.
 
 ## 🔧 11. Summary
 
-The generation logic is the heart of elevata:  
+The generation logic is the heart of elevata:
+
 - metadata describes the transformation  
 - Logical Plan formalizes the operation  
 - Expression AST encodes column semantics  
@@ -313,8 +316,7 @@ SQL is derived automatically from:
 This mode requires no explicit query definition and is the default.
 
 ### 🧩 Custom Query Logic (Query Tree)
-In semantic layers (`bizcore`, `serving`), a dataset may define an explicit
-Query Tree.
+In semantic layers (`bizcore`, `serving`), a dataset may define an explicit Query Tree.
 
 If a Query Tree is present:
 
@@ -324,9 +326,8 @@ If a Query Tree is present:
 
 If no Query Tree is present, elevata always falls back to default generation.
 
-This opt-in model prevents accidental complexity while enabling
-advanced, deterministic transformations where needed.
+This opt-in model prevents accidental complexity while enabling advanced, deterministic transformations where needed.
 
 ---
 
-© 2025-2026 elevata Labs — Internal Technical Documentation
+© 2025-2026 elevata - Technical Documentation

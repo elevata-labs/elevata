@@ -1,10 +1,8 @@
 # elevata Airflow Example
 
-This directory contains an optional Apache Airflow setup demonstrating how elevata datasets  
-can be orchestrated using a lineage-driven execution graph.
+This directory contains an optional Apache Airflow setup demonstrating how elevata datasets can be orchestrated using a lineage-driven execution graph.
 
-This example demonstrates how elevata lineage can directly drive orchestration.  
-The Airflow DAG is generated from the elevata execution manifest.
+This example demonstrates how elevata lineage can directly drive orchestration. The Airflow DAG is generated from the elevata execution manifest.
 
 This example is provided as a convenience and is **not required** to use elevata.
 
@@ -83,11 +81,9 @@ ELEVATA_SQL_DIALECT=databricks
 ELEVATA_TARGET_SYSTEM=dbdwh  
 ELEVATA_PROFILE=dev
 
-The Airflow example does not provide a target database.  
-Users are expected to configure their own target system.
+The Airflow example does not provide a target database. Users are expected to configure their own target system.
 
-Backend-specific dependencies are installed automatically at container startup
-based on `ELEVATA_SQL_DIALECT`.
+Backend-specific dependencies are installed automatically at container startup based on `ELEVATA_SQL_DIALECT`.
 
 ---
 
@@ -141,8 +137,7 @@ and ensure a matching file exists in:
 requirements/<dialect>.txt
 ```
 
-To avoid re-installing dependencies on every container start, the entrypoint writes a small  
-stamp file after the first successful installation.
+To avoid re-installing dependencies on every container start, the entrypoint writes a small stamp file after the first successful installation.
 
 ---
 
@@ -172,8 +167,7 @@ To keep this example easy to adopt and update, the following parts are intended 
   - `nodes[].deps`  
   - `nodes[].upstream_ids` (or equivalent dependency field)
 
-If the manifest format changes in the future, it should remain backward compatible or be  
-versioned explicitly (e.g. `manifest_version`) so orchestration examples can adapt cleanly.
+If the manifest format changes in the future, it should remain backward compatible or be versioned explicitly (e.g. `manifest_version`) so orchestration examples can adapt cleanly.
 
 ---
 
@@ -185,4 +179,4 @@ It is not bundled with elevata; this example uses official Airflow Docker images
 
 ---
 
-© 2025-2026 elevata Labs — Internal Technical Documentation
+© 2025-2026 elevata - Technical Documentation

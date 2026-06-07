@@ -35,8 +35,7 @@ product_model_id  used 1 time
 
 If the recommendation is clear, the modeler can apply it directly from the inline editor.
 
-The existing TargetColumn rename flow remains authoritative.  
-Applying a recommendation still uses the standard rename validation, collision checks, audit handling and former-name tracking.
+The existing TargetColumn rename flow remains authoritative. Applying a recommendation still uses the standard rename validation, collision checks, audit handling and former-name tracking.
 
 ---
 
@@ -143,9 +142,8 @@ The challenge is remembering how the same field was named elsewhere.
 
 Naming Guidance reduces that manual lookup effort without replacing modeler judgment.
 
-It makes project-specific naming conventions visible where they are needed most:  
-directly in the TargetColumn modeling workflow.
+It makes project-specific naming conventions visible where they are needed most: directly in the TargetColumn modeling workflow.
 
 ---
 
-© 2025-2026 elevata Labs — Internal Technical Documentation
+© 2025-2026 elevata - Technical Documentation

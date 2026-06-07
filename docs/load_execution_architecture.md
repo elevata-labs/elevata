@@ -1,12 +1,8 @@
 # ⚙️ Load Execution & Orchestration Architecture
 
-This document describes how elevata executes load operations:  
-from dependency resolution and execution planning to orchestration, failure semantics,  
-retries, and observability.
+This document describes how elevata executes load operations: from dependency resolution and execution planning to orchestration, failure semantics, retries, and observability.
 
-While the SQL generation pipeline focuses on *what* SQL is produced,  
-the execution architecture focuses on *how* and *in which order* datasets are loaded,  
-and how this process is observed and explained.
+While the SQL generation pipeline focuses on *what* SQL is produced, the execution architecture focuses on *how* and *in which order* datasets are loaded, and how this process is observed and explained.
 
 ---
 
@@ -23,8 +19,7 @@ Key design goals:
 - Metadata-first observability  
 - Dialect-agnostic orchestration logic
 
-Execution is **not** embedded in SQL generation and **not** dialect-specific.  
-Dialects remain adapters, never logic carriers.
+Execution is **not** embedded in SQL generation and **not** dialect-specific. Dialects remain adapters, never logic carriers.
 
 ---
 
@@ -34,8 +29,7 @@ Execution in elevata is split into two explicit phases:
 
 ### 🧩 2.1 Execution Planning
 
-An **ExecutionPlan** is a deterministic, declarative description of
-*what should be executed* and *in which dependency order*.
+An **ExecutionPlan** is a deterministic, declarative description of *what should be executed* and *in which dependency order*.
 
 The plan contains:
 
@@ -43,8 +37,7 @@ The plan contains:
 - An ordered list of execution steps  
 - Dataset-level dependencies (upstream relationships)
 
-The plan is derived from metadata only.
-No SQL is rendered and no execution happens at this stage.
+The plan is derived from metadata only. No SQL is rendered and no execution happens at this stage.
 
 ### 🧩 2.2 Execution
 
@@ -54,17 +47,13 @@ Execution consumes an ExecutionPlan and applies:
 - Retry semantics  
 - Dependency blocking rules
 
-Execution produces **results**, not SQL:
-status, timing, attempts, and failure reasons.
+Execution produces **results**, not SQL: status, timing, attempts, and failure reasons.
 
 ### 🧩 2.3 Architecture Control Plane
 
-The Architecture Control Plane provides controlled review, approval, execution preview,  
-and execution audit workflows around architecture state and schema evolution intent.
+The Architecture Control Plane provides controlled review, approval, execution preview, and execution audit workflows around architecture state and schema evolution intent.
 
-Execution remains delegated to the load runner. The Architecture Control UI invokes the load runner  
-through constrained scopes and does not bypass preflight validation, materialization policy checks,  
-or Architecture Guard enforcement.
+Execution remains delegated to the load runner. The Architecture Control UI invokes the load runner through constrained scopes and does not bypass preflight validation, materialization policy checks, or Architecture Guard enforcement.
 
 The control plane commands are:
 
@@ -76,12 +65,9 @@ The control plane commands are:
 | `elevata_approve` | Create an approval artifact |
 | `elevata_approval_check` | Verify an approval artifact |
 
-The load runner remains responsible for execution safety. Before executing load SQL,  
-it performs preflight validation, derives materialization steps from the MigrationPlan,  
-applies policy checks, and blocks unsafe execution.
+The load runner remains responsible for execution safety. Before executing load SQL, it performs preflight validation, derives materialization steps from the MigrationPlan, applies policy checks, and blocks unsafe execution.
 
-This separation allows architecture review and operational execution to use the same semantic basis  
-while keeping execution guardrails inside the load runner.
+This separation allows architecture review and operational execution to use the same semantic basis while keeping execution guardrails inside the load runner.
 
 Architecture Control Plane flow:
 
@@ -150,8 +136,7 @@ For rawcore datasets with historization enabled:
 - corresponding `_hist` dataset schema is synchronized afterwards  
 - synchronization is best-effort and does not block base execution
 
-The `_hist` synchronization uses the same schema evolution intent (MigrationPlan)  
-so base and history schemas stay consistent and lineage-safe.
+The `_hist` synchronization uses the same schema evolution intent (MigrationPlan) so base and history schemas stay consistent and lineage-safe.
 
 ---
 
@@ -165,8 +150,7 @@ From this graph, elevata derives a **deterministic execution order**:
 - Independent branches may be executed in parallel in the future  
 - The same metadata state always yields the same order
 
-Dependency resolution errors are treated as **best-effort warnings**
-and never block execution planning.
+Dependency resolution errors are treated as **best-effort warnings** and never block execution planning.
 
 ---
 
@@ -179,11 +163,9 @@ Core policy parameters:
 - `continue_on_error`  
 - `max_retries`
 
-Policies apply globally to a run and are evaluated consistently
-for all datasets.
+Policies apply globally to a run and are evaluated consistently for all datasets.
 
-There is no implicit behavior.
-All execution semantics are explicit and predictable.
+There is no implicit behavior. All execution semantics are explicit and predictable.
 
 ---
 
@@ -197,8 +179,7 @@ Retries apply **only in execute mode** (`--execute`).
 - Retries are counted per dataset  
 - `attempt_no` starts at 1 and is propagated to execution logic
 
-Retries are **never hidden**:
-each attempt is observable and logged.
+Retries are **never hidden**: each attempt is observable and logged.
 
 ### 🧩 6.2 Failure Handling
 
@@ -344,8 +325,7 @@ The execution architecture is exposed through the CLI:
 - `--debug-execution` prints execution snapshots  
 - `--write-execution-snapshot` persists snapshots to disk
 
-The CLI is an adapter.
-All execution logic lives in the execution core.
+The CLI is an adapter. All execution logic lives in the execution core.
 
 ---
 
@@ -371,8 +351,7 @@ Architecture Control supports the following execution scopes:
 | TargetDataset | Executes the selected TargetDataset with dependency ordering |
 | TargetDataset, target-only | Executes only the selected TargetDataset |
 
-Target-only execution is restricted to TargetDataset scopes. It supports focused iteration  
-while keeping the default execution path lineage-aware.
+Target-only execution is restricted to TargetDataset scopes. It supports focused iteration while keeping the default execution path lineage-aware.
 
 ### 🧩 13.1 Architecture Execution Record
 
@@ -400,8 +379,7 @@ Architecture Execution Records are stored as JSON artifacts under:
 ELEVATA_ARCH_EXECUTION_DIR=.elevata/executions
 ```
 
-Architecture Control can list stored records, filter them by scope, status, date range and dependency mode,  
-show record details, download record JSON, and remove older stored records through retention cleanup.
+Architecture Control can list stored records, filter them by scope, status, date range and dependency mode, show record details, download record JSON, and remove older stored records through retention cleanup.
 
 They complement the load run log and load run snapshot:
 
@@ -423,9 +401,8 @@ The execution architecture of elevata is:
 - Observable by default  
 - Extensible without breaking changes
 
-This provides a robust foundation for:  
-orchestration integrations, governance rules, and execution analytics.
+This provides a robust foundation for: orchestration integrations, governance rules, and execution analytics.
 
 ---
 
-© 2025-2026 elevata Labs — Internal Technical Documentation
+© 2025-2026 elevata - Technical Documentation

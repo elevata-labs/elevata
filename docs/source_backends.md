@@ -1,14 +1,10 @@
 # ⚙️ Supported Source Backends
 
-This document provides an overview of supported database platforms, tested SQLAlchemy dialects,  
-and connection examples for **elevata**.
+This document provides an overview of supported database platforms, tested SQLAlchemy dialects, and connection examples for **elevata**.
 
-It describes how elevata connects to external systems for schema discovery, metadata introspection,  
-and optional federated access at the Stage layer.  
-Execution semantics are defined separately.
+It describes how elevata connects to external systems for schema discovery, metadata introspection, and optional federated access at the Stage layer. Execution semantics are defined separately.
 
-It also documents non-relational ingestion sources (Files and REST) and how to configure them via
-`SourceDataset.ingestion_config`.
+It also documents non-relational ingestion sources (Files and REST) and how to configure them via `SourceDataset.ingestion_config`.
 
 ---
 
@@ -59,13 +55,11 @@ SEC_DEV_CONN_MSSQL_SAP=mssql+pyodbc://user:pwd@sql01,1433/SAPDB?driver=ODBC%20Dr
 
 ## 🔧 3. Connection Notes
 
-- Use **URL-encoded driver names** (e.g. `ODBC%20Driver%2018%20for%20SQL%20Server`).
-- Backslashes in paths should be replaced by slashes (`C:/path/file.db`).
-- SSL parameters and special driver arguments can be appended via query params.
-- For cloud systems (e.g. Snowflake, BigQuery, Databricks), credentials and tokens can be stored  
-in `.env` or a vault.  
-- For BigQuery, SQLAlchemy-based reflection is used for schema and column discovery.  
-Execution as a target backend is described separately.
+- Use **URL-encoded driver names** (e.g. `ODBC%20Driver%2018%20for%20SQL%20Server`).  
+- Backslashes in paths should be replaced by slashes (`C:/path/file.db`).  
+- SSL parameters and special driver arguments can be appended via query params.  
+- For cloud systems (e.g. Snowflake, BigQuery, Databricks), credentials and tokens can be stored in `.env` or a vault.  
+- For BigQuery, SQLAlchemy-based reflection is used for schema and column discovery. Execution as a target backend is described separately.
 
 ---
 
@@ -77,8 +71,7 @@ Execution as a target backend is described separately.
 - `db2`  
 - `hana`
 
-You can register these manually under `System.type` if you want to experiment — elevata will attempt a  
-generic reflection where possible, but may not retrieve primary or foreign key details.
+You can register these manually under `System.type` if you want to experiment - elevata will attempt a generic reflection where possible, but may not retrieve primary or foreign key details.
 
 ---
 
@@ -98,7 +91,8 @@ elevata supports file-based sources for native RAW ingestion. The file type is d
 
 > RAW landing is **always Full Replace**: Drop/Create/Truncate/Insert.
 
-RAW tables are system-managed landing zones and always include technical columns such as:  
+RAW tables are system-managed landing zones and always include technical columns such as:
+
 - `load_run_id`  
 - `loaded_at`  
 - `payload` (preserved JSON object for the original record)
@@ -114,12 +108,10 @@ RAW tables are system-managed landing zones and always include technical columns
 ```
 
 - **`uri`** *(string, required)*  
-  Path or URI to the file.
-
-  Supported:
-  - `file:///...` (recommended)  
-  - local paths (e.g. `/data/orders.csv`, `C:/data/orders.xlsx`)  
-  - `http(s)://...` for CSV/JSON/JSONL/Excel (Parquet currently not supported over HTTP)
+  Path or URI to the file. Supported:  
+    - `file:///...` (recommended)  
+    - local paths (e.g. `/data/orders.csv`, `C:/data/orders.xlsx`)  
+    - `http(s)://...` for CSV/JSON/JSONL/Excel (Parquet currently not supported over HTTP)
 
 > **Local paths vs. file URIs**
 >
@@ -128,12 +120,12 @@ RAW tables are system-managed landing zones and always include technical columns
 > Valid examples:
 >
 > - Linux / macOS:  
->   - `/data/orders.csv`  
->   - `file:///data/orders.csv`
+>     - `/data/orders.csv`  
+>     - `file:///data/orders.csv`
 >
 > - Windows:  
->   - `C:/data/orders.xlsx`  
->   - `file:///C:/data/orders.xlsx`
+>     - `C:/data/orders.xlsx`  
+>     - `file:///C:/data/orders.xlsx`
 >
 > Using `file:///` is recommended for portability and clarity in configuration files, but it is not strictly required.
 >
@@ -185,7 +177,8 @@ This allows using the same metadata across dev/test/prod while switching file ro
 
   **Important:** If set, `file_type` must match `System.type` (to avoid inconsistent configuration).
 
-Detection rules (if `file_type` is not set):  
+Detection rules (if `file_type` is not set):
+
 - `.csv` → CSV  
 - `.json` → JSON array  
 - `.jsonl` / `.ndjson` → JSON Lines  
@@ -216,10 +209,10 @@ Standard CSV uses double quotes (`"`).
 
 - **`encoding`** *(string, optional, default: utf-8)*  
 Character encoding used when decoding the file.  
-Useful values:
-  - utf-8  
-  - utf-8-sig (common for Excel exports on Windows)  
-  - cp1252 (legacy Windows encoding)
+Useful values:  
+    - utf-8  
+    - utf-8-sig (common for Excel exports on Windows)  
+    - cp1252 (legacy Windows encoding)
 
 If not specified, elevata assumes UTF-8 encoding and standard CSV quoting.
 
@@ -277,8 +270,7 @@ REST ingestion configuration is split into:
 
 This keeps metadata stable across dev/test/prod while allowing endpoint switches via secrets.
 
-Important: `base_url` is environment-/system-level configuration and must be provided via secrets  
-(e.g. `.env` or vault). It should not be duplicated per dataset.
+Important: `base_url` is environment-/system-level configuration and must be provided via secrets (e.g. `.env` or vault). It should not be duplicated per dataset.
 
 ### 🧩 System-level REST connection (secret)
 
@@ -294,7 +286,7 @@ The resolved secret must provide at least:
 
 Optional:
 
-- `headers` *(object)*: default headers included with every request
+- `headers` *(object)*: default headers included with every request  
 - `query` *(object)*: fixed query parameters included with every request
 
 Example secret JSON:
@@ -361,8 +353,7 @@ SEC_DEV_CONN_REST_REQRES={"base_url":"https://reqres.in","headers":{"Authorizati
   Request query parameters added on top of system fixed query parameters.
 
 - **`record_path`** *(string, optional)*  
-  Dotted path to the list of records inside the JSON response (e.g. `data.items`).
-  If omitted, the response must be a JSON array.
+  Dotted path to the list of records inside the JSON response (e.g. `data.items`). If omitted, the response must be a JSON array.
 
 #### 🔎 Pagination (page-based)
 
@@ -406,5 +397,5 @@ SEC_DEV_CONN_REST_REQRES={"base_url":"https://reqres.in","headers":{"Authorizati
 
 ---
 
-© 2025-2026 elevata Labs — Internal Technical Documentation
+© 2025-2026 elevata - Technical Documentation
 

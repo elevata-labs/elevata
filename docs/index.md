@@ -1,10 +1,8 @@
 # 🧭 elevata Documentation Index
 
-Welcome to the **elevata Labs Documentation Hub** —  
-your single source of truth for metadata-driven data & analytics automation.
+Welcome to the **elevata Documentation Hub** - your guide to metadata-defined, discoverable, controllable, and executable data architecture.
 
-This documentation describes the current behavior and architecture of elevata.  
-Release history and feature introductions are documented in the CHANGELOG.
+This documentation describes the current behavior and architecture of elevata. Release history and feature introductions are documented in the CHANGELOG.
 
 This index gives you an overview of all major topics and how they fit together.
 
@@ -25,27 +23,22 @@ This index gives you an overview of all major topics and how they fit together.
 ### 🧩 Metadata Model & Generation
 
 - [Generation Logic](generation_logic.md)  
-  How metadata is transformed into Logical Plans and final SQL.  
-  Includes dataset types (RAW, STAGE, CORE, …), dependencies and generation rules.
+  How metadata is transformed into Logical Plans and final SQL. Includes dataset types (RAW, STAGE, CORE, …), dependencies and generation rules.
 
 - [Metadata Naming Guidance](metadata_naming_guidance.md)  
   Deterministic, project-specific naming assistance for TargetColumn modeling based on existing mappings.
 
 - [Incremental Load Architecture](incremental_load.md)  
-  Incremental patterns, MERGE semantics, deletion handling, and how elevata models change propagation.  
+  Incremental patterns, MERGE semantics, deletion handling, and how elevata models change propagation.
 
 - [Load SQL Architecture](load_sql_architecture.md)  
-  How elevata transforms lineage and metadata into executable SQL through the logical plan,  
-  renderer, and dialect adapters — covering full loads, merge operations, and delete detection.  
+  How elevata transforms lineage and metadata into executable SQL through the logical plan, renderer, and dialect adapters - covering full loads, merge operations, and delete detection.
 
 - [Historization Architecture](historization_architecture.md)  
-  Complete SCD Type 2 historization model: versioning, change detection, deletion,  
-  surrogate keys, lineage-based attribute mapping, and SQL generation.  
+  Complete SCD Type 2 historization model: versioning, change detection, deletion, surrogate keys, lineage-based attribute mapping, and SQL generation.
 
 - [Schema Evolution](schema_evolution.md)  
-  Schema evolution is metadata-driven, deterministic, and lineage-safe.  
-  Structural changes are never inferred implicitly from SQL but are always derived  
-  from explicit metadata changes.
+  Schema evolution is metadata-driven, deterministic, and lineage-safe. Structural changes are never inferred implicitly from SQL but are always derived from explicit metadata changes.
 
 ---
 
@@ -68,21 +61,16 @@ This index gives you an overview of all major topics and how they fit together.
   How elevata executes load plans: dependency graphs, retries, failure semantics, load run logging and execution snapshots.
 
 - [Architecture Catalog](architecture_catalog.md)  
-  Read-only discovery layer for metadata-defined executable architecture, including dataset search,  
-  Portfolio, Catalog Maps, Catalog Insights, lineage entry points, query contract links and execution evidence references.
+  Read-only discovery layer for metadata-defined executable architecture, including dataset search, Portfolio, Catalog Maps, Catalog Insights, lineage entry points, query contract links and execution evidence references.
 
 - [Architecture Catalog Portfolio](architecture_catalog_portfolio.md)  
-  Executive architecture posture lens across readiness, ownership, contracts, health, review state,  
-  execution evidence and layer distribution.
+  Executive architecture posture lens across readiness, ownership, contracts, health, review state, execution evidence and layer distribution.
 
 - [Architecture Catalog Data Products](architecture_catalog_data_products.md)  
-  Consumer-readiness perspective for serving-layer datasets, derived from ownership, health,  
-  lineage, contracts, review state and execution evidence.
+  Consumer-readiness perspective for serving-layer datasets, derived from ownership, health, lineage, contracts, review state and execution evidence.
 
 - [Architecture Control Plane](architecture_control_plane.md)  
-  Deterministic architecture state, change reports, promotion reports,  
-  approval artifacts, policy decisions and fingerprints for review, CI,
-  controlled approval, and architecture promotion workflows.
+  Deterministic architecture state, change reports, promotion reports, approval artifacts, policy decisions and fingerprints for review, CI, controlled approval, and architecture promotion workflows.
 
 ---
 
@@ -92,14 +80,10 @@ This index gives you an overview of all major topics and how they fit together.
   High-level view of elevata’s architecture: metadata, lineage, Logical Plan, rendering and execution.
 
 - [Query Builder & Query Tree](query_builder_and_query_tree.md)  
-  Conceptual introduction to elevata’s Query Builder and Query Tree.  
-  Explains *why* custom query logic exists, *when* it should be used,  
-  and *how* it integrates with metadata-driven generation.
+  Conceptual introduction to elevata’s Query Builder and Query Tree. Explains *why* custom query logic exists, *when* it should be used, and *how* it integrates with metadata-driven generation.
 
 - [Determinism & Execution Semantics](determinism_and_execution_semantics.md)  
-  Rules and guarantees for deterministic SQL generation,  
-  including ORDER BY requirements, window functions, aggregation semantics  
-  and error vs warning classification.
+  Rules and guarantees for deterministic SQL generation, including ORDER BY requirements, window functions, aggregation semantics and error vs warning classification.
 
 - [Lineage Model & Logical Plan](logical_plan.md)  
   How datasets depend on each other, how lineage is represented, and how the Logical Plan encodes queries.
@@ -113,9 +97,8 @@ This index gives you an overview of all major topics and how they fit together.
 - [SQL Preview & Rendering Pipeline](sql_preview_pipeline.md)  
   How the UI builds previews from metadata, Logical Plan and dialect selection (HTMX-based).
 
-- [Bizcore — Business Semantics Layer](bizcore.md)  
-  Bizcore is elevata’s dedicated layer for modeling business meaning  
-  and rules as first-class metadata — without introducing a BI semantic layer.
+- [Bizcore - Business Semantics Layer](bizcore.md)  
+  Bizcore is elevata’s dedicated layer for modeling business meaning and rules as first-class metadata - without introducing a BI semantic layer.
 
 - [Metadata Health Check](health_check.md)  
   Built-in checks for incomplete or inconsistent metadata, and how to interpret them.
@@ -173,10 +156,9 @@ This will give you a mental model for how metadata flows through the platform an
 
 ## 🧭 Advanced Reading Path: Semantic Modeling & Query Logic
 
-If you want to understand how elevata models advanced business logic  
-while remaining metadata-native and deterministic, continue with:
+If you want to understand how elevata models advanced business logic while remaining metadata-native and deterministic, continue with:
 
-1. [Bizcore — Business Semantics Layer](bizcore.md)  
+1. [Bizcore - Business Semantics Layer](bizcore.md)  
 2. [Query Builder & Query Tree](query_builder_and_query_tree.md)  
 3. [Determinism & Execution Semantics](determinism_and_execution_semantics.md)  
 4. [Architecture Control Plane](architecture_control_plane.md)  
@@ -187,20 +169,19 @@ while remaining metadata-native and deterministic, continue with:
 
 ### 🧡 About
 
-elevata Labs builds metadata-centric tooling for modern data platforms —  
-bridging semantics, governance and automation in one ecosystem.
+elevata is an open-source Architecture Runtime for modern data platforms - turning metadata into explicit, discoverable, controllable, executable, and auditable data architecture.
 
-> Designed for engineers. Loved by analysts.  
-> **elevata: clarity through metadata.**
+> Built for data architects, engineers, and platform teams.  
+> **elevata: architecture made explicit through metadata.**
 
 ---
 
 👩‍💻 **Created and maintained by [Ilona Tag](https://www.linkedin.com/in/ilona-tag-a96ab1124)**  
-A personal open-source initiative exploring the future of declarative data architecture.
+A personal open-source initiative exploring how data architecture can be defined declaratively, governed transparently, and executed deterministically.
 
 ---
 
-_Last updated: 2026-06-04_
+_Last updated: 2026-06-07_
 
-© 2025-2026 elevata Labs — Internal Technical Documentation
+© 2025-2026 elevata - Technical Documentation  
 Built with purpose. Rendered with precision. 🪶

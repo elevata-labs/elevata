@@ -2,7 +2,8 @@
 
 This document describes elevata’s **surrogate-key (SK)** and **foreign-key (FK)** hashing architecture.
 
-The hashing engine is:  
+The hashing engine is:
+
 - **deterministic** (stable outputs for identical metadata)  
 - **dialect-neutral** (AST → rendered per SQL dialect)  
 - **metadata-safe** (no vendor SQL stored in the database)  
@@ -34,19 +35,19 @@ Hashing is standardized as **hex-encoded, 64-character, lowercase SHA-256** acro
 #### 🔎 SK derivation inputs:
 - ordered list of business key columns  
 - literal separators  
-  - `~` between field name & value  
-  - `|` between BK pairs  
+    - `~` between field name & value  
+    - `|` between BK pairs  
 - null replacement literal: `'null_replaced'`  
 - system-wide pepper: e.g. `'pepper'`  ^
 
 ### 🧩 2.3 History Surrogate Keys
 - History SK reuses the parent rawcore SK structure:  
-  - natural key columns: [rawcore_sk_column, "version_started_at"].  
-  - same hashing DSL & AST (CONCAT_WS, COALESCE, HASH256, pepper).
+    - natural key columns: [rawcore_sk_column, "version_started_at"].  
+    - same hashing DSL & AST (CONCAT_WS, COALESCE, HASH256, pepper).
 - This ensures:  
-  - BK for history = rawcore SK + version_started_at.  
-  - joinability between rawcore and history later (if needed).  
-  - _hist never defines its own FK hashes; all FK semantics stay in the rawcore layer.  
+    - BK for history = rawcore SK + version_started_at.  
+    - joinability between rawcore and history later (if needed).  
+    - _hist never defines its own FK hashes; all FK semantics stay in the rawcore layer.  
 
 ---
 
@@ -81,7 +82,8 @@ HASH256(
 )
 ```
 
-Characteristics:  
+Characteristics:
+
 - **No vendor SQL** inside the DSL  
 - All logic expressible via `COL()`, `CONCAT()`, `CONCAT_WS()`, `COALESCE()`, `HASH256()`  
 - Designed to be a *serialization format* for metadata  
@@ -90,7 +92,8 @@ Characteristics:
 
 ## 🔧 4. DSL Parser → AST
 
-The DSL parser (in `dsl.py`) converts the DSL into a structured AST composed of:  
+The DSL parser (in `dsl.py`) converts the DSL into a structured AST composed of:
+
 - `Literal`  
 - `ColumnRef`  
 - `ExprRef`  
@@ -117,11 +120,12 @@ Hash256Expr(
 
 ## 🔧 5. Deterministic Ordering Rules (Critical)
 
-BK components are sorted **lexicographically by BK name**.  
+BK components are sorted **lexicographically by BK name**.
 
-For BKs: `[bk2, bk1, bk10]` → sorted → `[bk1, bk10, bk2]`.  
+For BKs: `[bk2, bk1, bk10]` → sorted → `[bk1, bk10, bk2]`.
 
-This ensures:  
+This ensures:
+
 - identical hashes regardless of metadata ordering  
 - stable lineage comparisons  
 - deterministic FK reconstruction  
@@ -149,7 +153,7 @@ CONCAT_WS('|',
 )
 ```
 
-This is guaranteed by using `ExprRef` and standard BK ordering.  
+This is guaranteed by using `ExprRef` and standard BK ordering.
 
 The dialect renderer never needs to know whether it’s SK or FK.
 
@@ -215,7 +219,8 @@ All BK values are wrapped in:
 COALESCE(value, 'null_replaced')
 ```
 
-This avoids platform-specific differences:  
+This avoids platform-specific differences:
+
 - `NULL || 'x'` vs `CONCAT(NULL, 'x')`  
 - Postgres treating empty strings differently  
 - MSSQL `+` operator behavior  
@@ -225,9 +230,10 @@ This avoids platform-specific differences:
 
 ## 🔧 9. Pepper Semantics
 
-A global pepper (e.g. `'pepper'`) is appended as the last argument of the `CONCAT_WS` call.  
+A global pepper (e.g. `'pepper'`) is appended as the last argument of the `CONCAT_WS` call.
 
-Purpose:  
+Purpose:
+
 - prevent predictable hashes  
 - add stability across dialects  
 - disable hash attacks on BKs  
@@ -238,13 +244,15 @@ Pepper is **constant** and not column-dependent.
 
 ## 🔧 10. How FK hashing mirrors parent SK logic
 
-FK hashing logic:  
+FK hashing logic:
+
 1. Retrieve parent SK structure (BK names, ordering)  
 2. Inject child columns into the same structure  
 3. Reconstruct the same AST pattern  
 4. Apply `Hash256Expr`  
 
-This guarantees:  
+This guarantees:
+
 - referential equality  
 - stable lineage  
 - consistent join keys  
@@ -265,7 +273,8 @@ This guarantees:
 
 ## 🔧 12. Testing Strategy
 
-Tests cover:  
+Tests cover:
+
 - DSL → AST correctness  
 - dialect rendering for SK & FK  
 - BigQuery/Databricks/DuckDB/Fabric Warehouse/MSSQL/Postgres/Snowflake hash equivalence  
@@ -277,4 +286,4 @@ All tests pass when AST rendering is correct.
 
 ---
 
-© 2025-2026 elevata Labs — Internal Technical Documentation
+© 2025-2026 elevata - Technical Documentation

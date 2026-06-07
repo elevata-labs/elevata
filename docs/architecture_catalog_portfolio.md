@@ -1,11 +1,8 @@
 # ⚙️ Architecture Catalog Portfolio
 
-Architecture Catalog Portfolio is the read-only executive lens across
-metadata-defined executable architecture.
+Architecture Catalog Portfolio is the read-only executive lens across metadata-defined executable architecture.
 
-It summarizes platform posture across readiness, ownership, contracts, health, review state,  
-execution evidence and architecture layers without turning the Catalog into a reporting dashboard  
-or an execution surface.
+It summarizes platform posture across readiness, ownership, contracts, health, review state, execution evidence and architecture layers without turning the Catalog into a reporting dashboard or an execution surface.
 
 ---
 
@@ -75,12 +72,9 @@ Supported worklist signals include:
 - missing Architecture Execution Record evidence  
 - inactive datasets with active downstream consumers
 
-A worklist opens the Catalog with the matching datasets and a clear active-filter message.  
-Users can then inspect each TargetDataset through Catalog Detail and navigate to existing Details,  
-Query Contract, Lineage or Architecture Control entry points.
+A worklist opens the Catalog with the matching datasets and a clear active-filter message. Users can then inspect each TargetDataset through Catalog Detail and navigate to existing Details, Query Contract, Lineage or Architecture Control entry points.
 
-The full Catalog reset link returns from a worklist or layer filter to the unfiltered
-Catalog view.
+The full Catalog reset link returns from a worklist or layer filter to the unfiltered Catalog view.
 
 ---
 
@@ -96,15 +90,13 @@ It shows how many active Data Products are:
 
 The readiness cards link to filtered Catalog Data Product views.
 
-Data Product readiness remains owned by the Catalog Data Products lens.  
-The Portfolio uses it as an aggregated posture signal.
+Data Product readiness remains owned by the Catalog Data Products lens. The Portfolio uses it as an aggregated posture signal.
 
 ---
 
 ## 🔧 5. Portfolio Attention Areas
 
-Portfolio attention areas summarize the main governance and quality signals that need attention  
-across the active architecture portfolio.
+Portfolio attention areas summarize the main governance and quality signals that need attention across the active architecture portfolio.
 
 They include:
 
@@ -115,8 +107,7 @@ They include:
 - missing execution evidence  
 - inactive datasets with consumers
 
-Signals with affected datasets link to focused Catalog worklists. Signals without
-affected datasets stay informational.
+Signals with affected datasets link to focused Catalog worklists. Signals without affected datasets stay informational.
 
 ---
 
@@ -136,8 +127,7 @@ For each layer it shows:
 
 Layer names link to Catalog views filtered by schema / layer.
 
-This makes layer posture explainable without replacing the Catalog Map or dedicated
-Lineage views.
+This makes layer posture explainable without replacing the Catalog Map or dedicated Lineage views.
 
 ---
 
@@ -156,9 +146,8 @@ It does not:
 - replace Catalog Insights  
 - replace Architecture Control
 
-Architecture Control remains responsible for approval state, execution preview, controlled execution,  
-execution records, execution history and retention cleanup.
+Architecture Control remains responsible for approval state, execution preview, controlled execution, execution records, execution history and retention cleanup.
 
 ---
 
-© 2025-2026 elevata Labs — Internal Technical Documentation
+© 2025-2026 elevata - Technical Documentation

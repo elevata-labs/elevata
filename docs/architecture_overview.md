@@ -1,6 +1,6 @@
 # ⚙️ elevata Architecture Overview
 
-> A high-level view of how elevata transforms metadata into executable SQL — from ingestion to lineage,
+> A high-level view of how elevata transforms metadata into executable SQL - from ingestion to lineage,
 > from logical plans to dialect-aware rendering.
 
 This overview connects the core concepts behind **Generation Logic**, **Incremental Load**, **Load SQL Architecture**, **Lineage & Logical Plan**, and the **Dialect System** into one visual narrative.
@@ -37,27 +37,26 @@ This flow represents the central principle of elevata:
 
 > **Metadata → Logical Plan → Dialect-aware SQL → Warehouse**
 
-Architecture Control provides review, approval, controlled execution, and audit
-artifacts around the same architecture state:
+Architecture Control provides review, approval, controlled execution, and audit artifacts around the same architecture state:
 
 ```text 
-+Architecture State
-+  ↓
-+Architecture Diff
-+  ↓
-+MigrationPlan
-+  ↓
-+Policy Decisions
-+  ↓
-+Architecture Change Report
-+  ↓
-+Architecture Approval Artifact
-+  ↓
-+Execution Preview
-+  ↓
-+Controlled Execution
-+  ↓
-+Architecture Execution Record
+Architecture State
+  ↓
+Architecture Diff
+  ↓
+MigrationPlan
+  ↓
+Policy Decisions
+  ↓
+Architecture Change Report
+  ↓
+Architecture Approval Artifact
+  ↓
+Execution Preview
+  ↓
+Controlled Execution
+  ↓
+Architecture Execution Record
 ```
 
 ---
@@ -74,8 +73,7 @@ artifacts around the same architecture state:
 - Injects surrogate keys where required  
 - Produces column mappings based entirely on lineage  
 
-Incremental scoping and ingestion behavior are derived from SourceDataset metadata and consistently  
-applied across ingestion, merge, and delete detection.  
+Incremental scoping and ingestion behavior are derived from SourceDataset metadata and consistently applied across ingestion, merge, and delete detection.
 
 > *Raw datasets may be ingested via native ingestion or skipped entirely in federated setups.*  
 
@@ -104,28 +102,24 @@ applied across ingestion, merge, and delete detection.
 - Delete detection: anti-join removal of missing rows  
 
 ### 🧩 2.7.1 Schema Evolution (MigrationPlan + Applier)
-Before executing load SQL, elevata derives a **MigrationPlan** from the Architecture Diff  
-and translates it into deterministic schema evolution steps:
+Before executing load SQL, elevata derives a **MigrationPlan** from the Architecture Diff and translates it into deterministic schema evolution steps:
 
 - **Dataset renames** are expressed as `RENAME TABLE`  
 - **Column renames** are expressed as `RENAME COLUMN`  
 - Missing columns may be added (`ADD COLUMN`) when supported  
 - Column drops are policy-gated and disabled by default  
-  - Base tables: `ELEVATA_ALLOW_AUTO_DROP_COLUMNS=true` enables physical `DROP COLUMN`  
-  - `_hist` tables: physical drops require `ELEVATA_ALLOW_AUTO_DROP_HIST_COLUMNS=true`  
-  - Without the hist flag, removed business columns in `_hist` are retired (inactive + detached lineage)  
+    - Base tables: `ELEVATA_ALLOW_AUTO_DROP_COLUMNS=true` enables physical `DROP COLUMN`  
+    - `_hist` tables: physical drops require `ELEVATA_ALLOW_AUTO_DROP_HIST_COLUMNS=true`  
+    - Without the hist flag, removed business columns in `_hist` are retired (inactive + detached lineage)  
 
 Important design principle:  
-Schema evolution does not provision missing tables. Table provisioning is handled centrally by the load runner  
-(`ensure_target_table(...)`) and executed via the target execution engine.
+Schema evolution does not provision missing tables. Table provisioning is handled centrally by the load runner (`ensure_target_table(...)`) and executed via the target execution engine.
 
-Preflight validation includes schema introspection and dialect-aware semantic equivalence rules  
-to suppress non-actionable type differences.
+Preflight validation includes schema introspection and dialect-aware semantic equivalence rules to suppress non-actionable type differences.
 
 ### 🧩 2.7.2 Architecture Catalog
 
-Architecture Catalog provides the read-only discovery layer for metadata-defined
-executable architecture.
+Architecture Catalog provides the read-only discovery layer for metadata-defined executable architecture.
 
 It helps users inspect:
 
@@ -155,23 +149,15 @@ The Catalog links to dedicated pages for:
 
 Architecture Catalog does not edit metadata and does not execute loads.
 
-Catalog Data Products provide a read-only consumer-readiness perspective for serving-layer datasets.  
-They combine ownership, metadata health, query contracts, lineage, review state and execution evidence  
-into transparent readiness groups: Consumption-ready, Review recommended and Not consumption-ready.
+Catalog Data Products provide a read-only consumer-readiness perspective for serving-layer datasets. They combine ownership, metadata health, query contracts, lineage, review state and execution evidence into transparent readiness groups: Consumption-ready, Review recommended and Not consumption-ready.
 
-Catalog Insights provide read-only signals for ownership gaps, metadata health findings,  
-custom query logic, downstream consumer visibility, inactive datasets with consumers,  
-and missing execution evidence. Dataset-specific insight signals are also shown on
-Catalog detail pages.
+Catalog Insights provide read-only signals for ownership gaps, metadata health findings, custom query logic, downstream consumer visibility, inactive datasets with consumers, and missing execution evidence. Dataset-specific insight signals are also shown on Catalog detail pages.
 
-Catalog Maps provide a read-only architecture lens across populated schemas and direct TargetDataset  
-dependencies. Layer cards, layer flow overview, dependency matrix and transition examples make architecture  
-structure visible without introducing graph editing, execution controls or metadata mutation.
+Catalog Maps provide a read-only architecture lens across populated schemas and direct TargetDataset dependencies. Layer cards, layer flow overview, dependency matrix and transition examples make architecture structure visible without introducing graph editing, execution controls or metadata mutation.
 
 ### 🧩 2.7.3 Architecture Control
 
-Architecture Control makes metadata-defined architecture reviewable, approvable,  
-executable through controlled scopes, and auditable.
+Architecture Control makes metadata-defined architecture reviewable, approvable, executable through controlled scopes, and auditable.
 
 It provides deterministic artifacts for:
 
@@ -183,9 +169,7 @@ It provides deterministic artifacts for:
 - policy decisions  
 - report fingerprints
 
-Controlled execution is delegated to the load runner. Architecture Control does not bypass  
-preflight validation, materialization policy checks, Architecture Guard enforcement,  
-or dialect-owned SQL rendering.
+Controlled execution is delegated to the load runner. Architecture Control does not bypass preflight validation, materialization policy checks, Architecture Guard enforcement, or dialect-owned SQL rendering.
 
 Command responsibilities:
 
@@ -223,8 +207,7 @@ Execution scopes are explicit:
 | TargetDataset | Executes the selected TargetDataset with dependency ordering |
 | TargetDataset, target-only | Executes only the selected TargetDataset |
 
-The default execution path remains lineage-aware. Target-only execution is available only  
-for TargetDataset scopes and is intended for focused iteration when upstream data is already available.
+The default execution path remains lineage-aware. Target-only execution is available only for TargetDataset scopes and is intended for focused iteration when upstream data is already available.
 
 Architecture Execution Records capture the audit context of controlled execution:
 
@@ -242,10 +225,9 @@ Architecture Execution Records capture the audit context of controlled execution
 - deterministic record fingerprint
 
 
-## 🔧 3. Bizcore — Business Semantics as Metadata
+## 🔧 3. Bizcore - Business Semantics as Metadata
 
-elevata introduces a dedicated **Bizcore layer** for modeling business meaning,
-rules, and calculations as **first-class metadata**.
+elevata introduces a dedicated **Bizcore layer** for modeling business meaning, rules, and calculations as **first-class metadata**.
 
 Bizcore sits explicitly between **Core** and **Serving**:
 
@@ -270,30 +252,20 @@ Bizcore datasets express:
 - No query-time metric resolution  
 - No tool-specific abstraction
 
-Bizcore logic is compiled into the same logical plans and SQL as technical datasets,  
-preserving elevata’s guarantees around **determinism, transparency, and reproducibility**.
+Bizcore logic is compiled into the same logical plans and SQL as technical datasets, preserving elevata’s guarantees around **determinism, transparency, and reproducibility**.
 
-### 🧩 Serving — Presentation Logic & Consumer Hand-off  
-Serving is the **presentation-facing** layer. Serving datasets typically expose Bizcore datasets 1:1  
-(often as views), while allowing **consumer-specific shaping** such as naming, ordering, and lightweight joins  
-where required. Serving is intended as the **hand-off layer to BI tools / semantic layers / frontend use cases** —  
-without moving business logic out of Bizcore.
+### 🧩 Serving - Presentation Logic & Consumer Hand-off
+Serving is the **presentation-facing** layer. Serving datasets typically expose Bizcore datasets 1:1 (often as views), while allowing **consumer-specific shaping** such as naming, ordering, and lightweight joins where required. Serving is intended as the **hand-off layer to BI tools / semantic layers / frontend use cases** - without moving business logic out of Bizcore.
 
 ### 🧩 Custom Query Logic (Query Tree)
 
-For most datasets, elevata generates SQL automatically from metadata.  
-In semantic layers (`bizcore`, `serving`), elevata additionally supports
-**Custom Query Logic** via an explicit **Query Tree**.
+For most datasets, elevata generates SQL automatically from metadata. In semantic layers (`bizcore`, `serving`), elevata additionally supports **Custom Query Logic** via an explicit **Query Tree**.
 
-The Query Tree defines the *shape* of a query (e.g. windowing, aggregation steps, union composition)  
-while remaining fully metadata-native.
+The Query Tree defines the *shape* of a query (e.g. windowing, aggregation steps, union composition) while remaining fully metadata-native.
 
-If enabled, the Query Tree is compiled into the same Logical Plan and Expression AST  
-used by the default generation pipeline.  
-If disabled, elevata falls back to fully automatic SQL generation.
+If enabled, the Query Tree is compiled into the same Logical Plan and Expression AST used by the default generation pipeline. If disabled, elevata falls back to fully automatic SQL generation.
 
-This ensures advanced query shaping without introducing manual SQL or breaking determinism,  
-lineage, or governance guarantees.
+This ensures advanced query shaping without introducing manual SQL or breaking determinism, lineage, or governance guarantees.
 
 ---
 
@@ -309,7 +281,8 @@ Delete Detection
 Rawcore Dataset
 ```
 
-**These two strategies are currently implemented:**  
+**These two strategies are currently implemented:**
+
 - `full`  
 - `merge`  
 
@@ -325,7 +298,8 @@ Active Profile (elevata_profiles.yaml)  →  Dialect Adapter
 DuckDBDialect (fallback)  →  Dialect Adapter
 ```
 
-The resolution order is:  
+The resolution order is:
+
 1. Environment override  
 2. Profile definition  
 3. DuckDB fallback
@@ -350,7 +324,7 @@ Metadata Model
 - **Traceability** via lineage-driven logic  
 - **Extensibility** (new dialects, strategies, materializations)  
 - **Incremental ready** with merge + delete detection  
-- **Safe for CI/CD** — predictable SQL for diffing and testing  
+- **Safe for CI/CD** - predictable SQL for diffing and testing  
 - **Execution & Logging** are part of the system
 
 ---
@@ -364,4 +338,4 @@ Metadata Model
 
 ---
 
-© 2025-2026 elevata Labs — Internal Technical Documentation
+© 2025-2026 elevata - Technical Documentation

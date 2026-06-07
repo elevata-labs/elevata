@@ -1,19 +1,18 @@
 # ⚙️ Secure Metadata Connectivity
 
 > How elevata securely manages credentials, runtime secrets, and dynamic profiles  
-> — without storing sensitive data in plain text.
+> - without storing sensitive data in plain text.
 
 ---
 
 ## 🔧 1. Overview
 
-elevata separates **connectivity profiles** (technical connection info)  
-from **runtime secrets** (passwords, tokens, peppers) for both security and portability.
+elevata separates **connectivity profiles** (technical connection info) from **runtime secrets** (passwords, tokens, peppers) for both security and portability.
 
-You define lightweight YAML profiles that describe *where* to connect,  
-and `.env` variables that define *how* to authenticate.
+You define lightweight YAML profiles that describe *where* to connect, and `.env` variables that define *how* to authenticate.
 
-This pattern allows:  
+This pattern allows:
+
 - Secure credentials in environment variables  
 - Reusable, shareable YAML configurations (without secrets)  
 - Consistent access from both CLI and Django runtime  
@@ -49,8 +48,7 @@ profiles:
 
 ## 🔧 3. Runtime Secret Resolution
 
-Secrets like passwords or peppers are never stored in the YAML file.  
-They are dynamically resolved by `profiles.py`, which merges data from:
+Secrets like passwords or peppers are never stored in the YAML file. They are dynamically resolved by `profiles.py`, which merges data from:
 
 1. The active profile file (`elevata_profiles.yaml`)
 2. The system environment (`os.environ`)
@@ -71,16 +69,13 @@ from metadata.generation.security import get_runtime_pepper
 
 pepper = get_runtime_pepper()
 ```
-This ensures that even if `.env` or OS variables change, 
-the runtime always pulls the correct, environment-scoped pepper.
+This ensures that even if `.env` or OS variables change, the runtime always pulls the correct, environment-scoped pepper.
 
 ---
 
 ## 🔧 4. Pepper and Surrogate Keys
 
-The pepper is a random secret string used to salt deterministic hash keys.  
-It makes surrogate key generation both non-reversible and dataset-consistent.  
-pepper must be stable per environment
+The pepper is a random secret string used to salt deterministic hash keys. It makes surrogate key generation both non-reversible and dataset-consistent. pepper must be stable per environment
 
 Each environment should have its own distinct pepper value.
 
@@ -92,16 +87,13 @@ SEC_DEV_PEPPER=devpepper_ABC123
 # .env (production)
 SEC_PROD_PEPPER=prodpepper_XYZ789
 ```
-The pepper is injected during surrogate key generation in TargetGenerationService → build_surrogate_key_column_draft(),
-ensuring that all hash-based surrogate keys are stable within one environment
-but cannot be reversed or matched across environments.
+The pepper is injected during surrogate key generation in TargetGenerationService → build_surrogate_key_column_draft(), ensuring that all hash-based surrogate keys are stable within one environment but cannot be reversed or matched across environments.
 
 --- 
 
 ## 🔧 5. Using the Profile Resolver
 
-At runtime, elevata uses the resolver in core/metadata/config/profiles.py
-to dynamically select the right connection and inject secrets:
+At runtime, elevata uses the resolver in core/metadata/config/profiles.py to dynamically select the right connection and inject secrets:
 
 ```python
 from metadata.config.profiles import load_profile
@@ -110,7 +102,8 @@ profile = load_profile(profiles_path)
 print(profile["database"])
 ```
 
-The function will:  
+The function will:
+
 1. Load the YAML profile  
 2. Merge any environment overrides (e.g. passwords, peppers)  
 3. Return a ready-to-use dictionary  
@@ -132,15 +125,15 @@ The function will:
 ✅ Use `.env.example` with dummy values for reference  
 ✅ Keep each environment’s pepper unique and private  
 ✅ Avoid storing DB passwords directly in YAML  
-✅ Rotate secrets regularly if shared among teams  
+✅ Rotate secrets regularly if shared among teams
 
 ---
 
 ## 🔧 8. Related Docs
 
-- [Getting Started Guide](getting_started.md)
+- [Getting Started Guide](getting_started.md)  
 - [Automatic Target Generation Logic](generation_logic.md)
 
 ---
 
-© 2025-2026 elevata Labs — Internal Technical Documentation
+© 2025-2026 elevata - Technical Documentation

@@ -1,6 +1,6 @@
 # ⚙️ SQL Preview Pipeline
 
-This document describes how elevata generates SQL previews inside the UI. It covers:  
+This document describes how elevata generates SQL previews inside the UI. It covers:
 
 - how metadata becomes a Logical Plan  
 - how the Logical Plan becomes SQL  
@@ -22,44 +22,44 @@ Metadata → Logical Plan → Expression AST → Dialect Renderer → Beautifier
 
 Step-by-step:
 
-1. **Metadata lookup**
-   - The TargetDataset is loaded together with its upstream inputs.  
-   - All TargetColumns are included in ordinal order.  
+1. **Metadata lookup**  
+     - The TargetDataset is loaded together with its upstream inputs.  
+     - All TargetColumns are included in ordinal order.  
 
-2. **Logical Plan generation**
-   - The builder creates a `LogicalSelect`, `LogicalUnion`, or `SubquerySource` depending on dataset type.  
-   - Multi-source Stage datasets produce subqueries and window functions.  
-   - Incremental models may produce `MERGE` plans.  
+2. **Logical Plan generation**  
+     - The builder creates a `LogicalSelect`, `LogicalUnion`, or `SubquerySource` depending on dataset type.  
+     - Multi-source Stage datasets produce subqueries and window functions.  
+     - Incremental models may produce `MERGE` plans.  
 
-3. **Expression AST construction**
-   - Column expressions (including hashing) are translated into AST nodes.  
-   - Dialect-neutral functions (CONCAT_WS, COALESCE, ROW_NUMBER) are represented explicitly.  
+3. **Expression AST construction**  
+     - Column expressions (including hashing) are translated into AST nodes.  
+     - Dialect-neutral functions (CONCAT_WS, COALESCE, ROW_NUMBER) are represented explicitly.  
 
-4. **Dialect selection**
-   - The active dialect is determined by:  
-     - explicit URL parameter (`?dialect=postgres`)  
-     - profile configuration  
-     - environment variable (`ELEVATA_SQL_DIALECT`)  
-     - fallback: DuckDB
+4. **Dialect selection**  
+     - The active dialect is determined by:  
+         - explicit URL parameter (`?dialect=postgres`)  
+         - profile configuration  
+         - environment variable (`ELEVATA_SQL_DIALECT`)  
+         - fallback: DuckDB
 
-5. **SQL rendering**
-   - The dialect walks the Logical Plan and Expression AST.  
-   - Identifiers, literals, CONCAT, COALESCE, hashing, window functions, and subqueries are rendered.
+5. **SQL rendering**  
+     - The dialect walks the Logical Plan and Expression AST.  
+     - Identifiers, literals, CONCAT, COALESCE, hashing, window functions, and subqueries are rendered.
 
-6. **Optional beautification**
-   - SQL is passed through an optional formatter for consistency.
+6. **Optional beautification**  
+     - SQL is passed through an optional formatter for consistency.
 
-7. **HTMX response**
-   - Only the SQL preview fragment is returned.  
-   - The full page is *not* re-rendered.
+7. **HTMX response**  
+     - Only the SQL preview fragment is returned.  
+     - The full page is *not* re-rendered.
 
 ---
 
 ## 🔧 2. Logical Plan → SQL Rendering
 
-The Logical Plan is a structured representation that abstracts SQL syntax.  
+The Logical Plan is a structured representation that abstracts SQL syntax.
 
-Key node types rendered by SQL Preview:  
+Key node types rendered by SQL Preview:
 
 - `LogicalSelect`  
 - `LogicalUnion`  
@@ -67,7 +67,7 @@ Key node types rendered by SQL Preview:
 - `ColumnRef`, `Literal`, `ExprRef`  
 - window functions and other expressions  
 
-The preview does not simplify or truncate SQL. It always shows:  
+The preview does not simplify or truncate SQL. It always shows:
 
 - full SELECT list, including surrogate keys and foreign key expressions  
 - complete UNION trees  
@@ -78,8 +78,7 @@ This ensures that the preview accurately reflects the actual SQL generator.
 
 ### 🧩 Bizcore in SQL Preview
 
-Bizcore datasets are rendered through the **same SQL Preview pipeline**
-as all other datasets.
+Bizcore datasets are rendered through the **same SQL Preview pipeline** as all other datasets.
 
 This means:
 
@@ -90,13 +89,10 @@ This means:
 
 There is no abstraction or simplification for Bizcore previews.
 
-If a Bizcore SQL preview looks correct,
-the executed SQL will be correct.
+If a Bizcore SQL preview looks correct, the executed SQL will be correct.
 
-This property is intentional and foundational:
-Bizcore semantics are **transparent, inspectable, and executable** —  
-not inferred or resolved at query time.
-
+This property is intentional and foundational:  
+Bizcore semantics are **transparent, inspectable, and executable** - not inferred or resolved at query time.
 
 ---
 
@@ -129,7 +125,7 @@ The returned HTML fragment replaces only the preview block. The rest of the page
 
 ## 🔧 4. HTMX Integration
 
-HTMX provides:  
+HTMX provides:
 
 - partial updates  
 - reduced server load  
@@ -159,7 +155,7 @@ The view returns only:
 <pre>{{ sql }}</pre>
 ```
 
-which is injected into the page.  
+which is injected into the page.
 
 No full page reloads occur.
 
@@ -167,7 +163,7 @@ No full page reloads occur.
 
 ## 🔧 5. Caching Considerations
 
-Currently the SQL preview is regenerated on every request. In practice:  
+Currently the SQL preview is regenerated on every request. In practice:
 
 - Logical Plan generation is lightweight  
 - SQL rendering is fast even for large DAGs  
@@ -176,7 +172,7 @@ Currently the SQL preview is regenerated on every request. In practice:
 
 ## 🔧 6. Error Handling
 
-If SQL generation fails (rare), the preview area displays:  
+If SQL generation fails (rare), the preview area displays:
 
 - a message indicating the error  
 - the exception message in development  
@@ -187,11 +183,12 @@ Errors are never swallowed silently.
 
 ## 🔧 7. Why Preview and Load Use the Same Engine
 
-elevata does **not** generate a separate preview version of the SQL.  
+elevata does **not** generate a separate preview version of the SQL.
 
-The SQL preview shows the *exact* SQL that the Load Runner will execute.  
+The SQL preview shows the *exact* SQL that the Load Runner will execute.
 
-This ensures:  
+This ensures:
+
 - consistency  
 - testability  
 - predictability  
@@ -203,14 +200,15 @@ If the preview looks correct, the actual load SQL is correct.
 
 ## 🔧 8. Summary
 
-The SQL Preview pipeline provides:  
+The SQL Preview pipeline provides:
 
 - real SQL from real metadata  
 - real dialect rendering  
 - fast feedback through HTMX  
 - stable formatting via the Logical Plan and AST  
 
-This architecture enables accurate previews today and paves the way for:  
+This architecture enables accurate previews today and paves the way for:
+
 - cross-dialect comparisons  
 - diff views  
 - preview caching  
@@ -220,4 +218,4 @@ The preview pipeline is a key part of elevata’s transparency and usability.
 
 ---
 
-© 2025-2026 elevata Labs — Internal Technical Documentation
+© 2025-2026 elevata - Technical Documentation

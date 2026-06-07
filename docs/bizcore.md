@@ -1,10 +1,8 @@
-# ⚙️ Bizcore — Business Semantics by Design
+# ⚙️ Bizcore - Business Semantics by Design
 
-Bizcore is elevata’s dedicated layer for modeling **business meaning,  
-rules, and calculations** as first-class metadata.
+Bizcore is elevata’s dedicated layer for modeling **business meaning, rules, and calculations** as first-class metadata.
 
-It enables teams to define business logic *inside the data platform* —  
-without introducing a BI semantic layer, metric store, or query-time abstraction.
+It enables teams to define business logic *inside the data platform* - without introducing a BI semantic layer, metric store, or query-time abstraction.
 
 ---
 
@@ -22,14 +20,10 @@ Bizcore takes a different approach.
 `BIZCORE` → business meaning & rules  
 `SERVING` (optional) → consumer-specific shaping
 
-**Bizcore** exists to make **business semantics explicit, deterministic,  
-and executable** — not inferred later.
+**Bizcore** exists to make **business semantics explicit, deterministic, and executable** - not inferred later.
 
-**Serving** — Presentation Logic & Consumer Hand-off  
-Serving is the **presentation-facing** layer. Serving datasets typically expose Bizcore datasets 1:1  
-(often as views), while allowing **consumer-specific shaping** such as naming, ordering, and lightweight joins  
-where required. Serving is intended as the **hand-off layer to BI tools / semantic layers / frontend use cases** —  
-without moving business logic out of Bizcore.
+**Serving** - Presentation Logic & Consumer Hand-off  
+Serving is the **presentation-facing** layer. Serving datasets typically expose Bizcore datasets 1:1 (often as views), while allowing **consumer-specific shaping** such as naming, ordering, and lightweight joins where required. Serving is intended as the **hand-off layer to BI tools / semantic layers / frontend use cases** - without moving business logic out of Bizcore.
 
 ---
 
@@ -63,7 +57,7 @@ There is no semantic shortcut.
 
 ## 🔧 Bizcore joins & multi-source modeling
 
-Bizcore **explicitly supports joins** — including **multi-source joins**.
+Bizcore **explicitly supports joins** - including **multi-source joins**.
 
 This is a deliberate design choice.
 
@@ -100,8 +94,8 @@ By design, Bizcore is **not**:
 - a query-time calculation engine
 - a macro or templating system
 
-There is no late binding.
-There is no runtime resolution.
+There is no late binding.  
+There is no runtime resolution.  
 There is no hidden logic.
 
 What you define is what executes.
@@ -135,7 +129,7 @@ This enables:
 
 ## 🔧 Mini tutorial: A Bizcore dataset in practice
 
-**Goal:**  
+**Goal:**
 Model a business-level `Customer` entity derived from multiple Core datasets.
 
 ### 🧩 Inputs
@@ -181,4 +175,4 @@ It is a foundational layer.
 
 ---
 
-© 2025-2026 elevata Labs — Internal Technical Documentation
+© 2025-2026 elevata - Technical Documentation

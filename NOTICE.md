@@ -1,6 +1,6 @@
 # NOTICE
 
-This project includes third-party software components that are licensed under their own respective terms.  
+This project includes third-party software components that are licensed under their own respective terms.
 
 ---
 
@@ -80,7 +80,7 @@ This project includes third-party software components that are licensed under th
 
 ## License Compatibility
 
-This project as a whole is licensed under the **GNU Affero General Public License v3 (AGPLv3)**.  
+This project as a whole is licensed under the **GNU Affero General Public License v3 (AGPLv3)**.
 
 - All included third-party components remain under their original licenses.  
 - The combination is permitted because each license (BSD, MIT, ISC, OFL, PostgreSQL, Public Domain) is compatible with AGPLv3.  
@@ -92,7 +92,7 @@ This project as a whole is licensed under the **GNU Affero General Public Licens
 
 In earlier experimental stages, a placeholder for a `dbt_project/` folder and related configuration variables existed.  
 These artefacts have been removed as of version **0.2.2**.  
-elevata is now fully independent of dbt or any other external transformation runtime.  
+elevata is now fully independent of dbt or any other external transformation runtime.
 
 ---
 

@@ -6,7 +6,7 @@ This document describes how elevata transforms metadata into executable SQL for 
 
 ## 🔧 1. Overview
 
-The load SQL pipeline turns metadata into **complete SQL statements** suitable for execution on analytical backends.  
+The load SQL pipeline turns metadata into **complete SQL statements** suitable for execution on analytical backends.
 
 High‑level flow:
 
@@ -14,7 +14,8 @@ High‑level flow:
 Metadata → Logical Plan → Expression AST → Dialect Rendering → SQL Load Statement → Execution
 ```
 
-The system is designed so that:  
+The system is designed so that:
+
 - metadata remains backend‑agnostic  
 - logical plans describe *what* is required, not *how* it is written  
 - dialects encapsulate syntactic differences  
@@ -30,7 +31,7 @@ The system is designed so that:
 
 ## 🔧 2. Logical Plans for Load Operations
 
-elevata represents load operations using SQL primitives:  
+elevata represents load operations using SQL primitives:
 
 - `LogicalSelect` – core building block  
 - `LogicalUnion` – multi-source resolution  
@@ -42,9 +43,10 @@ Logical plans are intentionally **dialect‑neutral**.
 
 ## 🔧 3. Expression AST in Load SQL
 
-Every column expression is represented as an AST node during load generation.  
+Every column expression is represented as an AST node during load generation.
 
-Supported node types include:  
+Supported node types include:
+
 - `ColumnRef`  
 - `Literal`  
 - `ExprRef`  
@@ -54,7 +56,8 @@ Supported node types include:
 - `WindowFunctionExpr`  
 - `Hash256Expr`  
 
-The AST guarantees that:  
+The AST guarantees that:
+
 - hashing is consistent across dialects  
 - CONCAT / COALESCE behave uniformly  
 - window functions are structured, not string‑built  
@@ -70,7 +73,8 @@ After a logical plan is constructed, the selected dialect renders the plan and i
 sql = dialect.render_select(plan)
 ```
 
-Each dialect implements:  
+Each dialect implements:
+
 - identifier quoting  
 - literal rendering  
 - hashing functions  
@@ -85,37 +89,35 @@ This ensures consistent semantics while using native SQL syntax per backend.
 
 ## 🔧 5. Intent layer (generation + ingestion)
 
-elevata uses a small "intent layer" to keep core decisions consistent across  
-target generation, ingestion, drift detection and quality checks.
+elevata uses a small "intent layer" to keep core decisions consistent across target generation, ingestion, drift detection and quality checks.
 
 ### 🧩 Landing intent
-The function `landing_required(SourceDataset)` determines whether a dataset  
-conceptually requires a RAW landing object.
+The function `landing_required(SourceDataset)` determines whether a dataset conceptually requires a RAW landing object.
 
-Decision rules:  
+Decision rules:
+
 - `SourceDataset.integrate` must be True (hard gate).  
 - `SourceDataset.generate_raw_table` overrides the system default.  
 - If unset, inherit `System.generate_raw_tables`.  
 
-This decision is shared across:  
+This decision is shared across:
+
 - RAW target generation  
 - ingestion execution planning  
 - future drift detection and quality checks
 
 ### 🧩 Ingestion mode
-The function `resolve_ingest_mode(SourceDataset)` determines how RAW is populated:  
+The function `resolve_ingest_mode(SourceDataset)` determines how RAW is populated:
+
 - `native`: elevata extracts and loads  
 - `external`: an external tool populates RAW; elevata validates + continues  
 - `none`: no landing ingestion (federated/virtual access)  
 
-If RAW landing is required but `include_ingest='none'`, configuration is inconsistent  
-and must fail fast.
+If RAW landing is required but `include_ingest='none'`, configuration is inconsistent and must fail fast.
 
 ### 🧩 Allowed states (RAW landing × include_ingest)
 
-The decision whether a RAW landing exists is driven by `landing_required(SourceDataset)`.  
-The execution mode is driven by `System.include_ingest`, but only becomes relevant  
-when RAW landing is required.
+The decision whether a RAW landing exists is driven by `landing_required(SourceDataset)`. The execution mode is driven by `System.include_ingest`, but only becomes relevant when RAW landing is required.
 
 | landing_required | include_ingest | Result / behavior |
 |-----------------|----------------|-------------------|
@@ -126,7 +128,8 @@ when RAW landing is required.
 | true            | external       | ✅ Valid. RAW is expected to be populated by an external tool; elevata validates RAW existence and continues with downstream steps (drift/quality/etc.). |
 | true            | none           | ❌ Invalid. Configuration inconsistency: RAW landing is required but no ingestion mode is enabled. Must fail fast. |
 
-Notes:  
+Notes:
+
 - `include_ingest` is only actionable when `landing_required=True`.  
 - For `include_ingest=external`, elevata does not extract data but still logs runs and can run drift/quality checks on RAW.
 
@@ -134,9 +137,10 @@ Notes:
 
 ## 🔧 6. Load Runner
 
-The **Load Runner CLI** (`elevata_load`) orchestrates SQL generation and execution.  
+The **Load Runner CLI** (`elevata_load`) orchestrates SQL generation and execution.
 
-It:  
+It:
+
 - resolves the active profile and target system  
 - reads target dataset metadata  
 - constructs the logical plan  
@@ -149,7 +153,8 @@ The same pipeline is used for SQL preview and execution.
 
 ## 🔧 7. Deterministic Generation
 
-The SQL generation pipeline is fully deterministic:  
+The SQL generation pipeline is fully deterministic:
+
 - stable business-key ordering  
 - stable hashing patterns  
 - stable helper column naming  
@@ -165,7 +170,7 @@ This section documents how merge‑based incremental loads are implemented for R
 
 ### 🧩 8.1 Source Resolution
 
-For targets using `incremental_strategy = "merge"`, the SQL layer resolves the Stage upstream dataset as the merge source:  
+For targets using `incremental_strategy = "merge"`, the SQL layer resolves the Stage upstream dataset as the merge source:
 
 - source: `stage.<table> AS s`  
 - target: `rawcore.<table> AS t`  
@@ -174,7 +179,8 @@ Lineage metadata guarantees compatible natural keys and attribute sets.
 
 ### 🧩 8.2 Natural Key Join
 
-Natural key fields define:  
+Natural key fields define:
+
 - the merge join condition  
 - identification of new vs. existing rows  
 - delete‑detection scope  
@@ -183,13 +189,14 @@ If no natural key is defined, SQL generation fails.
 
 ### 🧩 8.3 Logical Plan Reuse
 
-All column expressions used in UPDATE and INSERT branches are reused from the logical plan.  
+All column expressions used in UPDATE and INSERT branches are reused from the logical plan.
 
 Business logic is defined once and rendered consistently.
 
 ### 🧩 8.4 Dialect‑dependent Strategy
 
-Dialects choose between:  
+Dialects choose between:
+
 - native `MERGE` statements  
 - fallback `UPDATE` + `INSERT ... WHERE NOT EXISTS` patterns  
 
@@ -197,20 +204,18 @@ Both paths reuse the same logical plan expressions.
 
 ### 🧩 8.5 Delete Detection
 
-Delete detection is implemented as a separate anti‑join statement that runs before the merge.  
+Delete detection is implemented as a separate anti‑join statement that runs before the merge.
 
-The SQL layer translates incremental scope filters from source lineage into target column expressions.  
+The SQL layer translates incremental scope filters from source lineage into target column expressions.
 
-The incremental scope used for delete detection is derived from the SourceDataset.increment_filter and  
-translated via lineage into target
-column references.
+The incremental scope used for delete detection is derived from the SourceDataset.increment_filter and translated via lineage into target column references.
 
 
 ---
 
 ## 🔧 9. Execution Semantics
 
-Execution semantics are defined by target layer:  
+Execution semantics are defined by target layer:
 
 | Layer     | Behaviour |
 |----------|-----------|
@@ -227,27 +232,26 @@ Execution always runs **inside the target system**.
 
 ### 🧩 10.1 Execution Modes
 
-`elevata_load` supports:  
+`elevata_load` supports:
 
 - **Dry‑run**: render SQL without executing it  
 - **Execute** (`--execute`): render and execute SQL in the target warehouse
 
 ### 🧩 10.2 Layer-aware execution (RAW = ingestion)
 
-`elevata_load --execute` is intentionally **layer-aware**:  
+`elevata_load --execute` is intentionally **layer-aware**:
 
-- For `raw` targets, `--execute` does not produce SQL but triggers **ingestion** logic instead.  
-The same execution command therefore has different semantics depending on the target layer.  
-- For downstream layers (`stage`, `rawcore`, `*_hist`), `--execute` renders and executes  
-**warehouse-native SQL** as usual.  
+- For `raw` targets, `--execute` does not produce SQL but triggers **ingestion** logic instead. The same execution command therefore has different semantics depending on the target layer.
+- For downstream layers (`stage`, `rawcore`, `*_hist`), `--execute` renders and executes **warehouse-native SQL** as usual.
 
-Why this matters:  
+Why this matters:
+
 - elevata treats **ingestion as a first-class citizen** of the pipeline.  
 - The same lineage metadata that drives target generation also drives ingestion planning.  
-- This closes an important gap in dbt-style stacks: dbt excels at transformations but does not provide  
-ingestion as part of its core execution model.  
+- This closes an important gap in dbt-style stacks: dbt excels at transformations but does not provide ingestion as part of its core execution model.
 
-Practical rule:  
+Practical rule:
+
 - If you can `--execute` a RAW table, elevata will bring the data in (native/external mode).  
 - If you `--execute` a Stage model, elevata assumes that its upstream exists inside the target execution context  
   (RAW landing or federated/external availability), and will fail fast otherwise.
@@ -257,8 +261,7 @@ Practical rule:
 For RAW ingestion, source connection details and behavior are defined via `SourceDataset.ingestion_config`.
 
 - For relational sources, scoping is controlled via `static_filter` and `increment_filter`.  
-- For non-relational sources (Files / REST), `ingestion_config` contains connector-specific parameters  
-(e.g. `uri` or `url`).
+- For non-relational sources (Files / REST), `ingestion_config` contains connector-specific parameters (e.g. `uri` or `url`).
 
 Regardless of source type, RAW ingestion is always executed as **Full Replace**:
 
@@ -269,7 +272,8 @@ Regardless of source type, RAW ingestion is always executed as **Full Replace**:
 
 ### 🧩 10.3 Auto‑Provisioning
 
-When enabled, execution automatically provisions:  
+When enabled, execution automatically provisions:
+
 - target schemas  
 - the meta schema  
 - the `load_run_log` table  
@@ -278,7 +282,8 @@ All DDL is idempotent.
 
 ### 🧩 10.4 Warehouse‑level Load Run Log
 
-Each executed load writes a row into `meta.load_run_log`, capturing:  
+Each executed load writes a row into `meta.load_run_log`, capturing:
+
 - batch and load run IDs  
 - target dataset and system  
 - load mode and flags  
@@ -289,19 +294,17 @@ This enables warehouse‑native observability and auditing.
 
 ### 🧩 10.5 Schema Evolution (MigrationPlan-driven)
 
-Before executing generated DML, elevata applies deterministic **schema evolution steps** that align  
-physical target tables with metadata-defined schemas:
+Before executing generated DML, elevata applies deterministic **schema evolution steps** that align physical target tables with metadata-defined schemas:
 
 - `ENSURE_SCHEMA` (idempotent)  
 - `RENAME TABLE` (dataset rename via `former_names`)  
 - `RENAME COLUMN` (column rename via `former_names`)  
 - `ADD COLUMN` (when safe and supported)  
 - `DROP COLUMN` (policy-gated; disabled by default)  
-  - Base tables: enabled via `ELEVATA_ALLOW_AUTO_DROP_COLUMNS=true`  
-  - `_hist` tables: enabled via `ELEVATA_ALLOW_AUTO_DROP_HIST_COLUMNS=true`  
+    - Base tables: enabled via `ELEVATA_ALLOW_AUTO_DROP_COLUMNS=true`  
+    - `_hist` tables: enabled via `ELEVATA_ALLOW_AUTO_DROP_HIST_COLUMNS=true`  
 
-Schema evolution steps are derived from the **Architecture MigrationPlan** and executed by the applier.  
-Destructive operations remain policy-gated and are only executed when explicitly enabled.
+Schema evolution steps are derived from the **Architecture MigrationPlan** and executed by the applier. Destructive operations remain policy-gated and are only executed when explicitly enabled.
 
 Table creation remains the responsibility of the load runner via `ensure_target_table(...)`.
 
@@ -325,4 +328,4 @@ The `--execute` flag enables direct execution of load SQL in the target warehous
 
 ---
 
-© 2025-2026 elevata Labs — Internal Technical Documentation
+© 2025-2026 elevata - Technical Documentation

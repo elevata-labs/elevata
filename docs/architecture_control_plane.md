@@ -1,7 +1,6 @@
 # ⚙️ Architecture Control Plane
 
-The Architecture Control Plane provides deterministic review, comparison, and promotion workflows  
-for metadata-defined architecture.
+The Architecture Control Plane provides deterministic review, comparison, and promotion workflows for metadata-defined architecture.
 
 It turns architecture state into explicit artifacts:
 
@@ -12,12 +11,9 @@ It turns architecture state into explicit artifacts:
 - Architecture Execution Record  
 - deterministic report fingerprints
 
-These artifacts make structural architecture changes reviewable, policy-aware, approvable, verifiable,  
-executable through controlled scopes, visible in the UI, and suitable for CI pipelines.
+These artifacts make structural architecture changes reviewable, policy-aware, approvable, verifiable, executable through controlled scopes, visible in the UI, and suitable for CI pipelines.
 
-Architecture Catalog complements the control plane as a read-only discovery surface.  
-It shows how datasets are defined, connected, controlled and linked to execution evidence  
-without creating approvals or executing loads.
+Architecture Catalog complements the control plane as a read-only discovery surface. It shows how datasets are defined, connected, controlled and linked to execution evidence without creating approvals or executing loads.
 
 ---
 
@@ -25,8 +21,7 @@ without creating approvals or executing loads.
 
 elevata treats architecture as executable metadata.
 
-The Architecture Control Plane defines the review and comparison layer around
-that metadata:
+The Architecture Control Plane defines the review and comparison layer around that metadata:
 
 ```text
 Architecture State
@@ -46,15 +41,13 @@ Controlled Execution
 Architecture Execution Record
 ```
 
-This makes schema evolution intent explicit before load execution applies any
-DDL or DML.
+This makes schema evolution intent explicit before load execution applies any DDL or DML.
 
 ---
 
 ## 🔧 2. Architecture State
 
-Architecture State is a deterministic snapshot of the metadata-defined platform
-architecture.
+Architecture State is a deterministic snapshot of the metadata-defined platform architecture.
 
 It contains:
 
@@ -92,11 +85,9 @@ The persisted runtime baseline directory is configured via:
 ELEVATA_ARCH_STATE_DIR=.elevata/state
 ```
 
-The load runner builds the current Architecture State during execution planning  
-and uses it for architecture diffing, MigrationPlan derivation, and guard checks.
+The load runner builds the current Architecture State during execution planning and uses it for architecture diffing, MigrationPlan derivation, and guard checks.
 
-The persisted runtime baseline represents the applied architecture state. It is  
-written after successful load execution. Dry-run persistence is controlled via:
+The persisted runtime baseline represents the applied architecture state. It is written after successful load execution. Dry-run persistence is controlled via:
 
 ```bash 
 ELEVATA_PERSIST_ARCH_STATE_ON_DRY_RUN=false 
@@ -106,8 +97,7 @@ ELEVATA_PERSIST_ARCH_STATE_ON_DRY_RUN=false
 
 ## 🔧 3. Architecture Change Report
 
-An Architecture Change Report describes the difference between a baseline state  
-and the metadata-defined architecture state.
+An Architecture Change Report describes the difference between a baseline state and the metadata-defined architecture state.
 
 The report includes:
 
@@ -127,13 +117,9 @@ Report scope is part of the report contract.
 | `elevata_plan --all --schema rawcore` | `scoped` | all active target datasets in the selected schema |
 | `elevata_plan rc_aw_customer` | `scoped` | the selected dataset and related architecture scope |
 
-For scoped reports, the report payload contains only changes, migration actions,  
-policy decisions and summary counts that belong to the selected scope.  
-The report fingerprint therefore represents the selected architecture scope.
+For scoped reports, the report payload contains only changes, migration actions, policy decisions and summary counts that belong to the selected scope. The report fingerprint therefore represents the selected architecture scope.
 
-When a target dataset name is unique, `--schema` can be omitted.  
-Use `--schema` when the same dataset name exists in multiple schemas or when  
-CI scripts should declare the intended schema explicitly.
+When a target dataset name is unique, `--schema` can be omitted. Use `--schema` when the same dataset name exists in multiple schemas or when CI scripts should declare the intended schema explicitly.
 
 Render a report for one dataset:
 
@@ -170,8 +156,7 @@ python manage.py elevata_plan rc_aw_customer \
 
 ## 🔧 4. Architecture Approval Artifact
 
-An Architecture Approval Artifact records a review decision for one exact
-Architecture Change Report fingerprint.
+An Architecture Approval Artifact records a review decision for one exact Architecture Change Report fingerprint.
 
 It answers:
 
@@ -179,11 +164,9 @@ It answers:
 Has this exact architecture change report been reviewed and approved?
 ```
 
-Approval artifacts are deterministic JSON artifacts. They bind a review decision to the report fingerprint,  
-report scope, report state, summary counts, and policy status of the approved Architecture Change Report.
+Approval artifacts are deterministic JSON artifacts. They bind a review decision to the report fingerprint, report scope, report state, summary counts, and policy status of the approved Architecture Change Report.
 
-An approval does not override policy decisions. If a report contains blocking policy decisions,  
-execution remains blocked by the load runner and materialization policy.
+An approval does not override policy decisions. If a report contains blocking policy decisions, execution remains blocked by the load runner and materialization policy.
 
 Approval artifacts are created from Architecture Change Report JSON:
 
@@ -238,8 +221,7 @@ The approval check fails when:
 
 ## 🔧 5. Architecture Review Status UI
 
-The Architecture Review Status UI shows the review state for a selected
-TargetDataset architecture scope.
+The Architecture Review Status UI shows the review state for a selected TargetDataset architecture scope.
 
 It displays:
 
@@ -252,15 +234,13 @@ It displays:
 - change summary  
 - state fingerprints
 
-Review states include approved, pending review, approval drift, blocked by policy, no architecture changes,  
-and invalid approval artifact.
+Review states include approved, pending review, approval drift, blocked by policy, no architecture changes, and invalid approval artifact.
 
 ---
 
 ## 🔧 6. Architecture Control UI
 
-The Architecture Control UI makes Architecture Control Plane workflows operable  
-across controlled architecture scopes.
+The Architecture Control UI makes Architecture Control Plane workflows operable across controlled architecture scopes.
 
 It supports:
 
@@ -285,15 +265,11 @@ The Architecture Control UI provides controlled actions for architecture artifac
 - download stored execution record JSON  
 - apply retention cleanup for older execution records
 
-Approval Artifact creation records the logged-in reviewer, the decision timestamp,  
-and an optional review note. The artifact is stored in the configured approval artifact directory  
-and is bound to the report fingerprint.
+Approval Artifact creation records the logged-in reviewer, the decision timestamp, and an optional review note. The artifact is stored in the configured approval artifact directory and is bound to the report fingerprint.
 
-Approval checks compare the stored Approval Artifact with the current scoped Architecture Change Report  
-and surface the result in the UI.
+Approval checks compare the stored Approval Artifact with the current scoped Architecture Change Report and surface the result in the UI.
 
-Controlled execution runs through the load runner. It does not bypass preflight validation,  
-materialization policy checks, Architecture Guard enforcement, or approval matching.
+Controlled execution runs through the load runner. It does not bypass preflight validation, materialization policy checks, Architecture Guard enforcement, or approval matching.
 
 Execution uses the selected Architecture Control scope:
 
@@ -304,8 +280,7 @@ Execution uses the selected Architecture Control scope:
 | TargetDataset | Executes the selected TargetDataset with dependency ordering |
 | TargetDataset, target-only | Executes only the selected TargetDataset |
 
-Target-only execution is available only for TargetDataset scopes.  
-It is intended for focused iteration when upstream data is already available.
+Target-only execution is available only for TargetDataset scopes. It is intended for focused iteration when upstream data is already available.
 
 Controlled execution produces an Architecture Execution Record.
 
@@ -315,10 +290,7 @@ Controlled execution produces an Architecture Execution Record.
 
 Architecture Control Plane artifacts are stored on the server-side filesystem.
 
-The Architecture State Store uses `ELEVATA_ARCH_STATE_DIR` and stores the persisted architecture state  
-as JSON. The Approval Artifact Store uses `ELEVATA_ARCH_APPROVAL_DIR` and stores deterministic  
-approval artifacts as JSON files. The Architecture Execution Record Store uses `ELEVATA_ARCH_EXECUTION_DIR`  
-and stores controlled execution records as JSON files.
+The Architecture State Store uses `ELEVATA_ARCH_STATE_DIR` and stores the persisted architecture state as JSON. The Approval Artifact Store uses `ELEVATA_ARCH_APPROVAL_DIR` and stores deterministic approval artifacts as JSON files. The Architecture Execution Record Store uses `ELEVATA_ARCH_EXECUTION_DIR` and stores controlled execution records as JSON files.
 
 Default artifact directories:
 
@@ -328,9 +300,7 @@ ELEVATA_ARCH_APPROVAL_DIR=.elevata/approvals
 ELEVATA_ARCH_EXECUTION_DIR=.elevata/executions
 ```
 
-For single-instance environments, the default `.elevata` paths provide a compact artifact layout  
-inside the elevata runtime directory. For shared deployments, these directories must point to  
-persistent server-side storage that is available to every application instance serving the same metadata database.
+For single-instance environments, the default `.elevata` paths provide a compact artifact layout inside the elevata runtime directory. For shared deployments, these directories must point to persistent server-side storage that is available to every application instance serving the same metadata database.
 
 Recommended deployment pattern:
 
@@ -340,20 +310,13 @@ ELEVATA_ARCH_APPROVAL_DIR=/var/lib/elevata/approvals
 ELEVATA_ARCH_EXECUTION_DIR=/var/lib/elevata/executions
 ```
 
-In containerized or multi-instance deployments, these paths are backed by a shared persistent volume.  
-This ensures that Architecture State, Approval Artifacts, Review Status, Approval Checks,  
-and Architecture Execution Records are resolved consistently for all users of the shared metadata application.
+In containerized or multi-instance deployments, these paths are backed by a shared persistent volume. This ensures that Architecture State, Approval Artifacts, Review Status, Approval Checks, and Architecture Execution Records are resolved consistently for all users of the shared metadata application.
 
-The metadata database stores metadata definitions. Architecture Control Plane artifacts are stored in the  
-configured artifact directories.
+The metadata database stores metadata definitions. Architecture Control Plane artifacts are stored in the configured artifact directories.
 
-Architecture Execution Records use a table-shaped JSON contract. This keeps the file-backed store compact  
-while preserving a stable record structure for operational audit processing.
+Architecture Execution Records use a table-shaped JSON contract. This keeps the file-backed store compact while preserving a stable record structure for operational audit processing.
 
-Architecture Execution Record history is resolved from the configured execution record directory.  
-Retention cleanup removes stored execution record artifacts older than the selected retention window.  
-The cleanup operates on audit artifacts only and does not alter metadata definitions, approval artifacts,  
-Architecture State artifacts, load run logs or load run snapshots.
+Architecture Execution Record history is resolved from the configured execution record directory. Retention cleanup removes stored execution record artifacts older than the selected retention window. The cleanup operates on audit artifacts only and does not alter metadata definitions, approval artifacts, Architecture State artifacts, load run logs or load run snapshots.
 
 ---
 
@@ -405,8 +368,7 @@ python manage.py elevata_promote \
   --schema rawcore
 ```
 
-Promotion reports use the same scope semantics as change reports.
-The embedded Architecture Change Report exposes the effective scope in JSON and text output.
+Promotion reports use the same scope semantics as change reports. The embedded Architecture Change Report exposes the effective scope in JSON and text output.
 
 ---
 
@@ -443,11 +405,9 @@ python manage.py elevata_promote \
 
 ## 🔧 10. Execution Guardrails
 
-The Architecture Control Plane separates architecture review, approval, execution control,  
-and load-run enforcement.
+The Architecture Control Plane separates architecture review, approval, execution control, and load-run enforcement.
 
-Load execution remains protected by the load runner. `elevata_load` performs its own preflight checks  
-before DDL or DML can be executed.
+Load execution remains protected by the load runner. `elevata_load` performs its own preflight checks before DDL or DML can be executed.
 
 This preserves a strict separation:
 
@@ -460,9 +420,7 @@ This preserves a strict separation:
 | `elevata_approval_check` | Verify approval artifact against a change report |
 | `elevata_load` | Execute loads with preflight and guard checks |
 
-The Architecture Control UI invokes the same load runner through a constrained execution path.  
-The UI does not expose arbitrary load runner flags. It exposes controlled scope selection, approval status,  
-execution preview, target-only execution for TargetDataset scopes, captured output, and execution records.
+The Architecture Control UI invokes the same load runner through a constrained execution path. The UI does not expose arbitrary load runner flags. It exposes controlled scope selection, approval status, execution preview, target-only execution for TargetDataset scopes, captured output, and execution records.
 
 ---
 
@@ -498,9 +456,7 @@ The record is stored as deterministic JSON:
 <execution_id>.execution.json
 ```
 
-Stored records can be listed in Architecture Control, filtered by scope, status, date range and dependency mode,  
-opened as detail views, and downloaded as JSON audit artifacts. Retention cleanup removes older stored records  
-from the execution record store.
+Stored records can be listed in Architecture Control, filtered by scope, status, date range and dependency mode, opened as detail views, and downloaded as JSON audit artifacts. Retention cleanup removes older stored records from the execution record store.
 
 Architecture Execution Records are audit artifacts. They complement load-run logs and snapshots:
 
@@ -514,11 +470,9 @@ Architecture Execution Records are audit artifacts. They complement load-run log
 
 ## 🔧 12. Deterministic Fingerprints
 
-Architecture State, Architecture Change Report, Architecture Promotion Report, Architecture Approval Artifact,  
-and Architecture Execution Record each expose deterministic fingerprints.
+Architecture State, Architecture Change Report, Architecture Promotion Report, Architecture Approval Artifact, and Architecture Execution Record each expose deterministic fingerprints.
 
-Fingerprints are derived from canonical JSON representations and allow CI, review processes,  
-approval decisions, promotion workflows, and audit processes to reference exact architecture artifacts.
+Fingerprints are derived from canonical JSON representations and allow CI, review processes, approval decisions, promotion workflows, and audit processes to reference exact architecture artifacts.
 
 ---
 
@@ -595,4 +549,4 @@ python manage.py elevata_plan --all \
 
 ---
 
-© 2025-2026 elevata Labs — Internal Technical Documentation
+© 2025-2026 elevata - Technical Documentation

@@ -2,8 +2,8 @@
 
 This document describes the **supported target systems** for elevata execution (`--execute`) and their prerequisites.
 
+Execution means:
 
-Execution means:  
 - SQL is rendered by elevata  
 - SQL is **executed inside the target system**  
 - Schemas, tables, and run logs are auto-provisioned (idempotent)
@@ -12,34 +12,31 @@ Execution means:
 
 ## 🔧 BigQuery
 
-BigQuery is supported as a **fully executable SQL-based target backend**.  
+BigQuery is supported as a **fully executable SQL-based target backend**.
 
-Schemas are mapped to BigQuery datasets. Tables and execution metadata  
-are provisioned automatically if they do not exist.  
+Schemas are mapped to BigQuery datasets. Tables and execution metadata are provisioned automatically if they do not exist.
 
-Execution is performed via BigQuery query jobs using standard SQL.  
+Execution is performed via BigQuery query jobs using standard SQL.
 
 ### 🧩 System prerequisites
 
 - Access to a Google Cloud project with BigQuery enabled  
 - A project with billing enabled (BigQuery sandbox mode is not sufficient for execution)  
 
-Authentication relies on Application Default Credentials (ADC).  
+Authentication relies on Application Default Credentials (ADC).
 
-One of the following must be configured:  
+One of the following must be configured:
 
 - `gcloud auth application-default login`  
 - Service account credentials via `GOOGLE_APPLICATION_CREDENTIALS`  
 
-And you need to set the following environment variables, e.g. in your `.env` file:  
+And you need to set the following environment variables, e.g. in your `.env` file:
 
 - `GOOGLE_CLOUD_PROJECT="<your GCP project ID>"`  
 - `GOOGLE_BIGQUERY_LOCATION="EU"`  
 Must match dataset location; meta/raw/... will be created in this location
 
-⚠️ All BigQuery datasets used by elevata (e.g. `meta`, `raw`, `stage`, `rawcore`)  
-must be created in the same location as the execution jobs (e.g. EU or US).  
-Location mismatches will result in execution errors.
+⚠️ All BigQuery datasets used by elevata (e.g. `meta`, `raw`, `stage`, `rawcore`) must be created in the same location as the execution jobs (e.g. EU or US). Location mismatches will result in execution errors.
 
 ### 🧩 Python dependencies
 
@@ -49,32 +46,28 @@ pip install -r requirements/bigquery.txt
 
 ### 🧩 Target configuration
 
-The target system may optionally define a project identifier.  
-If omitted, elevata falls back to the default project from the active BigQuery client credentials.
+The target system may optionally define a project identifier. If omitted, elevata falls back to the default project from the active BigQuery client credentials.
 
-Internally, elevata always qualifies BigQuery table identifiers as `project.dataset.table`  
-when required (e.g. for streaming inserts), to avoid ambiguous or cross-project resolution errors.
+Internally, elevata always qualifies BigQuery table identifiers as `project.dataset.table` when required (e.g. for streaming inserts), to avoid ambiguous or cross-project resolution errors.
 
 Schemas correspond to BigQuery datasets.
 
-Execution metadata tables (e.g. `meta.load_run_log`, `meta.load_run_snapshot`)
-are written using BigQuery streaming inserts.
+Execution metadata tables (e.g. `meta.load_run_log`, `meta.load_run_snapshot`) are written using BigQuery streaming inserts.
 
-These require:  
+These require:
+
 - an existing dataset  
 - a correctly qualified table identifier  
 - matching dataset location
 
 ⚠️ Note:
-Previously, unqualified table identifiers could lead to sporadic `NotFound` errors during streaming inserts.  
-This has been addressed by enforcing deterministic project qualification at execution time.
+Previously, unqualified table identifiers could lead to sporadic `NotFound` errors during streaming inserts. This has been addressed by enforcing deterministic project qualification at execution time.
 
 ---
 
 ## 🔧 Databricks
 
-Databricks is supported as an executable target backend via **Databricks SQL Warehouse**  
-(recommended with **Unity Catalog** for catalog/schema organization).
+Databricks is supported as an executable target backend via **Databricks SQL Warehouse** (recommended with **Unity Catalog** for catalog/schema organization).
 
 ### 🧩 System prerequisites
 - A Databricks workspace with SQL Warehouse access  
@@ -88,9 +81,7 @@ pip install -r requirements/databricks.txt
 
 ### 🧩 Target configuration
 
-All elevata target systems use a **generic connection secret structure**.  
-This keeps configuration consistent across databases and avoids system-specific
-naming differences in environment configuration.
+All elevata target systems use a **generic connection secret structure**. This keeps configuration consistent across databases and avoids system-specific naming differences in environment configuration.
 
 The common fields are:
 
@@ -102,9 +93,7 @@ The common fields are:
 - `password`  
 - `extra` – optional structured configuration for backend-specific parameters
 
-The `extra` field is a JSON object and may contain backend-specific settings.  
-It is normalized internally and passed to the respective execution engine
-or SQLAlchemy connection builder as required.
+The `extra` field is a JSON object and may contain backend-specific settings. It is normalized internally and passed to the respective execution engine or SQLAlchemy connection builder as required.
 
 Example (generic format):
 
@@ -121,21 +110,24 @@ Example (generic format):
 }
 ```
 
-Databricks execution runs against a **SQL Warehouse** (HTTP endpoint), not a traditional database socket.  
-Authentication uses a **Personal Access Token (PAT)**.
+Databricks execution runs against a **SQL Warehouse** (HTTP endpoint), not a traditional database socket. Authentication uses a **Personal Access Token (PAT)**.
 
-Required security fields:  
+Required security fields:
+
 - `server_hostname`  
 - `http_path`  
 - `access_token`
 
-Required field for introspection features:  
+Required field for introspection features:
+
 - `dialect` (for SQL Alchemy)
 
-Recommended additional field (Unity Catalog):  
+Recommended additional field (Unity Catalog):
+
 - `catalog` (default catalog for the session)
 
-Within the generic elevata configuration model, these map to:  
+Within the generic elevata configuration model, these map to:
+
 - `host` → Databricks server hostname  
 - `database` → Unity Catalog catalog  
 - `password` → Personal Access Token  
@@ -164,9 +156,7 @@ elevata typically renders target identifiers as **schema.table** (two-part names
 CREATE OR REPLACE VIEW stage.my_view AS ...
 ```
 
-With Unity Catalog enabled, Databricks resolves such objects inside the **current catalog**  
-of the SQL session. Therefore the execution engine must ensure the correct catalog context,  
-e.g. by running:
+With Unity Catalog enabled, Databricks resolves such objects inside the **current catalog** of the SQL session. Therefore the execution engine must ensure the correct catalog context, e.g. by running:
 
 ```sql
 USE CATALOG dbdwh;
@@ -176,14 +166,11 @@ before executing DDL/DML statements.
 
 #### 🔎 SQLAlchemy engine (materialization/introspection)
 
-Some execution paths (e.g. materialization planning / introspection) require a SQLAlchemy  
-engine. In that case the resolved DB secret must also provide a `dialect` identifier that  
-allows building a SQLAlchemy URL (e.g. `databricks+connector`).
+Some execution paths (e.g. materialization planning / introspection) require a SQLAlchemy engine. In that case the resolved DB secret must also provide a `dialect` identifier that allows building a SQLAlchemy URL (e.g. `databricks+connector`).
 
 #### 🔎 DDL nullability behavior
 
-Databricks SQL accepts `NOT NULL` constraints but does not allow explicitly specifying `NULL`  
-in column definitions.
+Databricks SQL accepts `NOT NULL` constraints but does not allow explicitly specifying `NULL` in column definitions.
 
 ```sql
 personid INT NULL      -- invalid in Databricks
@@ -193,13 +180,9 @@ personid INT NOT NULL  -- valid
 
 #### 🔎 Load logging (meta.load_run_log)
 
-elevata can auto-provision and evolve the meta.load_run_log table by adding missing columns.  
-On Databricks (Unity Catalog), this requires privileges that allow altering table schemas  
-(typically MODIFY on the table, or ownership depending on governance setup).
+elevata can auto-provision and evolve the meta.load_run_log table by adding missing columns. On Databricks (Unity Catalog), this requires privileges that allow altering table schemas (typically MODIFY on the table, or ownership depending on governance setup).
 
-If a column already exists, Databricks raises:  
-`FIELD_ALREADY_EXISTS (SQLSTATE 42710)`.  
-To keep logging idempotent across repeated runs, the Databricks backend should:
+If a column already exists, Databricks raises: `FIELD_ALREADY_EXISTS (SQLSTATE 42710)`. To keep logging idempotent across repeated runs, the Databricks backend should:
 
 - determine existing columns via SHOW COLUMNS IN <schema>.load_run_log, and/or  
 - treat duplicate-column errors as a no-op when applying ALTER TABLE ... ADD COLUMN.
@@ -217,7 +200,7 @@ DuckDB is the **reference target backend** for elevata and requires no external 
   ```
 
 - Or via package manager:  
-    - macOS: `brew install duckdb`
+    - macOS: `brew install duckdb`  
     - Linux: `apt-get install duckdb`  
 
 - Or download [binaries](https://duckdb.org/docs/installation)  
@@ -252,8 +235,7 @@ SEC_DEV_CONN_DUCKDB_DWH=duckdb:///./dwh.duckdb
 
 ## 🔧 Microsoft Fabric Warehouse
 
-Fabric Warehouse is supported as an executable target backend.  
-Note that Warehouse supports schemas; Fabric Lakehouse SQL endpoints do not provide schema isolation in the same way.
+Fabric Warehouse is supported as an executable target backend. Note that Warehouse supports schemas; Fabric Lakehouse SQL endpoints do not provide schema isolation in the same way.
 
 ### 🧩 System prerequisites
 - A Fabric Workspace with a Warehouse  
@@ -267,19 +249,16 @@ pip install -r requirements/fabric_warehouse.txt
 
 ### 🧩 Notes
 - `uniqueidentifier` has limitations across endpoints (see Microsoft documentation).  
-- Microsoft Fabric Warehouse follows SQL Server semantics but currently has limitations  
-  regarding certain `ALTER TABLE` operations (for example datatype changes after column creation).  
-  elevata therefore recommends treating datatype changes as forward schema evolution where possible.
+- Microsoft Fabric Warehouse follows SQL Server semantics but currently has limitations regarding certain `ALTER TABLE` operations (for example datatype changes after column creation). elevata therefore recommends treating datatype changes as forward schema evolution where possible.
 
 ---
 
 ## 🔧 Microsoft SQL Server (MSSQL)
 
-Microsoft SQL Server is supported as a **fully executable target backend**.  
-SQL Server alias types and money datatypes are handled explicitly.
+Microsoft SQL Server is supported as a **fully executable target backend**. SQL Server alias types and money datatypes are handled explicitly.
 
 ### 🧩 System prerequisites
-- Install **Microsoft ODBC Driver for SQL Server** (recommended: ODBC Driver 18)  
+- Install **Microsoft ODBC Driver for SQL Server** (recommended: ODBC Driver 18)
 
 - Verify driver availability (optional):
 
@@ -329,7 +308,7 @@ Verify installation:
 psql --version
 ```
 
-For SHA256 hashing, elevata relies on PostgreSQL's `pgcrypto` extension.  
+For SHA256 hashing, elevata relies on PostgreSQL's `pgcrypto` extension.
 
 Ensure it is enabled in the target database:
 
@@ -382,20 +361,16 @@ pip install -r requirements/snowflake.txt
 ## 🔧 Notes
 
 - elevata executes datasets in a dataset-driven and lineage-aware manner.  
-- Depending on the dataset and target layer, execution may involve SQL execution  
-  in the target system or ingestion logic for Raw datasets.  
-- Source systems may be accessed either for metadata introspection or as part  
-  of federated or external execution strategies at the Stage layer.  
-- Raw datasets are an optional landing layer. Pipelines may start directly  
-  at the Stage layer if Raw ingestion is not required.  
+- Depending on the dataset and target layer, execution may involve SQL execution in the target system or ingestion logic for Raw datasets.  
+- Source systems may be accessed either for metadata introspection or as part of federated or external execution strategies at the Stage layer.  
+- Raw datasets are an optional landing layer. Pipelines may start directly at the Stage layer if Raw ingestion is not required.  
 - All target backends support:  
     - auto-provisioned schemas  
     - auto-provisioned tables (DDL-only)  
     - execution run logging (`meta.load_run_log`)
 
-Execution semantics are determined by the target dataset and its layer.  
-For Raw datasets, execution triggers ingestion logic rather than SQL execution.
+Execution semantics are determined by the target dataset and its layer. For Raw datasets, execution triggers ingestion logic rather than SQL execution.
 
 ---
 
-© 2025-2026 elevata Labs — Internal Technical Documentation
+© 2025-2026 elevata - Technical Documentation

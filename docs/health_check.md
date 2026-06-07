@@ -1,7 +1,6 @@
 # ⚙️ Metadata Health Check
 
-The **Metadata Health Check** is a central quality assurance mechanism in *elevata*.  
-It automatically inspects the entire metadata repository and detects:
+The **Metadata Health Check** is a central quality assurance mechanism in *elevata*. It automatically inspects the entire metadata repository and detects:
 
 - inconsistent incremental configuration  
 - conflicting materialization rules  
@@ -36,8 +35,7 @@ You can run the check manually using the Django management command:
 python manage.py check_metadata_health
 ```
 
-The output is a JSON-like structure mapping each affected TargetDataset.id
-to a list of detected issues:
+The output is a JSON-like structure mapping each affected TargetDataset.id to a list of detected issues:
 
 ```python
   Total target datasets: 14
@@ -66,7 +64,7 @@ If no issues exist:
 The Health Check validates that:
 
 - `incremental_strategy` fits the effective materialization  
-  - e.g., `merge` is only valid when the materialization is `table`
+    - e.g., `merge` is only valid when the materialization is `table`
 - delete handling (`handle_deletes`) is configured correctly  
 - required incremental keys exist
 - no incremental settings appear in serving/view layers
@@ -114,7 +112,8 @@ Ensures:
 Example:
 
 > **Metadata Health Check:**
-> - Incremental: incremental_strategy='merge' but effective materialization_type='view' (expected 'table').
+>
+> - Incremental: incremental_strategy='merge' but effective materialization_type='view' (expected 'table').  
 > - Materialization: Effective materialization_type='view' differs from schema default 'table' for schema  'rawcore'.  
 
 ---
@@ -133,8 +132,7 @@ Run the Health Check:
 
 ## 🔧 6. Extensibility
 
-The Health Check framework is modular.  
-Additional rule sets can be added easily, for example:
+The Health Check framework is modular. Additional rule sets can be added easily, for example:
 
 - naming convention enforcement  
 - documentation completeness  
@@ -161,4 +159,4 @@ Running the Health Check regularly helps maintain a stable, predictable, and wel
 
 ---
 
-© 2025-2026 elevata Labs — Internal Technical Documentation
+© 2025-2026 elevata - Technical Documentation

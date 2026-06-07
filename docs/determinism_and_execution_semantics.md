@@ -1,7 +1,6 @@
 # ⚙️ Determinism & Execution Semantics
 
-This document defines elevata’s rules for **deterministic SQL generation and execution**.  
-It applies to both standard generation and custom query logic (Query Trees).
+This document defines elevata’s rules for **deterministic SQL generation and execution**. It applies to both standard generation and custom query logic (Query Trees).
 
 ---
 
@@ -71,8 +70,7 @@ This guarantees:
 
 ### 🧩 Full Refresh Exception
 
-Datasets using full refresh materialization are exempt from type drift blocking  
-because the table is recreated during execution.
+Datasets using full refresh materialization are exempt from type drift blocking because the table is recreated during execution.
 
 Type drift warnings may still be emitted for visibility.
 
@@ -82,8 +80,7 @@ Type drift warnings may still be emitted for visibility.
 
 Architecture reports and approval artifacts are deterministic artifacts.
 
-The same architecture state, scope, migration intent, and policy configuration  
-produce the same report fingerprint.
+The same architecture state, scope, migration intent, and policy configuration produce the same report fingerprint.
 
 Deterministic report artifacts include:
 
@@ -95,8 +92,7 @@ Deterministic report artifacts include:
 
 These fingerprints are derived from canonical JSON representations.
 
-Approval artifact fingerprints are derived from the approval payload and review decision.  
-They bind an approval to one exact Architecture Change Report reference.
+Approval artifact fingerprints are derived from the approval payload and review decision. They bind an approval to one exact Architecture Change Report reference.
 
 Report JSON uses stable ordering and contains semantic architecture information:
 
@@ -107,18 +103,14 @@ Report JSON uses stable ordering and contains semantic architecture information:
 - MigrationPlan actions  
 - policy decisions
 
-The selected report scope is part of the deterministic artifact contract.  
-For scoped reports, dataset changes, column changes, MigrationPlan actions, policy decisions  
-and summary counts are restricted to the selected scope.
+The selected report scope is part of the deterministic artifact contract. For scoped reports, dataset changes, column changes, MigrationPlan actions, policy decisions and summary counts are restricted to the selected scope.
 
 The reports do not require SQL rendering, warehouse introspection, or execution
 engines.
 
-Approval artifacts do not alter execution policy. A matching approval confirms that an Architecture Change Report  
-was reviewed, while load execution remains protected by preflight checks, policy decisions and materialization guardrails.
+Approval artifacts do not alter execution policy. A matching approval confirms that an Architecture Change Report was reviewed, while load execution remains protected by preflight checks, policy decisions and materialization guardrails.
 
-Architecture Control displays the resulting review state, execution readiness, dependency mode,  
-controlled execution output, and Architecture Execution Record.
+Architecture Control displays the resulting review state, execution readiness, dependency mode, controlled execution output, and Architecture Execution Record.
 
 ---
 
@@ -145,8 +137,7 @@ The Architecture Control UI exposes controlled execution scopes:
 
 The default execution path remains lineage-aware.
 
-Target-only execution is restricted to TargetDataset scopes and is intended for focused iteration  
-when upstream data is already available.
+Target-only execution is restricted to TargetDataset scopes and is intended for focused iteration when upstream data is already available.
 
 Controlled execution produces an Architecture Execution Record.
 
@@ -174,10 +165,7 @@ Who executed which controlled architecture scope, under which review and depende
 
 The record fingerprint is derived from the canonical JSON representation of the execution record.
 
-Stored Architecture Execution Records remain deterministic audit artifacts when displayed through  
-Architecture Control history, opened as detail views, downloaded as JSON, or removed by retention cleanup.  
-History filtering and retention operate on stored record metadata and do not change the canonical record payload  
-or its fingerprint.
+Stored Architecture Execution Records remain deterministic audit artifacts when displayed through Architecture Control history, opened as detail views, downloaded as JSON, or removed by retention cleanup. History filtering and retention operate on stored record metadata and do not change the canonical record payload or its fingerprint.
 
 ---
 
@@ -187,8 +175,8 @@ Some window functions are inherently nondeterministic without ordering.
 
 Rule:
 
-- If a window function requires ordering, an ORDER BY clause is mandatory.
-  Missing ORDER BY → **ERROR**
+- If a window function requires ordering, an ORDER BY clause is mandatory.  
+Missing ORDER BY → **ERROR**
 
 Examples of functions requiring ORDER BY:
 
@@ -209,8 +197,8 @@ Aggregations can become nondeterministic if result ordering is undefined in the 
 
 Rule patterns:
 
-- Ordered aggregates (e.g. STRING_AGG) require explicit ORDER BY inside the function.
-  Missing ordering → **ERROR** (or strict WARNING, depending on policy)
+- Ordered aggregates (e.g. STRING_AGG) require explicit ORDER BY inside the function.  
+Missing ordering → **ERROR** (or strict WARNING, depending on policy)
 
 Other aggregates (SUM, COUNT, MIN, MAX, AVG) are deterministic without ordering.
 
@@ -230,8 +218,7 @@ Rules:
 
 ## 🔧 9. Why elevata is not a semantic layer
 
-elevata does not implement query-time semantics (like BI semantic layers or metric stores).  
-Instead, elevata materializes semantics into datasets deterministically:
+elevata does not implement query-time semantics (like BI semantic layers or metric stores). Instead, elevata materializes semantics into datasets deterministically:
 
 - business logic belongs in bizcore  
 - consumer shaping belongs in serving  
@@ -249,4 +236,4 @@ This avoids tool-specific logic and ensures reproducible pipelines.
 
 ---
 
-© 2025-2026 elevata Labs — Internal Technical Documentation
+© 2025-2026 elevata - Technical Documentation

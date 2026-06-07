@@ -1,7 +1,6 @@
 # ⚙️ Architecture Catalog
 
-The Architecture Catalog is the read-only discovery layer for metadata-defined
-executable architecture.
+The Architecture Catalog is the read-only discovery layer for metadata-defined executable architecture.
 
 It helps users understand:
 
@@ -24,8 +23,7 @@ The Catalog does not edit metadata and does not execute loads.
 
 elevata treats architecture as executable metadata.
 
-The Architecture Catalog provides a structured way to discover that architecture  
-without entering editing or execution workflows.
+The Architecture Catalog provides a structured way to discover that architecture without entering editing or execution workflows.
 
 It complements Architecture Control:
 
@@ -93,8 +91,7 @@ The workspace links to:
 
 ## 🔧 3. Catalog Portfolio
 
-The Architecture Catalog Portfolio provides a read-only executive lens across
-metadata-defined executable architecture.
+The Architecture Catalog Portfolio provides a read-only executive lens across metadata-defined executable architecture.
 
 It answers the portfolio-level question:
 
@@ -116,9 +113,7 @@ The Portfolio shows:
 - layer-level ownership, contract, health, execution evidence and custom query signals
 
 Portfolio metrics are aggregated posture signals rather than dataset lists.  
-When a metric needs action, its button opens a filtered Catalog worklist with the affected TargetDatasets.  
-Users can then inspect each dataset in Catalog Detail and navigate to the existing Details, Contract,  
-Lineage or Architecture Control entry points.
+When a metric needs action, its button opens a filtered Catalog worklist with the affected TargetDatasets. Users can then inspect each dataset in Catalog Detail and navigate to the existing Details, Contract, Lineage or Architecture Control entry points.
 
 Portfolio layer rows link to filtered Catalog layer views.
 
@@ -128,8 +123,7 @@ The Portfolio does not edit metadata, create approvals, check approvals or execu
 
 ## 🔧 4. Catalog Insights
 
-Architecture Catalog Insights provide read-only architecture quality and governance
-signals across TargetDatasets.
+Architecture Catalog Insights provide read-only architecture quality and governance signals across TargetDatasets.
 
 Insights summarize:
 
@@ -143,21 +137,17 @@ Insights summarize:
 
 Insight cards show compact dataset lists and can expand to reveal all matching datasets.
 
-Each dataset entry links back to the Catalog detail view, where dataset-specific
-insight signals are shown in context.
+Each dataset entry links back to the Catalog detail view, where dataset-specific insight signals are shown in context.
 
-Catalog Insights do not create approvals, check approvals, execute loads, delete
-execution records, or mutate metadata.
+Catalog Insights do not create approvals, check approvals, execute loads, delete execution records, or mutate metadata.
 
 ---
 
 ## 🔧 5. Catalog Data Products
 
-Architecture Catalog Data Products provide a read-only consumer-readiness
-perspective for serving-layer datasets.
+Architecture Catalog Data Products provide a read-only consumer-readiness perspective for serving-layer datasets.
 
-They help users understand which metadata-defined architecture objects are ready for trusted consumption  
-by combining existing signals from:
+They help users understand which metadata-defined architecture objects are ready for trusted consumption by combining existing signals from:
 
 - ownership  
 - metadata health  
@@ -174,22 +164,17 @@ Readiness is shown through transparent groups:
 - Review recommended  
 - Not consumption-ready
 
-Catalog Data Products focus on the serving layer. Bizcore remains the business logic implementation layer  
-and stays visible in the Architecture Catalog, Catalog Insights and Catalog Maps without being presented  
-as a consumer-facing Data Product.
+Catalog Data Products focus on the serving layer. Bizcore remains the business logic implementation layer and stays visible in the Architecture Catalog, Catalog Insights and Catalog Maps without being presented as a consumer-facing Data Product.
 
-Catalog detail pages also show dataset-specific Consumer Readiness, so users can understand why a dataset  
-is ready for consumption or why it belongs to a non-consumer architecture layer.
+Catalog detail pages also show dataset-specific Consumer Readiness, so users can understand why a dataset is ready for consumption or why it belongs to a non-consumer architecture layer.
 
-Catalog Data Products derive readiness from existing architecture metadata.  
-They do not edit metadata, request access or execute loads.
+Catalog Data Products derive readiness from existing architecture metadata. They do not edit metadata, request access or execute loads.
 
 ---
 
 ## 🔧 6. Catalog Map
 
-The Architecture Catalog Map provides a read-only architecture lens across schemas,  
-layers and direct TargetDataset dependencies.
+The Architecture Catalog Map provides a read-only architecture lens across schemas, layers and direct TargetDataset dependencies.
 
 It helps users understand:
 
@@ -207,8 +192,7 @@ The Catalog Map includes:
 - layer transition groups with expandable dependency examples  
 - dataset links to Catalog detail pages and lineage pages
 
-The Catalog Map uses direct TargetDataset dependencies. It does not replace the dedicated lineage view  
-and does not introduce graph editing, execution controls or metadata mutations.
+The Catalog Map uses direct TargetDataset dependencies. It does not replace the dedicated lineage view and does not introduce graph editing, execution controls or metadata mutations.
 
 ---
 
@@ -229,15 +213,13 @@ It displays:
 - dataset-specific Catalog insight signals  
 - Architecture Control review status summary
 
-The detail view remains read-only. Editing stays on the dataset detail and scoped  
-metadata pages. Execution and approval workflows stay in Architecture Control.
+The detail view remains read-only. Editing stays on the dataset detail and scoped metadata pages. Execution and approval workflows stay in Architecture Control.
 
 ---
 
 ## 🔧 8. Review Status
 
-For TargetDataset scopes, the Catalog detail view surfaces the Architecture Control review status  
-as a read-only summary.
+For TargetDataset scopes, the Catalog detail view surfaces the Architecture Control review status as a read-only summary.
 
 The review status summary includes:
 
@@ -248,8 +230,7 @@ The review status summary includes:
 - policy status  
 - link to the selected Architecture Control scope
 
-Catalog detail pages use the existing Architecture Control review status contract.  
-They do not create approvals and do not run approval checks.
+Catalog detail pages use the existing Architecture Control review status contract. They do not create approvals and do not run approval checks.
 
 ---
 
@@ -266,11 +247,9 @@ The evidence summary includes:
 - compact record fingerprint  
 - link to Architecture Control execution history
 
-Architecture Execution Records remain stored, filtered, downloaded and governed
-through Architecture Control.
+Architecture Execution Records remain stored, filtered, downloaded and governed through Architecture Control.
 
-The Catalog shows the latest evidence reference in dataset context without
-duplicating the execution history workspace.
+The Catalog shows the latest evidence reference in dataset context without duplicating the execution history workspace.
 
 ---
 
@@ -295,8 +274,7 @@ Column contract signals show:
 - lineage origin  
 - lifecycle status
 
-This makes the dataset structure inspectable without replacing dedicated lineage, query contract  
-or metadata editing pages.
+This makes the dataset structure inspectable without replacing dedicated lineage, query contract or metadata editing pages.
 
 ---
 
@@ -313,9 +291,8 @@ It does not:
 - delete execution records  
 - mutate metadata
 
-Architecture Control remains responsible for approval state, execution preview, controlled execution,  
-execution records, execution history and retention cleanup.
+Architecture Control remains responsible for approval state, execution preview, controlled execution, execution records, execution history and retention cleanup.
 
 ---
 
-© 2025-2026 elevata Labs — Internal Technical Documentation
+© 2025-2026 elevata - Technical Documentation

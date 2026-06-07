@@ -19,9 +19,10 @@ The Logical Plan is the **dialect-agnostic intermediate representation** between
 Metadata → Logical Plan → Dialect Renderer → SQL
 ```
 
-It describes *what* needs to be executed, not *how* a specific SQL dialect expresses it.  
+It describes *what* needs to be executed, not *how* a specific SQL dialect expresses it.
 
-The Logical Plan:  
+The Logical Plan:
+
 - is fully structured (tree-based)  
 - has no vendor SQL  
 - is deterministic  
@@ -34,25 +35,22 @@ The Logical Plan:
 
 The **Query Tree** operates at a higher abstraction level than the Logical Plan.
 
-- The Query Tree defines *what* operations occur and in which order  
-  (e.g. SELECT → WINDOW → AGGREGATE).  
-- The Logical Plan defines *how* these operations are represented as  
-  structured SQL components (LogicalSelect, SubquerySource, LogicalUnion, …).
+- The Query Tree defines *what* operations occur and in which order (e.g. SELECT → WINDOW → AGGREGATE).  
+- The Logical Plan defines *how* these operations are represented as structured SQL components (LogicalSelect, SubquerySource, LogicalUnion, …).
 
-When custom query logic is enabled, the Query Tree is compiled into a Logical Plan  
-using the same builder infrastructure as default generation.
+When custom query logic is enabled, the Query Tree is compiled into a Logical Plan using the same builder infrastructure as default generation.
 
-This design keeps the Logical Plan as a stable, vendor-neutral intermediate representation,  
-regardless of whether SQL is generated automatically or via an explicit Query Tree.
+This design keeps the Logical Plan as a stable, vendor-neutral intermediate representation, regardless of whether SQL is generated automatically or via an explicit Query Tree.
 
 ---
 
 ## 🔧 3. Core Node Types
 
 ### 🧩 3.1 LogicalSelect
-Represents a SELECT statement.  
+Represents a SELECT statement.
 
-Fields:  
+Fields:
+
 - `select_list: list[SelectItem]`  
 - `from_: SourceNode` (table source, subquery, union, etc.)  
 - `where: Optional[Expr]`  
@@ -70,9 +68,10 @@ LogicalSelect(
 ---
 
 ### 🧩 3.2 SelectItem
-Represents a single column in the SELECT list.  
+Represents a single column in the SELECT list.
 
-Fields:  
+Fields:
+
 - `expr: Expr`  
 - `alias: Optional[str]`  
 
@@ -90,7 +89,8 @@ Represents:
 (SELECT ...) AS alias
 ```
 
-Used for:  
+Used for:
+
 - multi-source Stage ranking  
 - derived tables  
 - complex transformations  
@@ -99,6 +99,7 @@ Used for:
 Represents a UNION or UNION ALL.
 
 Fields:
+
 - `selects: list[LogicalSelect]`
 - `union_type: "ALL" | "DISTINCT"`
 
@@ -180,7 +181,8 @@ LogicalSelect(
 
 ## 🔧 6. Integration With Expression DSL & AST
 
-All expressions inside the Logical Plan use the DSL/AST layer:  
+All expressions inside the Logical Plan use the DSL/AST layer:
+
 - column references  
 - literals  
 - CONCAT/CONCAT_WS  
@@ -194,7 +196,8 @@ This ensures cross-dialect consistency.
 
 ## 🔧 7. Dialect Rendering Responsibilities
 
-Each dialect must render:  
+Each dialect must render:
+
 - SELECT lists  
 - window functions  
 - subqueries  
@@ -202,7 +205,7 @@ Each dialect must render:
 - column references with quoting rules  
 - expressions via the DSL AST  
 
-Example dialect responsibilities:  
+Example dialect responsibilities:
 
 ### 🧩 BigQuery
 - window functions: identical to ANSI  
@@ -268,7 +271,8 @@ SELECT ...
 ROW_NUMBER() OVER (PARTITION BY ... ORDER BY ...)
 ```
 
-Dialect modifies only:  
+Dialect modifies only:
+
 - quoting  
 - hashing  
 - type conversions  
@@ -320,9 +324,9 @@ Bizcore datasets do not introduce new Logical Plan node types.
 Instead:
 
 - Bizcore logic is expressed through existing constructs:  
-  - joins  
-  - expressions  
-  - derived SelectItems  
+    - joins  
+    - expressions  
+    - derived SelectItems  
 - Business rules compile into standard AST expressions  
 - No semantic shortcuts or abstractions exist at plan level
 
@@ -332,10 +336,8 @@ This design guarantees:
 - full reuse of planning, validation, and rendering logic  
 - uniform explainability across layers
 
-From the Logical Plan’s perspective,
-Bizcore is **just another deterministic dataset** —
-with richer intent, not different mechanics.
+From the Logical Plan’s perspective, Bizcore is **just another deterministic dataset** - with richer intent, not different mechanics.
 
 ---
 
-© 2025-2026 elevata Labs — Internal Technical Documentation
+© 2025-2026 elevata - Technical Documentation

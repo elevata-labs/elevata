@@ -1,10 +1,8 @@
 # ⚙️ SQL Dialect System
 
-The elevata dialect system is the **execution abstraction layer** that makes the platform  
-vendor-neutral, deterministic, and production-ready across modern data platforms.
+The elevata dialect system is the **execution abstraction layer** that makes the platform vendor-neutral, deterministic, and production-ready across modern data platforms.
 
-A dialect is responsible for translating a **logical, metadata-driven query plan** into  
-**concrete, executable SQL** for a specific target engine — while preserving:
+A dialect is responsible for translating a **logical, metadata-driven query plan** into **concrete, executable SQL** for a specific target engine - while preserving:
 
 - semantic correctness  
 - deterministic behavior  
@@ -12,7 +10,7 @@ A dialect is responsible for translating a **logical, metadata-driven query plan
 
 This means:
 
-> **The same logical dataset definition produces the same semantic result —  
+> **The same logical dataset definition produces the same semantic result -  
 > regardless of whether it runs on BigQuery, Databricks, DuckDB, Fabric Warehouse, MSSQL, Postgres   
 > or Snowflake.**
 
@@ -113,15 +111,13 @@ This allows:
 Dialect selection follows a layered strategy:
 
 1. **Explicit override** (e.g. from UI query param):  
-   - `?dialect=postgres` → PostgresDialect  
+     - `?dialect=postgres` → PostgresDialect  
 2. **Profile / configuration** (if set)  
 3. **Environment variable**:  
-   - `ELEVATA_SQL_DIALECT=duckdb`  
+     - `ELEVATA_SQL_DIALECT=duckdb`  
 4. Fallback: a default dialect (usually DuckDB)
 
-In the **SQL Preview UI**, the user selects a dialect from a dropdown.  
-The selection is passed as `?dialect=...` to the preview endpoint, which then calls  
-`get_active_dialect()` with that override.
+In the **SQL Preview UI**, the user selects a dialect from a dropdown. The selection is passed as `?dialect=...` to the preview endpoint, which then calls `get_active_dialect()` with that override.
 
 ---
 
@@ -136,7 +132,8 @@ All dialects receive **unquoted** identifiers from the LogicalPlan / AST and app
 
 This avoids confusion around vendor-specific quoting and supports consistent behaviour across dialects.
 
-Rules:  
+Rules:
+
 - identifiers that contain uppercase letters, spaces, or reserved words are always quoted  
 - schema and table are rendered as `"schema"."table" AS "alias"`
 
@@ -290,7 +287,7 @@ Again, only identifier/literal rendering and optional formatting differ by diale
 
 To add a new dialect:
 
-1. Create a module under `metadata/rendering/dialects/`, e.g. `snowflake.py`.
+1. Create a module under `metadata/rendering/dialects/`, e.g. `snowflake.py`.  
 2. Implement a class:
 
 ```python
@@ -307,11 +304,11 @@ class SnowflakeDialect(SqlDialect):
         ...
 ```
 
-3. Ensure the module is imported (so the class registers itself).
-4. Add tests in `tests/test_dialect_snowflake.py`.
+3. Ensure the module is imported (so the class registers itself).  
+4. Add tests in `tests/test_dialect_snowflake.py`.  
 5. Optionally expose it in the SQL preview dropdown.
 
-No changes to metadata are required — all dialect logic is encapsulated.
+No changes to metadata are required - all dialect logic is encapsulated.
 
 ---
 
@@ -331,8 +328,7 @@ Dialect introspection must reliably distinguish between:
 - table does not exist  
 - table exists but has no columns (rare engine-specific case)
 
-The planner assumes that `table_exists=False` means that the table must be provisioned.  
-Dialect implementations are responsible for handling engine-specific metadata quirks.
+The planner assumes that `table_exists=False` means that the table must be provisioned. Dialect implementations are responsible for handling engine-specific metadata quirks.
 
 ### 🧩 Usage in SQL Generation
 
@@ -342,8 +338,9 @@ tbl_sql = dialect.render_table_identifier(schema_name, table_name)
 ```
 
 This separation ensures that:
-- table-level quoting rules do not affect column expressions
-- engines without schemas can pass `None` for `schema`
+
+- table-level quoting rules do not affect column expressions  
+- engines without schemas can pass `None` for `schema`  
 - identifiers remain valid for cross-schema and cross-dialect SQL
 
 ### 🧩 Dialect Support Summary
@@ -359,18 +356,18 @@ This separation ensures that:
 
 The Dialect System is validated via:
 
-- unit tests for each dialect
-- cross-dialect hashing tests (SK/FK equality)
-- SQL preview tests
+- unit tests for each dialect  
+- cross-dialect hashing tests (SK/FK equality)  
+- SQL preview tests  
 - LogicalPlan → SQL snapshot tests
 
 Focus areas:
 
-- identifier quoting correctness
-- literal escaping
-- HASH256 implementation parity
-- CONCAT / CONCAT_WS behavior
-- window function correctness
+- identifier quoting correctness  
+- literal escaping  
+- HASH256 implementation parity  
+- CONCAT / CONCAT_WS behavior  
+- window function correctness  
 - subquery and UNION formatting
 
 If all dialect tests pass, the multi-dialect engine behaves consistently.
@@ -381,9 +378,9 @@ If all dialect tests pass, the multi-dialect engine behaves consistently.
 
 The Dialect System is the backbone of elevata’s multi-backend strategy:
 
-- SQL is generated from a vendor-neutral LogicalPlan + AST
-- dialects implement only the final rendering
-- SK/FK hashing is cross-dialect identical
+- SQL is generated from a vendor-neutral LogicalPlan + AST  
+- dialects implement only the final rendering  
+- SK/FK hashing is cross-dialect identical  
 - adding new engines is straightforward
 
 This architecture ensures that elevata can support more backends (Snowflake, BigQuery, Databricks, …) without changing core metadata or generation logic.
@@ -392,8 +389,7 @@ This architecture ensures that elevata can support more backends (Snowflake, Big
 
 ## 🔧 16. Dialect diagnostics & health check
 
-The Dialect System exposes a lightweight diagnostics layer to verify that all
-registered SQL dialects behave as expected.
+The Dialect System exposes a lightweight diagnostics layer to verify that all registered SQL dialects behave as expected.
 
 Diagnostics can be accessed in two ways:
 
@@ -402,8 +398,7 @@ Diagnostics can be accessed in two ways:
 
 ### 🧩 16.1 Programmatic diagnostics
 
-The module `metadata.rendering.dialects.diagnostics` provides convenience
-functions to inspect all dialects at once:
+The module `metadata.rendering.dialects.diagnostics` provides convenience functions to inspect all dialects at once:
 
 - `collect_dialect_diagnostics(dialect)`  
 - `snapshot_all_dialects()`
@@ -417,8 +412,7 @@ Each snapshot contains:
 - example literal renderings (TRUE/FALSE/NULL/date)  
 - example expressions for CONCAT and HASH256
 
-This is useful for debugging and for asserting capabilities in tests, without
-having to introspect each dialect manually.
+This is useful for debugging and for asserting capabilities in tests, without having to introspect each dialect manually.
 
 ### 🧩 16.2 CLI: `elevata_dialect_check`
 
@@ -428,7 +422,7 @@ For a quick end-to-end smoke test of all registered SQL dialects, use:
 python manage.py elevata_dialect_check
 ```
 
-This command:  
+This command:
 
 - discovers all registered dialects (DuckDB, Postgres, MSSQL, …),  
 - prints basic capabilities:  
@@ -447,24 +441,20 @@ This command:
     - N/I → NotImplementedError (feature not implemented yet)  
     - FAIL → any other exception
 
-This is intentionally non-invasive: it only renders SQL; it does not execute it  
-against a live database. The command is meant as a quick guardrail during  
-development and CI to detect regressions in dialect implementations early.
+This is intentionally non-invasive: it only renders SQL; it does not execute it against a live database. The command is meant as a quick guardrail during development and CI to detect regressions in dialect implementations early.
 
 ---
 
 ## 🔧 17. Execution engines
 
-Each SQL dialect can optionally provide an execution engine that knows how to  
-run SQL statements against a concrete target system.
+Each SQL dialect can optionally provide an execution engine that knows how to run SQL statements against a concrete target system.
 
 The base interface lives in `rendering/dialects/base.py`:
 
 - `BaseExecutionEngine.execute(sql: str) -> int | None`  
 - `SqlDialect.get_execution_engine(system) -> BaseExecutionEngine`
 
-Concrete dialects (e.g. `DuckDBDialect`) implement their own execution engine
-in the same module:
+Concrete dialects (e.g. `DuckDBDialect`) implement their own execution engine in the same module:
 
 - `DuckDBDialect.get_execution_engine(system)` returns a `DuckDbExecutionEngine`  
 - `DuckDbExecutionEngine` implements `execute(sql: str)`
@@ -480,33 +470,30 @@ Two different connection mechanisms may exist for the same target system:
 | Execution Engine | Executes rendered SQL statements (`--execute`) |
 | SQLAlchemy Engine | Used for introspection, materialization planning, and schema inspection |
 
-In many databases (e.g. Postgres, DuckDB, Snowflake) both roles may use the same
-underlying connection mechanism.
+In many databases (e.g. Postgres, DuckDB, Snowflake) both roles may use the same underlying connection mechanism.
 
-However, analytical platforms such as BigQuery or Databricks may require different
-technical connectors:
+However, analytical platforms such as BigQuery or Databricks may require different technical connectors:
 
 - Execution via native API or warehouse connector  
 - Introspection via SQLAlchemy-compatible drivers
 
-This separation is intentional and allows elevata to support execution environments  
-that do not expose a full SQLAlchemy-compatible runtime.
+This separation is intentional and allows elevata to support execution environments that do not expose a full SQLAlchemy-compatible runtime.
 
 ---
 
 ## 🔧 18. Dialect Parity Checklist
 
 > **Purpose**
-> This checklist defines the *mandatory contract* every officially supported dialect must fulfill  
-in order to support `--execute`, auto‑provisioning, and observability consistently across BigQuery, Databricks, DuckDB, Fabric Warehouse, MSSQL, PostgreSQL and Snowflake.
+> This checklist defines the *mandatory contract* every officially supported dialect must fulfill in order to support `--execute`, auto‑provisioning, and observability consistently across BigQuery, Databricks, DuckDB, Fabric Warehouse, MSSQL, PostgreSQL and Snowflake.
 >
 > The goal is **behavioral parity**, not identical SQL syntax.
 
 ### 🧩 18.1 Core Rendering Contract (SQL Preview & Generation)
 
-Every dialect **must implement** the core SQL rendering primitives so that SQL preview and generated SQL behave consistently.
+Every dialect **must implement** the core SQL rendering primitives so that SQL preview and generated SQL behave  consistently.
 
-**Required methods:**  
+**Required methods:**
+
 - `render_identifier(name: str) -> str`  
 - `render_table_identifier(schema: str | None, name: str) -> str`  
 - `render_literal(value: Any) -> str`  
@@ -514,7 +501,8 @@ Every dialect **must implement** the core SQL rendering primitives so that SQL p
 - `render_select(select: LogicalSelect | LogicalUnion | ...) -> str`  
 - `cast_expression(expr: Expr, target_type: str) -> str`
 
-**Required parity guarantees (v0.6.x):**  
+**Required parity guarantees (v0.6.x):**
+
 - Deterministic `HASH256` rendering (hex‑encoded, 64 characters)  
 - Consistent `CONCAT` / `CONCAT_WS` semantics  
 - Window functions parity (`ROW_NUMBER`, partitioning, ordering)  
@@ -525,10 +513,12 @@ Every dialect **must implement** the core SQL rendering primitives so that SQL p
 Every dialect that is considered *supported* **must provide a working execution engine**.
 
 **Required methods:**
+
 - `get_execution_engine(system) -> BaseExecutionEngine`  
 - `BaseExecutionEngine.execute(sql: str) -> int | None`
 
-**Execution expectations:**  
+**Execution expectations:**
+
 - Executes multi‑statement SQL safely  
 - Uses the resolved target connection (`system.security["connection_string"]`)  
 - Raises clear, actionable exceptions on connection or SQL errors  
@@ -540,13 +530,15 @@ Every dialect that is considered *supported* **must provide a working execution 
 
 All supported dialects must support *idempotent* warehouse provisioning.
 
-**Required methods:**  
+**Required methods:**
+
 - `render_create_schema_if_not_exists(schema: str) -> str`  
 - `render_create_table_if_not_exists(td: TargetDataset) -> str`  
 - `render_create_table_if_not_exists_from_columns(schema: str, table: str, columns: list[dict[str, object]]) -> str`  
 - `render_add_column(schema: str, table: str, column: str, column_type: str | None) -> str`
 
-**Rules:**  
+**Rules:**
+
 - DDL must be safe to execute multiple times  
 - No destructive operations (no DROP)  
 - Target table DDL must be derived from `TargetColumn` metadata
@@ -555,7 +547,8 @@ All supported dialects must support *idempotent* warehouse provisioning.
 
 Every supported dialect must support warehouse‑level execution logging.
 
-**Required behavior:**  
+**Required behavior:**
+
 - Logging is emitted into `meta.load_run_log` with a canonical schema (registry-driven).  
 - The INSERT logic is centralized (dialects must not each hardcode their own log INSERT).
 
@@ -570,7 +563,8 @@ Dialects that support incremental pipelines (Rawcore / History) must be able to 
 - Delete detection SQL  
 - Delete marking in history (`version_state = 'deleted'`)
 
-Dialect implementations must render the required SQL primitives consistently; architectural details are specified in:  
+Dialect implementations must render the required SQL primitives consistently; architectural details are specified in:
+
 - [Load SQL Architecture](load_sql_architecture.md)  
 - [Historization Architecture](historization_architecture.md)
 
@@ -584,7 +578,8 @@ Every supported dialect must pass a minimal diagnostic suite:
 - HASH256 output consistency tests  
 - Minimal merge / historization render tests (where applicable)
 
-Execution parity is validated by:  
+Execution parity is validated by:
+
 - Running `--execute` on all supported targets  
 - Verifying schema provisioning, table provisioning, and run logging
 
@@ -598,8 +593,7 @@ Execution parity is validated by:
 
 ## 🔧 19. Merge & Historization Contract
 
-The Dialect System is responsible not only for expression and SELECT rendering,  
-but also for deterministic incremental data movement and historization semantics.
+The Dialect System is responsible not only for expression and SELECT rendering, but also for deterministic incremental data movement and historization semantics.
 
 The architectural principle is:
 
@@ -641,8 +635,7 @@ All officially supported dialects must support merge semantics.
 
 ### 🧩 19.2 Delete Detection Contract
 
-For incremental pipelines with `handle_deletes=True`,
-dialects must implement:
+For incremental pipelines with `handle_deletes=True`, dialects must implement:
 
 ```python
 render_delete_detection_statement(...)
@@ -731,16 +724,14 @@ This symmetry ensures:
 
 ## 🔧 20. Reserved Keyword Registry
 
-Each dialect provides a deterministic reserved keyword registry located in  
-`rendering/dialects/keywords/<dialect>.py`.
+Each dialect provides a deterministic reserved keyword registry located in `rendering/dialects/keywords/<dialect>.py`.
 
 Keyword extraction follows one of two strategies:
 
 - Engine-truth (preferred when available)  
 - Documentation-based parsing with strict sanity validation
 
-All SQL required for engine-based extraction must be implemented inside the dialect class  
-via `render_reserved_keywords_query()`.
+All SQL required for engine-based extraction must be implemented inside the dialect class via `render_reserved_keywords_query()`.
 
 Management commands must not contain vendor-specific SQL.
 
@@ -758,4 +749,4 @@ Management commands must not contain vendor-specific SQL.
 
 ---
 
-© 2025-2026 elevata Labs — Internal Technical Documentation
+© 2025-2026 elevata - Technical Documentation

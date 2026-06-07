@@ -15,7 +15,7 @@ SQL becomes an artifact. Architecture becomes metadata.
 
 ## ⚡ What elevata enables
 
-The same metadata-defined platform can run consistently on:
+The same metadata-defined architecture can be rendered, reviewed, and executed consistently on:
 
 Snowflake · Databricks · Fabric · MSSQL · Postgres · DuckDB · BigQuery
 
@@ -27,29 +27,26 @@ elevata separates:
 - **Dialect rendering**  
 - **Execution backend**
 
-This makes data architecture portable, reproducible, and governable.
+This makes data architecture portable, reproducible, governable, and auditable.
 
 ## License & Dependencies
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](https://github.com/elevata-labs/elevata/blob/main/LICENSE)
 [![Built with Django](https://img.shields.io/badge/Built%20with-Django-092E20?logo=django)](https://www.djangoproject.com/)
 [![Frontend: HTMX](https://img.shields.io/badge/Frontend-HTMX-3366CC?logo=htmx)](https://htmx.org/)
-[![UI: Bootstrap 5](https://img.shields.io/badge/UI-Bootstrap%205-7952B3?logo=bootstrap)](https://getbootstrap.com/)  
+[![UI: Bootstrap 5](https://img.shields.io/badge/UI-Bootstrap%205-7952B3?logo=bootstrap)](https://getbootstrap.com/)
 
 ---
 
 ## 🧭 What is elevata?
 
-elevata is a **metadata-first** data platform engine.
+elevata is an **Architecture Runtime** for metadata-defined data platforms.
 
-It models datasets, lineage, governance, and execution semantics declaratively.
+It models datasets, lineage, contracts, governance, and execution semantics as explicit metadata.
 
-From these definitions, elevata derives deterministic logical plans, renders dialect-owned SQL,  
-and executes warehouse-native pipelines.
+From these definitions, elevata derives deterministic logical plans, renders dialect-owned SQL, reviews architecture changes, and executes warehouse-native pipelines through controlled runtime scopes.
 
-Schema evolution, incremental loads and historization are planned,  
-validated, and applied deterministically before execution.
-
+Schema evolution, incremental loads, historization, approvals, and execution evidence are planned, validated, and applied deterministically.
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/elevata-labs/elevata/main/docs/elevata_v2_7_0.png" alt="elevata UI preview" width="900"/>
@@ -66,17 +63,12 @@ elevata makes architecture explicit.
 
 - Metadata defines behavior.  
 - Dialects own SQL shape.  
-- Execution is deterministic and observable.
+- Control makes changes reviewable and auditable.  
+- Execution is deterministic, observable, and evidence-based.
 
-The result is governed, explainable, and portable data architecture.
+The result is governed, explainable, portable, and executable data architecture.
 
 ---
-
-elevata models datasets, lineage, keys, and execution semantics declaratively.
-
-From this metadata, it derives deterministic logical plans and renders dialect-owned SQL.
-
-The same architecture executes across supported warehouses without changing dataset definitions.
 
 > *Modern data platforms often fail not because of missing tools, but because*  
 > *architecture, lineage, and governance are encoded implicitly in SQL and pipeline code.*  
@@ -97,7 +89,7 @@ These publications explain why modern data platforms need metadata-defined, dete
 
 ## 🧩 Architecture Overview
 
-elevata consists of four layers:
+The core elevata execution pipeline consists of four explicitly separated layers:
 
 1. **Metadata Model**  
 2. **Deterministic Logical Plan**  
@@ -110,9 +102,12 @@ Each layer is explicitly separated.
 
 ## 📚 Example Workflow
 
-1. Define datasets and lineage in metadata  
-2. Inspect generated SQL and lineage  
-3. Execute pipelines deterministically on your target warehouse
+1. Define datasets, lineage, contracts, and execution semantics in metadata  
+2. Discover architecture through Catalog, Data Products, Portfolio, Insights, and Maps  
+3. Inspect generated SQL, lineage, contracts, health, and execution evidence  
+4. Review and approve architecture changes through Architecture Control  
+5. Execute approved or unchanged scopes deterministically on your target warehouse  
+6. Audit execution through Architecture Execution Records
 
 ---
 
@@ -120,14 +115,12 @@ Each layer is explicitly separated.
 
 Pipelines are executed dataset-driven and lineage-aware.
 
-Execution supports full and incremental loads, historization,  
-schema evolution, and structured load logging.
+Execution supports full and incremental loads, historization, schema evolution, and structured load logging.
 
 Behavior is deterministic and observable.
 
 Schema drift is reconciled through Architecture MigrationPlan-driven materialization:  
-renames, adds, type evolution and controlled rebuilds are derived from architecture state,  
-while destructive changes remain explicitly policy-gated.
+renames, adds, type evolution and controlled rebuilds are derived from architecture state, while destructive changes remain explicitly policy-gated.
 
 ---
 
@@ -136,35 +129,21 @@ while destructive changes remain explicitly policy-gated.
 elevata provides a read-only Architecture Catalog for discovering metadata-defined
 executable architecture.
 
-The Catalog shows what exists, how datasets are defined, how they are connected,  
-how they are controlled, where execution evidence is available, how portfolio posture looks,  
-and which architecture quality and governance signals need attention.
+The Catalog shows what exists, how datasets are defined, how they are connected, how they are controlled, where execution evidence is available, how portfolio posture looks, and which architecture quality and governance signals need attention.
 
-Users can search and filter TargetDatasets by schema, owner, lifecycle status,  
-system-managed status, materialization type, incremental strategy and query logic.
+Users can search and filter TargetDatasets by schema, owner, lifecycle status, system-managed status, materialization type, incremental strategy and query logic.
 
-Catalog detail pages summarize architecture metadata, ownership, health, upstream inputs,  
-downstream consumers, column contract signals and the latest Architecture Execution Record  
-for the dataset scope.
+Catalog detail pages summarize architecture metadata, ownership, health, upstream inputs, downstream consumers, column contract signals and the latest Architecture Execution Record for the dataset scope.
 
-Catalog Portfolio summarizes architecture posture across readiness, ownership, contracts,  
-health, review state, execution evidence and layer distribution. Actionable Portfolio KPIs  
-open filtered Catalog worklists so users can inspect affected datasets before navigating to  
-dataset detail or Architecture Control.
+Catalog Portfolio summarizes architecture posture across readiness, ownership, contracts, health, review state, execution evidence and layer distribution. Actionable Portfolio KPIs open filtered Catalog worklists so users can inspect affected datasets before navigating to dataset detail or Architecture Control.
 
-Catalog Data Products show which serving-layer datasets are ready for trusted consumption.  
-Readiness is derived from ownership, metadata health, query contracts, lineage, Architecture  
-Control review state and execution evidence.
+Catalog Data Products show which serving-layer datasets are ready for trusted consumption. Readiness is derived from ownership, metadata health, query contracts, lineage, Architecture Control review state and execution evidence.
 
-Catalog Insights highlight ownership gaps, metadata health findings, custom query logic,  
-downstream consumer visibility, inactive datasets with consumers, missing execution evidence,  
-and dataset-specific Architecture Control review status summaries.
+Catalog Insights highlight ownership gaps, metadata health findings, custom query logic, downstream consumer visibility, inactive datasets with consumers, missing execution evidence, and dataset-specific Architecture Control review status summaries.
 
-Catalog Maps show architecture across layers using layer cards, a layer flow overview,  
-a source-to-target layer dependency matrix and expandable direct dependency examples.
+Catalog Maps show architecture across layers using layer cards, a layer flow overview, a source-to-target layer dependency matrix and expandable direct dependency examples.
 
-The Catalog does not edit metadata and does not execute loads. Architecture Control remains  
-responsible for approval, execution, execution records and retention workflows.
+The Catalog does not edit metadata and does not execute loads. Architecture Control remains responsible for approval, execution, execution records and retention workflows.
 
 ---
 
@@ -172,18 +151,13 @@ responsible for approval, execution, execution records and retention workflows.
 
 elevata makes architecture changes reviewable before execution.
 
-Architecture State, Change Reports, Promotion Reports, Approval Artifacts and Execution Records  
-expose deterministic fingerprints, MigrationPlan actions, policy decisions, review decisions and execution outcomes.
+Architecture State, Change Reports, Promotion Reports, Approval Artifacts and Execution Records expose deterministic fingerprints, MigrationPlan actions, policy decisions, review decisions and execution outcomes.
 
-This supports controlled review, CI checks and environment-to-environment architecture promotion  
-while keeping execution guardrails inside the load runner.
+This supports controlled review, CI checks and environment-to-environment architecture promotion while keeping execution guardrails inside the load runner.
 
-The Architecture Control UI makes approval state, scope, policy status, change summary,  
-execution preview, dependency mode, captured output and execution records visible for controlled scopes.
+The Architecture Control UI makes approval state, scope, policy status, change summary, execution preview, dependency mode, captured output and execution records visible for controlled scopes.
 
-Users can inspect reports, download report JSON, create Approval Artifacts, verify approvals,  
-execute approved or no-change scopes, inspect the resulting Architecture Execution Record,  
-review stored execution history, download record JSON, and apply execution record retention.
+Users can inspect reports, download report JSON, create Approval Artifacts, verify approvals, execute approved or no-change scopes, inspect the resulting Architecture Execution Record, review stored execution history, download record JSON, and apply execution record retention.
 
 ---
 
@@ -191,13 +165,9 @@ review stored execution history, download record JSON, and apply execution recor
 
 elevata models transformations explicitly using **Query Trees**.
 
-Each TargetDataset may define a query tree composed of well-defined  
-operators such as SELECT, JOIN, AGGREGATE, UNION and WINDOW.  
-These operators are represented as metadata objects, not as opaque SQL fragments.
+Each TargetDataset may define a query tree composed of well-defined operators such as SELECT, JOIN, AGGREGATE, UNION and WINDOW. These operators are represented as metadata objects, not as opaque SQL fragments.
 
-The Query Builder models transformations explicitly using structured metadata.
-
-It produces deterministic SQL with stable contracts and field-level lineage.
+The Query Builder produces deterministic SQL with stable contracts, field-level lineage, and transparent query semantics.
 
 ---
 
@@ -205,36 +175,31 @@ It produces deterministic SQL with stable contracts and field-level lineage.
 
 elevata supports deterministic Metadata Naming Guidance while editing TargetColumns.
 
-Guidance is derived from existing column mappings and previously used target names.  
-It helps modelers reuse project-specific naming decisions without AI, without a global dictionary  
-and without enforcing naming rules.
+Guidance is derived from existing column mappings and previously used target names. It helps modelers reuse project-specific naming decisions without AI, without a global dictionary and without enforcing naming rules.
 
-For direct source inputs, elevata uses the technical SourceColumn name.  
-For upstream target inputs, it uses the immediate upstream TargetColumn name, so guidance follows  
-the current modeling step instead of tracing back to the original source-system field.
+For direct source inputs, elevata uses the technical SourceColumn name. For upstream target inputs, it uses the immediate upstream TargetColumn name, so guidance follows the current modeling step instead of tracing back to the original source-system field.
 
-Naming Guidance focuses on rawcore and bizcore technical naming decisions.  
-Serving-layer friendly names and historized rawcore datasets are excluded from recommendation evidence.
+Naming Guidance focuses on rawcore and bizcore technical naming decisions. Serving-layer friendly names and historized rawcore datasets are excluded from recommendation evidence.
 
-Recommended names can be applied directly from the TargetColumn inline editor, but they remain advisory.  
-Existing validation, collision checks and rename handling stay authoritative.
+Recommended names can be applied directly from the TargetColumn inline editor, but they remain advisory. Existing validation, collision checks and rename handling stay authoritative.
 
 ---
 
 ## 🔮 Roadmap
 
-elevata evolves along three strategic axes:
+elevata evolves along four strategic axes:
 
-**1. Ingestion & Source Abstraction**  
-Expanding source patterns (files, APIs, cloud transports)  
-while preserving deterministic RAW semantics.
+**1. Architecture Catalog & Portfolio**  
+Making executable architecture discoverable across datasets, lineage, contracts, ownership, readiness, health, and execution evidence.
 
-**2. Metadata Governance & Contracts**  
-Versioning, breaking-change detection, lineage validation  
-and reproducible execution snapshots.
+**2. Architecture Control & Auditability**  
+Strengthening review, approval, execution evidence, promotion, retention, and controlled runtime operation.
 
-**3. Performance & Adaptive Execution**  
-Warehouse-specific optimization layers and adaptive materialization strategies.
+**3. Source Abstraction & Ingestion**  
+Expanding source patterns such as files, APIs, cloud transports, and federated access while preserving deterministic RAW and Stage semantics.
+ 
+**4. Runtime Hardening & Execution Semantics**  
+Improving backend coverage, dialect behavior, schema evolution safety, and reproducible execution across supported warehouses.
 
 See `/docs` for architectural depth.
 
@@ -251,27 +216,29 @@ see the [elevata Platform Strategy](https://github.com/elevata-labs/elevata/blob
 
 elevata itself does not require personal data.  
 If used with customer datasets, responsibility for compliance remains with the implementing organisation.  
-The system supports pseudo-key hashing and consistent anonymisation strategies via its hashing DSL.
+The system supports pseudo-key hashing and consistent pseudonymisation-oriented strategies via its hashing DSL.
 
 ---
 
 ## Disclaimer
 
-This project is an independent open-source initiative.  
+This project is an independent open-source initiative.
+
 - It is not a consulting service.  
 - It is not a customer project.  
 - It does not store or process customer data.  
 - It is not in competition with any company.  
 
-The purpose of elevata is to contribute to the community by providing a metadata-centric framework for building data platforms.  
+The purpose of elevata is to contribute to the community by providing an Architecture Runtime for metadata-defined data platforms.
+
 The project is published under the AGPL v3 license and open for use by any organization.
 
 ---
 
 ## 🧾 License & Trademark Notice
 
-© 2025-2026 Ilona Tag — All rights reserved.  
-**elevata®** is an open-source software project for data & analytics innovation.  
+© 2025-2026 Ilona Tag - All rights reserved.  
+**elevata®** is an open-source software project for metadata-defined data architecture.
 
 elevata® is a registered trademark in Germany.  
 Other product names, logos, and brands mentioned here are property of their respective owners.

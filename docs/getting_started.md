@@ -1,7 +1,7 @@
 # ⚙️ Getting Started with elevata
 
 > The practical guide to setting up your elevata metadata environment  
-> — from installation to first successful metadata import.
+> - from installation to first successful metadata import.
 
 ---
 
@@ -15,7 +15,8 @@ Before you start, make sure the following are available:
 | **PostgreSQL** | 14+               | Used as elevata metadata repository (SQLite works fine for local use) |  
 | **Git**      | any recent version  | For cloning and version control |
 
-Optional but helpful:  
+Optional but helpful:
+
 - **DuckDB** for quick SQL preview and rendering tests  
 - **Docker Compose** for local all-in-one setup in case you want PostgreSQL instead of SQLite  
 
@@ -25,7 +26,7 @@ Optional but helpful:
 
 ## 🔧 2. Environment Setup
 
-First clone the repo  
+First clone the repo
 
 ```bash
 git clone https://github.com/elevata-labs/elevata.git
@@ -132,8 +133,7 @@ pip install -r requirements/snowflake.txt
 
 ### 🧩 Option SQLite (recommended for first-time setup)
 
-If you just want to explore elevata or run metadata generation locally,  
-you don’t need PostgreSQL — SQLite works out of the box.
+If you just want to explore elevata or run metadata generation locally, you don’t need PostgreSQL - SQLite works out of the box.
 
 Just make sure your `.env` contains:
 
@@ -148,8 +148,7 @@ python manage.py migrate
 python manage.py createsuperuser
 ```
 
-This will create a local file `db.sqlite3` in your project root.  
-Perfect for demos, prototyping, or CI pipelines.
+This will create a local file `db.sqlite3` in your project root. Perfect for demos, prototyping, or CI pipelines.
 
 ### 🧩 Option PostgreSQL (for shared or production environments)
 
@@ -166,9 +165,7 @@ docker compose -f core/postgres/docker-compose.yml up -d db
 ```
 
 Alternative 2: Use your own PostgreSQL (no Docker):  
-If you already have a PostgreSQL server (managed or self-hosted), configure elevata to use it:  
-Configure connection via discrete DB_* variables in your .env file.  
-Ensure role & database exist (if you need to create them):
+If you already have a PostgreSQL server (managed or self-hosted), configure elevata to use it: Configure connection via discrete DB_* variables in your .env file. Ensure role & database exist (if you need to create them):
 
 ```bash
 create role elevata login password 'elevata';
@@ -192,22 +189,21 @@ python manage.py runserver
 ```
 Then open [http://localhost:8000](http://localhost:8000) and log in with your superuser credentials.
 
-You can now:  
+You can now:
+
 - Trigger **auto-import of source system metadata**  
 - Inspect **source datasets and columns**  
 - Define **integration rules** (`integrate = True`)  
 - Trigger **target auto-generation**  
 - Preview **auto-generated** SQL renderings (starting with DuckDB dialect)  
-- Open **Architecture Catalog** to discover datasets, Data Products, maps, insights,  
-  lineage entry points, query contracts and execution evidence references
+- Open **Architecture Catalog** to discover datasets, Data Products, maps, insights, lineage entry points, query contracts and execution evidence references  
 - Open **Architecture Control** to review, approve, preview and execute controlled architecture scopes
 
 ---
 
 ## 🔧 5. Architecture Control
 
-elevata provides deterministic commands and UI workflows for architecture state,  
-review, approval, controlled execution and audit records.
+elevata provides deterministic commands and UI workflows for architecture state, review, approval, controlled execution and audit records.
 
 ### 🧩 5.1 Render Architecture State
 
@@ -315,8 +311,7 @@ From Architecture Control, you can:
 - inspect captured execution output  
 - inspect the Architecture Execution Record
 
-Controlled execution uses the load runner and keeps preflight validation,  
-Architecture Guard enforcement, approval matching and dialect-owned SQL rendering in place.
+Controlled execution uses the load runner and keeps preflight validation, Architecture Guard enforcement, approval matching and dialect-owned SQL rendering in place.
 
 Architecture Execution Records are stored under:
 
@@ -327,10 +322,9 @@ ELEVATA_ARCH_EXECUTION_DIR=.elevata/executions
 
 ## 🔧 6. Secure Connectivity (optional)
 
-If you’re connecting to production metadata systems,
-use environment variables instead of plain-text passwords.
+If you’re connecting to production metadata systems, use environment variables instead of plain-text passwords.
 
-For advanced setups, see  
+For advanced setups, see
 [`secure_metadata_connectivity.md`](secure_metadata_connectivity.md)
 
 ---
@@ -361,4 +355,4 @@ Once your metadata environment is ready, continue with:
 
 ---
 
-© 2025-2026 elevata Labs — Internal Technical Documentation
+© 2025-2026 elevata - Technical Documentation

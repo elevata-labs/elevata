@@ -1,15 +1,15 @@
 # ⚙️ SQL Rendering Conventions
 
-This document describes how elevata renders SQL from the Logical Plan and Expression AST, independently of any specific dialect or version.  
+This document describes how elevata renders SQL from the Logical Plan and Expression AST, independently of any specific dialect or version.
 
-The goal is to:  
+The goal is to:
+
 - produce readable, reviewable SQL  
 - keep formatting predictable  
 - minimise dialect differences  
 - support automated testing and diffing  
 
-The actual syntax details (quoting, function names, hashing) are handled by the **dialect layer**.  
-This document focuses on structure and layout.
+The actual syntax details (quoting, function names, hashing) are handled by the **dialect layer**. This document focuses on structure and layout.
 
 ---
 
@@ -55,15 +55,15 @@ FROM ...
 
 ## 🔧 3. Identifier Conventions
 
-Identifiers are stored **unquoted** in metadata and AST.  
+Identifiers are stored **unquoted** in metadata and AST.
 
-Dialect-specific rules decide how they are quoted, but the conventions are:  
+Dialect-specific rules decide how they are quoted, but the conventions are:
 
 - table and column names retain their logical casing  
 - aliases are always explicit  
 - schema-qualified names are rendered as `schema.table AS alias` (with dialect quoting applied)  
 
-Examples (conceptual):  
+Examples (conceptual):
 
 ```sql
 "schema"."table" AS "t"
@@ -76,7 +76,7 @@ No dialect-specific quoting rules are embedded in the Logical Plan; the dialect 
 
 ## 🔧 4. Literal Conventions
 
-Literals are represented as `Literal(value)` in the AST. Rendering rules:  
+Literals are represented as `Literal(value)` in the AST. Rendering rules:
 
 - Strings use single quotes: `'value'` (escaped as needed)  
 - Numbers appear as-is: `42`, `3.14`  
@@ -93,7 +93,7 @@ All expressions use the Expression AST derived from the DSL. Common patterns:
 
 ### 🧩 5.1 Column references
 
-Represented as `ColumnRef(column_name, table_alias?)`.  
+Represented as `ColumnRef(column_name, table_alias?)`.
 
 Rendered as:
 
@@ -109,7 +109,7 @@ if a table alias is present, otherwise:
 
 ### 🧩 5.2 CONCAT and CONCAT_WS
 
-String concatenation is expressed via:  
+String concatenation is expressed via:
 
 - `ConcatExpr(args)` → `CONCAT(a, b, ...)`  
 - `ConcatWsExpr(separator, args)` → `CONCAT_WS(sep, a, b, ...)`  
@@ -141,7 +141,7 @@ ROW_NUMBER() OVER (
 )
 ```
 
-Formatting conventions:  
+Formatting conventions:
 
 - `OVER` clause is placed on the same line as the function name or on the next line as a block.  
 - `PARTITION BY` and `ORDER BY` appear in that order inside the parentheses.  
@@ -169,14 +169,14 @@ Subqueries are rendered as parenthesised SELECT statements with an alias:
 ) AS "alias"
 ```
 
-Conventions:  
+Conventions:
 
 - Opening parenthesis on its own line  
 - Inner SELECT indented  
 - Closing parenthesis aligned with `FROM` clause  
 - Alias always present  
 
-Subqueries are used most prominently for multi-source Stage ranking:  
+Subqueries are used most prominently for multi-source Stage ranking:
 
 ```sql
 SELECT
@@ -204,7 +204,7 @@ UNION ALL
 SELECT ...
 ```
 
-Conventions:  
+Conventions:
 
 - Each SELECT starts on a new line  
 - `UNION` or `UNION ALL` in uppercase  
@@ -218,7 +218,7 @@ UNION nodes are often wrapped in a subquery when additional logic (e.g. ranking)
 
 ### 🧩 9.1 ORDER BY
 
-Order items are rendered as:  
+Order items are rendered as:
 
 ```sql
 ORDER BY
@@ -226,7 +226,7 @@ ORDER BY
   <expr2> DESC
 ```
 
-- one expression per line
+- one expression per line  
 - explicit direction (`ASC`/`DESC`) when required
 
 ### 🧩 9.2 GROUP BY
@@ -245,7 +245,7 @@ Where possible, the same expression that appears in the SELECT list is reused to
 
 ## 🔧 10. Hidden Technical Columns
 
-Certain internal columns, used for ranking or internal bookkeeping, follow a clear convention:  
+Certain internal columns, used for ranking or internal bookkeeping, follow a clear convention:
 
 - prefixed with double underscore, e.g. `__src_rank_ord`  
 - not surfaced in external models unless explicitly selected  
@@ -256,7 +256,7 @@ These columns are still rendered like any other column, but their naming makes t
 
 ## 🔧 11. Whitespace & Formatting
 
-elevata enforces a consistent formatting style:  
+elevata enforces a consistent formatting style:
 
 - keywords in uppercase (`SELECT`, `FROM`, `WHERE`, ...)  
 - one major clause per line (SELECT, FROM, WHERE, ...)  
@@ -269,7 +269,7 @@ A SQL beautifier may be applied after rendering to ensure consistent whitespace,
 
 ## 🔧 12. Dialect-Specific Differences
 
-While the **structure** and **layout** are shared across dialects, the following are delegated to the dialect implementation:  
+While the **structure** and **layout** are shared across dialects, the following are delegated to the dialect implementation:
 
 - exact identifier quoting syntax  
 - boolean literal spelling  
@@ -282,7 +282,7 @@ The Logical Plan and Expression AST remain identical. Only the surface syntax di
 
 ## 🔧 13. Summary
 
-These rendering conventions ensure that SQL generated by elevata is:  
+These rendering conventions ensure that SQL generated by elevata is:
 
 - predictable and easy to diff  
 - readable for humans  
@@ -295,9 +295,9 @@ They provide a stable foundation for future dialects (Snowflake, BigQuery, Datab
 
 ## 🔧 14. Related Documents
 
-- [Automatic Target Generation Logic](generation_logic.md)
+- [Automatic Target Generation Logic](generation_logic.md)  
 - [Target Backends](target_backends.md)
 
 ---
 
-© 2025-2026 elevata Labs — Internal Technical Documentation
+© 2025-2026 elevata - Technical Documentation

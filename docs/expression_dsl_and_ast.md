@@ -1,8 +1,9 @@
 # ⚙️ Expression DSL & AST
 
-This document describes elevata’s vendor-neutral **Expression DSL** (Domain Specific Language) and its corresponding **AST** (Expression Abstract Syntax Tree).  
+This document describes elevata’s vendor-neutral **Expression DSL** (Domain Specific Language) and its corresponding **AST** (Expression Abstract Syntax Tree).
 
-It forms the foundation of the multi-dialect SQL engine and powers:  
+It forms the foundation of the multi-dialect SQL engine and powers:
+
 - surrogate-key hashing  
 - foreign-key lineage hashing  
 - CONCAT/COALESCE operations  
@@ -14,13 +15,15 @@ It forms the foundation of the multi-dialect SQL engine and powers:
 
 ## 🔧 1. Purpose of the DSL & AST
 
-**The architecture introduces:**  
+**The architecture introduces:**
+
 - a safe, declarative **Expression DSL** stored in metadata  
 - a **parser** converting DSL → AST  
 - a **vendor-neutral AST** describing expressions  
 - **dialect renderers** (BigQuery, Databricks, DuckDB, Fabric Warehouse, MSSQL, Postgres, Snowflake) that emit actual SQL  
 
-This ensures:  
+This ensures:
+
 - deterministic SQL generation  
 - cross-dialect reproducibility  
 - fully testable and composable expression logic  
@@ -58,7 +61,8 @@ Hash256(
 )
 ```
 
-Dialect renderings:  
+Dialect renderings:
+
 - **BigQuery** → `TO_HEX(SHA256(CONCAT_WS('|', ...)))`  
 - **Databricks** → `SHA2(CONCAT_WS('|', ...), 256)`  
 - **DuckDB** → `SHA256(CONCAT_WS('|', ...))`  
@@ -104,7 +108,8 @@ This refers to an upstream expression already defined in the execution graph.
 
 Located in: `metadata/rendering/dsl.py`
 
-Responsibilities:  
+Responsibilities:
+
 1. Normalize input  
 2. Detect function calls  
 3. Parse nested expressions  
@@ -112,7 +117,8 @@ Responsibilities:
 5. Split arguments respecting parentheses  
 6. Convert to AST nodes  
 
-Specialized rules:  
+Specialized rules:
+
 - `COL(name)` → `ColumnRef`  
 - `'literal'` → `Literal`  
 - `{expr:x}` → `ExprRef`  
@@ -195,7 +201,8 @@ The dialect handles parenthesis placement and alias rendering.
 
 ## 🔧 8. Dialect Rendering Responsibilities
 
-Each SQL dialect must render:  
+Each SQL dialect must render:
+
 - literals  
 - identifiers  
 - CONCAT / CONCAT_WS  
@@ -206,7 +213,8 @@ Each SQL dialect must render:
 
 Consistency across dialects is ensured because all begin from the same AST.
 
-Examples:  
+Examples:
+
 - **BigQuery**: `TO_HEX(SHA256(...))`  
 - **Databricks**: `SHA2(..., 256)`  
 - **DuckDB**: `SHA256(...)`  
@@ -221,7 +229,8 @@ Examples:
 
 The SK/FK hashing pipeline uses the DSL and AST exclusively.
 
-Guarantees:  
+Guarantees:
+
 - deterministic key generation  
 - lexicographically ordered BK parts  
 - proper literal separators: `'~'` (pair) and `'|'` (between pairs)  
@@ -242,4 +251,4 @@ Guarantees:
 
 ---
 
-© 2025-2026 elevata Labs — Internal Technical Documentation
+© 2025-2026 elevata - Technical Documentation
