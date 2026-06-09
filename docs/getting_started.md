@@ -1,7 +1,6 @@
 # ⚙️ Getting Started with elevata
 
-> The practical guide to setting up your elevata metadata environment  
-> - from installation to first successful metadata import.
+> The practical guide to setting up your elevata metadata environment - from installation to first successful metadata import.
 
 ---
 
@@ -144,6 +143,7 @@ DB_ENGINE=sqlite
 Then run the standard migrations:
 
 ```bash
+cd core
 python manage.py migrate
 python manage.py createsuperuser
 ```
@@ -161,11 +161,13 @@ pip install -r requirements/postgres.txt
 Alternative 1: run postgres (17) locally with docker:
 
 ```bash
-docker compose -f core/postgres/docker-compose.yml up -d db
+cd core
+docker compose -f postgres/docker-compose.yml up -d db
 ```
 
 Alternative 2: Use your own PostgreSQL (no Docker):  
-If you already have a PostgreSQL server (managed or self-hosted), configure elevata to use it: Configure connection via discrete DB_* variables in your .env file. Ensure role & database exist (if you need to create them):
+If you already have a PostgreSQL server (managed or self-hosted), configure elevata to use it:  
+Configure connection via discrete DB_* variables in your .env file. Ensure role & database exist (if you need to create them):
 
 ```bash
 create role elevata login password 'elevata';

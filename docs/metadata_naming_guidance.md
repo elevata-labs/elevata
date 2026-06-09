@@ -1,7 +1,6 @@
 # ⚙️ Metadata Naming Guidance
 
-> Deterministic, project-specific naming assistance for TargetColumn modeling  
-> based on existing metadata mappings, not AI or global naming dictionaries.
+> Deterministic, project-specific naming assistance for TargetColumn modeling based on existing metadata mappings, not AI or global naming dictionaries.
 
 ---
 

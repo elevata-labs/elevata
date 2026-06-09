@@ -20,17 +20,22 @@ Metadata → Logical Plan → Expression AST → Dialect Rendering → SQL
 
 ---
 
-## 🔧 2. Dataset Types & Generation Rules
+## 🔧 2. Target Schema Layers & Generation Rules
 
-The generation logic depends heavily on the dataset type.
+The generation logic depends heavily on the TargetSchema layer in which a TargetDataset resides.
 
-### 🧩 2.1 RAW
+In elevata, `raw`, `stage`, `rawcore`, `bizcore`, and `serving` are logical architecture layers represented by TargetSchema metadata.  
+TargetDatasets inherit default behavior from their TargetSchema, such as materialization, historization, incremental strategy, surrogate-key policy, and governance defaults.
+
+Dataset-level settings may override or refine this behavior, but the architectural intent is defined by the layer.
+
+### 🧩 2.1 RAW layer
 - Direct mapping from source fields  
 - Column expressions are simple column references  
 - No surrogate keys or transformations
 
-### 🧩 2.2 STAGE
-STAGE layers unify multiple upstream sources:
+### 🧩 2.2 STAGE layer
+STAGE datasets unify multiple upstream sources:
 
 #### 🔎 Identity Mode
 Used when the upstream provides a `source_identity_id`.
@@ -47,19 +52,19 @@ Used when multiple upstream sources require conflict resolution.
 - A `ROW_NUMBER() OVER (...)` window assigns a rank  
 - Only rows with rank = 1 are selected
 
-### 🧩 2.3 CORE / BUSINESS
+### 🧩 2.3 CORE / BUSINESS layers
 - Surrogate keys are generated from BK columns  
 - Foreign keys reference parent surrogate key structure  
 - Expression AST builds deterministic hashing expressions
 
-### 🧩 2.4 RAWCORE & HISTORY (HIST)
+### 🧩 2.4 RAWCORE layer & HISTORY datasets (HIST)
 
 #### 🔎 RAWCORE:
-- historizable layer, source for *_hist.  
-- historize=True controls if a _hist-dataset is generated.
+- historizable architecture layer and source for *_hist datasets.  
+- `historize=True` controls whether a `_hist` dataset is generated.
 
 #### 🔎 HISTORY (*_hist):
-- lives in the same TargetSchema as rawcore.  
+- lives in the same TargetSchema layer as rawcore.  
 - naming: `<rawcore_name>_hist`.  
 - generated automatically and fully system-managed.  
 - schema structure:  
@@ -87,7 +92,7 @@ History SQL is execution-ready.
 
 ## 🔧 3. Column Expression Generation
 
-Each target column is associated with a **Column Mapping** and an expression. Expressions are built using the **Expression DSL** and then parsed into the Expression AST.
+Each target column is associated with a **Column Mapping** and an expression. Expressions are built using the **Expression DSL** and then parsed into the **Expression AST**.
 
 Example DSL:
 ```text
@@ -266,7 +271,7 @@ This ensures:
 
 ## 🔧 11. Bizcore Generation Semantics
 
-Bizcore datasets follow the **same generation pipeline** as Raw, Stage, Core, and Serving datasets.
+Bizcore datasets follow the **same generation pipeline** as datasets in the Raw, Stage, Rawcore, and Serving layers.
 
 There is no special-case SQL generation for Bizcore.
 
@@ -296,7 +301,7 @@ The generation logic is the heart of elevata:
 - Logical Plan formalizes the operation  
 - Expression AST encodes column semantics  
 - Dialect renders valid SQL  
-- Deterministic generation of Historization datasets (no manual maintenance)  
+- Deterministic generation of historization datasets from Rawcore-layer metadata
 
 This architecture supports multiple SQL backends without changing metadata or Logical Plans.
 

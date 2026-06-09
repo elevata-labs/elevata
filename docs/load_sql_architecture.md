@@ -23,9 +23,7 @@ The system is designed so that:
 
 > **Note**  
 > This document focuses exclusively on SQL generation and rendering.  
-> Execution order, orchestration semantics, retries, failure handling,  
-> and execution observability are described separately in  
-> [Load Execution & Orchestration Architecture](load_execution_architecture.md).
+> Execution order, orchestration semantics, retries, failure handling, and execution observability are described separately in [Load Execution & Orchestration Architecture](load_execution_architecture.md).
 
 ---
 

@@ -1,7 +1,6 @@
 # ⚙️ Secure Metadata Connectivity
 
-> How elevata securely manages credentials, runtime secrets, and dynamic profiles  
-> - without storing sensitive data in plain text.
+> How elevata securely manages credentials, runtime secrets, and dynamic profiles - without storing sensitive data in plain text.
 
 ---
 
@@ -23,7 +22,7 @@ All metadata transport is strictly read-only for external clients
 
 ## 🔧 2. The Profile Architecture
 
-Profiles are located in `core/config/` and follow a clear naming pattern:
+Profiles are located in `config/` and follow a clear naming pattern:
 
 ```bash
 elevata_profiles.yaml
@@ -93,7 +92,7 @@ The pepper is injected during surrogate key generation in TargetGenerationServic
 
 ## 🔧 5. Using the Profile Resolver
 
-At runtime, elevata uses the resolver in core/metadata/config/profiles.py to dynamically select the right connection and inject secrets:
+At runtime, elevata uses the resolver in `core/metadata/config/profiles.py` to dynamically select the right connection and inject secrets:
 
 ```python
 from metadata.config.profiles import load_profile

@@ -11,8 +11,7 @@ A dialect is responsible for translating a **logical, metadata-driven query plan
 This means:
 
 > **The same logical dataset definition produces the same semantic result -  
-> regardless of whether it runs on BigQuery, Databricks, DuckDB, Fabric Warehouse, MSSQL, Postgres   
-> or Snowflake.**
+> regardless of whether it runs on BigQuery, Databricks, DuckDB, Fabric Warehouse, MSSQL, Postgres or Snowflake.**
 
 ---
 
