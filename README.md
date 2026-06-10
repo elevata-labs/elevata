@@ -49,7 +49,7 @@ From these definitions, elevata derives deterministic logical plans, renders dia
 Schema evolution, incremental loads, historization, approvals, and execution evidence are planned, validated, and applied deterministically.
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/elevata-labs/elevata/main/docs/elevata_v2_7_0.png" alt="elevata UI preview" width="900"/>
+  <img src="https://raw.githubusercontent.com/elevata-labs/elevata/main/docs/elevata_v2_8_0.png" alt="elevata UI preview" width="900"/>
   <br/>
   <em>Architecture Runtime UI for discovering, controlling, modeling, and executing metadata-defined data architecture</em>
 </p>
@@ -105,7 +105,7 @@ Each layer is explicitly separated.
 1. Define datasets, lineage, contracts, and execution semantics in metadata  
 2. Discover architecture through Catalog, Data Products, Portfolio, Insights, and Maps  
 3. Inspect generated SQL, lineage, contracts, health, and execution evidence  
-4. Review and approve architecture changes through Architecture Control  
+4. Review architecture changes through Architecture Review Briefing and approve them through Architecture Control  
 5. Execute approved or unchanged scopes deterministically on your target warehouse  
 6. Audit execution through Architecture Execution Records
 
@@ -157,7 +157,10 @@ This supports controlled review, CI checks and environment-to-environment archit
 
 The Architecture Control UI makes approval state, scope, policy status, change summary, execution preview, dependency mode, captured output and execution records visible for controlled scopes.
 
-Users can inspect reports, download report JSON, create Approval Artifacts, verify approvals, execute approved or no-change scopes, inspect the resulting Architecture Execution Record, review stored execution history, download record JSON, and apply execution record retention.
+Architecture Review Briefing adds compact reviewer guidance directly inside Architecture Control. It summarizes the selected scope, review state, change volume, policy attention, destructive or blocking signals, execution readiness and suggested reviewer focus before approval or execution.
+
+Users can inspect reports, open the Review Briefing details on demand, download report JSON, create Approval Artifacts, verify approvals, execute approved or no-change scopes, inspect the resulting Architecture Execution Record, review stored execution history, download record JSON, and apply execution record retention.
+
 
 ---
 
@@ -193,7 +196,7 @@ elevata evolves along four strategic axes:
 Making executable architecture discoverable across datasets, lineage, contracts, ownership, readiness, health, and execution evidence.
 
 **2. Architecture Control & Auditability**  
-Strengthening review, approval, execution evidence, promotion, retention, and controlled runtime operation.
+Strengthening review briefing, approval, execution evidence, promotion, retention, and controlled runtime operation.
 
 **3. Source Abstraction & Ingestion**  
 Expanding source patterns such as files, APIs, cloud transports, and federated access while preserving deterministic RAW and Stage semantics.

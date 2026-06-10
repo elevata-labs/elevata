@@ -167,6 +167,162 @@ Contact: <https://github.com/elevata-labs/elevata>.
     <div class="small mt-1">{{ error_message }}</div>
   </div>
 {% elif review_status %}
+  {% if review_briefing %}
+    <div class="card mb-4">
+      <div class="card-body">
+        <div class="d-flex align-items-start justify-content-between gap-3 mb-3">
+          <div>
+            <div class="fw-semibold mb-1">Architecture Review Briefing</div>
+            <p class="text-muted small mb-0">
+              Compact reviewer guidance derived from the current report, review state
+              and execution preview.
+            </p>
+          </div>
+          <div class="d-flex gap-2 flex-wrap justify-content-end">
+            <span class="badge {{ review_briefing.review_badge_class }}">
+              <i class="bi {{ review_briefing.review_icon }}"></i>
+              {{ review_briefing.review_label }}
+            </span>
+            {% if review_briefing.has_attention %}
+              <span class="badge text-bg-warning">
+                {{ review_briefing.attention_count }} attention signal(s)
+              </span>
+            {% else %}
+              <span class="badge text-bg-success">No attention signals</span>
+            {% endif %}
+          </div>
+        </div>
+
+        <div class="row g-3 small mb-3">
+          <div class="col-lg-3 col-md-6">
+            <div class="border rounded p-3 h-100 bg-light">
+              <div class="text-muted mb-1">Scope</div>
+              <div class="fw-semibold">{{ review_briefing.scope_label }}</div>
+              <div class="text-muted">{{ review_briefing.scope_mode }}</div>
+            </div>
+          </div>
+          <div class="col-lg-3 col-md-6">
+            <div class="border rounded p-3 h-100 bg-light">
+              <div class="text-muted mb-1">Review state</div>
+              <div class="fw-semibold">
+                <i class="bi {{ review_briefing.review_icon }}"></i>
+                {{ review_briefing.review_label }}
+              </div>
+              <div class="text-muted">{{ review_briefing.review_status }}</div>
+            </div>
+          </div>
+          <div class="col-lg-3 col-md-6">
+            <div class="border rounded p-3 h-100 bg-light">
+              <div class="text-muted mb-1">Attention</div>
+              {% if review_briefing.has_attention %}
+                <div class="fw-semibold text-warning">
+                  {{ review_briefing.attention_count }} signal(s)
+                </div>
+                <div class="text-muted">Review before approval or execution</div>
+              {% else %}
+                <div class="fw-semibold text-success">No attention signals</div>
+                <div class="text-muted">No blocking briefing signal detected</div>
+              {% endif %}
+            </div>
+          </div>
+          <div class="col-lg-3 col-md-6">
+            <div class="border rounded p-3 h-100 bg-light">
+              <div class="text-muted mb-1">Detailed sections</div>
+              <div class="fw-semibold">{{ review_briefing.sections|length }} section(s)</div>
+              <div class="text-muted">Available on demand below</div>
+            </div>
+          </div>
+        </div>
+
+        {% for section in review_briefing.sections %}
+          {% if section.key == "suggested_reviewer_focus" %}
+            {% for signal in section.signals %}
+              {% if signal.details %}
+                <div class="border rounded p-3 bg-light small">
+                  <div class="fw-semibold mb-2">
+                    <i class="bi {{ signal.icon }}"></i>
+                    Suggested reviewer focus
+                  </div>
+                  <ul class="mb-0 ps-3">
+                    {% for detail in signal.details %}
+                      <li>{{ detail }}</li>
+                    {% endfor %}
+                  </ul>
+                </div>
+              {% endif %}
+            {% endfor %}
+          {% endif %}
+        {% endfor %}
+
+        <div class="d-flex justify-content-end mt-3">
+          <button
+            class="btn btn-sm btn-outline-secondary"
+            type="button"
+            data-bs-toggle="collapse"
+            data-bs-target="#architecture-review-briefing-details"
+            aria-expanded="false"
+            aria-controls="architecture-review-briefing-details"
+          >
+            <i class="bi bi-chevron-down"></i>
+            Show briefing details
+          </button>
+        </div>
+
+        <div class="collapse mt-3" id="architecture-review-briefing-details">
+          <div class="border-top pt-3">
+            <div class="row g-3 small">
+              {% for section in review_briefing.sections %}
+                <div class="col-lg-6">
+                  <div class="border rounded p-3 h-100 bg-light">
+                    <div class="d-flex align-items-start justify-content-between gap-2 mb-2">
+                      <div>
+                        <div class="fw-semibold">{{ section.title }}</div>
+                        <div class="text-muted">{{ section.description }}</div>
+
+                      </div>
+                      {% if section.attention_count %}
+                        <span class="badge text-bg-warning">
+                          {{ section.attention_count }}
+                        </span>
+                      {% else %}
+                        <span class="badge text-bg-success">ok</span>
+                      {% endif %}
+                    </div>
+
+                    {% for signal in section.signals %}
+                      <div class="border-top pt-2 mt-2">
+                        <div class="d-flex align-items-start justify-content-between gap-2">
+                          <div class="fw-semibold">
+                            <i class="bi {{ signal.icon }}"></i>
+                            {{ signal.title }}
+                          </div>
+                          <span class="badge {{ signal.badge_class }}">
+                            {{ signal.level }}
+                          </span>
+                        </div>
+                        <div class="text-muted mt-1">
+                          {{ signal.message }}
+                        </div>
+                        {% if signal.details %}
+                          <ul class="mb-0 mt-2 ps-3">
+                            {% for detail in signal.details %}
+                              <li>{{ detail }}</li>
+                            {% endfor %}
+                          </ul>
+                        {% endif %}
+                      </div>
+                    {% endfor %}
+
+                  </div>
+                </div>
+              {% endfor %}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  {% endif %}
+
   <div class="row g-4 mb-4">
     <div class="col-lg-7">
       <div class="card h-100">

@@ -34,6 +34,8 @@ Policy Decisions
   ↓
 Architecture Change Report
   ↓
+Architecture Review Briefing
+  ↓
 Architecture Approval Artifact
   ↓
 Controlled Execution
@@ -249,6 +251,24 @@ It supports:
 - TargetDataset scopes  
 - TargetDataset scopes with target-only execution
 
+### 🧩 6.1 Architecture Review Briefing
+
+Architecture Review Briefing is a compact, deterministic decision aid inside Architecture Control.
+
+It summarizes what a reviewer should understand before approving or executing the selected scope:
+
+- selected scope and scope size  
+- review state  
+- architecture change counts  
+- policy attention  
+- destructive or blocking migration signals  
+- execution readiness  
+- suggested reviewer focus
+
+The briefing is derived from existing Architecture Control signals: the current scoped Architecture Change Report, the Architecture Review Status and the Execution Preview. It is read-only and does not create approvals, run approval checks, xecute loads or mutate metadata.
+
+The UI keeps the briefing compact by showing the main reviewer signals first. Detailed sections are available on demand through an expandable detail area.
+
 The Architecture Control UI provides controlled actions for architecture artifacts and execution:
 
 - show the scoped Architecture Change Report  
@@ -256,6 +276,7 @@ The Architecture Control UI provides controlled actions for architecture artifac
 - create an Architecture Approval Artifact  
 - check the stored Approval Artifact against the report  
 - refresh the Architecture Review Status  
+- inspect the Architecture Review Briefing  
 - inspect the Execution Preview  
 - run controlled load execution  
 - inspect captured execution output  

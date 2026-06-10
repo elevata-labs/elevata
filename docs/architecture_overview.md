@@ -50,6 +50,8 @@ Policy Decisions
   ↓
 Architecture Change Report
   ↓
+Architecture Review Briefing
+  ↓
 Architecture Approval Artifact
   ↓
 Execution Preview
@@ -188,9 +190,10 @@ Architecture Control uses the same semantic path as execution:
 Architecture State → Architecture Diff → MigrationPlan → Policy Decisions
 ```
 
-The Architecture Control UI adds a constrained operational layer:
+The Architecture Control UI adds a constrained operational layer. Architecture Review Briefing summarizes reviewer attention from the current scoped report, review status and execution preview before approval or execution:
 
 - scope-aware report and review status  
+- compact Architecture Review Briefing  
 - approval artifact creation and verification  
 - execution preview  
 - controlled load execution  

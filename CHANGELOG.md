@@ -12,6 +12,88 @@ This project adheres to [Semantic Versioning](https://semver.org/) and [Keep a C
 
 ---
 
+## [2.8.0] - 2026-06-10
+
+This release adds **Architecture Review Briefing**:  
+a compact, deterministic reviewer guidance panel inside Architecture Control.
+
+The briefing helps reviewers understand the selected architecture scope before approval or execution.  
+It summarizes review state, change volume, policy attention, destructive or blocking signals,  
+execution readiness and suggested reviewer focus without replacing Architecture Change Reports,  
+Approval Artifacts or Execution Preview.
+
+---
+
+### ✨ Added
+
+#### Architecture Review Briefing
+
+- Added deterministic Architecture Review Briefing service for Architecture Control scopes  
+- Added compact briefing sections for:  
+    - scope summary  
+    - review state  
+    - change summary  
+    - policy attention  
+    - destructive and blocking attention  
+    - execution readiness  
+    - suggested reviewer focus  
+- Added support for all-dataset, schema and TargetDataset Architecture Control scopes  
+- Added execution-preview awareness for dependency mode, gate state and execution step count  
+- Added compact Architecture Control UI panel with attention badges and on-demand detail expansion  
+- Added reviewer-focus guidance derived from existing report, review status and execution preview signals
+
+---
+
+### 🔄 Improved
+
+#### Architecture Control Review UX
+
+- Improved Architecture Control readability by surfacing the most important review signals near the selected scope  
+- Kept detailed briefing sections collapsed by default to avoid duplicating existing Review Status, Report and Execution Preview details  
+- Kept suggested reviewer focus visible because it is the decision-oriented value of the briefing  
+- Kept the briefing inside the existing Architecture Control page instead of adding a separate workflow  
+- Added defensive view integration so an unavailable briefing does not break Architecture Control rendering
+
+#### Documentation
+
+- Updated Architecture Control Plane documentation with Architecture Review Briefing behavior  
+- Updated Architecture Overview with Review Briefing in the Architecture Control runtime flow  
+- Updated documentation index with Review Briefing positioning  
+- Updated README Architecture Control summary with compact reviewer guidance  
+- Updated CHANGELOG with v2.8.0 release notes
+
+---
+
+### 🔒 Governance & Determinism
+
+- Architecture Review Briefing is read-only  
+- Architecture Review Briefing does not mutate metadata  
+- Architecture Review Briefing does not create Approval Artifacts  
+- Architecture Review Briefing does not run approval checks  
+- Architecture Review Briefing does not execute loads  
+- Architecture Review Briefing does not change approval or execution logic  
+- Architecture Review Briefing does not introduce AI-based inference  
+- Architecture Review Briefing does not add database models or migrations  
+- Architecture Change Reports, Approval Artifacts, Execution Preview and Architecture Execution Records remain authoritative artifacts
+
+---
+
+### 🧪 Quality & Stability
+
+- Added tests for no-change Architecture Control scopes  
+- Added tests for pending review briefing state  
+- Added tests for approved matching changes  
+- Added tests for blocked policy attention  
+- Added tests for destructive migration attention  
+- Added tests for approval drift reviewer focus  
+- Added tests for TargetDataset, schema and all-dataset scope summaries  
+- Added tests for read-only service behavior  
+- Added tests for Architecture Control view briefing context  
+- Added regression coverage for optional briefing rendering with lightweight view test doubles  
+- Verified compact briefing display and expandable detail sections in the UI
+ 
+---
+
 ## [2.7.0] - 2026-06-04
 
 This release adds **Metadata Naming Guidance**:  

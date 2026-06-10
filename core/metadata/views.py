@@ -70,6 +70,9 @@ from metadata.architecture.execution_record import (
   format_architecture_execution_duration,
   render_architecture_execution_record_payload_json,
 )
+from metadata.architecture.review_briefing import (
+  build_architecture_review_briefing,
+)
 from metadata.architecture.operations import (
   ArchitectureOperationsError,
   build_target_dataset_architecture_operations_context,
@@ -490,6 +493,37 @@ def _architecture_control_execution_result_for_scope(
     return None
 
   return result
+
+
+def _build_architecture_control_review_briefing(
+  *,
+  control_context: Any | None,
+  scope: ArchitectureControlScope | None,
+  execution_preview: Any | None,
+  execution_preview_error: str | None,
+):
+  """
+  Build the optional Architecture Review Briefing for the Control page.
+  """
+  if control_context is None or scope is None:
+    return None
+
+  if getattr(control_context, "report", None) is None:
+    return None
+
+  if getattr(control_context, "review_status", None) is None:
+    return None
+
+  try:
+    return build_architecture_review_briefing(
+      control_context=control_context,
+      scope=scope,
+      execution_preview=execution_preview,
+      execution_preview_error=execution_preview_error,
+    )
+  except Exception as exc:
+    logger.exception("Architecture Control Review Briefing failed: %s", exc)
+    return None
 
 
 def make_crud_view(model):
@@ -944,6 +978,7 @@ def architecture_control(request):
   review_status = None
   execution_preview = None
   execution_preview_error = None
+  review_briefing = None
   last_execution_result = None
   execution_history = ()
   execution_history_error = None
@@ -991,6 +1026,13 @@ def architecture_control(request):
       )
     except ArchitectureExecutionPreviewError as exc:
       execution_preview_error = str(exc)
+
+    review_briefing = _build_architecture_control_review_briefing(
+      control_context=control_context,
+      scope=scope,
+      execution_preview=execution_preview,
+      execution_preview_error=execution_preview_error,
+    )
   except ArchitectureControlError as exc:
     scope = None
     error_message = str(exc)
@@ -1026,6 +1068,7 @@ def architecture_control(request):
     "review_status": review_status,
     "execution_preview": execution_preview,
     "execution_preview_error": execution_preview_error,
+    "review_briefing": review_briefing,
     "last_execution_result": last_execution_result,
     "execution_history": execution_history,
     "execution_history_error": execution_history_error,

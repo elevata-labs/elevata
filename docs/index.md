@@ -70,7 +70,7 @@ This index gives you an overview of all major topics and how they fit together.
   Consumer-readiness perspective for serving-layer datasets, derived from ownership, health, lineage, contracts, review state and execution evidence.
 
 - [Architecture Control Plane](architecture_control_plane.md)  
-  Deterministic architecture state, change reports, promotion reports, approval artifacts, policy decisions and fingerprints for review, CI, controlled approval, and architecture promotion workflows.
+  Deterministic architecture state, change reports, review briefing, promotion reports, approval artifacts, policy decisions and fingerprints for review, CI, controlled approval, and architecture promotion workflows.
 
 ---
 
@@ -181,7 +181,7 @@ A personal open-source initiative exploring how data architecture can be defined
 
 ---
 
-_Last updated: 2026-06-07_
+_Last updated: 2026-06-10_
 
 © 2025-2026 elevata - Technical Documentation  
 Built with purpose. Rendered with precision. 🪶
