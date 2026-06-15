@@ -12,6 +12,77 @@ This project adheres to [Semantic Versioning](https://semver.org/) and [Keep a C
 
 ---
 
+## [2.9.0] - 2026-06-15
+
+This release adds **Source Metadata Import Review**:  
+a compact, deterministic import report for source metadata onboarding.
+
+The report helps users understand what a metadata import actually did.  
+It separates created, changed, unchanged and removed columns, surfaces detected primary key columns, and highlights skipped datasets or unresolved review points without changing the existing import workflow.
+
+---
+
+### ✨ Added
+
+#### Source Metadata Import Review
+
+- Added deterministic Source Metadata Import Report structures for import runs  
+- Added dataset-level import review summaries for processed and skipped datasets  
+- Added column-level import outcomes for:  
+    - created  
+    - changed  
+    - unchanged  
+    - removed  
+- Added primary-key detection visibility in import results  
+- Added needs-review indicators for skipped datasets and unresolved metadata decisions  
+- Added compact import result UI with expandable dataset and column outcome details
+
+---
+
+### 🔄 Improved
+
+#### Metadata Import UX
+
+- Replaced ambiguous updated/refreshed wording with explicit changed and unchanged outcomes  
+- Improved user confidence by distinguishing real metadata changes from checked-but-unchanged columns  
+- Kept legacy import summary counters compatible for existing callers  
+- Added structured report output for SQLAlchemy-backed, file-based and REST-oriented metadata import paths  
+- Improved import result rendering inside list and detail contexts with stable left-aligned report content
+
+#### Documentation
+
+- Added Source Metadata Import Review documentation  
+- Updated Source Backends documentation with import review positioning  
+- Updated Architecture Overview with import review in the metadata ingestion layer  
+- Updated README workflow and source ingestion summary  
+- Updated CHANGELOG with v2.9.0 release notes
+
+---
+
+### 🔒 Governance & Determinism
+
+- Source Metadata Import Review is deterministic  
+- Source Metadata Import Review does not introduce AI-based inference  
+- Source Metadata Import Review does not create a new import wizard or workflow  
+- Source Metadata Import Review does not persist import history  
+- Source Metadata Import Review does not add database models or migrations  
+- Source Metadata Import Review does not change existing source import semantics  
+- Existing metadata import behavior remains authoritative for actual SourceColumn mutations
+
+---
+
+### 🧪 Quality & Stability
+
+- Added tests for Source Metadata Import Report serialization  
+- Added tests for legacy import summary compatibility  
+- Added tests for file import report integration  
+- Added tests for skipped dataset reporting  
+- Added tests for created, changed, unchanged and removed column outcomes  
+- Added tests for primary-key detection visibility  
+- Verified SourceDataset and system-level import result rendering in the UI
+ 
+---
+
 ## [2.8.0] - 2026-06-10
 
 This release adds **Architecture Review Briefing**:  

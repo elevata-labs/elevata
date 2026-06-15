@@ -149,3 +149,68 @@ def test_csv_auto_import_normalizes_headers_and_sets_lowercase_json_path(monkeyp
   assert cols["brand"].json_path == "$.brand"
 
   assert res["columns_imported"] >= 2
+
+
+def test_csv_auto_import_result_includes_column_change_details(monkeypatch):
+  ds = _FakeDataset()
+
+  monkeypatch.setattr(
+    file_import,
+    "_sample_csv",
+    lambda uri, **kwargs: [
+      {"Internal ID": 56, "Brand": "Acme"},
+      {"Internal ID": 57, "Brand": "Other"},
+    ],
+  )
+  monkeypatch.setattr(file_import.transaction, "atomic", lambda: _Atomic())
+  monkeypatch.setattr(file_import, "infer_column_profile", lambda values: ("STRING", None, None, None))
+  monkeypatch.setattr(file_import, "infer_pk_columns", lambda rows, col_names: ["internal_id"])
+
+  store = ds.source_columns._items
+  _FakeSourceColumn.objects = _FakeObjects(store)
+  monkeypatch.setattr(file_import, "SourceColumn", _FakeSourceColumn)
+
+  res = file_import.import_file_metadata_for_dataset(ds, file_type="csv")
+
+  assert res["created"] == 2
+  assert res["updated"] == 0
+  assert res["changed"] == 0
+  assert res["unchanged"] == 0
+  assert res["removed"] == 0
+  assert res["pk_detected"] == ["internal_id"]
+  assert [c["name"] for c in res["column_changes"]] == ["brand", "internal_id"]
+  assert {c["action"] for c in res["column_changes"]} == {"created"}
+  assert any(c["primary_key_column"] for c in res["column_changes"])
+
+
+def test_csv_auto_import_distinguishes_changed_and_unchanged_columns(monkeypatch):
+  ds = _FakeDataset()
+
+  monkeypatch.setattr(
+    file_import,
+    "_sample_csv",
+    lambda uri, **kwargs: [
+      {"Internal ID": 56, "Brand": "Acme"},
+      {"Internal ID": 57, "Brand": "Other"},
+    ],
+  )
+  monkeypatch.setattr(file_import.transaction, "atomic", lambda: _Atomic())
+  monkeypatch.setattr(file_import, "infer_column_profile", lambda values: ("STRING", None, None, None))
+  monkeypatch.setattr(file_import, "infer_pk_columns", lambda rows, col_names: ["internal_id"])
+
+  store = ds.source_columns._items
+  _FakeSourceColumn.objects = _FakeObjects(store)
+  monkeypatch.setattr(file_import, "SourceColumn", _FakeSourceColumn)
+
+  first = file_import.import_file_metadata_for_dataset(ds, file_type="csv")
+  second = file_import.import_file_metadata_for_dataset(ds, file_type="csv")
+
+  assert first["created"] == 2
+  assert first["changed"] == 0
+  assert first["unchanged"] == 0
+
+  assert second["created"] == 0
+  assert second["updated"] == 2
+  assert second["changed"] == 0
+  assert second["unchanged"] == 2
+  assert {c["action"] for c in second["column_changes"]} == {"unchanged"}

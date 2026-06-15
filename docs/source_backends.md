@@ -6,6 +6,8 @@ It describes how elevata connects to external systems for schema discovery, meta
 
 It also documents non-relational ingestion sources (Files and REST) and how to configure them via `SourceDataset.ingestion_config`.
 
+Metadata imports also produce a Source Metadata Import Review result so users can inspect created, changed, unchanged, removed, detected and skipped metadata outcomes after import.
+
 ---
 
 ## 🔧 1. General Pattern (SQLAlchemy-backed systems)
@@ -394,6 +396,36 @@ SEC_DEV_CONN_REST_REQRES={"base_url":"https://reqres.in","headers":{"Authorizati
 
 - **`cursor_field`** *(string, optional)*  
   Field name used to derive a cursor/max timestamp.
+
+---
+
+## 🔧 7. Source Metadata Import Review
+
+After metadata import, elevata shows a compact import review result for the selected SourceDataset or SourceSystem.
+
+The review separates import processing from actual metadata impact:
+
+| Outcome | Meaning |
+|---|---|
+| Created | A SourceColumn was newly created in elevata metadata |
+| Changed | An existing SourceColumn differs from the previous technical metadata state |
+| Unchanged | An existing SourceColumn was checked and still matches the previous metadata state |
+| Removed | A SourceColumn was removed because it no longer appears in the imported source shape |
+| PK columns | Primary key columns were detected and, if enabled, marked for integration |
+| Needs review | The dataset was skipped or a metadata decision needs manual attention |
+
+This makes source onboarding safer because users can immediately see whether an import merely refreshed metadata or whether it introduced actual structural changes.
+
+The review is intentionally bounded:
+
+- It does not create a separate import workflow.  
+- It does not persist import history.  
+- It does not add database models or migrations.  
+- It does not execute loads.  
+- It does not change existing import semantics.  
+- It keeps the existing SQLAlchemy, file and REST import paths authoritative.
+
+For a dedicated overview, see [Source Metadata Import Review](source_metadata_import_review.md).
 
 ---
 

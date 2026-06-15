@@ -1,6 +1,6 @@
 <!--
 elevata - Metadata-driven Data Platform Framework
-Copyright © 2025 Ilona Tag
+Copyright © 2025-2026 Ilona Tag
 
 This file is part of elevata.
 
@@ -21,7 +21,7 @@ Contact: <https://github.com/elevata-labs/elevata>.
 -->
 
 {% if empty %}
-  <div class="alert alert-warning">
+  <div class="alert alert-warning text-start">
     {% if scope == "dataset" %}
       Dataset is not marked for metadata import.
     {% else %}
@@ -29,22 +29,98 @@ Contact: <https://github.com/elevata-labs/elevata>.
     {% endif %}
   </div>
 {% else %}
-  <div class="alert alert-success">
+  <div class="alert alert-success text-start">
     {% if scope == "dataset" %}
       ✅ Imported metadata for <strong>{{ dataset }}</strong>.
     {% else %}
       ✅ Imported metadata for system <strong>{{ system }}</strong>.
     {% endif %}
-    Datasets: {{ result.datasets|default:"?" }}, Columns: {{ result.columns_imported|default:"?" }}.
+
+    <div class="mt-2 d-flex flex-wrap gap-2 align-items-center">
+      <span class="badge bg-light text-dark border">Datasets: {{ result.datasets|default:"0" }}</span>
+      <span class="badge bg-light text-dark border">Columns: {{ result.columns_imported|default:"0" }}</span>
+      <span class="badge bg-light text-dark border">Created: {{ result.created|default:"0" }}</span>
+      <span class="badge bg-light text-dark border">Changed: {{ result.changed|default:"0" }}</span>
+      <span class="badge bg-light text-dark border">Unchanged: {{ result.unchanged|default:"0" }}</span>
+      <span class="badge bg-light text-dark border">Removed: {{ result.removed|default:"0" }}</span>
+      <span class="badge bg-light text-dark border">PK columns: {{ result.pk_detected_count|default:"0" }}</span>
+      {% if result.needs_review_count %}
+        <span class="badge bg-warning text-dark">Needs review: {{ result.needs_review_count }}</span>
+      {% endif %}
+      {% if result.skipped_count %}
+        <span class="badge bg-warning text-dark">Skipped: {{ result.skipped_count }}</span>
+      {% endif %}
+    </div>
+
     {% if result.skipped_count %}
-      <div class="mt-2">
-        <span class="badge bg-warning text-dark">
-          {{ result.skipped_count }} dataset{{ result.skipped_count|pluralize }} skipped - check schema/name
-        </span>
-        <div class="small text-muted mt-1">
-          {{ result.skipped|join:", " }}
-        </div>
+      <div class="small text-muted mt-2">
+        {{ result.skipped|join:", " }}
       </div>
+    {% endif %}
+
+    {% if result.report.datasets %}
+      <details class="mt-3">
+        <summary class="small fw-semibold">Show metadata import review details</summary>
+        <div class="mt-2">
+          {% for dataset_report in result.report.datasets %}
+            <div class="border-top pt-2 mt-2">
+              <div class="d-flex flex-wrap gap-2 align-items-center">
+                <strong>{{ dataset_report.dataset_key }}</strong>
+                {% if dataset_report.status == "skipped" %}
+                  <span class="badge bg-warning text-dark">Skipped</span>
+                {% else %}
+                  <span class="badge bg-light text-dark border">{{ dataset_report.source_type }}</span>
+                {% endif %}
+                {% if dataset_report.needs_review %}
+                  <span class="badge bg-warning text-dark">Needs review</span>
+                {% endif %}
+              </div>
+
+              {% if dataset_report.status == "imported" %}
+                <div class="small text-muted mt-1">
+                  Columns: {{ dataset_report.columns_imported }},
+                  created: {{ dataset_report.created }},
+                  changed: {{ dataset_report.changed }},
+                  unchanged: {{ dataset_report.unchanged }},
+                  removed: {{ dataset_report.removed }}.
+                  {% if dataset_report.pk_detected %}
+                    PK: {{ dataset_report.pk_detected|join:", " }}.
+                  {% endif %}
+                </div>
+              {% endif %}
+
+              {% if dataset_report.notes %}
+                <ul class="small mt-1 mb-1">
+                  {% for note in dataset_report.notes %}
+                    <li>{{ note.message }}</li>
+                  {% endfor %}
+                </ul>
+              {% endif %}
+
+              {% if dataset_report.column_changes %}
+                <details class="small mt-1">
+                  <summary>Column outcomes ({{ dataset_report.column_changes|length }})</summary>
+                  <ul class="mb-0">
+                    {% for column_change in dataset_report.column_changes|slice:":30" %}
+                      <li>
+                        <code>{{ column_change.name }}</code> - {{ column_change.action }}
+                        {% if column_change.datatype %} · {{ column_change.datatype }}{% endif %}
+                        {% if column_change.primary_key_column %} · PK{% endif %}
+                        {% if column_change.json_path %} · {{ column_change.json_path }}{% endif %}
+                      </li>
+                    {% endfor %}
+                  </ul>
+                  {% if dataset_report.column_changes|length > 30 %}
+                    <div class="text-muted mt-1">
+                      Showing first 30 column outcomes.
+                    </div>
+                  {% endif %}
+                </details>
+              {% endif %}
+            </div>
+          {% endfor %}
+        </div>
+      </details>
     {% endif %}
   </div>
 {% endif %}

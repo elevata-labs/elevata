@@ -34,6 +34,11 @@ from .connectors import engine_for_source_system
 
 from metadata.models import SourceColumn
 from metadata.constants import SUPPORTED_SQLALCHEMY, BETA_SQLALCHEMY, AUTO_IMPORT_NON_SQLALCHEMY
+from metadata.ingestion.import_report import (
+  SourceMetadataImportColumnChange,
+  SourceMetadataImportDatasetReport,
+  SourceMetadataImportReport,
+)
 from metadata.ingestion.rest_import import import_rest_metadata_for_dataset
 from metadata.ingestion.file_import import import_file_metadata_for_dataset
 
@@ -41,6 +46,7 @@ from metadata.ingestion.file_import import import_file_metadata_for_dataset
 ALLOWED_FOR_IMPORT = SUPPORTED_SQLALCHEMY | BETA_SQLALCHEMY | AUTO_IMPORT_NON_SQLALCHEMY
 
 log = logging.getLogger(__name__)
+
 
 def _materialize_with_related(datasets: Iterable) -> List:
   """
@@ -50,6 +56,7 @@ def _materialize_with_related(datasets: Iterable) -> List:
   if hasattr(datasets, "select_related"):
     return list(datasets.select_related("source_system"))
   return list(datasets)
+
 
 def _clean_description(val):
   """Normalize SQLAlchemy comment/description values."""
@@ -63,6 +70,85 @@ def _clean_description(val):
   elif val.startswith("(") and val.endswith(")"):
     val = val[1:-1].strip("', ")
   return val
+
+
+def _dataset_key(ds) -> str:
+  """
+  Return a stable display key for SourceDataset import reporting.
+  """
+  schema_name = (getattr(ds, "schema_name", None) or "").strip()
+  dataset_name = (getattr(ds, "source_dataset_name", None) or "").strip()
+  return f"{schema_name}.{dataset_name}".strip(".") or "<unknown>"
+
+
+def _source_system_short_name(ds) -> str:
+  """Return the source system short name for reporting."""
+  return str(getattr(getattr(ds, "source_system", None), "short_name", "") or "")
+
+
+def _add_key_review_note(dataset_report: SourceMetadataImportDatasetReport) -> None:
+  """
+  Add a manual key review note when no primary key columns were detected.
+  """
+  if dataset_report.columns_imported <= 0:
+    return
+  if dataset_report.pk_detected:
+    return
+  dataset_report.add_note(
+    severity="warning",
+    code="manual_key_review",
+    message="No primary key columns were detected. Review the natural key before relying on generated integration logic.",
+  )
+
+
+def _add_option_notes(
+  dataset_report: SourceMetadataImportDatasetReport,
+  *,
+  autointegrate_pk: bool,
+  reset_flags: bool,
+) -> None:
+  """
+  Add deterministic notes for import options that affect metadata flags.
+  """
+  if reset_flags:
+    dataset_report.add_note(
+      severity="info",
+      code="flags_reset",
+      message="User-maintained integration flags were reset before refreshing source metadata.",
+    )
+  if autointegrate_pk and dataset_report.pk_detected:
+    dataset_report.add_note(
+      severity="info",
+      code="primary_keys_integrated",
+      message="Detected primary key columns were marked for integration.",
+    )
+
+
+def _column_change_from_result(value: dict[str, Any]) -> SourceMetadataImportColumnChange:
+  """
+  Convert a low-level import result item into a report column change.
+  """
+  return SourceMetadataImportColumnChange.from_dict(value)
+
+
+def _source_column_import_signature(sc) -> dict[str, Any]:
+  """
+  Return the source-owned metadata signature used to distinguish real changes
+  from unchanged columns during SQLAlchemy metadata import.
+  """
+  return {
+    "ordinal_position": getattr(sc, "ordinal_position", None),
+    "source_datatype_raw": getattr(sc, "source_datatype_raw", None),
+    "datatype": getattr(sc, "datatype", None),
+    "max_length": getattr(sc, "max_length", None),
+    "decimal_precision": getattr(sc, "decimal_precision", None),
+    "decimal_scale": getattr(sc, "decimal_scale", None),
+    "nullable": getattr(sc, "nullable", None),
+    "primary_key_column": bool(getattr(sc, "primary_key_column", False)),
+    "referenced_source_dataset_name": getattr(sc, "referenced_source_dataset_name", None),
+    "json_path": getattr(sc, "json_path", None),
+  }
+
 
 def import_metadata_for_datasets(
   datasets: Iterable,
@@ -83,34 +169,23 @@ def import_metadata_for_datasets(
   - Optionally mark PK columns integrate=True (autointegrate_pk=True).
   - Columns that disappeared in the source are deleted.
 
-  Returns summary dict:
-    {
-      "datasets": <count>,
-      "columns_imported": <total>,
-      "created": <total>,
-      "updated": <total>,
-      "removed": <total>
-    }
+  Returns a legacy-compatible summary dict plus a non-persistent review report.
   """
   ds_list = _materialize_with_related(datasets)
-  if not ds_list:
-    return {"datasets": 0, "columns_imported": 0, "created": 0, "updated": 0, "removed": 0}
-
   engines = {}  # {source_system_id: engine}
-  totals = {
-    "datasets": 0,
-    "columns_imported": 0,
-    "created": 0,
-    "updated": 0,
-    "removed": 0,
-  }
+  report = SourceMetadataImportReport(
+    autointegrate_pk=autointegrate_pk,
+    reset_flags=reset_flags,
+  )
 
-  # track failed datasets
-  skipped: list[str] = []
+  if not ds_list:
+    return report.as_result_dict()
 
   for ds in ds_list:
     ss = ds.source_system
     system_type = (ss.type or "").lower()
+    dataset_key = _dataset_key(ds)
+    source_system_short_name = _source_system_short_name(ds)
 
     if system_type not in ALLOWED_FOR_IMPORT:
       raise NotImplementedError(
@@ -135,16 +210,40 @@ def import_metadata_for_datasets(
             reset_flags=reset_flags,
           )
       except Exception as e:
-        msg = f"{ds.schema_name}.{ds.source_dataset_name}".strip(".")
-        log.error("Error importing metadata for %s (%s): %s", msg, system_type, e)
-        skipped.append(msg + f" (error: {e})")
+        log.error("Error importing metadata for %s (%s): %s", dataset_key, system_type, e)
+        report.add_skipped_dataset(
+          dataset_key=dataset_key,
+          source_system=source_system_short_name,
+          source_type=system_type,
+          message=f"error: {e}",
+        )
         continue
 
-      totals["datasets"] += 1
-      totals["columns_imported"] += int(res.get("columns_imported") or 0)
-      totals["created"] += int(res.get("created") or 0)
-      totals["updated"] += int(res.get("updated") or 0)
-      totals["removed"] += int(res.get("removed") or 0)
+      dataset_report = SourceMetadataImportDatasetReport(
+        dataset_key=dataset_key,
+        source_system=source_system_short_name,
+        source_type=system_type,
+        columns_imported=int(res.get("columns_imported") or 0),
+        created=int(res.get("created") or 0),
+        updated=int(res.get("updated") or 0),
+        changed=int(res.get("changed") or 0),
+        unchanged=int(res.get("unchanged") or 0),
+        removed=int(res.get("removed") or 0),
+        pk_detected=sorted(str(c) for c in (res.get("pk_detected") or [])),
+        column_changes=[
+          _column_change_from_result(c)
+          for c in (res.get("column_changes") or [])
+          if isinstance(c, dict)
+        ],
+      )
+      _add_key_review_note(dataset_report)
+      _add_option_notes(
+        dataset_report,
+        autointegrate_pk=autointegrate_pk,
+        reset_flags=reset_flags,
+      )
+      report.add_dataset(dataset_report)
+
       continue
 
     # Reuse or create engine per source system (SQLAlchemy sources)
@@ -161,14 +260,22 @@ def import_metadata_for_datasets(
     try:
       meta = read_table_metadata(engine, ds.schema_name, ds.source_dataset_name)
     except NoSuchTableError:
-      msg = f"{ds.schema_name}.{ds.source_dataset_name}"
-      log.warning("Skipping dataset %s: table not found in source", msg)
-      skipped.append(msg)
+      log.warning("Skipping dataset %s: table not found in source", dataset_key)
+      report.add_skipped_dataset(
+        dataset_key=dataset_key,
+        source_system=source_system_short_name,
+        source_type=system_type,
+        message="table not found in source",
+      )
       continue
     except SQLAlchemyError as e:
-      msg = f"{ds.schema_name}.{ds.source_dataset_name}"
-      log.error("Error introspecting %s: %s", msg, e)
-      skipped.append(msg + f" (error: {e})")
+      log.error("Error introspecting %s: %s", dataset_key, e)
+      report.add_skipped_dataset(
+        dataset_key=dataset_key,
+        source_system=source_system_short_name,
+        source_type=system_type,
+        message=f"error: {e}",
+      )
       continue
 
     # Normal flow
@@ -187,11 +294,15 @@ def import_metadata_for_datasets(
 
     # Current columns in DB (to detect create/update/remove)
     existing: Dict[str, SourceColumn] = {c.source_column_name: c for c in ds.source_columns.all()}
+    existing_signatures = {name: _source_column_import_signature(c) for name, c in existing.items()}
     seen_names = set()
 
     created = 0
     updated = 0
+    changed = 0
+    unchanged = 0
     removed = 0
+    column_changes: list[SourceMetadataImportColumnChange] = []
 
     with transaction.atomic():
       # Prevent UNIQUE(source_dataset_id, ordinal_position) collisions during reordering
@@ -215,6 +326,7 @@ def import_metadata_for_datasets(
         is_pk = name in pk_cols
 
         sc = existing.get(name)
+        is_new = sc is None
         if sc is None:
           # New column → start with neutral defaults
           sc = SourceColumn(
@@ -244,7 +356,25 @@ def import_metadata_for_datasets(
         sc.save()
         if name in existing:
           updated += 1
+          if existing_signatures.get(name) != _source_column_import_signature(sc):
+            changed += 1
+            action = "changed"
+          else:
+            unchanged += 1
+            action = "unchanged"
+        else:
+          action = "created"
         seen_names.add(name)
+        column_changes.append(
+          SourceMetadataImportColumnChange(
+            name=name,
+            action=action,
+            datatype=dtype,
+            source_datatype_raw=raw_type,
+            nullable=nullable,
+            primary_key_column=is_pk,
+          )
+        )
 
       # Remove columns that no longer exist in source
       to_remove = [c for col_name, c in existing.items() if col_name not in seen_names]
@@ -252,12 +382,39 @@ def import_metadata_for_datasets(
         removed = len(to_remove)
         SourceColumn.objects.filter(pk__in=[c.pk for c in to_remove]).delete()
 
-    # Aggregate totals
-    totals["datasets"] += 1
-    totals["columns_imported"] += len(seen_names)
-    totals["created"] += created
-    totals["updated"] += updated
-    totals["removed"] += removed
+        for removed_column in to_remove:
+          column_changes.append(
+            SourceMetadataImportColumnChange(
+              name=removed_column.source_column_name,
+              action="removed",
+              datatype=getattr(removed_column, "datatype", None),
+              source_datatype_raw=getattr(removed_column, "source_datatype_raw", None),
+              nullable=getattr(removed_column, "nullable", None),
+              primary_key_column=bool(getattr(removed_column, "primary_key_column", False)),
+              json_path=getattr(removed_column, "json_path", None),
+            )
+          )
+
+    dataset_report = SourceMetadataImportDatasetReport(
+      dataset_key=dataset_key,
+      source_system=source_system_short_name,
+      source_type=system_type,
+      columns_imported=len(seen_names),
+      created=created,
+      updated=updated,
+      changed=changed,
+      unchanged=unchanged,
+      removed=removed,
+      pk_detected=sorted(pk_cols.intersection(seen_names)),
+      column_changes=column_changes,
+    )
+    _add_key_review_note(dataset_report)
+    _add_option_notes(
+      dataset_report,
+      autointegrate_pk=autointegrate_pk,
+      reset_flags=reset_flags,
+    )
+    report.add_dataset(dataset_report)
 
   # Dispose engines
   for eng in engines.values():
@@ -266,8 +423,4 @@ def import_metadata_for_datasets(
     except Exception:
       pass
 
-  # skipped summary for UI feedback
-  totals["skipped"] = skipped
-  totals["skipped_count"] = len(skipped)
-
-  return totals
+  return report.as_result_dict()

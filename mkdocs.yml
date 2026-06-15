@@ -91,6 +91,7 @@ nav:
       - ⚙️ Metadata Health Check: health_check.md
 
   - Source Integration:
+      - ⚙️ Source Metadata Import Review: source_metadata_import_review.md
       - ⚙️ Source Backends: source_backends.md
 
   - Testing & Quality:

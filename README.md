@@ -49,7 +49,7 @@ From these definitions, elevata derives deterministic logical plans, renders dia
 Schema evolution, incremental loads, historization, approvals, and execution evidence are planned, validated, and applied deterministically.
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/elevata-labs/elevata/main/docs/elevata_v2_8_0.png" alt="elevata UI preview" width="900"/>
+  <img src="https://raw.githubusercontent.com/elevata-labs/elevata/main/docs/elevata_v2_9_0.png" alt="elevata UI preview" width="900"/>
   <br/>
   <em>Architecture Runtime UI for discovering, controlling, modeling, and executing metadata-defined data architecture</em>
 </p>
@@ -102,12 +102,13 @@ Each layer is explicitly separated.
 
 ## 📚 Example Workflow
 
-1. Define datasets, lineage, contracts, and execution semantics in metadata  
-2. Discover architecture through Catalog, Data Products, Portfolio, Insights, and Maps  
-3. Inspect generated SQL, lineage, contracts, health, and execution evidence  
-4. Review architecture changes through Architecture Review Briefing and approve them through Architecture Control  
-5. Execute approved or unchanged scopes deterministically on your target warehouse  
-6. Audit execution through Architecture Execution Records
+1. Import or define source metadata, lineage, contracts, and execution semantics  
+2. Review source metadata import outcomes before generation  
+3. Discover architecture through Catalog, Data Products, Portfolio, Insights, and Maps  
+4. Inspect generated SQL, lineage, contracts, health, and execution evidence  
+5. Review architecture changes through Architecture Review Briefing and approve them through Architecture Control  
+6. Execute approved or unchanged scopes deterministically on your target warehouse  
+7. Audit execution through Architecture Execution Records
 
 ---
 
@@ -121,6 +122,26 @@ Behavior is deterministic and observable.
 
 Schema drift is reconciled through Architecture MigrationPlan-driven materialization:  
 renames, adds, type evolution and controlled rebuilds are derived from architecture state, while destructive changes remain explicitly policy-gated.
+
+---
+
+## 🔎 Source Metadata Import Review
+
+elevata makes source metadata import reviewable.
+
+Metadata import results explain what was discovered across SQLAlchemy-backed systems, files and REST sources.  
+Instead of showing only that columns were processed, elevata distinguishes whether source columns were created, actually changed, unchanged, removed, or need manual review.
+
+This gives users immediate confidence after import:
+
+- **Created** columns are new in elevata metadata.  
+- **Changed** columns existed before and now differ from the previous technical metadata state.  
+- **Unchanged** columns were checked and still match the previous metadata state.  
+- **Removed** columns no longer exist in the imported source shape.  
+- **PK columns** show detected primary key candidates.  
+- **Needs review** highlights skipped datasets or unresolved metadata decisions.
+
+The import review is deterministic, transient and read-only as a report. It does not introduce a new wizard, oes not persist import history, and does not change the existing source import semantics.
 
 ---
 
@@ -199,7 +220,7 @@ Making executable architecture discoverable across datasets, lineage, contracts,
 Strengthening review briefing, approval, execution evidence, promotion, retention, and controlled runtime operation.
 
 **3. Source Abstraction & Ingestion**  
-Expanding source patterns such as files, APIs, cloud transports, and federated access while preserving deterministic RAW and Stage semantics.
+Expanding source patterns such as files, APIs, cloud transports, federated access and reviewable metadata import while preserving deterministic RAW and Stage semantics.
  
 **4. Runtime Hardening & Execution Semantics**  
 Improving backend coverage, dialect behavior, schema evolution safety, and reproducible execution across supported warehouses.

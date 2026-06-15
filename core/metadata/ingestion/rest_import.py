@@ -45,6 +45,25 @@ from metadata.ingestion.normalization import normalize_column_name
 log = logging.getLogger(__name__)
 
 
+def _source_column_import_signature(sc) -> dict[str, Any]:
+  """
+  Return the source-owned metadata signature used to distinguish real changes
+  from unchanged columns during REST metadata import.
+  """
+  return {
+    "ordinal_position": getattr(sc, "ordinal_position", None),
+    "source_datatype_raw": getattr(sc, "source_datatype_raw", None),
+    "datatype": getattr(sc, "datatype", None),
+    "max_length": getattr(sc, "max_length", None),
+    "decimal_precision": getattr(sc, "decimal_precision", None),
+    "decimal_scale": getattr(sc, "decimal_scale", None),
+    "nullable": getattr(sc, "nullable", None),
+    "primary_key_column": bool(getattr(sc, "primary_key_column", False)),
+    "referenced_source_dataset_name": getattr(sc, "referenced_source_dataset_name", None),
+    "json_path": getattr(sc, "json_path", None),
+  }
+
+
 def _extract_records(payload: Any, record_path: str | None) -> List[Dict[str, Any]]:
   """
   record_path supports dotted dict traversal, e.g. "data.items".
@@ -214,11 +233,15 @@ def import_rest_metadata_for_dataset(ds, *, autointegrate_pk: bool = True, reset
   pk_final = set(infer_pk_columns(pk_rows, top_level_cols))
 
   existing: Dict[str, SourceColumn] = {c.source_column_name: c for c in ds.source_columns.all()}
+  existing_signatures = {name: _source_column_import_signature(c) for name, c in existing.items()}
   seen = set()
 
   created = 0
   updated = 0
+  changed = 0
+  unchanged = 0
   removed = 0
+  column_changes: list[dict[str, Any]] = []
 
   with transaction.atomic():
     if reset_flags:
@@ -275,18 +298,48 @@ def import_rest_metadata_for_dataset(ds, *, autointegrate_pk: bool = True, reset
       sc.save()
       if not is_new:
         updated += 1
+        if existing_signatures.get(col) != _source_column_import_signature(sc):
+          changed += 1
+          action = "changed"
+        else:
+          unchanged += 1
+          action = "unchanged"
+      else:
+        action = "created"
       seen.add(col)
+      column_changes.append({
+        "name": col,
+        "action": action,
+        "datatype": dtype,
+        "source_datatype_raw": None,
+        "nullable": True,
+        "primary_key_column": sc.primary_key_column,
+        "json_path": sc.json_path,
+      })
 
     # remove disappeared columns (rare for REST, but keep consistent)
     to_remove = [c for name, c in existing.items() if name not in seen]
     if to_remove:
       removed = len(to_remove)
       SourceColumn.objects.filter(pk__in=[c.pk for c in to_remove]).delete()
+      for removed_column in to_remove:
+        column_changes.append({
+          "name": removed_column.source_column_name,
+          "action": "removed",
+          "datatype": getattr(removed_column, "datatype", None),
+          "source_datatype_raw": getattr(removed_column, "source_datatype_raw", None),
+          "nullable": getattr(removed_column, "nullable", None),
+          "primary_key_column": bool(getattr(removed_column, "primary_key_column", False)),
+          "json_path": getattr(removed_column, "json_path", None),
+        })
 
   return {
     "columns_imported": len(seen),
     "created": created,
     "updated": updated,
+    "changed": changed,
+    "unchanged": unchanged,
     "removed": removed,
     "pk_detected": sorted(pk_final),
+    "column_changes": column_changes,
   }

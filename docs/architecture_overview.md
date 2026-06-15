@@ -68,8 +68,28 @@ Architecture Execution Record
 ### 🧩 2.1 Metadata Ingestion Layer
 - Reads schema, columns, keys from source systems  
 - Normalizes metadata into elevata’s internal models  
+- Reports created, changed, unchanged and removed source metadata outcomes  
 - No SQL generation occurs here
 
+
+#### 🔎 2.1.1 Source Metadata Import Review
+
+Source Metadata Import Review makes source onboarding inspectable immediately after import.
+
+It reports what elevata discovered and how the SourceColumn metadata changed:
+
+- created columns  
+- changed columns  
+- unchanged columns  
+- removed columns  
+- detected primary key columns  
+- skipped datasets  
+- datasets that need manual review
+
+Changed and unchanged are intentionally separated. A changed column means the stored technical source metadata now differs from the previous state. An unchanged column means the source was checked and still matches the previous metadata state.
+
+The review result is transient and read-only as a report. It does not persist import history, introduce a new workflow, execute loads, or generate target architecture. It only makes the existing metadata import outcome transparent before downstream generation and control steps.
+ 
 ### 🧩 2.2 Generation Layer
 - Creates TargetDatasets in Raw, Stage, Rawcore  
 - Injects surrogate keys where required  

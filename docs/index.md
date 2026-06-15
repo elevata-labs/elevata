@@ -110,6 +110,9 @@ This index gives you an overview of all major topics and how they fit together.
 - [Source Backends](source_backends.md)  
   Overview of supported source systems and how to configure them (JDBC/ODBC, file-based, etc.).
 
+- [Source Metadata Import Review](source_metadata_import_review.md)  
+  Deterministic import outcome review for SourceDataset and SourceSystem metadata imports, including created, changed, unchanged, removed and review-needed signals.
+
 - [Source Ingestion Configuration](source_backends.md#5-file-based-sources-raw-ingestion)  
   (Manual: `ingestion_config` for Files / REST)
 
@@ -181,7 +184,7 @@ A personal open-source initiative exploring how data architecture can be defined
 
 ---
 
-_Last updated: 2026-06-10_
+_Last updated: 2026-06-15_
 
 © 2025-2026 elevata - Technical Documentation  
 Built with purpose. Rendered with precision. 🪶
