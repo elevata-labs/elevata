@@ -546,6 +546,32 @@ CREATE TABLE {target} (
     )
 
 
+  def render_reference_integrity_missing_examples_statement(
+    self,
+    *,
+    child_schema: str | None,
+    child_table: str,
+    parent_schema: str | None,
+    parent_table: str,
+    key_pairs: list[tuple[str, str]],
+    example_limit: int = 20,
+    child_alias: str = "c",
+    parent_alias: str = "p",
+  ) -> str:
+    """Render Reference Integrity Review SQL using T-SQL TOP syntax."""
+    return self._render_reference_integrity_missing_examples_statement(
+      child_schema=child_schema,
+      child_table=child_table,
+      parent_schema=parent_schema,
+      parent_table=parent_table,
+      key_pairs=key_pairs,
+      example_limit=example_limit,
+      child_alias=child_alias,
+      parent_alias=parent_alias,
+      limit_style="top",
+    )
+
+
   def render_merge_statement(
     self,
     *,

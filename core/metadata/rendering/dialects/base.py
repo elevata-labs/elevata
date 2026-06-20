@@ -845,6 +845,131 @@ class SqlDialect(ABC):
     return sql + "\n"
 
 
+  def render_reference_integrity_missing_examples_statement(
+    self,
+    *,
+    child_schema: str | None,
+    child_table: str,
+    parent_schema: str | None,
+    parent_table: str,
+    key_pairs: list[tuple[str, str]],
+    example_limit: int = 20,
+    child_alias: str = "c",
+    parent_alias: str = "p",
+  ) -> str:
+    """
+    Render a read-only anti-join that returns missing parent key examples.
+
+    This is a dialect responsibility primitive: the reference integrity service
+    supplies only semantic ingredients (child/parent tables and key pairs), while
+    the dialect decides the SQL shape and pagination syntax.
+
+    key_pairs contains tuples in the form:
+      (child_column, parent_column)
+
+    Returned rows are not statistical samples. Every returned row is a proven
+    child key combination that currently does not resolve to a parent row. The
+    limit only caps how many examples are returned for review.
+    """
+    return self._render_reference_integrity_missing_examples_statement(
+      child_schema=child_schema,
+      child_table=child_table,
+      parent_schema=parent_schema,
+      parent_table=parent_table,
+      key_pairs=key_pairs,
+      example_limit=example_limit,
+      child_alias=child_alias,
+      parent_alias=parent_alias,
+      limit_style="limit",
+    )
+
+
+  def _render_reference_integrity_missing_examples_statement(
+    self,
+    *,
+    child_schema: str | None,
+    child_table: str,
+    parent_schema: str | None,
+    parent_table: str,
+    key_pairs: list[tuple[str, str]],
+    example_limit: int,
+    child_alias: str,
+    parent_alias: str,
+    limit_style: str,
+  ) -> str:
+    """
+    Render the shared reference-integrity anti-join shape for this dialect.
+
+    limit_style:
+      - "limit": append LIMIT after ORDER BY
+      - "top": render TOP in the SELECT head (T-SQL family)
+    """
+    pairs = [
+      (str(child_col or "").strip(), str(parent_col or "").strip())
+      for child_col, parent_col in (key_pairs or [])
+    ]
+    pairs = [
+      (child_col, parent_col)
+      for child_col, parent_col in pairs
+      if child_col and parent_col
+    ]
+    if not pairs:
+      raise ValueError(
+        "render_reference_integrity_missing_examples_statement requires non-empty key_pairs"
+      )
+
+    limit = max(1, int(example_limit or 20))
+    q = self.render_identifier
+    child_alias_sql = q(child_alias)
+    parent_alias_sql = q(parent_alias)
+    child_fqn = self.render_table_identifier(child_schema, child_table)
+    parent_fqn = self.render_table_identifier(parent_schema, parent_table)
+
+    def col(alias_sql: str, column_name: str) -> str:
+      return f"{alias_sql}.{q(column_name)}"
+
+    select_head = "SELECT DISTINCT"
+    if limit_style == "top":
+      select_head = f"SELECT DISTINCT TOP ({limit})"
+
+    select_items = [
+      f"{col(child_alias_sql, child_col)} AS {q(child_col)}"
+      for child_col, _parent_col in pairs
+    ]
+    join_predicates = [
+      f"{col(child_alias_sql, child_col)} = {col(parent_alias_sql, parent_col)}"
+      for child_col, parent_col in pairs
+    ]
+    parent_missing_predicates = [
+      f"{col(parent_alias_sql, parent_col)} IS NULL"
+      for _child_col, parent_col in pairs
+    ]
+    child_populated_predicates = [
+      f"{col(child_alias_sql, child_col)} IS NOT NULL"
+      for child_col, _parent_col in pairs
+    ]
+    order_items = [
+      col(child_alias_sql, child_col)
+      for child_col, _parent_col in pairs
+    ]
+
+    sql = "\n".join([
+      select_head,
+      "  " + ",\n  ".join(select_items),
+      f"FROM {child_fqn} AS {child_alias_sql}",
+      f"LEFT JOIN {parent_fqn} AS {parent_alias_sql}",
+      "  ON " + "\n AND ".join(join_predicates),
+      "WHERE " + "\n  AND ".join(parent_missing_predicates),
+      "  AND " + "\n  AND ".join(child_populated_predicates),
+      "ORDER BY " + ", ".join(order_items),
+    ])
+
+    if limit_style == "limit":
+      sql = f"{sql}\nLIMIT {limit}"
+
+    return sql.rstrip()
+
+
   def render_merge_statement(
     self,
     *,

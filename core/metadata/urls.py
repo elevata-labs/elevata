@@ -175,6 +175,11 @@ urlpatterns += [
     views_catalog.architecture_catalog_map,
     name="architecture_catalog_map",
   ),
+  path(
+    "architecture-catalog/<int:pk>/reference-integrity/",
+    views_catalog.architecture_catalog_reference_integrity,
+    name="architecture_catalog_reference_integrity",
+  ),
   path("architecture-catalog/<int:pk>/",
     views_catalog.architecture_catalog_detail,
     name="architecture_catalog_detail",

@@ -158,7 +158,8 @@ It helps users inspect:
 - layer maps and dependency matrices  
 - latest execution evidence references  
 - architecture quality and governance insights  
-- Architecture Control review status summaries
+- Architecture Control review status summaries  
+- on-demand Reference Integrity checks for modeled outgoing references
 
 The Catalog links to dedicated pages for:
 
@@ -176,6 +177,8 @@ Catalog Data Products provide a read-only consumer-readiness perspective for ser
 Catalog Insights provide read-only signals for ownership gaps, metadata health findings, custom query logic, downstream consumer visibility, inactive datasets with consumers, and missing execution evidence. Dataset-specific insight signals are also shown on Catalog detail pages.
 
 Catalog Maps provide a read-only architecture lens across populated schemas and direct TargetDataset dependencies. Layer cards, layer flow overview, dependency matrix and transition examples make architecture structure visible without introducing graph editing, execution controls or metadata mutation.
+
+Reference Integrity Review provides a read-only, on-demand check for modeled outgoing references in Catalog Detail. It checks loaded target data for missing parent examples and keeps SQL rendering dialect-owned. It does not execute loads, mutate metadata, persist review history, or create inferred members.
 
 ### 🧩 2.7.3 Architecture Control
 

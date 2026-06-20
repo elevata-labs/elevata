@@ -12,6 +12,84 @@ This project adheres to [Semantic Versioning](https://semver.org/) and [Keep a C
 
 ---
 
+## [2.10.0] - 2026-06-20
+
+This release adds **Reference Integrity Review**:  
+a read-only, on-demand review of modeled outgoing references against loaded target data.
+
+The review helps users identify missing parent examples for modeled TargetDatasetReferences directly from Catalog Detail.  
+It stays bounded, deterministic and dialect-owned, and does not mutate metadata, execute loads, persist review history or create inferred members.
+
+---
+
+### ✨ Added
+
+#### Reference Integrity Review
+
+- Added read-only Reference Integrity Review service for TargetDataset scopes  
+- Added support for modeled outgoing TargetDatasetReferences  
+- Added missing parent example detection against loaded target data  
+- Added bounded example limit for interactive review output  
+- Added null-safe child-key behavior by checking complete non-null child key combinations  
+- Added dialect-owned SQL rendering primitive for Reference Integrity Review queries  
+- Added T-SQL TOP rendering for MSSQL and Fabric Warehouse  
+- Added Catalog Detail HTMX panel for on-demand review execution  
+- Added visibility guard so the Reference Integrity panel appears only for datasets with outgoing references
+
+---
+
+### 🔄 Improved
+
+#### Catalog Detail UX
+
+- Kept Reference Integrity Review out of the initial page load to avoid automatic target-data queries  
+- Kept datasets without outgoing references visually clean by hiding the review panel  
+- Clarified that returned missing parent examples are proven findings, not statistical samples  
+- Rendered review results inline inside Catalog Detail without adding a separate workflow  
+- Kept unavailable runtime checks contained inside the review panel
+
+#### Documentation
+
+- Added Reference Integrity documentation  
+- Updated Architecture Catalog documentation with Catalog Detail review behavior  
+- Updated Architecture Overview with Reference Integrity positioning in the Catalog layer  
+- Updated documentation index and navigation  
+- Updated README Catalog summary  
+- Updated CHANGELOG with v2.10.0 release notes
+
+---
+
+### 🔒 Governance & Determinism
+
+- Reference Integrity Review is read-only  
+- Reference Integrity Review runs only on demand  
+- Reference Integrity Review does not mutate metadata  
+- Reference Integrity Review does not create or change TargetDatasetReferences  
+- Reference Integrity Review does not execute loads  
+- Reference Integrity Review does not create approvals or check approvals  
+- Reference Integrity Review does not persist review history  
+- Reference Integrity Review does not create inferred members  
+- Reference Integrity Review does not introduce AI-based inference  
+- Reference Integrity Review does not add database models or migrations  
+- SQL shape remains owned by dialect files, not by Catalog or service code
+
+---
+
+### 🧪 Quality & Stability
+
+- Added tests for service-level Reference Integrity Review behavior  
+- Added tests for missing parent example detection  
+- Added tests for no-reference not-applicable behavior  
+- Added tests for incomplete reference metadata handling  
+- Added tests proving the service delegates SQL rendering to the dialect  
+- Added dialect tests for default LIMIT rendering  
+- Added dialect tests for MSSQL and Fabric Warehouse TOP rendering  
+- Added Catalog view tests for HTMX review rendering  
+- Added Catalog detail context tests for outgoing reference visibility  
+- Verified Catalog Detail UI behavior for datasets with and without outgoing references
+ 
+---
+
 ## [2.9.0] - 2026-06-15
 
 This release adds **Source Metadata Import Review**:  

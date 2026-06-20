@@ -49,7 +49,7 @@ From these definitions, elevata derives deterministic logical plans, renders dia
 Schema evolution, incremental loads, historization, approvals, and execution evidence are planned, validated, and applied deterministically.
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/elevata-labs/elevata/main/docs/elevata_v2_9_0.png" alt="elevata UI preview" width="900"/>
+  <img src="https://raw.githubusercontent.com/elevata-labs/elevata/main/docs/elevata_v2_10_0.png" alt="elevata UI preview" width="900"/>
   <br/>
   <em>Architecture Runtime UI for discovering, controlling, modeling, and executing metadata-defined data architecture</em>
 </p>
@@ -105,7 +105,7 @@ Each layer is explicitly separated.
 1. Import or define source metadata, lineage, contracts, and execution semantics  
 2. Review source metadata import outcomes before generation  
 3. Discover architecture through Catalog, Data Products, Portfolio, Insights, and Maps  
-4. Inspect generated SQL, lineage, contracts, health, and execution evidence  
+4. Inspect generated SQL, lineage, contracts, health, reference integrity, and execution evidence  
 5. Review architecture changes through Architecture Review Briefing and approve them through Architecture Control  
 6. Execute approved or unchanged scopes deterministically on your target warehouse  
 7. Audit execution through Architecture Execution Records
@@ -156,6 +156,8 @@ Users can search and filter TargetDatasets by schema, owner, lifecycle status, s
 
 Catalog detail pages summarize architecture metadata, ownership, health, upstream inputs, downstream consumers, column contract signals and the latest Architecture Execution Record for the dataset scope.
 
+For datasets with modeled outgoing references, Catalog Detail also provides an on-demand Reference Integrity Review. It checks loaded target data for missing parent examples and keeps the review read-only, bounded and dialect-owned.
+
 Catalog Portfolio summarizes architecture posture across readiness, ownership, contracts, health, review state, execution evidence and layer distribution. Actionable Portfolio KPIs open filtered Catalog worklists so users can inspect affected datasets before navigating to dataset detail or Architecture Control.
 
 Catalog Data Products show which serving-layer datasets are ready for trusted consumption. Readiness is derived from ownership, metadata health, query contracts, lineage, Architecture Control review state and execution evidence.
@@ -164,7 +166,7 @@ Catalog Insights highlight ownership gaps, metadata health findings, custom quer
 
 Catalog Maps show architecture across layers using layer cards, a layer flow overview, a source-to-target layer dependency matrix and expandable direct dependency examples.
 
-The Catalog does not edit metadata and does not execute loads. Architecture Control remains responsible for approval, execution, execution records and retention workflows.
+The Catalog does not edit metadata and does not execute loads. Reference Integrity Review does not persist review history, create inferred members or repair data automatically. Architecture Control remains responsible for approval, execution, execution records and retention workflows.
 
 ---
 

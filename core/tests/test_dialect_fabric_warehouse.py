@@ -142,3 +142,20 @@ def test_fabric_json_renders_as_varchar_max():
   d = FabricWarehouseDialect()
   t = d._render_canonical_type_fabric_warehouse(datatype="JSON", strict=True)
   assert t.upper() == "VARCHAR(MAX)"
+
+
+def test_fabric_reference_integrity_missing_examples_uses_top_not_limit():
+  d = FabricWarehouseDialect()
+
+  sql = d.render_reference_integrity_missing_examples_statement(
+    child_schema="bizcore",
+    child_table="bc_order",
+    parent_schema="rawcore",
+    parent_table="rc_customer",
+    key_pairs=[("customer_id", "customer_id")],
+    example_limit=20,
+  )
+
+  assert "SELECT DISTINCT TOP (20)" in sql
+  assert "LEFT JOIN" in sql
+  assert "LIMIT" not in sql

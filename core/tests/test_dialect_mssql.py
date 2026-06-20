@@ -157,3 +157,20 @@ def test_mssql_timestamp_maps_to_binary_rowversion():
   # SQL Server "timestamp" is rowversion and must not be treated as a temporal type.
   t = canonicalize_type("mssql", "timestamp")
   assert canonical_type_str(t) == "BINARY"
+
+
+def test_mssql_reference_integrity_missing_examples_uses_top_not_limit():
+  d = MssqlDialect()
+
+  sql = d.render_reference_integrity_missing_examples_statement(
+    child_schema="bizcore",
+    child_table="bc_order",
+    parent_schema="rawcore",
+    parent_table="rc_customer",
+    key_pairs=[("customer_id", "customer_id")],
+    example_limit=20,
+  )
+
+  assert "SELECT DISTINCT TOP (20)" in sql
+  assert "LEFT JOIN" in sql
+  assert "LIMIT" not in sql

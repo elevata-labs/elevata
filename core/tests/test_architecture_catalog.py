@@ -42,6 +42,7 @@ from metadata.models import (
   TargetDataset,
   TargetDatasetInput,
   TargetDatasetOwnership,
+  TargetDatasetReference,
   TargetSchema,
   Person,
 )
@@ -465,6 +466,10 @@ def test_architecture_catalog_detail_context_contains_dataset_evidence(
     target_schema=serving,
     target_dataset_name="catalog_test_detail_downstream",
   )
+  referenced_dataset = TargetDataset.objects.create(
+    target_schema=serving,
+    target_dataset_name="catalog_test_detail_parent",
+  )
 
   TargetDatasetInput.objects.create(
     target_dataset=target_dataset,
@@ -475,6 +480,10 @@ def test_architecture_catalog_detail_context_contains_dataset_evidence(
     target_dataset=downstream_dataset,
     upstream_target_dataset=target_dataset,
     role="primary",
+  )
+  TargetDatasetReference.objects.create(
+    referencing_dataset=target_dataset,
+    referenced_dataset=referenced_dataset,
   )
   TargetColumn.objects.create(
     target_dataset=target_dataset,
@@ -558,6 +567,8 @@ def test_architecture_catalog_detail_context_contains_dataset_evidence(
   assert context["review_status"].fingerprint_short == "reviewreport"
   assert context["review_status_error"] == ""
   assert context["consumer_readiness"].readiness_label == "Review recommended"
+  assert context["outgoing_reference_count"] == 1
+  assert context["has_outgoing_references"] is True
   assert context["data_products_url"] == "/architecture-catalog/data-products/"
   assert context["insights_url"] == "/architecture-catalog/insights/"
   assert context["upstream_inputs"][0].label == "serving.catalog_test_detail_upstream"
@@ -1538,3 +1549,119 @@ def test_architecture_catalog_detail_view_renders_detail_template(
     "metadata/architecture/architecture_catalog_detail.html"
   )
   assert rendered["context"]["object"].pk == 42
+
+
+def test_architecture_catalog_reference_integrity_view_renders_partial(
+  monkeypatch,
+) -> None:
+  """
+  Verify Reference Integrity Review partial rendering from Catalog Detail.
+  """
+  rendered: dict[str, Any] = {}
+  calls: dict[str, Any] = {}
+
+  def fake_render(request, template_name: str, context: dict[str, Any]):
+    """
+    Store render arguments and return a simple response.
+    """
+    rendered["template_name"] = template_name
+    rendered["context"] = context
+    return HttpResponse("ok")
+
+  def fake_build_review(target_dataset, **kwargs):
+    """
+    Return a compact review test double.
+    """
+    calls["target_dataset"] = target_dataset
+    calls["kwargs"] = kwargs
+    return SimpleNamespace(
+      status="complete",
+      dataset_key="bizcore.bc_order",
+      checked_reference_count=1,
+      reference_count=1,
+      complete_reference_count=1,
+      attention_reference_count=0,
+      not_checked_reference_count=0,
+      example_limit=5,
+      notes=(),
+      results=(),
+    )
+
+  monkeypatch.setattr(views_catalog, "render", fake_render)
+  monkeypatch.setattr(
+    views_catalog,
+    "get_object_or_404",
+    lambda model, pk: TargetDataset(pk=pk),
+  )
+  monkeypatch.setattr(
+    views_catalog,
+    "build_reference_integrity_review",
+    fake_build_review,
+  )
+
+  request = RequestFactory().get(
+    "/architecture-catalog/42/reference-integrity/?limit=5"
+  )
+  response = _unwrap_view(
+    views_catalog.architecture_catalog_reference_integrity
+  )(request, pk=42)
+
+  assert response.status_code == 200
+  assert rendered["template_name"] == (
+    "metadata/partials/_reference_integrity_review.html"
+  )
+  assert rendered["context"]["review"].status == "complete"
+  assert rendered["context"]["review_error"] == ""
+  assert calls["target_dataset"].pk == 42
+  assert calls["kwargs"]["example_limit"] == 5
+  assert calls["kwargs"]["include_sql"] is False
+
+
+def test_architecture_catalog_reference_integrity_view_renders_error(
+  monkeypatch,
+) -> None:
+  """
+  Verify Reference Integrity Review errors are rendered inline.
+  """
+  rendered: dict[str, Any] = {}
+
+  def fake_render(request, template_name: str, context: dict[str, Any]):
+    """
+    Store render arguments and return a simple response.
+    """
+    rendered["template_name"] = template_name
+    rendered["context"] = context
+    return HttpResponse("ok")
+
+  def fake_build_review(*_args, **_kwargs):
+    """
+    Simulate an unavailable runtime review.
+    """
+    raise RuntimeError("target connection unavailable")
+
+  monkeypatch.setattr(views_catalog, "render", fake_render)
+  monkeypatch.setattr(
+    views_catalog,
+    "get_object_or_404",
+    lambda model, pk: TargetDataset(pk=pk),
+  )
+  monkeypatch.setattr(
+    views_catalog,
+    "build_reference_integrity_review",
+    fake_build_review,
+  )
+
+  request = RequestFactory().get(
+    "/architecture-catalog/42/reference-integrity/?include_sql=1"
+  )
+  response = _unwrap_view(
+    views_catalog.architecture_catalog_reference_integrity
+  )(request, pk=42)
+
+  assert response.status_code == 200
+  assert rendered["template_name"] == (
+    "metadata/partials/_reference_integrity_review.html"
+  )
+  assert rendered["context"]["review"] is None
+  assert rendered["context"]["review_error"] == "target connection unavailable"
+  assert rendered["context"]["example_limit"] == 20

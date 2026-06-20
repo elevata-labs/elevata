@@ -69,6 +69,9 @@ This index gives you an overview of all major topics and how they fit together.
 - [Architecture Catalog Data Products](architecture_catalog_data_products.md)  
   Consumer-readiness perspective for serving-layer datasets, derived from ownership, health, lineage, contracts, review state and execution evidence.
 
+- [Reference Integrity](reference_integrity.md)  
+  Read-only, on-demand review of modeled outgoing references against loaded target data, including bounded missing parent examples.
+
 - [Architecture Control Plane](architecture_control_plane.md)  
   Deterministic architecture state, change reports, review briefing, promotion reports, approval artifacts, policy decisions and fingerprints for review, CI, controlled approval, and architecture promotion workflows.
 
@@ -184,7 +187,7 @@ A personal open-source initiative exploring how data architecture can be defined
 
 ---
 
-_Last updated: 2026-06-15_
+_Last updated: 2026-06-20_
 
 © 2025-2026 elevata - Technical Documentation  
 Built with purpose. Rendered with precision. 🪶

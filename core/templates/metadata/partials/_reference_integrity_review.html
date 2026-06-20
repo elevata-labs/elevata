@@ -1,0 +1,173 @@
+<!--
+elevata - Metadata-driven Data Platform Framework
+Copyright © 2025-2026 Ilona Tag
+
+This file is part of elevata.
+
+elevata is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of
+the License, or (at your option) any later version.
+
+elevata is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with elevata. If not, see <https://www.gnu.org/licenses/>.
+
+Contact: <https://github.com/elevata-labs/elevata>.
+-->
+
+{% if review_error %}
+  <div class="alert alert-warning small mb-0">
+    <div class="fw-semibold mb-1">Reference Integrity Review unavailable</div>
+    <div>{{ review_error }}</div>
+  </div>
+{% elif review %}
+  <div class="alert alert-info small mb-3">
+    <div class="fw-semibold mb-1">Read-only runtime review</div>
+    <div>
+      Missing parent examples are proven findings against the current target data.
+      The review returns up to {{ review.example_limit }} examples per reference and does not
+      calculate a full violation inventory by default.
+    </div>
+  </div>
+
+  <div class="d-flex align-items-start justify-content-between gap-3 mb-3 flex-wrap">
+    <div>
+      <div class="fw-semibold">{{ review.dataset_key }}</div>
+      <div class="small text-muted">
+        {{ review.checked_reference_count }} checked / {{ review.reference_count }} modeled references
+      </div>
+    </div>
+
+    {% if review.status == "attention" %}
+      <span class="badge text-bg-warning">Attention</span>
+    {% elif review.status == "complete" %}
+      <span class="badge text-bg-success">Complete</span>
+    {% elif review.status == "not_applicable" %}
+      <span class="badge text-bg-secondary">Not applicable</span>
+    {% else %}
+      <span class="badge text-bg-secondary">Not checked</span>
+    {% endif %}
+  </div>
+
+  <div class="architecture-data-product-stats mb-3">
+    <div>
+      <span>Complete</span>
+      <strong>{{ review.complete_reference_count }}</strong>
+    </div>
+    <div>
+      <span>Attention</span>
+      <strong>{{ review.attention_reference_count }}</strong>
+    </div>
+    <div>
+      <span>Not checked</span>
+      <strong>{{ review.not_checked_reference_count }}</strong>
+    </div>
+    <div>
+      <span>Example limit</span>
+      <strong>{{ review.example_limit }}</strong>
+    </div>
+  </div>
+
+  {% if review.notes %}
+    <ul class="small text-muted mb-3">
+      {% for note in review.notes %}
+        <li>{{ note }}</li>
+      {% endfor %}
+    </ul>
+  {% endif %}
+
+  {% if review.results %}
+    <div class="list-group list-group-flush">
+      {% for result in review.results %}
+        <div class="list-group-item px-0">
+          <div class="d-flex align-items-start justify-content-between gap-3 mb-2">
+            <div>
+              <div class="fw-semibold">
+                <code>{{ result.reference_key }}</code>
+              </div>
+              <div class="small text-muted mt-1">
+                {{ result.child_dataset }} → {{ result.parent_dataset }}
+                {% if result.relationship_type %} · {{ result.relationship_type }}{% endif %}
+              </div>
+            </div>
+
+            {% if result.status == "attention" %}
+              <span class="badge text-bg-warning">Missing parents</span>
+            {% elif result.status == "complete" %}
+              <span class="badge text-bg-success">No examples found</span>
+            {% else %}
+              <span class="badge text-bg-secondary">Not checked</span>
+            {% endif %}
+          </div>
+
+          {% if result.components %}
+            <div class="small text-muted mb-2">
+              Components:
+              {% for component in result.components %}
+                <code>{{ component.child_column }} → {{ component.parent_column }}</code>{% if not forloop.last %}, {% endif %}
+              {% endfor %}
+            </div>
+          {% endif %}
+
+          {% if result.notes %}
+            <ul class="small text-muted mb-2">
+              {% for note in result.notes %}
+                <li>{{ note }}</li>
+              {% endfor %}
+            </ul>
+          {% endif %}
+
+          {% if result.missing_examples %}
+            <div class="small mb-2">
+              <span class="fw-semibold">{{ result.missing_example_count }}</span>
+              missing parent examples shown.
+            </div>
+            <div class="table-responsive">
+              <table class="table table-sm table-striped align-middle mb-2">
+                <thead>
+                  <tr>
+                    {% for component in result.components %}
+                      <th>{{ component.child_column }}</th>
+                    {% endfor %}
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for example in result.missing_examples %}
+                    <tr>
+                      {% for name, value in example.values.items %}
+                        <td><code>{{ value }}</code></td>
+                      {% endfor %}
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          {% endif %}
+
+          {% if result.sql %}
+            <details class="catalog-insight-more">
+              <summary class="small text-muted">
+                <span class="catalog-insight-summary-closed">Show rendered SQL</span>
+                <span class="catalog-insight-summary-open">Hide rendered SQL</span>
+              </summary>
+              <pre class="small mt-2 mb-0" style="white-space: pre-wrap;">{{ result.sql }}</pre>
+            </details>
+          {% endif %}
+        </div>
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="small text-muted mb-0">
+      No outgoing references are modeled for this dataset.
+    </div>
+  {% endif %}
+{% else %}
+  <div class="alert alert-secondary small mb-0">
+    Reference Integrity Review has not been run.
+  </div>
+{% endif %}

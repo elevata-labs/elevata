@@ -305,6 +305,8 @@ class ArchitectureCatalogDetailContext:
   review_status_error: str
   consumer_readiness: Any
   health_messages: tuple[str, ...]
+  outgoing_reference_count: int
+  has_outgoing_references: bool
   data_products_url: str
   insights_url: str
   catalog_url: str
@@ -411,6 +413,7 @@ def build_architecture_catalog_detail_context(
     architecture_control_url=summary.architecture_control_url,
   )
   health_message_tuple = tuple(health_messages)
+  outgoing_reference_count = dataset.outgoing_references.count()
 
   context = ArchitectureCatalogDetailContext(
     object=dataset,
@@ -431,6 +434,8 @@ def build_architecture_catalog_detail_context(
       dataset,
     ),
     health_messages=health_message_tuple,
+    outgoing_reference_count=outgoing_reference_count,
+    has_outgoing_references=outgoing_reference_count > 0,
     data_products_url=reverse("architecture_catalog_data_products"),
     insights_url=reverse("architecture_catalog_insights"),
     catalog_url=reverse("architecture_catalog"),

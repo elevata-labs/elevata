@@ -13,7 +13,8 @@ It helps users understand:
 - how architecture flows across layers  
 - how portfolio posture looks across governance and execution evidence  
 - which serving-layer datasets are ready for trusted consumption  
-- which architecture quality and governance signals need attention
+- which architecture quality and governance signals need attention  
+- where modeled references can be checked against loaded target data
 
 The Catalog does not edit metadata and does not execute loads.
 
@@ -211,14 +212,31 @@ It displays:
 - column contract signals  
 - dataset-specific Consumer Readiness  
 - dataset-specific Catalog insight signals  
-- Architecture Control review status summary
+- Architecture Control review status summary  
+- on-demand Reference Integrity Review for datasets with modeled outgoing references
 
 The detail view remains read-only. Editing stays on the dataset detail and scoped metadata pages. Execution and approval workflows stay in Architecture Control.
 
 ---
 
-## 🔧 8. Review Status
+## 🔧 8. Reference Integrity
 
+For datasets with modeled outgoing references, the Catalog detail view can run a read-only Reference Integrity Review on demand.
+
+The review checks the selected dataset as the child side of modeled TargetDatasetReferences and reports missing parent examples from the currently loaded target data.
+
+Returned examples are proven findings, not statistical samples. Each example means that a non-null child key combination exists without a matching parent key combination.
+
+The panel is hidden for datasets without outgoing references, because there is no modeled reference to check.
+
+Reference Integrity Review does not edit metadata, execute loads, create approvals, persist review history, insert inferred members, or repair data automatically.
+
+For more details, see [Reference Integrity](reference_integrity.md).
+
+---
+
+## 🔧 9. Review Status
+ 
 For TargetDataset scopes, the Catalog detail view surfaces the Architecture Control review status as a read-only summary.
 
 The review status summary includes:
@@ -234,7 +252,7 @@ Catalog detail pages use the existing Architecture Control review status contrac
 
 ---
 
-## 🔧 9. Execution Evidence
+## 🔧 10. Execution Evidence
 
 For TargetDataset scopes, the Catalog detail view surfaces the latest Architecture Execution Record summary when one exists.
 
@@ -253,7 +271,7 @@ The Catalog shows the latest evidence reference in dataset context without dupli
 
 ---
 
-## 🔧 10. Lineage and Contract Signals
+## 🔧 11. Lineage and Contract Signals
 
 The Catalog shows direct upstream and downstream relationships.
 
@@ -278,7 +296,7 @@ This makes the dataset structure inspectable without replacing dedicated lineage
 
 ---
 
-## 🔧 11. Governance Boundary
+## 🔧 12. Governance Boundary
 
 The Architecture Catalog is a discovery surface.
 
@@ -288,6 +306,8 @@ It does not:
 - check approvals  
 - request access  
 - execute loads  
+- run Reference Integrity Review automatically  
+- insert inferred members  
 - delete execution records  
 - mutate metadata
 
