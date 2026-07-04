@@ -27,12 +27,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 import hashlib
 import json
-import os
 from typing import Any
 
-
-ARCHITECTURE_EXECUTION_DIR_ENV = "ELEVATA_ARCH_EXECUTION_DIR"
-DEFAULT_ARCHITECTURE_EXECUTION_DIR = ".elevata/executions"
+from .paths import (
+  ARCHITECTURE_EXECUTION_DIR_ENV,
+  ArchitectureArtifactContext,
+  DEFAULT_ARCHITECTURE_EXECUTION_DIR,
+  resolve_architecture_execution_dir,
+)
 
 
 @dataclass(frozen=True)
@@ -150,14 +152,18 @@ class ArchitectureExecutionRecordStore:
   File-backed store for Architecture Execution Records.
   """
 
-  def __init__(self, base_path: str | Path | None = None):
-    self.base_path = Path(
-      base_path
-      or os.environ.get(
-        ARCHITECTURE_EXECUTION_DIR_ENV,
-        DEFAULT_ARCHITECTURE_EXECUTION_DIR,
-      )
-    ).expanduser()
+  def __init__(
+    self,
+    base_path: str | Path | None = None,
+    *,
+    context: ArchitectureArtifactContext | None = None,
+  ):
+    self.base_path = (
+      Path(base_path).expanduser()
+      if base_path is not None
+      else resolve_architecture_execution_dir(context=context)
+    )
+
 
   def save(self, record: ArchitectureExecutionRecord) -> Path:
     """
@@ -170,6 +176,7 @@ class ArchitectureExecutionRecordStore:
       encoding="utf-8",
     )
     return path
+
 
   def path_for(self, execution_id: str) -> Path:
     """

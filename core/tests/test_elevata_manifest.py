@@ -1,6 +1,6 @@
 """
 elevata - Metadata-driven Data Platform Framework
-Copyright © 202-2026 Ilona Tag
+Copyright © 2025-2026 Ilona Tag
 
 This file is part of elevata.
 
@@ -22,8 +22,21 @@ Contact: <https://github.com/elevata-labs/elevata>.
 
 import pytest
 
-from metadata.execution.manifest import build_manifest
+from metadata.execution.manifest import (
+  EXECUTION_DEPENDENCY_SOURCE_INPUT,
+  MANIFEST_VERSION,
+  build_manifest,
+  manifest_to_dict,
+)
+from metadata.execution.load_graph import EXECUTION_DEPENDENCY_LINEAGE_INPUT
 from metadata.models import TargetDataset, TargetDatasetInput, TargetSchema, System, SourceDataset
+
+
+def _execution_dep_tuples(node):
+  """
+  Return execution dependencies as comparable tuples.
+  """
+  return {(dep.id, dep.reason, dep.reference_id) for dep in node.execution_deps}
 
 
 @pytest.mark.django_db
@@ -90,11 +103,31 @@ def test_manifest_includes_source_edges_and_upstream_target_edges():
   assert raw_id in node_index
   assert stage_id in node_index
 
-  # raw depends on source
+  # raw depends on source for manifest completeness.
   assert source_id in node_index[raw_id].deps
+  assert source_id in node_index[raw_id].lineage_deps
+  assert (source_id, EXECUTION_DEPENDENCY_SOURCE_INPUT, None) in _execution_dep_tuples(
+    node_index[raw_id]
+  )
 
-  # stage depends on raw
+  # stage depends on raw through execution dependencies, not only lineage wording.
   assert raw_id in node_index[stage_id].deps
+  assert raw_id in node_index[stage_id].lineage_deps
+  assert (raw_id, EXECUTION_DEPENDENCY_LINEAGE_INPUT, None) in _execution_dep_tuples(
+    node_index[stage_id]
+  )
+
+  payload = manifest_to_dict(manifest)
+  assert payload["manifest_version"] == MANIFEST_VERSION
+  payload_nodes = {n["id"]: n for n in payload["nodes"]}
+  assert payload_nodes[stage_id]["deps"] == [raw_id]
+  assert payload_nodes[stage_id]["lineage_deps"] == [raw_id]
+  assert payload_nodes[stage_id]["execution_deps"] == [{
+    "id": raw_id,
+    "reason": EXECUTION_DEPENDENCY_LINEAGE_INPUT,
+    "reference_id": None,
+  }]
+
 
 @pytest.mark.django_db
 def test_manifest_stage_can_depend_directly_on_source():
@@ -135,3 +168,56 @@ def test_manifest_stage_can_depend_directly_on_source():
   assert source_id in node_index
   assert stage_id in node_index
   assert source_id in node_index[stage_id].deps
+  assert source_id in node_index[stage_id].lineage_deps
+  assert (source_id, EXECUTION_DEPENDENCY_SOURCE_INPUT, None) in _execution_dep_tuples(
+    node_index[stage_id]
+  )
+
+
+@pytest.mark.django_db
+def test_manifest_uses_effective_materialization_type():
+  """Manifest materialization exposes the effective value, not the raw override field."""
+  raw_schema, _ = TargetSchema.objects.get_or_create(
+    short_name="raw",
+    defaults={
+      "display_name": "Raw",
+      "schema_name": "raw",
+      "default_materialization_type": "table",
+    },
+  )
+
+  update_fields = []
+  if raw_schema.default_materialization_type != "table":
+    raw_schema.default_materialization_type = "table"
+    update_fields.append("default_materialization_type")
+  if not raw_schema.schema_name:
+    raw_schema.schema_name = "raw"
+    update_fields.append("schema_name")
+  if update_fields:
+    raw_schema.save(update_fields=update_fields)
+
+  TargetDataset.objects.create(
+    target_schema=raw_schema,
+    target_dataset_name="raw_effective_materialization_default",
+    incremental_strategy="full",
+    materialization_type=None,
+    is_system_managed=False,
+  )
+  TargetDataset.objects.create(
+    target_schema=raw_schema,
+    target_dataset_name="raw_effective_materialization_override",
+    incremental_strategy="full",
+    materialization_type="view",
+    is_system_managed=False,
+  )
+
+  manifest = build_manifest(
+    profile_name="dev",
+    target_system_short="dbdwh",
+    include_system_managed=True,
+    include_sources=False,
+  )
+  node_index = {n.id: n for n in manifest.nodes}
+
+  assert node_index["raw.raw_effective_materialization_default"].materialization == "table"
+  assert node_index["raw.raw_effective_materialization_override"].materialization == "view"

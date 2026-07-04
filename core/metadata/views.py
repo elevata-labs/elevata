@@ -70,6 +70,12 @@ from metadata.architecture.execution_record import (
   format_architecture_execution_duration,
   render_architecture_execution_record_payload_json,
 )
+from metadata.architecture.paths import (
+  architecture_state_file,
+  resolve_architecture_approval_dir,
+  resolve_architecture_artifact_context,
+  resolve_architecture_execution_dir,
+)
 from metadata.architecture.review_briefing import (
   build_architecture_review_briefing,
 )
@@ -982,6 +988,7 @@ def architecture_control(request):
   last_execution_result = None
   execution_history = ()
   execution_history_error = None
+  baseline_resolution = None
   execution_history_filters = {
     "history_scope": "scope",
     "history_status": "",
@@ -990,6 +997,12 @@ def architecture_control(request):
     "history_started_to": "",
   }
   error_message = None
+  runtime_context = resolve_architecture_artifact_context()
+  runtime_paths = {
+    "state_file": architecture_state_file(context=runtime_context),
+    "approval_dir": resolve_architecture_approval_dir(context=runtime_context),
+    "execution_dir": resolve_architecture_execution_dir(context=runtime_context),
+  }
 
   try:
     scope = _architecture_control_scope_from_params(scope_params)
@@ -997,6 +1010,7 @@ def architecture_control(request):
       selected_schema_short = scope.schema_short
     control_context = build_architecture_control_context(scope)
     review_status = control_context.review_status
+    baseline_resolution = getattr(control_context, "baseline_resolution", None)
     report_fingerprint = getattr(
       getattr(control_context, "report", None),
       "report_fingerprint",
@@ -1073,6 +1087,10 @@ def architecture_control(request):
     "execution_history": execution_history,
     "execution_history_error": execution_history_error,
     "execution_history_filters": execution_history_filters,
+    "runtime_context": runtime_context,
+    "runtime_paths": runtime_paths,
+    "state_baseline_exists": runtime_paths["state_file"].exists(),
+    "baseline_resolution": baseline_resolution,
     "error_message": error_message,
   }
   return render(request, "metadata/architecture/architecture_control.html", ctx)

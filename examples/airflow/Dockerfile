@@ -45,7 +45,10 @@ USER airflow
 
 COPY examples/airflow/entrypoint.sh /entrypoint.sh
 USER root
-RUN chmod +x /entrypoint.sh
+RUN set -eux; \
+  sed -i 's/\r$//' /entrypoint.sh; \
+  chmod 0755 /entrypoint.sh
+
 USER airflow
 
 ENTRYPOINT ["/entrypoint.sh"]

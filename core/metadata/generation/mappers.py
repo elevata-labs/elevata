@@ -131,9 +131,14 @@ def build_surrogate_key_column_draft(
   """
 
   sk_name = naming.build_surrogate_key_name(target_dataset_name)
+  clean_natural_key_colnames = [
+    str(col).strip()
+    for col in natural_key_colnames
+    if str(col or "").strip()
+  ]
 
   expr = build_surrogate_expression(
-    natural_key_cols=natural_key_colnames,
+    natural_key_cols=clean_natural_key_colnames,
     pepper=pepper,
     null_token=null_token,
     pair_sep=pair_sep,

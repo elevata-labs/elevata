@@ -22,6 +22,7 @@ Contact: <https://github.com/elevata-labs/elevata>.
 
 from __future__ import annotations
 
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
@@ -33,6 +34,48 @@ from metadata.architecture.control import (
   ArchitectureControlContext,
   ArchitectureControlScope,
 )
+
+
+def _artifact_context() -> SimpleNamespace:
+  """
+  Return an ArchitectureArtifactContext-shaped object for view tests.
+  """
+  return SimpleNamespace(
+    profile_name="dev",
+    target_system_short="dwh",
+    profile_token="dev",
+    target_system_token="dwh",
+    label="dev/dwh",
+  )
+
+
+def _state_store() -> SimpleNamespace:
+  """
+  Return an ArchitectureStateStore-shaped object for view tests.
+  """
+  state_file = Path(".elevata/state/dev/dwh/architecture_state.json")
+  return SimpleNamespace(
+    base_path=state_file.parent,
+    state_file_path=lambda: state_file,
+  )
+
+
+def _baseline_resolution() -> SimpleNamespace:
+  """
+  Return an ArchitectureBaselineResolution-shaped object for view tests.
+  """
+  state_file = Path(".elevata/state/dev/dwh/architecture_state.json")
+  return SimpleNamespace(
+    previous_state=SimpleNamespace(),
+    source="recorded_state",
+    can_execute=True,
+    message="Recorded architecture baseline is available for this runtime context.",
+    state_file=state_file,
+    warning_count=0,
+    warnings=(),
+    is_recorded=True,
+    is_discovered=False,
+  )
 
 
 class FakeQuerySet:
@@ -97,9 +140,12 @@ def test_architecture_control_view_adds_review_briefing_context(
   scope = ArchitectureControlScope.for_all()
   context = ArchitectureControlContext(
     scope=scope,
+    artifact_context=_artifact_context(),
     report=SimpleNamespace(report_fingerprint="report-1"),
     review_status=SimpleNamespace(status="approved"),
     approval_store=SimpleNamespace(),
+    state_store=_state_store(),
+    baseline_resolution=_baseline_resolution(),
   )
   preview = SimpleNamespace(gate=SimpleNamespace(can_execute=True))
   briefing = SimpleNamespace(scope_key="all")

@@ -40,8 +40,12 @@ from metadata.architecture.scope import (
   dataset_keys_from_execution_items,
   split_dataset_key,
 )
+from metadata.architecture.diff import diff_architecture_states
 from metadata.architecture.migration_planner import MigrationPlanner
+from metadata.architecture.paths import resolve_architecture_artifact_context
+from metadata.architecture.physical_state import resolve_architecture_baseline
 from metadata.architecture.service import ArchitectureStateService
+from metadata.architecture.store import ArchitectureStateStore
 from metadata.architecture.shadow_compare import (
   SCHEMA_OP_ACTION_TYPES,
   build_actual_schema_op_tokens_from_plan,
@@ -59,6 +63,7 @@ from metadata.rendering.load_sql import (
   render_load_sql_for_target,
   build_load_run_summary,
   format_load_run_summary,
+  render_controlled_reference_member_sql_for_target,
 )
 from metadata.rendering.load_planner import build_load_plan
 from metadata.rendering.placeholders import resolve_delta_cutoff_for_source_dataset
@@ -181,9 +186,79 @@ def _get_arch_mode_env(default: str = "off") -> str:
 AUTO_PROVISION_SCHEMAS = _get_bool_env("ELEVATA_AUTO_PROVISION_SCHEMAS", True)
 AUTO_PROVISION_TABLES = _get_bool_env("ELEVATA_AUTO_PROVISION_TABLES", True)
 AUTO_PROVISION_META_LOG = _get_bool_env("ELEVATA_AUTO_PROVISION_META_LOG", True)
+ALLOW_ORPHAN_MANAGED_SCHEMA_DEPENDENT_VIEW_DROP = _get_bool_env(
+  "ELEVATA_ALLOW_ORPHAN_MANAGED_SCHEMA_DEPENDENT_VIEW_DROP",
+  False,
+)
 META_SCHEMA_NAME = os.getenv("ELEVATA_META_SCHEMA_NAME", "meta")
 
-def ensure_target_table(engine, dialect, td, auto_provision: bool) -> None:
+def _target_table_exists_for_ensure(
+  *,
+  dialect,
+  td,
+  exec_engine=None,
+) -> bool | None:
+  """
+  Return whether the target table already exists, when the dialect can tell.
+
+  This is intentionally best-effort. A None return keeps the previous
+  conservative auto-provisioning behavior.
+  """
+  inspect = getattr(dialect, "introspect_table", None)
+  if not callable(inspect):
+    return None
+
+  schema = getattr(td, "target_schema", None)
+  schema_name = (
+    getattr(schema, "schema_name", None)
+    or getattr(schema, "short_name", None)
+  )
+  table_name = getattr(td, "target_dataset_name", None)
+
+  if not schema_name or not table_name:
+    return None
+
+  try:
+    info = inspect(
+      schema_name=schema_name,
+      table_name=table_name,
+      introspection_engine=None,
+      exec_engine=exec_engine,
+    )
+  except TypeError:
+    try:
+      info = inspect(
+        schema=schema_name,
+        table=table_name,
+        exec_engine=exec_engine,
+      )
+    except TypeError:
+      return None
+  except Exception:
+    return None
+
+  if not isinstance(info, dict):
+    return None
+
+  if "table_exists" in info:
+    return bool(info.get("table_exists"))
+
+  if "exists" in info:
+    return bool(info.get("exists"))
+
+  return None
+
+
+def ensure_target_table(
+  engine,
+  dialect,
+  td,
+  auto_provision: bool,
+  *,
+  debug: bool = False,
+  stdout=None,
+  style=None,
+) -> None:
   """
   Ensure the physical target table exists in the warehouse.
 
@@ -196,11 +271,660 @@ def ensure_target_table(engine, dialect, td, auto_provision: bool) -> None:
   if not hasattr(dialect, "render_create_table_if_not_exists"):
     return
 
+  table_exists = _target_table_exists_for_ensure(
+    dialect=dialect,
+    td=td,
+    exec_engine=engine,
+  )
+
+  dataset_key = (
+    f"{getattr(getattr(td, 'target_schema', None), 'short_name', '?')}."
+    f"{getattr(td, 'target_dataset_name', '?')}"
+  )
+
+  if table_exists is True:
+    if debug and stdout is not None:
+      message = f"-- Ensure target table skipped: {dataset_key} already exists"
+      notice = getattr(style, "NOTICE", None) if style is not None else None
+      stdout.write(notice(message) if callable(notice) else message)
+    return
+
   ddl = dialect.render_create_table_if_not_exists(td)
   if not ddl:
     return
 
+  if debug and stdout is not None:
+    message = f"-- Ensure target table DDL: {dataset_key}\n{ddl}"
+    notice = getattr(style, "NOTICE", None) if style is not None else None
+    stdout.write(notice(message) if callable(notice) else message)
+
   engine.execute(ddl)
+
+
+def _norm_physical_column_name(name: str) -> str:
+  """
+  Normalize physical column names for deterministic drift checks.
+  """
+  return str(name or "").strip().strip('"').strip("`").strip("[]").lower()
+
+
+def _active_target_column_names(td) -> list[str]:
+  """
+  Return active target column names in metadata order.
+  """
+  cols_obj = getattr(td, "target_columns", None)
+  if cols_obj is None:
+    return []
+
+  try:
+    qs = cols_obj.filter(active=True)
+    if hasattr(qs, "order_by"):
+      qs = qs.order_by("ordinal_position", "id")
+    cols = list(qs)
+  except Exception:
+    try:
+      cols = [c for c in list(cols_obj) if getattr(c, "active", True)]
+      cols.sort(key=lambda c: (getattr(c, "ordinal_position", 0) or 0, getattr(c, "id", 0) or 0))
+    except Exception:
+      return []
+
+  names: list[str] = []
+  seen: set[str] = set()
+  duplicates: list[str] = []
+  for c in cols:
+    name = str(getattr(c, "target_column_name", "") or "").strip()
+    if not name:
+      continue
+    norm = _norm_physical_column_name(name)
+    if norm in seen:
+      duplicates.append(name)
+      continue
+    seen.add(norm)
+    names.append(name)
+
+  if duplicates:
+    dataset_key = (
+      f"{getattr(getattr(td, 'target_schema', None), 'short_name', '?')}."
+      f"{getattr(td, 'target_dataset_name', '?')}"
+    )
+    raise CommandError(
+      f"Metadata validation failed for {dataset_key}: duplicate active target columns: "
+      f"{', '.join(sorted(set(duplicates)))}."
+    )
+
+  return names
+
+
+def _introspect_target_table_for_guard(*, dialect, td, exec_engine=None) -> dict[str, Any] | None:
+  """
+  Return physical target table metadata for execution guard checks.
+
+  Unsupported or unavailable introspection returns None so legacy/test dialects
+  are not blocked accidentally. Dialects with reliable exec_engine-backed
+  introspection should return a dict without a debug fallback marker.
+  """
+  inspect = getattr(dialect, "introspect_table", None)
+  if not callable(inspect):
+    return None
+
+  schema = getattr(td, "target_schema", None)
+  schema_name = (
+    getattr(schema, "schema_name", None)
+    or getattr(schema, "short_name", None)
+  )
+  table_name = getattr(td, "target_dataset_name", None)
+  if not schema_name or not table_name:
+    return None
+
+  try:
+    info = inspect(
+      schema_name=schema_name,
+      table_name=table_name,
+      introspection_engine=None,
+      exec_engine=exec_engine,
+      debug_plan=True,
+    )
+  except TypeError:
+    try:
+      info = inspect(
+        schema=schema_name,
+        table=table_name,
+        exec_engine=exec_engine,
+      )
+    except TypeError:
+      return None
+  except Exception:
+    return None
+
+  if not isinstance(info, dict):
+    return None
+
+  actual_cols = dict(info.get("actual_cols_by_norm_name") or {})
+
+  # Base SQLAlchemy fallback with no usable introspection engine reports debug
+  # information. Treat that as unsupported instead of blocking every dialect.
+  if info.get("debug") and not bool(info.get("table_exists")) and not actual_cols:
+    return None
+
+  return info
+
+
+def validate_physical_schema_before_load(
+  *,
+  td,
+  dialect,
+  exec_engine,
+  debug: bool = False,
+  stdout=None,
+  style=None,
+) -> None:
+  """
+  Fail closed when recorded metadata/state is ahead of the physical target.
+
+  This guard intentionally does not repair drift. Schema changes must remain
+  MigrationPlan-driven; this check only prevents generated load SQL from running
+  against stale physical tables after partial/aborted executions.
+  """
+  desired_names = _active_target_column_names(td)
+  if not desired_names:
+    return
+
+  schema = getattr(td, "target_schema", None)
+  dataset_key = (
+    f"{getattr(schema, 'short_name', '?')}."
+    f"{getattr(td, 'target_dataset_name', '?')}"
+  )
+  schema_name = (
+    getattr(schema, "schema_name", None)
+    or getattr(schema, "short_name", None)
+    or "?"
+  )
+  table_name = getattr(td, "target_dataset_name", "?")
+
+  info = _introspect_target_table_for_guard(
+    dialect=dialect,
+    td=td,
+    exec_engine=exec_engine,
+  )
+  if info is None:
+    return
+
+  actual_cols = dict(info.get("actual_cols_by_norm_name") or {})
+  actual_norm_names = {_norm_physical_column_name(n) for n in actual_cols.keys() if n}
+
+  if not bool(info.get("table_exists")):
+    raise CommandError(
+      f"Physical schema drift detected for {dataset_key}: physical table "
+      f"{schema_name}.{table_name} does not exist. Recorded architecture state "
+      "or metadata is ahead of the physical target. Run a controlled migration "
+      "or reconcile the target before executing loads."
+    )
+
+  missing = [
+    name
+    for name in desired_names
+    if _norm_physical_column_name(name) not in actual_norm_names
+  ]
+
+  if missing:
+    raise CommandError(
+      f"Physical schema drift detected for {dataset_key}: missing physical columns: "
+      f"{', '.join(missing)}. Recorded architecture state or metadata is ahead "
+      "of the physical target. Run a controlled migration/repair or reconcile "
+      "the target before executing loads."
+    )
+
+  if debug and stdout is not None:
+    message = f"-- Physical schema guard passed: {dataset_key}"
+    notice = getattr(style, "NOTICE", None) if style is not None else None
+    stdout.write(notice(message) if callable(notice) else message)
+
+
+def _dataset_key_for_target_dataset(td) -> str:
+  """
+  Return the canonical architecture dataset key for a TargetDataset-like object.
+  """
+  return (
+    f"{getattr(getattr(td, 'target_schema', None), 'short_name', '?')}."
+    f"{getattr(td, 'target_dataset_name', '?')}"
+  )
+
+
+def _effective_materialization_for_target_dataset(td) -> str:
+  """
+  Return the effective materialization type for a TargetDataset-like object.
+  """
+  schema = getattr(td, "target_schema", None)
+  mat = (
+    getattr(td, "materialization_type", None)
+    or getattr(schema, "default_materialization_type", None)
+    or "table"
+  )
+  return str(mat or "table").strip().lower()
+
+
+def _is_view_target_dataset(td) -> bool:
+  """
+  Return True when a TargetDataset is managed as a view.
+  """
+  return _effective_materialization_for_target_dataset(td) == "view"
+
+
+def _managed_downstream_view_keys_from_lineage(td) -> set[str]:
+  """
+  Return managed downstream view dataset keys derived from elevata lineage.
+
+  This is an advisory managed-scope signal. The physical database dependency
+  graph remains the source of truth for objects that actually block DROP TABLE.
+  """
+  try:
+    downstream = (
+      TargetDataset.objects
+      .select_related("target_schema")
+      .filter(input_links__upstream_target_dataset=td, input_links__active=True)
+      .distinct()
+    )
+  except Exception:
+    return set()
+
+  out: set[str] = set()
+  for candidate in downstream:
+    if _is_view_target_dataset(candidate):
+      out.add(_dataset_key_for_target_dataset(candidate))
+  return out
+
+
+def _norm_dependency_identifier(value: str) -> str:
+  """
+  Normalize physical object identifiers for managed-dependency matching.
+  """
+  s = str(value or "").strip().strip('"').strip("`").strip("[]")
+  return " ".join(s.lower().split())
+
+
+def _schema_matches_physical_name(schema, schema_name: str) -> bool:
+  """
+  Return True if a TargetSchema matches a physical dependency schema name.
+  """
+  wanted = _norm_dependency_identifier(schema_name)
+  return wanted in {
+    _norm_dependency_identifier(getattr(schema, "schema_name", "")),
+    _norm_dependency_identifier(getattr(schema, "short_name", "")),
+  }
+
+
+def _managed_view_name_candidates(td) -> set[str]:
+  """
+  Return current and former physical names for a managed view dataset.
+  """
+  names = {str(getattr(td, "target_dataset_name", "") or "").strip()}
+  former = getattr(td, "former_names", None) or []
+  if isinstance(former, (list, tuple, set)):
+    names.update(str(v or "").strip() for v in former if str(v or "").strip())
+  return {name for name in names if name}
+
+
+def _managed_view_dataset_for_physical_view(
+  *,
+  schema_name: str,
+  view_name: str,
+  upstream_td=None,
+):
+  """
+  Resolve a physical dependent view to a managed TargetDataset, if possible.
+
+  Matching is intentionally metadata-owned:
+  - current TargetDataset.target_dataset_name
+  - TargetDataset.former_names for renamed physical views
+  - as a final safe fallback, a single downstream managed view from lineage
+    in the same physical schema.
+  """
+  if not schema_name or not view_name:
+    return None
+
+  all_candidates = (
+    TargetDataset.objects
+    .select_related("target_schema")
+    .filter(active=True)
+  )
+
+  schema_candidates = [
+    candidate
+    for candidate in all_candidates
+    if _schema_matches_physical_name(getattr(candidate, "target_schema", None), schema_name)
+    and _is_view_target_dataset(candidate)
+  ]
+
+  wanted_name = _norm_dependency_identifier(view_name)
+  name_matches = [
+    candidate
+    for candidate in schema_candidates
+    if wanted_name in {
+      _norm_dependency_identifier(name)
+      for name in _managed_view_name_candidates(candidate)
+    }
+  ]
+  if len(name_matches) == 1:
+    return name_matches[0]
+  if len(name_matches) > 1:
+    return None
+
+  # Last-resort safety net for legacy/friendly physical view names: if exactly
+  # one managed downstream view in the same physical schema depends on the table,
+  # treat the physical dependency as managed and drop only that physical view.
+  if upstream_td is not None:
+    lineage_matches = []
+    for candidate in schema_candidates:
+      try:
+        is_downstream = candidate.input_links.filter(
+          upstream_target_dataset=upstream_td,
+          active=True,
+        ).exists()
+      except Exception:
+        is_downstream = False
+      if is_downstream:
+        lineage_matches.append(candidate)
+
+    if len(lineage_matches) == 1:
+      return lineage_matches[0]
+
+  return None
+
+
+def _has_managed_view_schema_candidate(schema_name: str) -> bool:
+  """
+  Return True when the physical schema contains managed view metadata.
+
+  This is used only to distinguish truly external dependencies from orphaned
+  physical views in an elevata-managed view schema. Orphans remain blocked by
+  default; they can only be dropped with an explicit cleanup flag.
+  """
+  if not schema_name:
+    return False
+
+  try:
+    candidates = (
+      TargetDataset.objects
+      .select_related("target_schema")
+      .filter(active=True)
+    )
+  except Exception:
+    return False
+
+  for candidate in candidates:
+    if (
+      _schema_matches_physical_name(getattr(candidate, "target_schema", None), schema_name)
+      and _is_view_target_dataset(candidate)
+    ):
+      return True
+  return False
+
+
+def _format_orphan_dependent_view_cleanup(
+  *,
+  label: str,
+  sql: str | None,
+) -> str:
+  """
+  Return a compact diagnostic label for an orphaned dependent view.
+  """
+  if sql:
+    return f"{label} (cleanup SQL: {sql})"
+  return label
+
+
+def _introspect_dependent_views_for_full_refresh(*, dialect, td, exec_engine) -> list[dict[str, str]]:
+  """
+  Return physical views depending on a table when the dialect supports it.
+  """
+  inspect = getattr(dialect, "introspect_dependent_views", None)
+  if not callable(inspect):
+    return []
+
+  schema = getattr(td, "target_schema", None)
+  schema_name = (
+    getattr(schema, "schema_name", None)
+    or getattr(schema, "short_name", None)
+  )
+  table_name = getattr(td, "target_dataset_name", None)
+  if not schema_name or not table_name:
+    return []
+
+  try:
+    rows = inspect(
+      schema_name=schema_name,
+      table_name=table_name,
+      exec_engine=exec_engine,
+    )
+  except TypeError:
+    try:
+      rows = inspect(
+        schema=schema_name,
+        table=table_name,
+        exec_engine=exec_engine,
+      )
+    except TypeError:
+      return []
+  except Exception:
+    return []
+
+  out: list[dict[str, str]] = []
+  for row in rows or []:
+    if isinstance(row, dict):
+      dep_schema = str(row.get("schema") or row.get("dependent_schema") or "").strip()
+      dep_name = str(row.get("name") or row.get("view") or row.get("dependent_name") or "").strip()
+      dep_type = str(row.get("type") or row.get("dependent_type") or "view").strip().lower()
+    else:
+      try:
+        dep_schema = str(row[0] or "").strip()
+        dep_name = str(row[1] or "").strip()
+        dep_type = str(row[2] or "view").strip().lower() if len(row) > 2 else "view"
+      except Exception:
+        continue
+
+    if not dep_schema or not dep_name:
+      continue
+    out.append({
+      "schema": dep_schema,
+      "name": dep_name,
+      "type": dep_type or "view",
+    })
+
+  return out
+
+
+def _render_drop_dependent_view_sql(*, dialect, schema_name: str, view_name: str, dependent_type: str) -> str | None:
+  """
+  Render dialect-owned DROP VIEW DDL for a managed dependent view.
+  """
+  renderer = getattr(dialect, "render_drop_view_if_exists", None)
+  if not callable(renderer):
+    return None
+
+  materialized = str(dependent_type or "").lower() in ("materialized_view", "materialized view", "m")
+
+  try:
+    return renderer(
+      schema=schema_name,
+      view=view_name,
+      materialized=materialized,
+      cascade=False,
+    )
+  except TypeError:
+    try:
+      return renderer(
+        schema=schema_name,
+        view=view_name,
+        cascade=False,
+      )
+    except TypeError:
+      return None
+
+
+def drop_managed_dependent_views_before_full_refresh(
+  *,
+  td,
+  dialect,
+  exec_engine,
+  execution_dataset_keys: set[str] | None,
+  debug: bool = False,
+  stdout=None,
+  style=None,
+) -> None:
+  """
+  Drop managed dependent views before a full-refresh table recreate.
+
+  Some platforms, especially PostgreSQL, block DROP TABLE when views depend on
+  that table. elevata must not use CASCADE because it may remove unmanaged
+  objects. Instead, only managed views that are part of the current controlled
+  execution scope are dropped explicitly; their own dataset execution recreates
+  them later.
+  """
+  dependent_views = _introspect_dependent_views_for_full_refresh(
+    dialect=dialect,
+    td=td,
+    exec_engine=exec_engine,
+  )
+  if not dependent_views:
+    return
+
+  dataset_key = _dataset_key_for_target_dataset(td)
+  lineage_view_keys = _managed_downstream_view_keys_from_lineage(td)
+  managed_to_drop: list[tuple[dict[str, str], str]] = []
+  orphaned_managed_schema_to_drop: list[tuple[dict[str, str], str]] = []
+  unmanaged: list[str] = []
+  orphaned_managed_schema: list[str] = []
+  out_of_scope: list[str] = []
+  unsupported: list[str] = []
+
+  for dep in dependent_views:
+    dep_schema = dep["schema"]
+    dep_name = dep["name"]
+    dep_type = dep.get("type") or "view"
+    label = f"{dep_schema}.{dep_name}"
+
+    view_td = _managed_view_dataset_for_physical_view(
+      schema_name=dep_schema,
+      view_name=dep_name,
+      upstream_td=td,
+    )
+    if view_td is None:
+      # The physical view lives in a schema where elevata manages views, but
+      # current metadata cannot resolve this exact physical object by current
+      # name, former_names, or lineage. Treat this as an orphaned physical
+      # managed-schema artifact, not as a managed view that can be recreated.
+      if _has_managed_view_schema_candidate(dep_schema):
+        cleanup_sql = _render_drop_dependent_view_sql(
+          dialect=dialect,
+          schema_name=dep_schema,
+          view_name=dep_name,
+          dependent_type=dep_type,
+        )
+        if ALLOW_ORPHAN_MANAGED_SCHEMA_DEPENDENT_VIEW_DROP and cleanup_sql:
+          orphaned_managed_schema_to_drop.append((dep, cleanup_sql))
+        else:
+          orphaned_managed_schema.append(_format_orphan_dependent_view_cleanup(
+            label=label,
+            sql=cleanup_sql,
+          ))
+        continue
+
+      unmanaged.append(label)
+      continue
+
+    view_key = _dataset_key_for_target_dataset(view_td)
+    if execution_dataset_keys is None or view_key not in execution_dataset_keys:
+      out_of_scope.append(f"{label} ({view_key})")
+      continue
+
+    sql = _render_drop_dependent_view_sql(
+      dialect=dialect,
+      schema_name=dep_schema,
+      view_name=dep_name,
+      dependent_type=dep_type,
+    )
+    if not sql:
+      unsupported.append(f"{label} ({view_key})")
+      continue
+
+    managed_to_drop.append((dep, sql))
+
+  if orphaned_managed_schema:
+    raise CommandError(
+      f"Full refresh dependency blocked for {dataset_key}: orphaned physical "
+      f"dependent view(s) exist in managed view schema(s): {', '.join(orphaned_managed_schema)}. "
+      "These objects are not represented by current TargetDataset metadata, "
+      "former_names, or active lineage, so elevata cannot recreate them after "
+      "DROP TABLE. Clean them up explicitly, or set "
+      "ELEVATA_ALLOW_ORPHAN_MANAGED_SCHEMA_DEPENDENT_VIEW_DROP=true for a "
+      "controlled managed-schema orphan cleanup run."
+    )
+
+  if unmanaged:
+    raise CommandError(
+      f"Full refresh dependency blocked for {dataset_key}: unmanaged physical "
+      f"dependent view(s) exist: {', '.join(unmanaged)}. Refusing DROP TABLE "
+      "without CASCADE. Remove or manage those dependencies before executing."
+    )
+
+  if out_of_scope:
+    raise CommandError(
+      f"Full refresh dependency blocked for {dataset_key}: managed dependent "
+      f"view(s) are not part of the current execution scope: {', '.join(out_of_scope)}. "
+      "Run a scope that includes the dependent views so they can be recreated."
+    )
+
+  if unsupported:
+    raise CommandError(
+      f"Full refresh dependency blocked for {dataset_key}: dialect cannot render "
+      f"DROP VIEW for managed dependent view(s): {', '.join(unsupported)}."
+    )
+
+  for dep, sql in orphaned_managed_schema_to_drop:
+    dep_schema = dep["schema"]
+    dep_name = dep["name"]
+    if stdout is not None and not debug:
+      message = (
+        f"-- Full refresh dependency handling: dropping orphaned managed-schema "
+        f"dependent view {dep_schema}.{dep_name} before recreating {dataset_key}"
+      )
+      warning = getattr(style, "WARNING", None) if style is not None else None
+      stdout.write(warning(message) if callable(warning) else message)
+    elif debug and stdout is not None:
+      message = (
+        f"-- Full refresh dependency handling: DROP orphaned managed-schema view "
+        f"before recreate {dep_schema}.{dep_name}\n{sql}"
+      )
+      notice = getattr(style, "NOTICE", None) if style is not None else None
+      stdout.write(notice(message) if callable(notice) else message)
+    exec_engine.execute(sql)
+
+  for dep, sql in managed_to_drop:
+    dep_schema = dep["schema"]
+    dep_name = dep["name"]
+    view_td = _managed_view_dataset_for_physical_view(
+      schema_name=dep_schema,
+      view_name=dep_name,
+      upstream_td=td,
+    )
+    view_key = _dataset_key_for_target_dataset(view_td) if view_td is not None else f"{dep_schema}.{dep_name}"
+    lineage_note = "lineage-managed" if view_key in lineage_view_keys else "managed"
+    if stdout is not None and not debug:
+      message = (
+        f"-- Full refresh dependency handling: dropping {lineage_note} "
+        f"dependent view {dep_schema}.{dep_name} before recreating {dataset_key}"
+      )
+      warning = getattr(style, "WARNING", None) if style is not None else None
+      stdout.write(warning(message) if callable(warning) else message)
+    elif debug and stdout is not None:
+      message = (
+        f"-- Full refresh dependency handling: DROP VIEW before recreate "
+        f"{dep_schema}.{dep_name}\n{sql}"
+      )
+      notice = getattr(style, "NOTICE", None) if style is not None else None
+      stdout.write(notice(message) if callable(notice) else message)
+    exec_engine.execute(sql)
+
 
 def _looks_like_cross_system_sql(sql: str, target_schema: str) -> bool:
   """
@@ -381,6 +1105,7 @@ def run_single_target_dataset(
   fail_on_type_drift: bool = False,
   allow_type_alter: bool = False,
   migration_plan=None,
+  execution_dataset_keys: set[str] | None = None,
 ) -> dict[str, object]:
   """
   Execute or render exactly one dataset.
@@ -755,6 +1480,29 @@ def run_single_target_dataset(
             )
 
           if hist_td is not None:
+            hist_key = f"{hist_td.target_schema.short_name}.{hist_td.target_dataset_name}"
+
+            # A historized rawcore base dataset can reference its companion
+            # *_hist table inside its generated load SQL. The materialization
+            # planner owns schema evolution, but central provisioning owns
+            # missing-table creation. Ensure the companion relation exists
+            # before the base load SQL can reference it.
+            try:
+              ensure_target_table(
+                engine=target_system_engine,
+                dialect=dialect,
+                td=hist_td,
+                auto_provision=AUTO_PROVISION_TABLES,
+                debug=debug_materialization,
+                stdout=stdout,
+                style=style,
+              )
+            except Exception as exc:
+              raise CommandError(
+                f"Hist companion provisioning failed for {dataset_key}: "
+                f"{hist_key}: {exc}"
+              ) from exc
+
             hist_plan = build_materialization_plan(
               td=hist_td,
               introspection_engine=target_sa_engine,
@@ -764,7 +1512,6 @@ def run_single_target_dataset(
             )
 
             if migration_plan is not None:
-              hist_key = f"{hist_td.target_schema.short_name}.{hist_td.target_dataset_name}"
               mig_res = build_materialization_from_migration_plan(
                 td=hist_td,
                 dataset_key=hist_key,
@@ -816,10 +1563,31 @@ def run_single_target_dataset(
 
             # Always apply hist sync (best-effort), regardless of no_type_changes.
             apply_materialization_plan(plan=hist_plan, exec_engine=target_system_engine)
-            # (no need to touch did_materialization_provision here; this is best-effort hist sync)
 
+            # After migration-driven hist sync, the companion table must match
+            # active metadata before the base dataset load can safely reference it.
+            try:
+              validate_physical_schema_before_load(
+                td=hist_td,
+                dialect=dialect,
+                exec_engine=target_system_engine,
+                debug=debug_materialization,
+                stdout=stdout,
+                style=style,
+              )
+            except Exception as exc:
+              raise CommandError(
+                f"Hist companion schema validation failed for {dataset_key}: "
+                f"{hist_key}: {exc}"
+              ) from exc
+            # (no need to touch did_materialization_provision here; this is companion sync)
+
+      except CommandError:
+        raise
       except Exception as exc:
-        # Never break the load because of best-effort hist sync
+        # Keep non-critical companion drift remediation best-effort. Explicit
+        # provisioning and schema validation failures above are raised as
+        # CommandError and must block before load SQL execution.
         logger.warning("Hist materialization sync failed: %s", exc)
 
       # dispose AFTER both plans
@@ -900,16 +1668,21 @@ def run_single_target_dataset(
     auto_provision=AUTO_PROVISION_SCHEMAS,
   )
 
-  if mat in ("table", "incremental"):
+  if mat in ("table", "incremental") or is_hist:
     # Avoid double provisioning:
     # - If materialization already created/adjusted the table, skip.
     # - If full refresh will DROP+CREATE below, skip baseline ensure here.
+    # - rawcore *_hist datasets are always physical table targets for SCD2 SQL,
+    #   even when their metadata materialization type is unset or inherited.
     if is_hist or ((not did_materialization_provision) and (not is_full_refresh)):
       ensure_target_table(
         engine=target_system_engine,
         dialect=dialect,
         td=td,
         auto_provision=AUTO_PROVISION_TABLES,
+        debug=debug_materialization,
+        stdout=stdout,
+        style=style,
       )
   elif mat == "view":
     # no table provisioning for views
@@ -934,6 +1707,18 @@ def run_single_target_dataset(
 
   if should_truncate_before_load(td, load_plan) and mat in ("table", "incremental"):
     # Full refresh: prefer DROP+CREATE (recreate) so schema drift can be healed.
+    # Before dropping a table, remove only managed dependent views that are part
+    # of the current execution scope. Never use CASCADE for this.
+    drop_managed_dependent_views_before_full_refresh(
+      td=td,
+      dialect=dialect,
+      exec_engine=target_system_engine,
+      execution_dataset_keys=execution_dataset_keys,
+      debug=debug_materialization,
+      stdout=None if no_print else stdout,
+      style=style,
+    )
+
     if hasattr(dialect, "render_drop_table_if_exists"):
       drop_sql = dialect.render_drop_table_if_exists(
         schema=td.target_schema.schema_name,
@@ -957,6 +1742,16 @@ def run_single_target_dataset(
         table=td.target_dataset_name,
       )
       target_system_engine.execute(trunc_sql)
+
+  if mat in ("table", "incremental") or is_hist:
+    validate_physical_schema_before_load(
+      td=td,
+      dialect=dialect,
+      exec_engine=target_system_engine,
+      debug=debug_materialization,
+      stdout=stdout,
+      style=style,
+    )
 
   exec_started_at = now()
   exec_start_ts = time.perf_counter()
@@ -1012,6 +1807,17 @@ def run_single_target_dataset(
     )
 
     rows_affected = target_system_engine.execute(sql_exec)
+
+    controlled_member_sqls = render_controlled_reference_member_sql_for_target(td, dialect)
+    for controlled_sql in controlled_member_sqls:
+      controlled_sql_exec = apply_runtime_placeholders(
+        controlled_sql,
+        dialect=dialect,
+        load_run_id=load_run_id,
+        load_timestamp=exec_ts,
+        delta_cutoff=delta_cutoff,
+      )
+      target_system_engine.execute(controlled_sql_exec)
 
   except Exception as exc:
     load_status = "error"
@@ -1632,6 +2438,10 @@ class Command(BaseCommand):
       )      
 
       plan = build_execution_plan(batch_run_id=batch_run_id, execution_order=execution_order)
+      execution_dataset_keys = {
+        _dataset_key_for_target_dataset(td)
+        for td in execution_order
+      }
 
       # 6) Print plan
       self._print_execution_plan(
@@ -1733,6 +2543,7 @@ class Command(BaseCommand):
           fail_on_type_drift=fail_on_type_drift,
           allow_type_alter=allow_type_alter,
           migration_plan=migration_plan,
+          execution_dataset_keys=execution_dataset_keys,
         )
  
       # --- Architecture State (best effort, scope-aware) ---
@@ -1745,18 +2556,39 @@ class Command(BaseCommand):
       relevant_column_changes = []
       relevant_dataset_keys = set()
       migration_plan = None
+      arch_state_store = None
 
       try:
         arch_service = ArchitectureStateService()
 
-        previous_state = arch_service.load_previous_state()
-        current_state, arch_diff = arch_service.diff_against(previous_state)
+        current_state = arch_service.build_current_state()
+        artifact_context = resolve_architecture_artifact_context(
+          profile_name=getattr(profile, "name", None),
+          target_system_short=getattr(system, "short_name", None),
+        )
+        state_store = ArchitectureStateStore(context=artifact_context)
+        arch_state_store = state_store
 
         relevant_dataset_keys = dataset_keys_from_execution_items(
           execution_order,
           architecture_state=current_state,
           include_related_hist=True,
         )
+
+        baseline_resolution = resolve_architecture_baseline(
+          current_state=current_state,
+          artifact_context=artifact_context,
+          state_store=state_store,
+          profile=profile,
+          target_system=system,
+          dialect=dialect,
+          relevant_dataset_keys=relevant_dataset_keys,
+        )
+        if not baseline_resolution.can_execute:
+          raise CommandError(baseline_resolution.message)
+
+        previous_state = baseline_resolution.previous_state
+        arch_diff = diff_architecture_states(previous_state, current_state)
  
         relevant_dataset_changes = [
           ch for ch in arch_diff.dataset_changes
@@ -1768,7 +2600,7 @@ class Command(BaseCommand):
           if ch.dataset_key in relevant_dataset_keys
         ]
 
-        if arch_diff is not None and previous_state is not None:
+        if arch_diff is not None:
 
           migration_plan = MigrationPlanner().plan(
             arch_diff,
@@ -1777,6 +2609,8 @@ class Command(BaseCommand):
             expand_related_hist=True,
           )
 
+      except CommandError:
+        raise
       except Exception as exc:
         # Architecture State is additive only and must never break the
         # existing load flow or tests.
@@ -2116,6 +2950,7 @@ class Command(BaseCommand):
                 f"suppressed_full_refresh_col_renames={expected_build.suppressed_full_refresh_col_renames} "
                 f"suppressed_full_refresh_add_columns={expected_build.suppressed_full_refresh_add_columns} "
                 f"suppressed_full_refresh_alter_columns={expected_build.suppressed_full_refresh_alter_columns} "
+                f"suppressed_full_refresh_drop_columns={expected_build.suppressed_full_refresh_drop_columns} "
                 f"suppressed_hist_drop_columns={len(suppressed_hist_drop)}"
               ))
 
@@ -2201,7 +3036,10 @@ class Command(BaseCommand):
         and (execute or persist_on_dry_run)
       ):
         try:
-          arch_service.persist_state(current_state)
+          if arch_state_store is not None:
+            arch_state_store.save(current_state)
+          else:
+            arch_service.persist_state(current_state)
         except Exception:
           pass
 

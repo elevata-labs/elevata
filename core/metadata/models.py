@@ -863,7 +863,7 @@ class TargetDataset(AuditFields):
     """
     qs = (
       self.target_columns
-      .filter(system_role="business_key")
+      .filter(system_role="business_key", active=True)
       .values_list("target_column_name", flat=True)
     )
     return sorted(list(qs))
@@ -2141,6 +2141,8 @@ class TargetColumn(AuditFields):
       "version_started_at",
       "version_ended_at",
       "version_state",
+      "inferred_member",
+      "default_member",
     }
 
   def __str__(self):
@@ -2263,6 +2265,14 @@ class TargetDatasetReference(AuditFields):
     help_text=(
       "Human/machine-readable join hint for lineage visualization. "
       "Example: 'child.billing_sap_customer_key = parent.sap_customer_key'."
+    )
+  )
+  inferred_members_enabled = models.BooleanField(default=False,
+    help_text=(
+      "If enabled, controlled load execution may create inferred parent members "
+      "for non-null child reference values that do not yet exist in the referenced "
+      "dataset. Disabled by default because this mutates parent data during child "
+      "loads."
     )
   )
 

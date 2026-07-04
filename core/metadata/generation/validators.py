@@ -65,6 +65,7 @@ This module contains semantic and metadata validations with two categories:
 
 BLOCKING (must be correct for deterministic execution):
 - validate_incremental_target_dataset
+- validate_surrogate_key_integrity
 - validate_semantic_join_integrity
 
 ADVISORY (quality, governance, presentation):
@@ -218,6 +219,146 @@ def validate_all_incremental_targets() -> Dict[int, List[str]]:
 
   for td in qs.select_related("target_schema", "incremental_source"):
     issues = validate_incremental_target_dataset(td)
+    if issues:
+      result[td.pk] = issues
+
+  return result
+
+
+def _effective_materialization_type(td: "TargetDataset") -> str:
+  """Return the effective materialization type for health validation."""
+  if hasattr(td, "effective_materialization_type"):
+    eff = getattr(td, "effective_materialization_type")
+    value = eff() if callable(eff) else eff
+  else:
+    value = getattr(td, "materialization_type", None) or getattr(
+      getattr(td, "target_schema", None),
+      "default_materialization_type",
+      "table",
+    )
+  return str(value or "table")
+
+
+def _active_columns_by_role(td: "TargetDataset", role: str) -> list:
+  """Return active TargetColumn-like objects for a system role."""
+  columns = getattr(td, "target_columns", None)
+  if columns is None:
+    return []
+
+  try:
+    qs = columns.filter(system_role=role, active=True).order_by(
+      "ordinal_position",
+      "target_column_name",
+      "id",
+    )
+    return list(qs)
+  except Exception:
+    try:
+      values = columns.all() if hasattr(columns, "all") else columns
+      return [
+        col
+        for col in values
+        if getattr(col, "system_role", None) == role
+        and getattr(col, "active", True)
+      ]
+    except Exception:
+      return []
+
+
+def _surrogate_key_integrity_in_scope(td: "TargetDataset") -> bool:
+  """Return whether surrogate-key integrity checks apply to this dataset."""
+  schema = getattr(td, "target_schema", None)
+  if not getattr(schema, "surrogate_keys_enabled", False):
+    return False
+
+  materialization = _effective_materialization_type(td)
+  if materialization in {"view", "external_passthrough"}:
+    return False
+
+  schema_short = getattr(schema, "short_name", None)
+  if schema_short in {"stage", "rawcore"}:
+    return True
+
+  # Curated datasets can still opt into SK semantics by defining an SK or BK column.
+  return bool(
+    _active_columns_by_role(td, "surrogate_key")
+    or _active_columns_by_role(td, "business_key")
+  )
+
+
+def validate_surrogate_key_integrity(td: "TargetDataset") -> List[str]:
+  """
+  Validate surrogate-key metadata required for deterministic execution.
+
+  A dataset is invalid when it requires surrogate keys but lacks active
+  business-key columns, an active surrogate-key column, or a usable
+  surrogate_expression. These checks intentionally run before SQL rendering so
+  users see metadata-focused errors instead of low-level DSL parse failures.
+  """
+  if not _surrogate_key_integrity_in_scope(td):
+    return []
+
+  issues: List[str] = []
+  business_key_cols = _active_columns_by_role(td, "business_key")
+  surrogate_key_cols = _active_columns_by_role(td, "surrogate_key")
+
+  if not business_key_cols:
+    issues.append(
+      "ERROR: schema requires deterministic surrogate keys, but no active "
+      "business key columns are defined."
+    )
+    # Missing business keys are the root cause. Do not report follow-up
+    # surrogate-expression issues because no deterministic expression can be
+    # meaningful without key components.
+    return issues
+
+  if not surrogate_key_cols:
+    issues.append(
+      "ERROR: schema requires deterministic surrogate keys, but no active "
+      "surrogate key column is defined."
+    )
+    return issues
+
+  if len(surrogate_key_cols) > 1:
+    names = ", ".join(
+      sorted(str(getattr(col, "target_column_name", "<?>")) for col in surrogate_key_cols)
+    )
+    issues.append(
+      "ERROR: multiple active surrogate key columns are defined: "
+      f"{names}."
+    )
+
+  from metadata.rendering.dsl import parse_surrogate_dsl
+
+  for col in surrogate_key_cols:
+    name = getattr(col, "target_column_name", "<?>")
+    expr = str(getattr(col, "surrogate_expression", "") or "").strip()
+
+    if not expr:
+      issues.append(
+        f"ERROR: surrogate key column '{name}' has no surrogate_expression."
+      )
+      continue
+
+    try:
+      parse_surrogate_dsl(expr)
+    except ValueError as exc:
+      issues.append(
+        f"ERROR: surrogate key column '{name}' has invalid surrogate_expression: {exc}"
+      )
+
+  return issues
+
+
+def validate_all_surrogate_key_integrity() -> Dict[int, List[str]]:
+  """Validate surrogate-key metadata for all TargetDatasets."""
+  TargetDataset = apps.get_model("metadata", "TargetDataset")
+
+  result: Dict[int, List[str]] = {}
+  qs = TargetDataset.objects.select_related("target_schema").prefetch_related("target_columns")
+
+  for td in qs:
+    issues = validate_surrogate_key_integrity(td)
     if issues:
       result[td.pk] = issues
 
@@ -561,6 +702,12 @@ def summarize_targetdataset_health(td: "TargetDataset") -> tuple[str, List[str]]
   if inc_issues:
     has_error = True
     issues.extend(f"Incremental: {msg}" for msg in inc_issues)
+
+  # Surrogate key integrity
+  sk_issues = validate_surrogate_key_integrity(td)
+  if sk_issues:
+    has_error = True
+    issues.extend(f"Surrogate key: {msg}" for msg in sk_issues)
 
   # BizCore semantics
   biz_issues = validate_bizcore_target_dataset(td)

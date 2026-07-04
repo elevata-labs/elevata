@@ -63,3 +63,18 @@ def test_snowflake_split_statements():
   assert SnowflakeExecutionEngine._split_statements(";\n  \nSELECT 1;\n") == [
     "SELECT 1;",
   ]
+
+
+def test_snowflake_alter_column_type_accepts_old_type():
+  d = SnowflakeDialect()
+
+  sql = d.render_alter_column_type(
+    schema="rawcore",
+    table="rc_customer",
+    column="person_type_code",
+    new_type="VARCHAR(50)",
+    old_type="NUMBER(10,0)",
+  )
+
+  assert "ALTER TABLE rawcore.rc_customer" in sql
+  assert "ALTER COLUMN person_type_code SET DATA TYPE VARCHAR(50)" in sql

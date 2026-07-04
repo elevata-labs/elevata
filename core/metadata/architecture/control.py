@@ -34,6 +34,14 @@ from metadata.architecture.approval import (
   build_architecture_approval_artifact,
   check_architecture_approval,
 )
+from metadata.architecture.paths import (
+  ArchitectureArtifactContext,
+  resolve_architecture_artifact_context,
+)
+from metadata.architecture.physical_state import (
+  ArchitectureBaselineResolution,
+  resolve_architecture_baseline,
+)
 from metadata.architecture.renderers import (
   render_architecture_report_json,
   render_architecture_report_text,
@@ -176,9 +184,12 @@ class ArchitectureControlContext:
   Runtime context for Architecture Control on one architecture scope.
   """
   scope: ArchitectureControlScope
+  artifact_context: ArchitectureArtifactContext
   report: ArchitectureChangeReport
   review_status: ArchitectureReviewStatus
   approval_store: ArchitectureApprovalStore
+  state_store: ArchitectureStateStore
+  baseline_resolution: ArchitectureBaselineResolution
 
 
 @dataclass(frozen=True)
@@ -193,22 +204,50 @@ class ArchitectureControlApprovalResult:
 
 def build_architecture_control_report(
   scope: ArchitectureControlScope,
+  *,
+  artifact_context: ArchitectureArtifactContext | None = None,
+  state_store: ArchitectureStateStore | None = None,
 ) -> ArchitectureChangeReport:
   """
   Build the Architecture Change Report for an Architecture Control scope.
   """
+  report, _baseline = build_architecture_control_report_with_baseline(
+    scope,
+    artifact_context=artifact_context,
+    state_store=state_store,
+  )
+  return report
+
+
+def build_architecture_control_report_with_baseline(
+  scope: ArchitectureControlScope,
+  *,
+  artifact_context: ArchitectureArtifactContext | None = None,
+  state_store: ArchitectureStateStore | None = None,
+) -> tuple[ArchitectureChangeReport, ArchitectureBaselineResolution]:
+  """
+  Build the Architecture Change Report and its resolved comparison baseline.
+  """
+  runtime_context = artifact_context or resolve_architecture_artifact_context()
+  store = state_store or ArchitectureStateStore(context=runtime_context)
+
   try:
     current_state = ArchitectureStateService().build_current_state()
-    previous_state = ArchitectureStateStore().load()
     relevant_dataset_keys = _resolve_relevant_dataset_keys(
       scope=scope,
       current_state=current_state,
     )
+    baseline_resolution = resolve_architecture_baseline(
+      current_state=current_state,
+      artifact_context=runtime_context,
+      state_store=store,
+      relevant_dataset_keys=relevant_dataset_keys,
+    )
   except ArchitectureScopeError as exc:
     raise ArchitectureControlError(str(exc)) from exc
 
-  return build_architecture_change_report(
-    previous_state=previous_state,
+  report = build_architecture_change_report(
+    previous_state=baseline_resolution.previous_state,
     current_state=current_state,
     policy=load_materialization_policy(),
     relevant_dataset_keys=relevant_dataset_keys,
@@ -216,18 +255,26 @@ def build_architecture_control_report(
     target_name=scope.target_name,
     scope_mode=_report_scope_mode(scope),
   )
+  return report, baseline_resolution
 
 
 def build_architecture_control_context(
   scope: ArchitectureControlScope,
   *,
   approval_store: ArchitectureApprovalStore | None = None,
+  artifact_context: ArchitectureArtifactContext | None = None,
 ) -> ArchitectureControlContext:
   """
   Build the shared Architecture Control context for one scope.
   """
-  store = approval_store or ArchitectureApprovalStore()
-  report = build_architecture_control_report(scope)
+  runtime_context = artifact_context or resolve_architecture_artifact_context()
+  state_store = ArchitectureStateStore(context=runtime_context)
+  store = approval_store or ArchitectureApprovalStore(context=runtime_context)
+  report, baseline_resolution = build_architecture_control_report_with_baseline(
+    scope,
+    artifact_context=runtime_context,
+    state_store=state_store,
+  )
 
   review_status = build_architecture_review_status_for_report(
     dataset_key=scope.key,
@@ -237,29 +284,42 @@ def build_architecture_control_context(
 
   return ArchitectureControlContext(
     scope=scope,
+    artifact_context=runtime_context,
     report=report,
     review_status=review_status,
     approval_store=store,
+    state_store=state_store,
+    baseline_resolution=baseline_resolution,
   )
 
 
 def render_architecture_control_report_json(
   scope: ArchitectureControlScope,
+  *,
+  artifact_context: ArchitectureArtifactContext | None = None,
 ) -> str:
   """
   Render the Architecture Control report as deterministic JSON.
   """
-  report = build_architecture_control_report(scope)
+  report = build_architecture_control_report(
+    scope,
+    artifact_context=artifact_context,
+  )
   return render_architecture_report_json(report)
 
 
 def render_architecture_control_report_text(
   scope: ArchitectureControlScope,
+  *,
+  artifact_context: ArchitectureArtifactContext | None = None,
 ) -> str:
   """
   Render the Architecture Control report as deterministic text.
   """
-  report = build_architecture_control_report(scope)
+  report = build_architecture_control_report(
+    scope,
+    artifact_context=artifact_context,
+  )
   return render_architecture_report_text(report)
 
 

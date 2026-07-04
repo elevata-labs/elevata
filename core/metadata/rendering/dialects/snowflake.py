@@ -294,8 +294,21 @@ class SnowflakeDialect(SqlDialect):
   # ---------------------------------------------------------------------------
   # 4. DDL helpers
   # ---------------------------------------------------------------------------
-  def render_alter_column_type(self, *, schema: str, table: str, column: str, new_type: str) -> str:
-    # Snowflake: ALTER TABLE <tbl> ALTER COLUMN <col> SET DATA TYPE <type>
+  def render_alter_column_type(
+    self,
+    *,
+    schema: str,
+    table: str,
+    column: str,
+    new_type: str,
+    old_type: str | None = None,
+  ) -> str:
+    """
+    Render Snowflake DDL for changing a column's physical type.
+
+    old_type is accepted to match the base dialect contract. Snowflake does
+    not need it for this SQL shape.
+    """
     tbl = self.render_table_identifier(schema, table)
     col = self.render_identifier(column)
     return f"ALTER TABLE {tbl} ALTER COLUMN {col} SET DATA TYPE {new_type}"

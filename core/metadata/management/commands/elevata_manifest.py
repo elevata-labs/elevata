@@ -31,7 +31,7 @@ from metadata.execution.manifest import build_manifest, manifest_to_dict
 
 
 class Command(BaseCommand):
-  help = "Generate an execution manifest (lineage + parallelizable levels) for all datasets."
+  help = "Generate an execution manifest (execution dependencies + parallelizable levels) for all datasets."
 
   def add_arguments(self, parser):
     parser.add_argument(

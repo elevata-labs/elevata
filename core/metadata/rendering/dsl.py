@@ -139,7 +139,9 @@ def parse_surrogate_dsl(dsl: str, table_alias: str | None = None) -> Expr:
     'literal' / "literal"
     {expr:columnname}
   """
-  dsl = dsl.strip()
+  dsl = str(dsl or "").strip()
+  if not dsl:
+    raise ValueError("Empty surrogate-key DSL expression.")
 
   # ----- placeholder "{expr:col}" ----------------------------------------
   m = re.fullmatch(r"\{expr:([A-Za-z0-9_]+)\}", dsl)

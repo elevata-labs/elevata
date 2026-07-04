@@ -255,6 +255,10 @@ SYSTEM_COLUMN_ROLE_CHOICES = [
   ("load_run_id", "Load run id"),
   ("loaded_at", "Loaded at timestamp"),
 
+  # Reference member control
+  ("inferred_member", "Inferred member"),
+  ("default_member", "Default member"),
+
   # Versioning (Hist)
   ("version_started_at", "Version started at"),
   ("version_ended_at", "Version ended at"),

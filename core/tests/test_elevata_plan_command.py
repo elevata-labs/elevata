@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import json
 from io import StringIO
+from types import SimpleNamespace
 
 import pytest
 from django.core.management import call_command
@@ -124,6 +125,19 @@ def _patch_architecture_states(monkeypatch, *, previous_state, current_state, po
     mod.ArchitectureStateService,
     "build_current_state",
     lambda self: current_state,
+  )
+  monkeypatch.setattr(
+    mod,
+    "resolve_architecture_baseline",
+    lambda **kwargs: SimpleNamespace(
+      previous_state=previous_state,
+      source="recorded_state",
+      can_execute=True,
+      message="Recorded architecture baseline is available for this runtime context.",
+      state_file=None,
+      warning_count=0,
+      warnings=(),
+    ),
   )
   monkeypatch.setattr(
     mod,

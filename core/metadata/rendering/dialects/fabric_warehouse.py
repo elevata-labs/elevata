@@ -25,7 +25,7 @@ from __future__ import annotations
 import datetime
 import re
 from decimal import Decimal
-from typing import Sequence
+from typing import Sequence, Any, Dict, Optional
 
 from .base import BaseExecutionEngine, SqlDialect
 from metadata.ingestion.types_map import (
@@ -398,7 +398,10 @@ BEGIN
 END;
 """.strip()
 
-  def render_drop_table(self, *, schema: str, table: str) -> str:
+  def render_drop_table(self, *, schema: str, table: str, cascade: bool = False) -> str:
+    # Fabric Warehouse / T-SQL does not support DROP TABLE CASCADE.
+    # Keep the cascade keyword in the dialect contract for rebuild callers;
+    # callers pass cascade=False for deterministic rebuilds.
     target = self.render_table_identifier(schema, table)
     return f"DROP TABLE {target};"
 
@@ -449,15 +452,19 @@ CREATE TABLE {target} (
         continue
 
       dst_col = self.render_identifier(name)
-
-      # Use source_name when present (rename-safe rebuild)
-      src_name = (c or {}).get("source_name") or (c or {}).get("name") or name
-      src_name = str(src_name).strip() or name
-
-      src_col = self.render_identifier(src_name)
-
       ctype = self._ensure_length_spec(ctype)
-      expr = self.cast_expression(src_col, ctype) if lossy_casts else src_col
+
+      # Use source_name when present (rename-safe rebuild).
+      # source_name=None means the column is newly added and has no source
+      # column in the old table. Backfill it with NULL instead of reading the
+      # destination column name from the source table.
+      src_name_marker = (c or {}).get("source_name", "__missing__")
+      if src_name_marker is None:
+        expr = self.cast_expression("NULL", ctype) if lossy_casts else "NULL"
+      else:
+        src_name = str((src_name_marker if src_name_marker != "__missing__" else name) or "").strip() or name
+        src_col = self.render_identifier(src_name)
+        expr = self.cast_expression(src_col, ctype) if lossy_casts else src_col
 
       if truncate_strings:
         # Only truncate when planner explicitly marked this column as shrinking.
@@ -543,6 +550,170 @@ CREATE TABLE {target} (
       f"    FROM {rc_tbl} r\n"
       f"    WHERE r.{sk_name} = h.{sk_name}\n"
       "  );"
+    )
+
+
+  def _string_literal(self, value: str) -> str:
+    """
+    Return a T-SQL string literal for read-only metadata queries.
+    """
+    return "'" + str(value or "").replace("'", "''") + "'"
+
+
+  def _format_information_schema_type(
+    self,
+    *,
+    data_type: Any,
+    character_maximum_length: Any = None,
+    numeric_precision: Any = None,
+    numeric_scale: Any = None,
+  ) -> str:
+    """
+    Return a compact physical type string from INFORMATION_SCHEMA metadata.
+    """
+    dtype = str(data_type or "").strip().lower()
+    if not dtype:
+      return ""
+
+    if dtype in {"char", "varchar", "nchar", "nvarchar", "binary", "varbinary"}:
+      if character_maximum_length in (-1, "-1"):
+        return f"{dtype}(max)"
+      if character_maximum_length not in (None, ""):
+        return f"{dtype}({int(character_maximum_length)})"
+      return dtype
+
+    if dtype in {"decimal", "numeric"}:
+      if numeric_precision not in (None, "") and numeric_scale not in (None, ""):
+        return f"{dtype}({int(numeric_precision)},{int(numeric_scale)})"
+      if numeric_precision not in (None, ""):
+        return f"{dtype}({int(numeric_precision)})"
+      return dtype
+
+    if dtype in {"datetime2", "datetimeoffset", "time"}:
+      if numeric_scale not in (None, ""):
+        return f"{dtype}({int(numeric_scale)})"
+      return dtype
+
+    return dtype
+
+
+  def _introspect_relation_with_information_schema(
+    self,
+    *,
+    schema_name: str,
+    table_name: str,
+    exec_engine: Optional["BaseExecutionEngine"],
+  ) -> Dict[str, Any] | None:
+    """
+    Discover Fabric Warehouse tables and views through INFORMATION_SCHEMA.
+
+    Fabric uses a T-SQL compatible endpoint; use exec_engine-backed discovery
+    so Architecture Control and load preflight see the same physical target.
+    """
+    if exec_engine is None or not hasattr(exec_engine, "fetch_all"):
+      return None
+
+    sql = f"""
+      SELECT
+        c.COLUMN_NAME,
+        c.DATA_TYPE,
+        c.CHARACTER_MAXIMUM_LENGTH,
+        c.NUMERIC_PRECISION,
+        c.NUMERIC_SCALE,
+        c.IS_NULLABLE,
+        t.TABLE_TYPE
+      FROM INFORMATION_SCHEMA.COLUMNS c
+      INNER JOIN INFORMATION_SCHEMA.TABLES t
+        ON t.TABLE_SCHEMA = c.TABLE_SCHEMA
+       AND t.TABLE_NAME = c.TABLE_NAME
+      WHERE c.TABLE_SCHEMA = {self._string_literal(schema_name)}
+        AND c.TABLE_NAME = {self._string_literal(table_name)}
+        AND t.TABLE_TYPE IN ('BASE TABLE', 'VIEW')
+      ORDER BY c.ORDINAL_POSITION
+    """.strip()
+
+    rows = exec_engine.fetch_all(sql)
+    if not rows:
+      return {
+        "table_exists": False,
+        "physical_table": table_name,
+        "physical_object_type": None,
+        "actual_cols_by_norm_name": {},
+      }
+
+    cols: dict[str, dict[str, Any]] = {}
+    relation_type = "table"
+    for row in rows:
+      (
+        column_name,
+        data_type,
+        char_len,
+        numeric_precision,
+        numeric_scale,
+        is_nullable,
+        table_type,
+      ) = row
+
+      name = str(column_name or "").strip()
+      if not name:
+        continue
+
+      if str(table_type or "").strip().upper() == "VIEW":
+        relation_type = "view"
+
+      cols[name.lower()] = {
+        "name": name,
+        "type": self._format_information_schema_type(
+          data_type=data_type,
+          character_maximum_length=char_len,
+          numeric_precision=numeric_precision,
+          numeric_scale=numeric_scale,
+        ),
+        "nullable": str(is_nullable or "").strip().upper() == "YES",
+        "physical_object_type": relation_type,
+      }
+
+    return {
+      "table_exists": bool(cols),
+      "physical_table": table_name,
+      "physical_object_type": relation_type,
+      "actual_cols_by_norm_name": cols,
+    }
+
+
+  def introspect_table(
+    self,
+    *,
+    schema_name: str,
+    table_name: str,
+    introspection_engine: Any,
+    exec_engine: Optional["BaseExecutionEngine"] = None,
+    debug_plan: bool = False,
+  ) -> Dict[str, Any]:
+    try:
+      relation_meta = self._introspect_relation_with_information_schema(
+        schema_name=schema_name,
+        table_name=table_name,
+        exec_engine=exec_engine,
+      )
+      if relation_meta is not None:
+        return relation_meta
+    except Exception as exc:
+      if debug_plan:
+        return {
+          "table_exists": False,
+          "physical_table": table_name,
+          "actual_cols_by_norm_name": {},
+          "debug": f"INFORMATION_SCHEMA discovery failed for {schema_name}.{table_name}: {exc}",
+        }
+
+    return SqlDialect.introspect_table(
+      self,
+      schema_name=schema_name,
+      table_name=table_name,
+      introspection_engine=introspection_engine,
+      exec_engine=exec_engine,
+      debug_plan=debug_plan,
     )
 
 

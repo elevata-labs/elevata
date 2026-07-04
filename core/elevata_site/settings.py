@@ -43,7 +43,41 @@ from utils.db import build_metadata_database_url
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(find_dotenv(filename=".env", raise_error_if_not_found=False))
 
-ELEVATA_VERSION = "2.10.0"
+ELEVATA_VERSION = "2.11.0"
+
+
+def _resolve_runtime_path_env(var_name: str, default: str) -> str:
+  """
+  Resolve elevata runtime artifact paths relative to BASE_DIR.
+
+  Architecture Control stores use environment variables directly in lower-level
+  services. Normalizing the environment here keeps relative .env values stable
+  regardless of the current working directory used by manage.py, tests or the
+  web server.
+  """
+  raw_value = os.getenv(var_name, default)
+  path = Path(raw_value).expanduser()
+
+  if not path.is_absolute():
+    path = BASE_DIR / path
+
+  resolved = str(path)
+  os.environ[var_name] = resolved
+  return resolved
+
+
+ELEVATA_ARCH_STATE_DIR = _resolve_runtime_path_env(
+  "ELEVATA_ARCH_STATE_DIR",
+  ".elevata/state",
+)
+ELEVATA_ARCH_APPROVAL_DIR = _resolve_runtime_path_env(
+  "ELEVATA_ARCH_APPROVAL_DIR",
+  ".elevata/approvals",
+)
+ELEVATA_ARCH_EXECUTION_DIR = _resolve_runtime_path_env(
+  "ELEVATA_ARCH_EXECUTION_DIR",
+  ".elevata/executions",
+)
 
 ELEVATA_PROFILES_PATH = os.getenv("ELEVATA_PROFILES_PATH", str((BASE_DIR.parent / "config" / "elevata_profiles.yaml")))
 
@@ -449,6 +483,14 @@ ELEVATA_CRUD = {
           "title": "Primary accountable owner",
         },
       ],
+      "TargetDatasetReference": [
+        {
+          "field": "inferred_members_enabled",
+          "label_on": "Infer enabled",
+          "label_off": "Infer enabled",
+          "title": "Inferred members enabled",
+        },
+      ],
     },
     "badges": {
       "System": [
@@ -621,6 +663,8 @@ ELEVATA_CRUD = {
             "version_started_at": "",
             "version_ended_at": "",
             "version_state": "",
+            "inferred_member": "",
+            "default_member": "",
             "": "",
           },
           "label_map": {
@@ -635,6 +679,8 @@ ELEVATA_CRUD = {
             "version_started_at": "",
             "version_ended_at": "",
             "version_state": "",
+            "inferred_member": "",
+            "default_member": "",
             "": "",
           },
         },

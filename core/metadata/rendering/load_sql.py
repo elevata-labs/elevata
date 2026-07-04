@@ -37,6 +37,7 @@ as placeholders.
 """
 
 from typing import Sequence, Any, Dict
+import datetime
 import re
 
 from metadata.models import TargetDataset, TargetColumn, TargetColumnInput
@@ -50,6 +51,32 @@ from metadata.rendering.expr import (
 )
 from metadata.ingestion.types_map import canonicalize_type
 
+
+def _dataset_key(td: TargetDataset) -> str:
+  """Return a stable dataset key for load error messages."""
+  schema_short = getattr(getattr(td, "target_schema", None), "short_name", None)
+  target_name = getattr(td, "target_dataset_name", None)
+  if schema_short and target_name:
+    return f"{schema_short}.{target_name}"
+  return str(target_name or getattr(td, "id", "<?>"))
+
+
+def _validate_load_metadata_for_target(td: TargetDataset) -> None:
+  """Raise a user-facing error for blocking load metadata issues."""
+  from metadata.generation.validators import validate_surrogate_key_integrity
+
+  issues = validate_surrogate_key_integrity(td)
+  if not issues:
+    return
+
+  cleaned = [
+    msg.replace("ERROR: ", "", 1)
+    for msg in issues
+  ]
+  raise ValueError(
+    f"Load execution blocked: {_dataset_key(td)} has blocking metadata issues: "
+    + " ".join(cleaned)
+  )
 
 def _get_target_columns_in_order(td: TargetDataset) -> Sequence[TargetColumn]:
   """
@@ -1091,6 +1118,478 @@ def render_hist_new_insert_sql(td: TargetDataset, dialect) -> str:
   )
 
 
+# ---------------------------------------------------------------------------
+# Controlled Reference Members (default + inferred)
+# ---------------------------------------------------------------------------
+
+def _iter_active_target_columns_for_members(td: TargetDataset) -> list[TargetColumn]:
+  """
+  Return active target columns for controlled reference member rendering.
+
+  The helper supports real Django related managers as well as lightweight
+  list-like test doubles.
+  """
+  cols_obj = getattr(td, "target_columns", None)
+  if cols_obj is None:
+    return []
+
+  try:
+    qs = cols_obj.filter(active=True)
+    if hasattr(qs, "order_by"):
+      qs = qs.order_by("ordinal_position", "id")
+    return list(qs)
+  except Exception:
+    try:
+      cols = [c for c in list(cols_obj) if bool(getattr(c, "active", True))]
+      cols.sort(key=lambda c: (getattr(c, "ordinal_position", 0) or 0, getattr(c, "id", 0) or 0))
+      return cols
+    except Exception:
+      return []
+
+
+def _controlled_member_schema_name(td: TargetDataset) -> str:
+  schema = getattr(td, "target_schema", None)
+  return (
+    getattr(schema, "schema_name", None)
+    or getattr(schema, "short_name", None)
+    or ""
+  )
+
+
+def _controlled_member_schema_short(td: TargetDataset) -> str:
+  schema = getattr(td, "target_schema", None)
+  return str(getattr(schema, "short_name", "") or "")
+
+
+def _is_rawcore_base_dataset(td: TargetDataset) -> bool:
+  name = str(getattr(td, "target_dataset_name", "") or "")
+  return (
+    _controlled_member_schema_short(td) == "rawcore"
+    and not bool(getattr(td, "is_hist", False))
+    and not name.endswith("_hist")
+  )
+
+
+def _first_column_by_role(cols: Sequence[TargetColumn], role: str) -> TargetColumn | None:
+  for c in cols:
+    if getattr(c, "system_role", None) == role:
+      return c
+  return None
+
+
+def _artificial_member_string_value(col: TargetColumn, *, member_kind: str) -> str:
+  """
+  Return a deterministic string sentinel for artificial member rows.
+
+  The value is truncated to the modeled max_length when present. This keeps the
+  generated row compatible with short NOT NULL text columns while the marker
+  columns still carry the authoritative semantics.
+  """
+  kind = str(member_kind or "member").strip().lower() or "member"
+  if kind == "default":
+    value = "(Default)"
+  elif kind == "inferred":
+    value = "(Inferred)"
+  else:
+    value = f"({kind.title()})"
+
+  max_length = getattr(col, "max_length", None)
+  try:
+    n = int(max_length) if max_length is not None else 0
+  except Exception:
+    n = 0
+
+  if n > 0 and len(value) > n:
+    return value[:n]
+  return value
+
+
+def _artificial_member_literal_for_column(
+  col: TargetColumn,
+  dialect,
+  *,
+  member_kind: str,
+) -> str:
+  """
+  Return a deterministic, type-aware placeholder value for artificial members.
+
+  Default and inferred members are intentionally artificial rows. Some target
+  columns are physically NOT NULL even though they are not part of the member
+  identity. Those columns still need safe, deterministic values so the load does
+  not violate warehouse constraints.
+
+  Values are conservative and portable across dialects:
+    - text-like columns: '(Default)' / '(Inferred)' (max_length-aware)
+    - numeric keys: -1
+    - dates/timestamps: 1900-01-01
+    - booleans: false
+  """
+  dtype = str(getattr(col, "datatype", "") or "").strip().upper()
+  if dtype in {"INTEGER", "BIGINT"}:
+    return dialect.render_literal(-1)
+  if dtype in {"DECIMAL", "FLOAT"}:
+    return dialect.render_literal(-1)
+  if dtype == "BOOLEAN":
+    return dialect.render_literal(False)
+  if dtype == "DATE":
+    return dialect.render_literal(datetime.date(1900, 1, 1))
+  if dtype in {"TIMESTAMP", "DATETIME"}:
+    return dialect.render_literal(datetime.datetime(1900, 1, 1, 0, 0, 0))
+  if dtype == "UUID":
+    return dialect.render_literal("00000000-0000-0000-0000-000000000000")
+  return dialect.render_literal(_artificial_member_string_value(
+    col,
+    member_kind=member_kind,
+  ))
+
+
+def _default_member_literal_for_column(col: TargetColumn, dialect) -> str:
+  return _artificial_member_literal_for_column(
+    col,
+    dialect,
+    member_kind="default",
+  )
+
+
+def _inferred_member_literal_for_column(col: TargetColumn, dialect) -> str:
+  return _artificial_member_literal_for_column(
+    col,
+    dialect,
+    member_kind="inferred",
+  )
+
+
+def _requires_artificial_member_placeholder(col: TargetColumn) -> bool:
+  """
+  Return True when an artificial member row must provide a non-null value.
+
+  The authoritative semantics are still carried by inferred_member/default_member.
+  This helper only prevents NOT NULL constraint failures for additional required
+  attributes such as account_no or source_identity_id.
+  """
+  return not bool(getattr(col, "nullable", True))
+
+
+def _controlled_member_hash_expr(dialect, marker: str, discriminator_sql: str | None = None) -> str:
+  """
+  Build a deterministic row_hash expression for artificial member rows.
+  """
+  parts = [dialect.render_literal(str(marker or "controlled_member"))]
+  if discriminator_sql:
+    parts.append(dialect.render_literal("|"))
+    parts.append(discriminator_sql)
+
+  concat = dialect.concat_expression(parts)
+  return dialect.hash_expression(concat)
+
+
+def _default_member_key_expr(td: TargetDataset, dialect) -> str:
+  """
+  Build a deterministic surrogate key for the default member row.
+
+  Default members are artificial and are not derived from source business keys.
+  They use a stable dataset-scoped hash so there is exactly one default row per
+  table regardless of the table's BK shape.
+  """
+  dataset_key = _dataset_key(td)
+  return _controlled_member_hash_expr(dialect, f"default_member:{dataset_key}")
+
+
+def _render_select_without_from(select_exprs: Sequence[str], where_sql: str | None = None) -> str:
+  select_sql = "SELECT\n  " + ",\n  ".join(select_exprs)
+  if where_sql:
+    select_sql += "\nWHERE " + where_sql
+  return select_sql
+
+
+def render_default_member_sql_for_target(td: TargetDataset, dialect) -> str | None:
+  """
+  Render an idempotent INSERT for the default member of a rawcore table.
+
+  A default member is created only for rawcore base datasets that expose a
+  system-managed default_member marker column and a surrogate key column.
+  """
+  if not _is_rawcore_base_dataset(td):
+    return None
+
+  cols = _iter_active_target_columns_for_members(td)
+  if not cols:
+    return None
+
+  sk_col = _first_column_by_role(cols, "surrogate_key")
+  default_col = _first_column_by_role(cols, "default_member")
+  if sk_col is None or default_col is None:
+    return None
+
+  schema_name = _controlled_member_schema_name(td)
+  table_name = getattr(td, "target_dataset_name", None)
+  if not schema_name or not table_name:
+    return None
+
+  q = dialect.render_identifier
+  table = dialect.render_table_identifier(schema_name, table_name)
+  parent_alias = "p"
+
+  target_columns: list[str] = []
+  select_exprs: list[str] = []
+  for col in cols:
+    name = getattr(col, "target_column_name", None)
+    if not name:
+      continue
+
+    role = getattr(col, "system_role", "") or ""
+    target_columns.append(str(name))
+
+    if col == sk_col or role == "surrogate_key":
+      select_exprs.append(_default_member_key_expr(td, dialect))
+    elif role == "business_key":
+      select_exprs.append(_default_member_literal_for_column(col, dialect))
+    elif role == "row_hash":
+      select_exprs.append(_controlled_member_hash_expr(
+        dialect,
+        f"default_member_row:{_dataset_key(td)}",
+      ))
+    elif role == "inferred_member":
+      select_exprs.append(dialect.render_literal(False))
+    elif role == "default_member":
+      select_exprs.append(dialect.render_literal(True))
+    elif role == "load_run_id":
+      select_exprs.append("{{ load_run_id }}")
+    elif role == "loaded_at":
+      select_exprs.append("{{ load_timestamp }}")
+    elif _requires_artificial_member_placeholder(col):
+      select_exprs.append(_default_member_literal_for_column(col, dialect))
+    else:
+      select_exprs.append("NULL")
+
+  if not target_columns:
+    return None
+
+  default_flag = q(getattr(default_col, "target_column_name"))
+  where_sql = (
+    "NOT EXISTS (\n"
+    "  SELECT 1\n"
+    f"  FROM {table} AS {parent_alias}\n"
+    f"  WHERE {parent_alias}.{default_flag} = {dialect.render_literal(True)}\n"
+    ")"
+  )
+  select_sql = _render_select_without_from(select_exprs, where_sql=where_sql)
+
+  return dialect.render_insert_into_table(
+    schema_name,
+    table_name,
+    select_sql,
+    target_columns=target_columns,
+  )
+
+
+def _iter_reference_components(reference) -> list[Any]:
+  comps_obj = getattr(reference, "key_components", None)
+  if comps_obj is None:
+    return []
+
+  try:
+    qs = comps_obj.all()
+    if hasattr(qs, "select_related"):
+      qs = qs.select_related("from_column", "to_column")
+    if hasattr(qs, "order_by"):
+      qs = qs.order_by("ordinal_position", "id")
+    return list(qs)
+  except Exception:
+    try:
+      comps = list(comps_obj)
+      comps.sort(key=lambda c: (getattr(c, "ordinal_position", 0) or 0, getattr(c, "id", 0) or 0))
+      return comps
+    except Exception:
+      return []
+
+
+def _parent_business_key_mapping(reference) -> dict[str, str]:
+  """
+  Return {parent_bk_column_name: child_column_name} for a complete reference.
+  """
+  mapping: dict[str, str] = {}
+  for comp in _iter_reference_components(reference):
+    from_col = getattr(comp, "from_column", None)
+    to_col = getattr(comp, "to_column", None)
+    from_name = getattr(from_col, "target_column_name", None)
+    to_name = getattr(to_col, "target_column_name", None)
+    if not from_name or not to_name:
+      continue
+    mapping[str(to_name)] = str(from_name)
+  return mapping
+
+
+def render_inferred_members_sql_for_reference(reference, dialect) -> str | None:
+  """
+  Render an idempotent INSERT for inferred parent members of one reference.
+
+  The child dataset already contains the computed FK surrogate key. For every
+  non-null child FK whose parent key does not yet exist, elevata inserts a
+  parent row with mapped BK values, inferred_member=true and default_member=false.
+  """
+  if not bool(getattr(reference, "inferred_members_enabled", False)):
+    return None
+
+  child = getattr(reference, "referencing_dataset", None)
+  parent = getattr(reference, "referenced_dataset", None)
+  if child is None or parent is None:
+    return None
+
+  if not _is_rawcore_base_dataset(child) or not _is_rawcore_base_dataset(parent):
+    return None
+
+  cols = _iter_active_target_columns_for_members(parent)
+  if not cols:
+    return None
+
+  parent_sk_col = _first_column_by_role(cols, "surrogate_key")
+  inferred_col = _first_column_by_role(cols, "inferred_member")
+  if parent_sk_col is None or inferred_col is None:
+    return None
+
+  schema_name = _controlled_member_schema_name(parent)
+  parent_table_name = getattr(parent, "target_dataset_name", None)
+  child_schema_name = _controlled_member_schema_name(child)
+  child_table_name = getattr(child, "target_dataset_name", None)
+  if not schema_name or not parent_table_name or not child_schema_name or not child_table_name:
+    return None
+
+  try:
+    child_fk_name = reference.get_child_fk_name()
+  except Exception:
+    child_fk_name = None
+  if not child_fk_name:
+    return None
+
+  bk_mapping = _parent_business_key_mapping(reference)
+  if not bk_mapping:
+    return None
+
+  parent_bk_names = [
+    str(getattr(col, "target_column_name", "") or "")
+    for col in cols
+    if getattr(col, "system_role", "") == "business_key"
+  ]
+  missing_parent_bks = [name for name in parent_bk_names if name and name not in bk_mapping]
+  if missing_parent_bks:
+    return None
+
+  q = dialect.render_identifier
+  parent_table = dialect.render_table_identifier(schema_name, parent_table_name)
+  child_table = dialect.render_table_identifier(child_schema_name, child_table_name)
+  parent_alias = "p"
+  child_alias = "c"
+  child_fk_sql = f"{child_alias}.{q(child_fk_name)}"
+  parent_sk_sql = f"{parent_alias}.{q(getattr(parent_sk_col, 'target_column_name'))}"
+
+  target_columns: list[str] = []
+  select_exprs: list[str] = []
+  for col in cols:
+    name = getattr(col, "target_column_name", None)
+    if not name:
+      continue
+
+    role = getattr(col, "system_role", "") or ""
+    target_columns.append(str(name))
+
+    if col == parent_sk_col or role == "surrogate_key":
+      select_exprs.append(child_fk_sql)
+    elif name in bk_mapping:
+      select_exprs.append(f"{child_alias}.{q(bk_mapping[name])}")
+    elif role == "row_hash":
+      select_exprs.append(_controlled_member_hash_expr(
+        dialect,
+        "inferred_member",
+        discriminator_sql=child_fk_sql,
+      ))
+    elif role == "inferred_member":
+      select_exprs.append(dialect.render_literal(True))
+    elif role == "default_member":
+      select_exprs.append(dialect.render_literal(False))
+    elif role == "load_run_id":
+      select_exprs.append("{{ load_run_id }}")
+    elif role == "loaded_at":
+      select_exprs.append("{{ load_timestamp }}")
+    elif _requires_artificial_member_placeholder(col):
+      select_exprs.append(_inferred_member_literal_for_column(col, dialect))
+    else:
+      select_exprs.append("NULL")
+
+  if not target_columns:
+    return None
+
+  not_null_predicates = [f"{child_fk_sql} IS NOT NULL"]
+  for child_col in bk_mapping.values():
+    not_null_predicates.append(f"{child_alias}.{q(child_col)} IS NOT NULL")
+
+  where_sql = "\n  AND ".join(not_null_predicates + [
+    "NOT EXISTS (\n"
+    "    SELECT 1\n"
+    f"    FROM {parent_table} AS {parent_alias}\n"
+    f"    WHERE {parent_sk_sql} = {child_fk_sql}\n"
+    "  )"
+  ])
+
+  select_sql = (
+    "SELECT DISTINCT\n  "
+    + ",\n  ".join(select_exprs)
+    + f"\nFROM {child_table} AS {child_alias}\n"
+    + f"WHERE {where_sql}"
+  )
+
+  return dialect.render_insert_into_table(
+    schema_name,
+    parent_table_name,
+    select_sql,
+    target_columns=target_columns,
+  )
+
+
+def render_controlled_reference_member_sql_for_target(td: TargetDataset, dialect) -> list[str]:
+  """
+  Render all controlled reference-member DML statements for one loaded dataset.
+
+  The list is intentionally idempotent:
+    1. ensure the dataset's own default member when it is a rawcore base table
+    2. create inferred parent members for enabled outgoing references
+  """
+  sqls: list[str] = []
+
+  default_sql = render_default_member_sql_for_target(td, dialect)
+  if default_sql:
+    sqls.append(default_sql)
+
+  refs_obj = getattr(td, "outgoing_references", None)
+  if refs_obj is None:
+    return sqls
+
+  try:
+    refs = (
+      refs_obj
+      .select_related(
+        "referenced_dataset",
+        "referenced_dataset__target_schema",
+        "referencing_dataset",
+        "referencing_dataset__target_schema",
+      )
+      .prefetch_related("key_components__from_column", "key_components__to_column")
+      .filter(inferred_members_enabled=True)
+    )
+  except Exception:
+    try:
+      refs = [r for r in list(refs_obj) if bool(getattr(r, "inferred_members_enabled", False))]
+    except Exception:
+      refs = []
+
+  for ref in refs:
+    sql = render_inferred_members_sql_for_reference(ref, dialect)
+    if sql:
+      sqls.append(sql)
+
+  return sqls
+
+
 def build_load_run_summary(
   td: TargetDataset,
   dialect: Any,
@@ -1156,11 +1655,6 @@ def render_load_sql_for_target(td: TargetDataset, dialect) -> str:
   Uses the LoadPlan to decide which concrete renderer to call.
   """
 
-  # Special case: history datasets – use dedicated history renderer.
-  # Guarded with getattr so DummyTargetDataset in tests still works.
-  if td.is_hist:
-    return render_hist_incremental_sql(td, dialect)
-  
   # Materialization handling
   materialization = get_effective_materialization(td)
 
@@ -1174,6 +1668,13 @@ def render_load_sql_for_target(td: TargetDataset, dialect) -> str:
       view=td.target_dataset_name,
       select_sql=select_sql,
     )
+
+  _validate_load_metadata_for_target(td)
+
+  # Special case: history datasets – use dedicated history renderer.
+  # Guarded with getattr so DummyTargetDataset in tests still works.
+  if td.is_hist:
+    return render_hist_incremental_sql(td, dialect)
 
   plan = build_load_plan(td)
 

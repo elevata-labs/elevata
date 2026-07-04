@@ -21,3 +21,4 @@ pyarrow
 # Azure Key Vault support
 azure-identity
 azure-keyvault-secrets
+python-dateutil>=2.9,<3

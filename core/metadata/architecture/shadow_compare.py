@@ -54,6 +54,7 @@ class SchemaOpTokenBuildResult:
   suppressed_full_refresh_col_renames: int = 0
   suppressed_full_refresh_add_columns: int = 0
   suppressed_full_refresh_alter_columns: int = 0
+  suppressed_full_refresh_drop_columns: int = 0
 
 
 @dataclass(frozen=True)
@@ -253,6 +254,7 @@ def build_expected_schema_op_tokens(
   suppressed_renames = 0
   suppressed_adds = 0
   suppressed_alters = 0
+  suppressed_drops = 0
 
   for action in actions:
     action_type = str(getattr(action, "action_type", "") or "")
@@ -273,6 +275,10 @@ def build_expected_schema_op_tokens(
       suppressed_alters += 1
       continue
 
+    if action_type == "DROP_COLUMN" and dataset_key in full_refresh_keys:
+      suppressed_drops += 1
+      continue
+
     token = schema_op_token_for_action(action)
     if token:
       tokens.append(token)
@@ -282,6 +288,7 @@ def build_expected_schema_op_tokens(
     suppressed_full_refresh_col_renames=suppressed_renames,
     suppressed_full_refresh_add_columns=suppressed_adds,
     suppressed_full_refresh_alter_columns=suppressed_alters,
+    suppressed_full_refresh_drop_columns=suppressed_drops,
   )
 
 

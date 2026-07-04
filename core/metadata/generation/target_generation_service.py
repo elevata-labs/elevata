@@ -106,6 +106,32 @@ class TargetGenerationService:
       "create_if_missing": False,
       "order": 500,
     },
+    {
+      "name": "inferred_member",
+      "datatype": "BOOLEAN",
+      "max_length": None,
+      "nullable": True,
+      "system_role": "inferred_member",
+      "layers": {"rawcore", "hist"},
+      "description": (
+        "Marks a parent row that was created as an inferred reference member."
+      ),
+      "create_if_missing": True,
+      "order": 520,
+    },
+    {
+      "name": "default_member",
+      "datatype": "BOOLEAN",
+      "max_length": None,
+      "nullable": True,
+      "system_role": "default_member",
+      "layers": {"rawcore", "hist"},
+      "description": (
+        "Marks a deterministic default member used for incomplete or unknown references."
+      ),
+      "create_if_missing": True,
+      "order": 530,
+    },
 
     # History / SCD2 columns (created in ensure_hist_dataset_for_rawcore)
     {
@@ -648,6 +674,12 @@ class TargetGenerationService:
 
     # 5. If this schema wants surrogate keys, create surrogate key column FIRST
     if self.schema_requires_surrogate_key(target_schema):
+      # Generation must not fail when source metadata lacks primary-key markers.
+      # In that case we still create the deterministic metadata shape so the
+      # Catalog and metadata-health checks can expose the root cause clearly.
+      # Load execution is blocked later by validate_surrogate_key_integrity().
+      # This keeps generation inspectable instead of turning a metadata issue
+      # into a 500 error in the Generate Targets UI.
       pepper = self.pepper
       surrogate_col = build_surrogate_key_column_draft(
         target_dataset_name=dataset_draft.target_dataset_name,

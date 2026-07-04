@@ -104,3 +104,18 @@ def test_postgres_map_logical_type_raises_on_unknown():
   d = PostgresDialect()
   with pytest.raises(ValueError):
     d.map_logical_type(datatype="THIS_TYPE_DOES_NOT_EXIST")
+
+
+def test_postgres_alter_column_type_accepts_old_type():
+  d = PostgresDialect()
+
+  sql = d.render_alter_column_type(
+    schema="rawcore",
+    table="rc_customer",
+    column="person_type_code",
+    new_type="VARCHAR(50)",
+    old_type="INTEGER",
+  )
+
+  assert "ALTER TABLE rawcore.rc_customer" in sql
+  assert "ALTER COLUMN person_type_code TYPE VARCHAR(50)" in sql

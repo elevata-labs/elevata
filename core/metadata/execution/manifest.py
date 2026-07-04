@@ -28,7 +28,26 @@ from typing import Dict, List, Set
 
 from django.apps import apps
 
+from metadata.execution.load_graph import (
+  EXECUTION_DEPENDENCY_LINEAGE_INPUT,
+  EXECUTION_DEPENDENCY_SOURCE_RAW_READY,
+  resolve_execution_dependencies,
+)
 
+MANIFEST_VERSION = 2
+EXECUTION_DEPENDENCY_SOURCE_INPUT = "source_input"
+
+
+@dataclass(frozen=True)
+class ManifestExecutionDependency:
+  """
+  Structured execution dependency emitted for orchestration transparency.
+  """
+  id: str
+  reason: str
+  reference_id: int | None = None
+
+ 
 @dataclass(frozen=True)
 class ManifestNode:
   id: str
@@ -38,6 +57,8 @@ class ManifestNode:
   mode: str | None
   materialization: str | None
   deps: List[str]
+  lineage_deps: List[str]
+  execution_deps: List[ManifestExecutionDependency]
 
 
 @dataclass(frozen=True)
@@ -46,7 +67,7 @@ class Manifest:
   profile: str
   target_system: str
   nodes: List[ManifestNode]
-  levels: List[List[str]]  # parallelizable waves by node id
+  levels: List[List[str]]  # parallelizable execution waves by node id
 
 
 def _now_iso() -> str:
@@ -63,10 +84,63 @@ def _source_id(source_system_short: str, schema_name: str | None, source_dataset
   return f"source.{source_system_short}.{schema_part}.{source_dataset_name}"
 
 
+def _effective_materialization(td) -> str | None:
+  """
+  Return the effective materialization type for a TargetDataset node.
+
+  The manifest is consumed by execution and orchestration tooling, so it must
+  expose the resolved materialization contract rather than the nullable dataset
+  override field. When a dataset does not override materialization_type, the
+  target schema default is the effective value.
+  """
+  effective = getattr(td, "effective_materialization_type", None)
+  if callable(effective):
+    value = effective()
+  elif effective:
+    value = effective
+  else:
+    schema = getattr(td, "target_schema", None)
+    value = (
+      getattr(td, "materialization_type", None)
+      or getattr(schema, "default_materialization_type", None)
+    )
+
+  if value is None:
+    return None
+
+  text = str(value).strip()
+  return text or None
+
+
+def _empty_node(
+  *,
+  node_id: str,
+  node_type: str,
+  schema: str | None,
+  dataset: str,
+  mode: str | None = None,
+  materialization: str | None = None,
+) -> ManifestNode:
+  """
+  Build a ManifestNode without dependency fields populated yet.
+  """
+  return ManifestNode(
+    id=node_id,
+    type=node_type,
+    schema=schema,
+    dataset=dataset,
+    mode=mode,
+    materialization=materialization,
+    deps=[],
+    lineage_deps=[],
+    execution_deps=[],
+  )
+
+
 def _toposort_levels(node_ids: Set[str], deps_map: Dict[str, Set[str]]) -> List[List[str]]:
   """
   Kahn-level topological sort.
-  deps_map[node] contains upstream dependencies (node depends on deps).
+  deps_map[node] contains upstream execution dependencies (node depends on deps).
   """
   deps_left: Dict[str, Set[str]] = {n: set(deps_map.get(n, set())) for n in node_ids}
   reverse: Dict[str, Set[str]] = {n: set() for n in node_ids}
@@ -100,13 +174,7 @@ def _toposort_levels(node_ids: Set[str], deps_map: Dict[str, Set[str]]) -> List[
   if len(visited) != len(node_ids):
     remaining = sorted(node_ids - visited)
 
-    # temporary DEBUG
-    sample = remaining[0] if remaining else None
-    deps = sorted(deps_map.get(sample, set())) if sample else []
-    raise ValueError(f"Cycle detected. Remaining count={len(remaining)} sample={sample} deps={deps}")
-    #-------------------------------------
-
-    # raise ValueError(f"Cycle detected in manifest graph: {remaining}")
+    raise ValueError(f"Cycle detected in manifest execution graph: {remaining}")
 
   return levels
 
@@ -120,9 +188,10 @@ def build_manifest(
   """
   Build a full execution manifest for all TargetDatasets.
 
-  - TargetDataset dependencies come from load_graph.resolve_upstream_datasets().
-  - SourceDataset nodes are read-only and only connected as deps of RAW (stage) targets.
-  - RAW layer is identified via target_schema.short_name == "raw".
+  - deps contains execution dependency ids for schedulers and orchestrators.
+  - lineage_deps contains semantic lineage dependency ids for explanation.
+  - execution_deps contains structured dependency reasons for transparency.
+  - SourceDataset nodes are read-only manifest nodes and do not create load tasks.
   """
   TargetDataset = apps.get_model("metadata", "TargetDataset")
 
@@ -136,63 +205,101 @@ def build_manifest(
 
   nodes: Dict[str, ManifestNode] = {}
   deps_map: Dict[str, Set[str]] = {}
+  lineage_deps_map: Dict[str, Set[str]] = {}
+  execution_deps_map: Dict[str, dict[tuple[str, str, int | None], ManifestExecutionDependency]] = {}
 
-  # --- 1) Add all target nodes + target->target deps
-  for td in tds:
-    schema_short = td.target_schema.short_name
-    ds_name = td.target_dataset_name
-    tid = _target_id(schema_short, ds_name)
+  def ensure_maps(node_id: str) -> None:
+    """
+    Ensure dependency maps exist for one node id.
+    """
+    deps_map.setdefault(node_id, set())
+    lineage_deps_map.setdefault(node_id, set())
+    execution_deps_map.setdefault(node_id, {})
 
-    deps_map.setdefault(tid, set())
+  def ensure_target_node(td) -> str:
+    """
+    Ensure a TargetDataset manifest node exists and return its node id.
+    """
+    node_id = _target_id(td.target_schema.short_name, td.target_dataset_name)
+    ensure_maps(node_id)
+    if node_id not in nodes:
+      nodes[node_id] = _empty_node(
+        node_id=node_id,
+        node_type="target",
+        schema=td.target_schema.short_name,
+        dataset=td.target_dataset_name,
+        mode=str(getattr(td, "incremental_strategy", "full") or "full"),
+        materialization=_effective_materialization(td),
+      )
+    return node_id
 
-    # Dependencies are driven by TargetDatasetInput rows:
-    # - upstream_target_dataset -> target dependency
-    # - source_dataset is modeled as read-only SourceNode (handled in step 2)
-    if hasattr(td, "input_links"):
-      for link in td.input_links.select_related("upstream_target_dataset__target_schema").filter(active=True):
-        up = getattr(link, "upstream_target_dataset", None)
-        if not up:
-          continue
+  def ensure_source_node(src) -> str:
+    """
+    Ensure a SourceDataset manifest node exists and return its node id.
+    """
+    sys_short = src.source_system.short_name
+    node_id = _source_id(sys_short, src.schema_name, src.source_dataset_name)
+    ensure_maps(node_id)
+    if node_id not in nodes:
+      nodes[node_id] = _empty_node(
+        node_id=node_id,
+        node_type="source",
+        schema=src.schema_name,
+        dataset=src.source_dataset_name,
+      )
+    return node_id
 
-        up_id = _target_id(up.target_schema.short_name, up.target_dataset_name)
-        if up_id == tid:
-          # Defensive: never allow self-dependencies in the manifest.
-          continue
+  def add_dependency(
+    *,
+    node_id: str,
+    upstream_id: str,
+    reason: str,
+    reference_id: int | None = None,
+    lineage: bool = False,
+  ) -> None:
+    """
+    Add one dependency to the manifest dependency maps.
+    """
+    if upstream_id == node_id:
+      return
 
-        # Ensure upstream nodes exist in the manifest even if they were not part of the initial queryset.
-        if up_id not in nodes:
-          deps_map.setdefault(up_id, set())
-          nodes[up_id] = ManifestNode(
-            id=up_id,
-            type="target",
-            schema=up.target_schema.short_name,
-            dataset=up.target_dataset_name,
-            mode=str(getattr(up, "incremental_strategy", "full") or "full"),
-            materialization=str(getattr(up, "materialization_type", None)),
-            deps=[],
-          )
+    ensure_maps(node_id)
+    deps_map[node_id].add(upstream_id)
+    if lineage:
+      lineage_deps_map[node_id].add(upstream_id)
 
-        deps_map[tid].add(up_id)
-
-    nodes[tid] = ManifestNode(
-      id=tid,
-      type="target",
-      schema=schema_short,
-      dataset=ds_name,
-      mode=str(getattr(td, "incremental_strategy", "full") or "full"),
-      materialization=str(getattr(td, "materialization_type", None)),
-      deps=sorted(deps_map[tid]),
+    dep = ManifestExecutionDependency(
+      id=upstream_id,
+      reason=reason,
+      reference_id=reference_id,
     )
+    execution_deps_map[node_id][(dep.id, dep.reason, dep.reference_id)] = dep
+
+  # --- 1) Add all target nodes and target execution dependencies
+  for td in tds:
+    tid = ensure_target_node(td)
+
+    for dep in resolve_execution_dependencies(td):
+      up = dep.upstream
+      up_id = ensure_target_node(up)
+      add_dependency(
+        node_id=tid,
+        upstream_id=up_id,
+        reason=dep.reason,
+        reference_id=dep.reference_id,
+        lineage=dep.reason in {
+          EXECUTION_DEPENDENCY_LINEAGE_INPUT,
+          EXECUTION_DEPENDENCY_SOURCE_RAW_READY,
+        },
+      )
 
   # --- 2) Add source nodes + source->target deps (read-only nodes)
   if include_sources:
     for td in tds:
-      tid = _target_id(td.target_schema.short_name, td.target_dataset_name)
+      tid = ensure_target_node(td)
 
-      deps_map.setdefault(tid, set())
-
-      # TargetDatasetInput is the through model for source_datasets
-      # Only active source mappings should contribute to lineage
+      # TargetDatasetInput is the through model for source_datasets.
+      # Only active source mappings should contribute to manifest lineage.
       if not hasattr(td, "input_links"):
         continue
 
@@ -201,41 +308,38 @@ def build_manifest(
         if not src:
           continue
 
-        sys_short = src.source_system.short_name
-        sid = _source_id(sys_short, src.schema_name, src.source_dataset_name)
-
-        # Create source node if missing
-        if sid not in nodes:
-          nodes[sid] = ManifestNode(
-            id=sid,
-            type="source",
-            schema=src.schema_name,
-            dataset=src.source_dataset_name,
-            mode=None,
-            materialization=None,
-            deps=[],
-          )
-
-        deps_map[tid].add(sid)
-
-      # Refresh deps list on target node
-      if tid in nodes:
-        nodes[tid] = ManifestNode(
-          id=nodes[tid].id,
-          type=nodes[tid].type,
-          schema=nodes[tid].schema,
-          dataset=nodes[tid].dataset,
-          mode=nodes[tid].mode,
-          materialization=nodes[tid].materialization,
-          deps=sorted(deps_map[tid]),
+        sid = ensure_source_node(src)
+        add_dependency(
+          node_id=tid,
+          upstream_id=sid,
+          reason=EXECUTION_DEPENDENCY_SOURCE_INPUT,
+          lineage=True,
         )
 
-  # --- 3) Finalize: topo levels (includes sources)
-  all_node_ids = set(nodes.keys())
+  # --- 3) Finalize nodes with dependency payloads
+  finalized_nodes: Dict[str, ManifestNode] = {}
+  for node_id, node in nodes.items():
+    ensure_maps(node_id)
+    finalized_nodes[node_id] = ManifestNode(
+      id=node.id,
+      type=node.type,
+      schema=node.schema,
+      dataset=node.dataset,
+      mode=node.mode,
+      materialization=node.materialization,
+      deps=sorted(deps_map[node_id]),
+      lineage_deps=sorted(lineage_deps_map[node_id]),
+      execution_deps=sorted(
+        execution_deps_map[node_id].values(),
+        key=lambda dep: (dep.id, dep.reason, dep.reference_id or 0),
+      ),
+    )
+
+  all_node_ids = set(finalized_nodes.keys())
   levels = _toposort_levels(all_node_ids, deps_map)
 
   # Deterministic nodes list
-  ordered_nodes = [nodes[k] for k in sorted(nodes.keys())]
+  ordered_nodes = [finalized_nodes[k] for k in sorted(finalized_nodes.keys())]
 
   return Manifest(
     generated_at=_now_iso(),
@@ -248,6 +352,7 @@ def build_manifest(
 
 def manifest_to_dict(m: Manifest) -> Dict:
   return {
+    "manifest_version": MANIFEST_VERSION,
     "generated_at": m.generated_at,
     "profile": m.profile,
     "target_system": m.target_system,
@@ -260,6 +365,15 @@ def manifest_to_dict(m: Manifest) -> Dict:
         "mode": n.mode,
         "materialization": n.materialization,
         "deps": n.deps,
+        "lineage_deps": n.lineage_deps,
+        "execution_deps": [
+          {
+            "id": dep.id,
+            "reason": dep.reason,
+            "reference_id": dep.reference_id,
+          }
+          for dep in n.execution_deps
+        ],
       }
       for n in m.nodes
     ],

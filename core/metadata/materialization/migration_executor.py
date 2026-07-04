@@ -44,6 +44,47 @@ class MigrationMaterializationResult:
   requires_rebuild: bool = False
 
 
+def _render_required_schema_sql(
+  res: MigrationMaterializationResult,
+  dialect,
+  method_name: str,
+  action_type: str,
+  dataset_key: str,
+  *args,
+) -> str | None:
+  """
+  Render SQL for a required schema action and fail closed when unsupported.
+
+  MigrationPlan actions are execution intent. Silently dropping a required
+  schema action lets the subsequent load run against stale physical objects.
+  """
+  renderer = getattr(dialect, method_name, None)
+  if not callable(renderer):
+    res.blocking_errors.append(
+      f"UNSUPPORTED_SCHEMA_ACTION: {action_type} for {dataset_key} "
+      f"requires dialect.{method_name}()."
+    )
+    return None
+
+  try:
+    sql = renderer(*args)
+  except Exception as exc:
+    res.blocking_errors.append(
+      f"SCHEMA_ACTION_RENDER_FAILED: {action_type} for {dataset_key} "
+      f"failed in {method_name}: {type(exc).__name__}: {exc}"
+    )
+    return None
+
+  if not str(sql or "").strip():
+    res.blocking_errors.append(
+      f"UNSUPPORTED_SCHEMA_ACTION: {action_type} for {dataset_key} "
+      f"was not rendered by dialect.{method_name}()."
+    )
+    return None
+
+  return str(sql)
+
+
 def build_materialization_from_migration_plan(
   *,
   td,
@@ -98,6 +139,83 @@ def build_materialization_from_migration_plan(
     res.blocking_errors.append(f"INVALID_TARGET_DATASET: missing schema/table for {dataset_key}")
     return res
 
+  current_actual_cols_cache: dict[str, dict[str, Any]] | None = None
+
+  def _current_actual_cols_by_norm_name() -> dict[str, dict[str, Any]]:
+    """
+    Return current physical columns for the target relation, best-effort.
+
+    MigrationPlan actions remain the only source of schema-evolution intent.
+    This check only makes applying already-approved intent idempotent within
+    one execution run or after a partially completed run.
+    """
+    nonlocal current_actual_cols_cache
+    if current_actual_cols_cache is not None:
+      return current_actual_cols_cache
+
+    inspect = getattr(dialect, "introspect_table", None)
+    if not callable(inspect):
+      current_actual_cols_cache = {}
+      return current_actual_cols_cache
+
+    try:
+      meta = inspect(
+        schema_name=schema_name,
+        table_name=table_name,
+        introspection_engine=introspection_engine,
+        exec_engine=exec_engine,
+        debug_plan=bool(getattr(policy, "debug_plan", False)),
+      )
+    except Exception:
+      meta = {}
+
+    current_actual_cols_cache = dict((meta or {}).get("actual_cols_by_norm_name") or {})
+    return current_actual_cols_cache
+
+  def _norm_column_name(column_name: str) -> str:
+    return str(column_name or "").strip().lower()
+
+  def _physical_column_exists(column_name: str) -> bool:
+    return _norm_column_name(column_name) in _current_actual_cols_by_norm_name()
+
+  def _rename_column_already_applied(*, old_name: str, new_name: str) -> bool:
+    """
+    Return True when an approved rename intent has already reached the
+    physical table.
+
+    This keeps MigrationPlan application idempotent for companion hist syncs
+    and partially completed executions: the intent remains explicit, but we do
+    not issue a duplicate RENAME COLUMN when the old physical column is gone
+    and the new physical column is already present.
+    """
+    old_norm = _norm_column_name(old_name)
+    new_norm = _norm_column_name(new_name)
+    actual_cols = _current_actual_cols_by_norm_name()
+    return bool(new_norm and new_norm in actual_cols and old_norm not in actual_cols)
+
+  def _source_name_for_rebuild_column(name: str, rename_cols: dict[str, str]) -> str:
+    """
+    Return the physical source column to use during deterministic rebuild.
+
+    For a pending rename, the old physical column is the source. If the same
+    MigrationPlan is applied again after a companion sync or partial run, the
+    old column may already be gone and the new column may already exist. In
+    that already-applied case, read from the new physical column instead.
+    """
+    old_name = rename_cols.get(str(name))
+    if not old_name:
+      return str(name)
+
+    if _rename_column_already_applied(old_name=old_name, new_name=str(name)):
+      res.warnings.append(
+        "SCHEMA_ACTION_ALREADY_APPLIED: RENAME_COLUMN requested by MigrationPlan "
+        f"for {dataset_key}.{old_name} -> {name}, but the physical column is "
+        "already renamed. Reusing the current column during rebuild."
+      )
+      return str(name)
+
+    return str(old_name)
+
   # Dataset rename
   rename_ds = next((a for a in relevant if getattr(a, "action_type", None) == "RENAME_DATASET"), None)
   prev_ds_key = getattr(rename_ds, "previous_dataset_key", None) if rename_ds else None
@@ -110,7 +228,16 @@ def build_materialization_from_migration_plan(
   # Full refresh: only keep dataset rename (so subsequent DROP/CREATE hits the right object)
   if is_full_refresh:
     if rename_ds and prev_table and prev_table != table_name:
-      sql = dialect.render_rename_table(schema_name, prev_table, table_name)
+      sql = _render_required_schema_sql(
+        res,
+        dialect,
+        "render_rename_table",
+        "RENAME_DATASET",
+        dataset_key,
+        schema_name,
+        prev_table,
+        table_name,
+      )
       if sql:
         res.steps.append(MaterializationStep(
           op="RENAME_DATASET",
@@ -277,7 +404,7 @@ def build_materialization_from_migration_plan(
       if is_added:
         src_name = None
       else:
-        src_name = rename_cols.get(str(name), str(name))
+        src_name = _source_name_for_rebuild_column(str(name), rename_cols)
 
       columns_payload.append({
         "name": str(name),
@@ -327,7 +454,16 @@ def build_materialization_from_migration_plan(
 
   # Non-rebuild: deterministic order
   if rename_ds and prev_table and prev_table != table_name:
-    sql = dialect.render_rename_table(schema_name, prev_table, table_name)
+    sql = _render_required_schema_sql(
+      res,
+      dialect,
+      "render_rename_table",
+      "RENAME_DATASET",
+      dataset_key,
+      schema_name,
+      prev_table,
+      table_name,
+    )
     if sql:
       res.steps.append(MaterializationStep(op="RENAME_DATASET", sql=sql, reason=f"Dataset rename: {prev_table} -> {table_name}", safe=True))
 
@@ -338,7 +474,24 @@ def build_materialization_from_migration_plan(
     new = getattr(a, "column_name", None)
     if not old or not new:
       continue
-    sql = dialect.render_rename_column(schema_name, table_name, str(old), str(new))
+    if _rename_column_already_applied(old_name=str(old), new_name=str(new)):
+      res.warnings.append(
+        "SCHEMA_ACTION_ALREADY_APPLIED: RENAME_COLUMN requested by MigrationPlan "
+        f"for {dataset_key}.{old} -> {new}, but the physical column is "
+        "already renamed. Skipping duplicate DDL."
+      )
+      continue
+    sql = _render_required_schema_sql(
+      res,
+      dialect,
+      "render_rename_column",
+      "RENAME_COLUMN",
+      dataset_key,
+      schema_name,
+      table_name,
+      str(old),
+      str(new),
+    )
     if sql:
       res.steps.append(MaterializationStep(op="RENAME_COLUMN", sql=sql, reason=f"Rename column {old} -> {new}", safe=True))
 
@@ -367,6 +520,15 @@ def build_materialization_from_migration_plan(
     if not new_type:
       res.blocking_errors.append(f"MISSING_COLUMN_TYPE: {dataset_key}.{col_name}")
       continue
+
+    if _physical_column_exists(str(col_name)):
+      res.warnings.append(
+        "SCHEMA_ACTION_ALREADY_APPLIED: ADD_COLUMN requested by MigrationPlan "
+        f"for {dataset_key}.{col_name}, but the physical column already exists. "
+        "Skipping duplicate DDL."
+      )
+      continue
+
     sql = dialect.render_add_column(schema_name, table_name, str(col_name), str(new_type))
     if sql:
       res.steps.append(MaterializationStep(op="ADD_COLUMN", sql=sql, reason=f"Column {col_name} missing", safe=True))

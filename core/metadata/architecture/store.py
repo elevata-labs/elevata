@@ -23,27 +23,18 @@ Contact: <https://github.com/elevata-labs/elevata>.
 from __future__ import annotations
 
 import json
-import os
 from json import JSONDecodeError
 from pathlib import Path
 from typing import Any
 
+from .paths import (
+  ARCHITECTURE_STATE_DIR_ENV,
+  ArchitectureArtifactContext,
+  DEFAULT_ARCHITECTURE_STATE_DIR,
+  resolve_architecture_state_dir,
+)
+
 from .state import ArchitectureState
-
-
-DEFAULT_ARCHITECTURE_STATE_DIR = ".elevata/state"
-ARCHITECTURE_STATE_DIR_ENV = "ELEVATA_ARCH_STATE_DIR"
-
-
-def resolve_architecture_state_dir(default: str | Path = DEFAULT_ARCHITECTURE_STATE_DIR) -> Path:
-  """
-  Resolve the architecture state directory.
-  """
-  value = os.getenv(ARCHITECTURE_STATE_DIR_ENV)
-  if value and value.strip():
-    return Path(value.strip())
-
-  return Path(default)
 
 
 class ArchitectureStateStore:
@@ -55,15 +46,30 @@ class ArchitectureStateStore:
   requiring DB schema changes.
   """
 
-  def __init__(self, base_path: str | Path | None = None):
-    self.base_path = Path(base_path) if base_path is not None else resolve_architecture_state_dir()
+  def __init__(
+    self,
+    base_path: str | Path | None = None,
+    *,
+    context: ArchitectureArtifactContext | None = None,
+  ):
+    self.base_path = (
+      Path(base_path)
+      if base_path is not None
+      else resolve_architecture_state_dir(context=context)
+    )
     self.base_path.mkdir(parents=True, exist_ok=True)
+
+  def state_file_path(self) -> Path:
+    """
+    Return the file path where the architecture state is stored.
+    """
+    return self.base_path / "architecture_state.json"
 
   def _state_file(self) -> Path:
     """
     Return the file path where the architecture state is stored.
     """
-    return self.base_path / "architecture_state.json"
+    return self.state_file_path()
 
   def load(self) -> ArchitectureState | None:
     """

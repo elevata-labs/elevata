@@ -23,6 +23,7 @@ Contact: <https://github.com/elevata-labs/elevata>.
 from __future__ import annotations
 
 from copy import deepcopy
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
@@ -34,6 +35,48 @@ from metadata.architecture.review_briefing import (
   ArchitectureReviewBriefing,
   build_architecture_review_briefing,
 )
+
+
+def _artifact_context() -> SimpleNamespace:
+  """
+  Return an ArchitectureArtifactContext-shaped object for briefing tests.
+  """
+  return SimpleNamespace(
+    profile_name="dev",
+    target_system_short="dwh",
+    profile_token="dev",
+    target_system_token="dwh",
+    label="dev/dwh",
+  )
+
+
+def _state_store() -> SimpleNamespace:
+  """
+  Return an ArchitectureStateStore-shaped object for briefing tests.
+  """
+  state_file = Path(".elevata/state/dev/dwh/architecture_state.json")
+  return SimpleNamespace(
+    base_path=state_file.parent,
+    state_file_path=lambda: state_file,
+  )
+
+
+def _baseline_resolution() -> SimpleNamespace:
+  """
+  Return an ArchitectureBaselineResolution-shaped object for briefing tests.
+  """
+  state_file = Path(".elevata/state/dev/dwh/architecture_state.json")
+  return SimpleNamespace(
+    previous_state=SimpleNamespace(),
+    source="recorded_state",
+    can_execute=True,
+    message="Recorded architecture baseline is available for this runtime context.",
+    state_file=state_file,
+    warning_count=0,
+    warnings=(),
+    is_recorded=True,
+    is_discovered=False,
+  )
 
 
 class FakeReport:
@@ -213,9 +256,12 @@ def _context(
       target_name="Customer",
       dataset_key="serving.Customer",
     ),
+    artifact_context=_artifact_context(),
     report=report or FakeReport(),
     review_status=status or _status("pending"),
     approval_store=MutatingApprovalStore(),
+    state_store=_state_store(),
+    baseline_resolution=_baseline_resolution(),
   )
 
 

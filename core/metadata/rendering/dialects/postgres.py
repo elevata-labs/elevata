@@ -29,7 +29,7 @@ except ModuleNotFoundError as e:
 
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Sequence
+from typing import Any, Dict, Sequence
 
 from .base import BaseExecutionEngine, SqlDialect
 from metadata.ingestion.types_map import (
@@ -219,8 +219,21 @@ class PostgresDialect(SqlDialect):
     return f"CREATE SCHEMA IF NOT EXISTS {q(schema)};"
   
 
-  def render_alter_column_type(self, *, schema: str, table: str, column: str, new_type: str) -> str:
-    # Postgres: ALTER TABLE <tbl> ALTER COLUMN <col> TYPE <type>
+  def render_alter_column_type(
+    self,
+    *,
+    schema: str,
+    table: str,
+    column: str,
+    new_type: str,
+    old_type: str | None = None,
+  ) -> str:
+    """
+    Render PostgreSQL DDL for changing a column's physical type.
+
+    old_type is accepted to match the base dialect contract. PostgreSQL does
+    not need it for this SQL shape.
+    """
     tbl = self.render_table_identifier(schema, table)
     col = self.render_identifier(column)
     return f"ALTER TABLE {tbl} ALTER COLUMN {col} TYPE {new_type}"
@@ -230,6 +243,20 @@ class PostgresDialect(SqlDialect):
     target = self.render_table_identifier(schema, table)
     cas = " CASCADE" if cascade else ""
     return f"DROP TABLE IF EXISTS {target}{cas}"
+
+
+  def render_drop_view_if_exists(
+    self,
+    *,
+    schema: str,
+    view: str,
+    materialized: bool = False,
+    cascade: bool = False,
+  ) -> str:
+    target = self.render_table_identifier(schema, view)
+    obj = "MATERIALIZED VIEW" if materialized else "VIEW"
+    cas = " CASCADE" if cascade else ""
+    return f"DROP {obj} IF EXISTS {target}{cas}"
 
 
   def render_truncate_table(self, schema: str, table: str) -> str:
@@ -417,16 +444,211 @@ class PostgresDialect(SqlDialect):
   # ---------------------------------------------------------------------------
   # 7. Introspection hooks
   # ---------------------------------------------------------------------------
+  @staticmethod
+  def _sql_string_literal(value: str) -> str:
+    s = str(value or "")
+    return "'" + s.replace("'", "''") + "'"
+
+
+  def introspect_dependent_views(
+    self,
+    *,
+    schema_name: str,
+    table_name: str,
+    exec_engine=None,
+  ) -> list[dict[str, str]]:
+    """
+    Return physical views/materialized views that depend on a table.
+
+    PostgreSQL refuses DROP TABLE when views depend on the target. elevata uses
+    this read-only dependency list to drop only managed views explicitly before
+    a full-refresh table recreate, instead of using DROP ... CASCADE.
+    """
+    if exec_engine is None or not hasattr(exec_engine, "fetch_all"):
+      return []
+
+    schema_lit = self._sql_string_literal(schema_name)
+    table_lit = self._sql_string_literal(table_name)
+
+    sql = f"""
+SELECT DISTINCT
+  ns_dep.nspname AS dependent_schema,
+  dep.relname AS dependent_name,
+  CASE dep.relkind
+    WHEN 'v' THEN 'view'
+    WHEN 'm' THEN 'materialized_view'
+    ELSE dep.relkind::text
+  END AS dependent_type
+FROM pg_depend d
+JOIN pg_rewrite r
+  ON r.oid = d.objid
+JOIN pg_class dep
+  ON dep.oid = r.ev_class
+JOIN pg_namespace ns_dep
+  ON ns_dep.oid = dep.relnamespace
+JOIN pg_class base
+  ON base.oid = d.refobjid
+JOIN pg_namespace ns_base
+  ON ns_base.oid = base.relnamespace
+WHERE ns_base.nspname = {schema_lit}
+  AND base.relname = {table_lit}
+  AND dep.relkind IN ('v', 'm')
+  AND dep.oid <> base.oid
+ORDER BY
+  ns_dep.nspname,
+  dep.relname;
+"""
+
+    rows = exec_engine.fetch_all(sql) or []
+    out: list[dict[str, str]] = []
+    for row in rows:
+      try:
+        dep_schema = str(row[0] or "")
+        dep_name = str(row[1] or "")
+        dep_type = str(row[2] or "view")
+      except Exception:
+        continue
+      if dep_schema and dep_name:
+        out.append({
+          "schema": dep_schema,
+          "name": dep_name,
+          "type": dep_type,
+        })
+    return out
+
+
+  def _format_information_schema_type(
+    self,
+    *,
+    data_type,
+    character_maximum_length=None,
+    numeric_precision=None,
+    numeric_scale=None,
+  ) -> str:
+    """
+    Render a compact physical type string from PostgreSQL information_schema.
+    """
+    t = str(data_type or "").strip()
+    tl = t.lower()
+
+    if tl in ("character varying", "varchar", "character", "char") and character_maximum_length is not None:
+      try:
+        return f"{t.upper()}({int(character_maximum_length)})"
+      except Exception:
+        return t.upper()
+
+    if tl in ("numeric", "decimal") and numeric_precision is not None:
+      try:
+        if numeric_scale is not None:
+          return f"NUMERIC({int(numeric_precision)},{int(numeric_scale)})"
+        return f"NUMERIC({int(numeric_precision)})"
+      except Exception:
+        return "NUMERIC"
+
+    return t.upper()
+
+
+  def _introspect_table_with_information_schema(
+    self,
+    *,
+    schema_name: str,
+    table_name: str,
+    exec_engine=None,
+  ) -> Dict[str, Any] | None:
+    """
+    Introspect PostgreSQL tables/views through the active execution engine.
+
+    This keeps execute-mode guards aligned with the same target connection that
+    runs the load. It is intentionally Postgres-specific and does not change
+    materialization semantics.
+    """
+    if exec_engine is None or not hasattr(exec_engine, "fetch_all"):
+      return None
+
+    schema_lit = self._sql_string_literal(schema_name)
+    table_lit = self._sql_string_literal(table_name)
+
+    sql = f"""
+SELECT
+  t.table_schema,
+  t.table_name,
+  t.table_type,
+  c.column_name,
+  c.data_type,
+  c.character_maximum_length,
+  c.numeric_precision,
+  c.numeric_scale,
+  c.is_nullable,
+  c.ordinal_position
+FROM information_schema.tables t
+LEFT JOIN information_schema.columns c
+  ON c.table_schema = t.table_schema
+ AND c.table_name = t.table_name
+WHERE t.table_schema = {schema_lit}
+  AND t.table_name = {table_lit}
+  AND t.table_type IN ('BASE TABLE', 'VIEW')
+ORDER BY
+  c.ordinal_position NULLS LAST;
+"""
+
+    rows = exec_engine.fetch_all(sql) or []
+    if not rows:
+      return {
+        "table_exists": False,
+        "physical_table": table_name,
+        "physical_object_type": None,
+        "actual_cols_by_norm_name": {},
+      }
+
+    actual_cols: dict[str, dict[str, object]] = {}
+    physical_object_type = None
+    for row in rows:
+      try:
+        physical_object_type = str(row[2] or "").strip() or physical_object_type
+        col_name = str(row[3] or "").strip()
+        if not col_name:
+          continue
+        physical_type = self._format_information_schema_type(
+          data_type=row[4],
+          character_maximum_length=row[5],
+          numeric_precision=row[6],
+          numeric_scale=row[7],
+        )
+        actual_cols[col_name.lower()] = {
+          "name": col_name,
+          "type": physical_type,
+          "nullable": str(row[8] or "YES").upper() == "YES",
+          "ordinal_position": row[9],
+        }
+      except Exception:
+        continue
+
+    return {
+      "table_exists": True,
+      "physical_table": table_name,
+      "physical_object_type": physical_object_type,
+      "actual_cols_by_norm_name": actual_cols,
+    }
+
+
   def introspect_table(
     self,
     *,
     schema_name: str,
     table_name: str,
-    introspection_engine,
+    introspection_engine=None,
     exec_engine=None,
     debug_plan: bool = False,
   ):
-    # Use SQLAlchemy-based default introspection for Postgres.
+    info = self._introspect_table_with_information_schema(
+      schema_name=schema_name,
+      table_name=table_name,
+      exec_engine=exec_engine,
+    )
+    if info is not None:
+      return info
+
+    # Fallback to SQLAlchemy-based default introspection when available.
     return SqlDialect.introspect_table(
       self,
       schema_name=schema_name,

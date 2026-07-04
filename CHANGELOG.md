@@ -12,6 +12,98 @@ This project adheres to [Semantic Versioning](https://semver.org/) and [Keep a C
 
 ---
 
+## [2.11.0] - 2026-07-04
+
+This release adds **Controlled Reference Members**:  
+deterministic default and inferred member handling for modeled rawcore references.
+
+Reference Integrity Review remains read-only and diagnostic.  
+Controlled Reference Members extend the runtime side: when a modeled reference explicitly enables inferred members, child dataset loads can create missing parent members in the referenced rawcore dataset.
+
+---
+
+### ✨ Added
+
+#### Controlled Reference Members
+
+- Added controlled default member handling for rawcore reference datasets  
+- Added deterministic inferred member creation for explicitly enabled TargetDatasetReferences  
+- Added child-load-driven inferred member execution semantics  
+- Added marker-column behavior for `inferred_member` and `default_member` system columns  
+- Added typed sentinel handling for not-null artificial member attributes  
+- Added readable artificial member labels for string attributes: `(Default)` and `(Inferred)`  
+- Added idempotent runtime behavior so repeated child loads do not create duplicate inferred members  
+- Added tests for controlled reference member SQL rendering and runtime contracts  
+
+#### Airflow Example Documentation
+
+- Added documented local Airflow login credentials  
+- Added guidance for resetting the local Airflow admin password when the metadata volume already exists  
+- Added guidance for local file source paths when running the Airflow example in Docker  
+- Added local line-ending guard guidance for the Airflow example entrypoint  
+
+---
+
+### 🔄 Improved
+
+#### Reference Integrity Runtime Boundary
+
+- Clarified that Reference Integrity Review is diagnostic and never mutates data  
+- Clarified that Controlled Reference Members are created only by load execution  
+- Clarified that inferred members are created during child dataset loads, not parent dataset loads  
+- Clarified that parent full loads can replace inferred members with real source-backed parent rows  
+- Kept inferred member creation opt-in per modeled TargetDatasetReference  
+
+#### Architecture Control and Platform Validation
+
+- Improved scope-aware physical baseline discovery so selected schema scopes do not query unrelated schemas unnecessarily  
+- Improved architecture artifact paths to include target-system awareness  
+- Improved approval artifact creation UX with visible running feedback for longer-running backends  
+- Improved schema-evolution rebuild handling for type changes and newly introduced controlled member columns  
+- Improved historized companion table provisioning before base loads  
+
+---
+
+### 🛠️ Fixed
+
+#### Cross-Dialect Execution Hardening
+
+- Fixed Postgres full-refresh table rebuilds blocked by managed dependent views  
+- Fixed Postgres historized companion table provisioning for missing `_hist` relations  
+- Fixed BigQuery incompatible type evolution by routing unsupported changes through deterministic rebuilds  
+- Fixed BigQuery idempotent `ADD COLUMN` behavior for repeated hist companion synchronization  
+- Fixed idempotent rename handling when migration actions have already been applied physically  
+- Fixed Fabric Warehouse drop-table dialect contract compatibility for rebuild paths  
+- Fixed Fabric Warehouse rebuild backfill behavior for newly added columns without source columns  
+- Fixed Airflow example startup on Windows by guarding against CRLF entrypoint line endings  
+- Fixed Airflow example dependency coverage for generic elevata runtime imports  
+
+---
+
+### 🔒 Governance & Determinism
+
+- Controlled Reference Members are deterministic runtime artifacts, not AI-based inference  
+- Reference Integrity Review remains read-only, on-demand and bounded  
+- Inferred member creation requires an explicit modeled reference opt-in  
+- Inferred member creation is limited to controlled rawcore reference semantics  
+- Default members and inferred members are marked explicitly through system-managed columns  
+- Parent data remains authoritative: normal parent loads can replace artificial members with real source-backed rows  
+- SQL rendering remains dialect-owned; load/runtime code provides semantic ingredients only  
+
+---
+
+### 🧪 Quality & Stability
+
+- Added and updated controlled reference member tests  
+- Verified runtime behavior for default members and inferred members  
+- Verified idempotent inferred member behavior across repeated executions  
+- Verified parent reload behavior replacing inferred members with real parent data  
+- Verified supported target backends across DuckDB, MSSQL, Postgres, BigQuery, Databricks and Fabric Warehouse paths  
+- Verified Airflow example startup and DAG orchestration behavior  
+- Kept deferred topics out of this release: Databricks batch logging, schema-scope-only execution and broader Airflow local-data mounting automation  
+
+---
+
 ## [2.10.0] - 2026-06-20
 
 This release adds **Reference Integrity Review**:  

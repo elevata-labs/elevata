@@ -159,3 +159,44 @@ def test_fabric_reference_integrity_missing_examples_uses_top_not_limit():
   assert "SELECT DISTINCT TOP (20)" in sql
   assert "LEFT JOIN" in sql
   assert "LIMIT" not in sql
+
+
+def test_fabric_alter_column_type_accepts_old_type_and_forces_rebuild():
+  d = FabricWarehouseDialect()
+
+  sql = d.render_alter_column_type(
+    schema="rawcore",
+    table="rc_customer",
+    column="person_type_code",
+    new_type="VARCHAR(50)",
+    old_type="INT",
+  )
+
+  assert sql == ""
+
+
+def test_fabric_rebuild_uses_null_for_new_columns_without_source_name():
+  d = FabricWarehouseDialect()
+
+  sql = d.render_insert_select_for_rebuild(
+    schema="rawcore",
+    src_table="rc_sales_order",
+    dst_table="__elevata_tmp_rc_sales_order",
+    lossy_casts=True,
+    columns=[
+      {
+        "name": "sales_order_id",
+        "source_name": "sales_order_id",
+        "type": "INT",
+      },
+      {
+        "name": "inferred_member",
+        "source_name": None,
+        "type": "BIT",
+      },
+    ],
+  )
+
+  assert "CAST(sales_order_id AS INT) AS sales_order_id" in sql
+  assert "CAST(NULL AS BIT) AS inferred_member" in sql
+  assert "inferred_member AS inferred_member" not in sql

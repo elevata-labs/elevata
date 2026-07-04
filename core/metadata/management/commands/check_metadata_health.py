@@ -30,6 +30,7 @@ from metadata.generation.validators import (
   validate_all_semantic_targets,
   validate_all_materialization,
   validate_all_hist_naming,
+  validate_all_surrogate_key_integrity,
   summarize_targetdataset_health,
 )
 
@@ -68,11 +69,13 @@ class Command(BaseCommand):
     sem_all: Dict[int, List[str]] = validate_all_semantic_targets()
     mat_all: Dict[int, List[str]] = validate_all_materialization()
     hist_all: Dict[int, List[str]] = validate_all_hist_naming()
+    sk_all: Dict[int, List[str]] = validate_all_surrogate_key_integrity()
 
     incr_issues, incr_info = _split_info(incr_all)
     sem_issues, sem_info = _split_info(sem_all)
     mat_issues, mat_info = _split_info(mat_all)
     hist_issues, hist_info = _split_info(hist_all)
+    sk_issues, sk_info = _split_info(sk_all)
 
     # Collect all datasets that have at least one issue in any category
     problematic_ids = (
@@ -80,12 +83,14 @@ class Command(BaseCommand):
       | set(sem_issues.keys())
       | set(mat_issues.keys())
       | set(hist_issues.keys())
+      | set(sk_issues.keys())
     )
     info_only_ids = (
       set(incr_info.keys())
       | set(sem_info.keys())
       | set(mat_info.keys())
       | set(hist_info.keys())
+      | set(sk_info.keys())
     ) - problematic_ids  
 
     total_targets = TargetDataset.objects.count()
@@ -122,6 +127,9 @@ class Command(BaseCommand):
           if pk in hist_info:
             for msg in hist_info[pk]:
               self.stdout.write(f"  - Naming: {msg}")
+          if pk in sk_info:
+            for msg in sk_info[pk]:
+              self.stdout.write(f"  - Surrogate key: {msg}")
 
           level, _ = summarize_targetdataset_health(td)
           self.stdout.write(f"  -> Health level: {level}")
@@ -172,6 +180,14 @@ class Command(BaseCommand):
       if pk in hist_info:
         for msg in hist_info[pk]:
           self.stdout.write(f"  - Naming: {msg}")
+
+      # Surrogate key integrity
+      if pk in sk_issues:
+        for msg in sk_issues[pk]:
+          self.stdout.write(f"  - Surrogate key: {msg}")
+      if pk in sk_info:
+        for msg in sk_info[pk]:
+          self.stdout.write(f"  - Surrogate key: {msg}")
 
       # Optional: aggregated health level (mainly for curiosity / future extension)
       level, _ = summarize_targetdataset_health(td)

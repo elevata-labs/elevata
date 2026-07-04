@@ -163,6 +163,24 @@ def test_build_expected_schema_op_tokens_suppresses_full_refresh_column_ops():
 
   assert result.suppressed_full_refresh_col_renames == 1
   assert result.suppressed_full_refresh_add_columns == 1
+  assert result.suppressed_full_refresh_drop_columns == 1
+  assert result.tokens == ()
+
+
+def test_build_expected_schema_op_tokens_keeps_non_full_refresh_drop_columns():
+  result = build_expected_schema_op_tokens(
+    actions=(
+      MigrationAction(
+        action_type="DROP_COLUMN",
+        strategy="ALTER_TABLE",
+        dataset_key="rawcore.customer",
+        column_name="legacy_flag",
+      ),
+    ),
+    full_refresh_dataset_keys=set(),
+  )
+
+  assert result.suppressed_full_refresh_drop_columns == 0
   assert result.tokens == (
     make_schema_op_token(
       "DROP_COLUMN",

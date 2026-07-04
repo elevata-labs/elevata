@@ -444,13 +444,151 @@ class BigQueryDialect(SqlDialect):
     return f"CREATE TABLE IF NOT EXISTS {target} (\n  {cols_sql}\n)"
   
 
-  def render_alter_column_type(self, *, schema: str, table: str, column: str, new_type: str) -> str:
-    # BigQuery: ALTER TABLE `schema.table` ALTER COLUMN col SET DATA TYPE <type>
+  def render_add_column(self, schema: str, table: str, column: str, column_type: str | None) -> str:
+    """
+    Render BigQuery ADD COLUMN DDL idempotently.
+
+    BigQuery metadata can be briefly stale after a table was created or altered
+    earlier in the same execution run. The central MigrationPlan executor still
+    performs physical-column idempotency checks, but the dialect can make the
+    DDL itself safe as well.
+    """
+    if not column_type:
+      return ""
+
+    tbl = self.render_table_identifier(schema, table)
+    col = self.render_identifier(column)
+    return f"ALTER TABLE {tbl} ADD COLUMN IF NOT EXISTS {col} {column_type}"
+
+
+  @staticmethod
+  def _normalize_bigquery_physical_type(type_name: str | None) -> str:
+    """
+    Normalize a BigQuery physical type string for conservative DDL decisions.
+    """
+    t = str(type_name or "").strip().upper()
+    if not t:
+      return ""
+    t = t.split("(", 1)[0].strip()
+    aliases = {
+      "INTEGER": "INT64",
+      "BIGINT": "INT64",
+      "BOOL": "BOOL",
+      "BOOLEAN": "BOOL",
+      "FLOAT": "FLOAT64",
+      "DOUBLE": "FLOAT64",
+      "DECIMAL": "NUMERIC",
+    }
+    return aliases.get(t, t)
+
+
+  @classmethod
+  def _can_alter_column_type_in_place(cls, *, old_type: str | None, new_type: str | None) -> bool:
+    """
+    Return True only for BigQuery type changes that are supported by
+    ALTER COLUMN SET DATA TYPE.
+
+    BigQuery supports only a small set of in-place type widenings. Other
+    castable changes, such as DATE -> TIMESTAMP or DATE -> STRING, must use
+    deterministic rebuild/backfill instead.
+    """
+    old_base = cls._normalize_bigquery_physical_type(old_type)
+    new_base = cls._normalize_bigquery_physical_type(new_type)
+
+    if not old_base or not new_base:
+      return False
+
+    if old_base == new_base:
+      # Covers same-family changes such as STRING(5) -> STRING(7) or
+      # NUMERIC precision/scale widening. The planner is still responsible for
+      # deciding whether the change itself is safe.
+      return True
+
+    supported_widenings = {
+      "INT64": {"NUMERIC", "BIGNUMERIC", "FLOAT64"},
+      "NUMERIC": {"BIGNUMERIC", "FLOAT64"},
+    }
+    return new_base in supported_widenings.get(old_base, set())
+
+
+  def render_alter_column_type(
+    self,
+    *,
+    schema: str,
+    table: str,
+    column: str,
+    new_type: str,
+    old_type: str | None = None,
+  ) -> str:
+    """
+    Render BigQuery DDL for changing a column's physical type.
+
+    Return an empty string for changes BigQuery cannot safely apply in-place.
+    The materialization planner treats an empty SQL string as a signal to use
+    deterministic rebuild instead.
+    """
+    if not self._can_alter_column_type_in_place(old_type=old_type, new_type=new_type):
+      return ""
+
     tbl = self.render_table_identifier(schema, table)
     col = self.render_identifier(column)
     return f"ALTER TABLE {tbl} ALTER COLUMN {col} SET DATA TYPE {new_type}"
 
-  
+
+  def render_insert_select_for_rebuild(
+    self,
+    *,
+    schema: str,
+    src_table: str,
+    dst_table: str,
+    columns: list[dict[str, object]],
+    lossy_casts: bool = False,
+    truncate_strings: bool = False,
+  ) -> str:
+    """
+    Backfill a BigQuery rebuild table using explicit casts.
+
+    BigQuery may reject implicit assignment even when an explicit CAST is valid
+    (for example DATE -> TIMESTAMP). Rebuilds therefore cast every existing
+    source column to the desired physical type.
+    """
+    src = self.render_table_identifier(schema, src_table)
+    dst = self.render_table_identifier(schema, dst_table)
+
+    col_names: list[str] = []
+    select_exprs: list[str] = []
+    for c in (columns or []):
+      name = str((c or {}).get("name") or "").strip()
+      ctype = str((c or {}).get("type") or "").strip()
+      if not name or not ctype:
+        continue
+
+      dst_col = self.render_identifier(name)
+      src_name = (c or {}).get("source_name", "__missing__")
+      if src_name is None:
+        expr = self.cast_expression("NULL", ctype)
+      else:
+        src_name = str((src_name if src_name != "__missing__" else name) or "").strip() or name
+        src_col = self.render_identifier(src_name)
+        expr = self.cast_expression(src_col, ctype)
+
+      if truncate_strings:
+        ml = (c or {}).get("truncate_to_length")
+        if ml is not None:
+          try:
+            if self._normalize_bigquery_physical_type(ctype) == "STRING":
+              expr = self.truncate_string_expression(expr, int(ml))
+          except Exception:
+            pass
+
+      col_names.append(dst_col)
+      select_exprs.append(f"{expr} AS {dst_col}")
+
+    cols_sql = ", ".join(col_names)
+    sel_sql = ", ".join(select_exprs)
+    return f"INSERT INTO {dst} ({cols_sql}) SELECT {sel_sql} FROM {src};"
+
+   
   def render_truncate_table(self, schema: str, table: str) -> str:
     return f"TRUNCATE TABLE {self.render_table_identifier(schema, table)}"
 
@@ -665,20 +803,38 @@ class BigQueryDialect(SqlDialect):
     return super().render_plan(plan)
 
 
-  def cast_expression(self, expr: Expr, target_type: str) -> str:
-    t = (target_type or "").strip().lower()
-    # Normalize common physical spellings we may receive from map_logical_type().
-    # Example: "STRING", "STRING(64)", "NUMERIC", "DATE", ...
-    base = t.split("(", 1)[0].strip()
-  
-    if base in {"string", "varchar", "text"}:
-      return f"CAST({self.render_expr(expr)} AS STRING)"
-  
-    # BigQuery: TIMESTAMP -> DATE is common/allowed, but requires explicit CAST/DATE().
-    if base == "date":
-      return f"CAST({self.render_expr(expr)} AS DATE)"
-  
-    return super().cast_expression(expr, target_type)
+  def cast_expression(self, expr: Expr | str, target_type: str) -> str:
+    """
+    Cast an expression or already-rendered SQL string to a BigQuery physical type.
+    """
+    expr_sql = expr if isinstance(expr, str) else self.render_expr(expr)
+    expr_sql = str(expr_sql or "").strip()
+    target = str(target_type or "").strip()
+    if not expr_sql or not target:
+      return expr_sql
+
+    base = self._normalize_bigquery_physical_type(target)
+    if base == "STRING":
+      return f"CAST({expr_sql} AS STRING)"
+    if base == "DATE":
+      return f"CAST({expr_sql} AS DATE)"
+    if base == "TIMESTAMP":
+      return f"CAST({expr_sql} AS TIMESTAMP)"
+    if base == "TIME":
+      return f"CAST({expr_sql} AS TIME)"
+    if base == "INT64":
+      return f"CAST({expr_sql} AS INT64)"
+    if base == "NUMERIC":
+      return f"CAST({expr_sql} AS NUMERIC)"
+    if base == "BIGNUMERIC":
+      return f"CAST({expr_sql} AS BIGNUMERIC)"
+    if base == "FLOAT64":
+      return f"CAST({expr_sql} AS FLOAT64)"
+    if base == "BOOL":
+      return f"CAST({expr_sql} AS BOOL)"
+    if base == "BYTES":
+      return f"CAST({expr_sql} AS BYTES)"
+    return f"CAST({expr_sql} AS {target})"
 
 
   def hash_expression(self, expr_sql: str, algo: str = "sha256") -> str:

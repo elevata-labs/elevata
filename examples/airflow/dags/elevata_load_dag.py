@@ -128,9 +128,20 @@ with DAG(
         id_by_dataset[str(ds)] = nid
     
     def _iter_upstreams(node: dict) -> list[str]:
-      v = (node or {}).get("deps")
-      if isinstance(v, list):
-        return [str(x) for x in v if x]
+      execution_deps = (node or {}).get("execution_deps")
+      if isinstance(execution_deps, list):
+        upstreams: list[str] = []
+        for dep in execution_deps:
+          if isinstance(dep, dict) and dep.get("id"):
+            upstreams.append(str(dep["id"]))
+          elif isinstance(dep, str):
+            upstreams.append(dep)
+        if upstreams:
+          return upstreams
+
+      deps = (node or {}).get("deps")
+      if isinstance(deps, list):
+        return [str(x) for x in deps if x]
       return []
 
     # Only create Airflow tasks for "target" nodes.
@@ -159,7 +170,7 @@ with DAG(
           },
         )
 
-      # 2) Wire dependencies purely by lineage
+      # 2) Wire dependencies by manifest execution dependencies.
       for node_id in target_node_ids:
         node = nodes.get(node_id) or {}
         ups = _iter_upstreams(node)
@@ -177,7 +188,7 @@ with DAG(
     # Phase gate: load_targets starts only after manifest generation + checks.
     start >> tg
 
-    # Optional UI cleanup: connect start only to lineage roots as well
+    # Optional UI cleanup: connect start only to execution roots as well
     # (does not change scheduling semantics; only reduces visual fan-out in some UIs).
     for node_id in target_node_ids:
       node = nodes.get(node_id) or {}

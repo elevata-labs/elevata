@@ -45,6 +45,8 @@ EXCLUDED_TARGET_SYSTEM_ROLES = frozenset({
   "version_ended_at",
   "version_state",
   "payload",
+  "inferred_member",
+  "default_member",
 })
 
 DOMINANT_MIN_USAGE = 3

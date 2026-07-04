@@ -27,16 +27,19 @@ from datetime import datetime, timezone
 import hashlib
 import json
 from json import JSONDecodeError
-import os
 from pathlib import Path
 from typing import Any, Literal
 
+from .paths import (
+  ARCHITECTURE_APPROVAL_DIR_ENV,
+  ArchitectureArtifactContext,
+  DEFAULT_ARCHITECTURE_APPROVAL_DIR,
+  resolve_architecture_approval_dir,
+)
 
 ARCHITECTURE_APPROVAL_ARTIFACT_TYPE = "architecture_approval"
 ARCHITECTURE_APPROVAL_ARTIFACT_VERSION = 1
 ARCHITECTURE_APPROVAL_REPORT_TYPE = "architecture_change_report"
-DEFAULT_ARCHITECTURE_APPROVAL_DIR = ".elevata/approvals"
-ARCHITECTURE_APPROVAL_DIR_ENV = "ELEVATA_ARCH_APPROVAL_DIR"
 
 ArchitectureApprovalDecision = Literal["approved", "rejected"]
 
@@ -199,29 +202,21 @@ class ArchitectureApprovalCheckResult:
     }
 
 
-def resolve_architecture_approval_dir(
-  default: str | Path = DEFAULT_ARCHITECTURE_APPROVAL_DIR,
-) -> Path:
-  """
-  Resolve the architecture approval artifact directory.
-  """
-  value = os.getenv(ARCHITECTURE_APPROVAL_DIR_ENV)
-  if value and value.strip():
-    return Path(value.strip())
-
-  return Path(default)
-
-
 class ArchitectureApprovalStore:
   """
   File-based store for architecture approval artifacts.
   """
 
-  def __init__(self, base_path: str | Path | None = None):
+  def __init__(
+    self,
+    base_path: str | Path | None = None,
+    *,
+    context: ArchitectureArtifactContext | None = None,
+  ):
     self.base_path = (
       Path(base_path)
       if base_path is not None
-      else resolve_architecture_approval_dir()
+      else resolve_architecture_approval_dir(context=context)
     )
 
   def approval_file(self, report_fingerprint: str) -> Path:

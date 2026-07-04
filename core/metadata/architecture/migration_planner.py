@@ -25,6 +25,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Iterable
 
+from metadata.models import TargetDataset
+
 from .diff import ArchitectureDiff
 from .migration_plan import MigrationAction, MigrationPlan
 from .state import ArchitectureState
@@ -61,10 +63,63 @@ class MigrationPlanner:
         relevant_dataset_keys=relevant_dataset_keys,
       )
 
+    dataset_state_by_key = (
+      architecture_state.datasets_by_key
+      if architecture_state is not None
+      else {}
+    )
+
+    view_rebuild_dataset_keys: set[str] = set()
+
     def _in_scope(dataset_key: str) -> bool:
       if scope_keys is None:
         return True
       return dataset_key in scope_keys
+
+    def _effective_materialization(dataset_key: str) -> str:
+      ds = dataset_state_by_key.get(dataset_key)
+      state_materialization = str(
+        getattr(ds, "materialization_type", "") or ""
+      ).strip().lower()
+
+      if "." in dataset_key:
+        schema_short, target_name = dataset_key.split(".", 1)
+        try:
+          td = (
+            TargetDataset.objects
+            .select_related("target_schema")
+            .filter(
+              target_schema__short_name=schema_short,
+              target_dataset_name=target_name,
+            )
+            .first()
+          )
+          if td is not None:
+            mat = (
+              getattr(td, "materialization_type", None)
+              or getattr(td.target_schema, "default_materialization_type", None)
+              or state_materialization
+              or "table"
+            )
+            return str(mat).strip().lower() or "table"
+        except Exception:
+          pass
+
+      return state_materialization or "table"
+
+    def _is_view_dataset(dataset_key: str) -> bool:
+      return _effective_materialization(dataset_key) == "view"
+
+    def _append_view_rebuild(dataset_key: str, reason: str) -> None:
+      if dataset_key in view_rebuild_dataset_keys:
+        return
+      view_rebuild_dataset_keys.add(dataset_key)
+      actions.append(MigrationAction(
+        action_type="REBUILD_DATASET",
+        strategy="CREATE_OR_REPLACE_VIEW",
+        dataset_key=dataset_key,
+        reason=reason,
+      ))
 
     # Dataset-level changes
     for ch in arch_diff.dataset_changes:
@@ -82,14 +137,14 @@ class MigrationPlanner:
       elif ch.change_type == "DATASET_ADDED":
         actions.append(MigrationAction(
           action_type="CREATE_DATASET",
-          strategy="CREATE_TABLE",
+          strategy="CREATE_VIEW" if _is_view_dataset(ch.dataset_key) else "CREATE_TABLE",
           dataset_key=ch.dataset_key,
           reason="Architecture diff detected new dataset.",
         ))
       elif ch.change_type == "DATASET_REMOVED":
         actions.append(MigrationAction(
           action_type="DROP_DATASET",
-          strategy="DROP_TABLE",
+          strategy="DROP_VIEW" if _is_view_dataset(ch.dataset_key) else "DROP_TABLE",
           dataset_key=ch.dataset_key,
           reason="Architecture diff detected removed dataset.",
         ))
@@ -97,7 +152,7 @@ class MigrationPlanner:
         # Conservative default: changed dataset-level semantics may require ALTER/REBUILD.
         actions.append(MigrationAction(
           action_type="REBUILD_DATASET",
-          strategy="REBUILD",
+          strategy="CREATE_OR_REPLACE_VIEW" if _is_view_dataset(ch.dataset_key) else "REBUILD",
           dataset_key=ch.dataset_key,
           reason="Dataset-level semantics changed (materialization/incremental/historization/etc.).",
         ))
@@ -105,6 +160,13 @@ class MigrationPlanner:
     # Column-level changes
     for ch in arch_diff.column_changes:
       if not _in_scope(ch.dataset_key):
+        continue
+
+      if _is_view_dataset(ch.dataset_key):
+        _append_view_rebuild(
+          ch.dataset_key,
+          "View column semantics changed; recreate or replace the managed view.",
+        )
         continue
 
       if ch.change_type == "COLUMN_RENAMED":

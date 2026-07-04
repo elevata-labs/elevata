@@ -362,7 +362,18 @@ class SqlDialect(ABC):
     table_name = td.target_dataset_name
 
     columns: list[dict[str, object]] = []
+    seen_column_names: set[str] = set()
+    duplicate_column_names: list[str] = []
     for c in self._iter_target_columns(td):
+      column_name = str(getattr(c, "target_column_name", "") or "").strip()
+      if not column_name:
+        continue
+      column_name_norm = column_name.lower()
+      if column_name_norm in seen_column_names:
+        duplicate_column_names.append(column_name)
+        continue
+      seen_column_names.add(column_name_norm)
+
       max_length = getattr(c, "max_length", None)
       precision = getattr(c, "precision", None)
       if precision is None:
@@ -379,10 +390,16 @@ class SqlDialect(ABC):
         strict=True,
       )
       columns.append({
-        "name": c.target_column_name,
+        "name": column_name,
         "type": col_type,
         "nullable": bool(getattr(c, "nullable", True)),
       })
+
+    if duplicate_column_names:
+      raise ValueError(
+        f"Duplicate active target columns for {schema_name}.{table_name}: "
+        f"{', '.join(sorted(set(duplicate_column_names)))}"
+      )
 
     return self.render_create_table_if_not_exists_from_columns(
       schema=schema_name,
@@ -397,14 +414,16 @@ class SqlDialect(ABC):
     if hasattr(cols_obj, "all"):
       try:
         qs = cols_obj.all()
+        if hasattr(qs, "filter"):
+          qs = qs.filter(active=True)
         if hasattr(qs, "order_by"):
-          return list(qs.order_by("ordinal_position"))
-        return list(qs)
+          return list(qs.order_by("ordinal_position", "id"))
+        return [c for c in list(qs) if getattr(c, "active", True)]
       except Exception:
         pass
     try:
-      cols = list(cols_obj)
-      cols.sort(key=lambda c: getattr(c, "ordinal_position", 0) or 0)
+      cols = [c for c in list(cols_obj) if getattr(c, "active", True)]
+      cols.sort(key=lambda c: (getattr(c, "ordinal_position", 0) or 0, getattr(c, "id", 0) or 0))
       return cols
     except Exception:
       return []
@@ -594,6 +613,26 @@ class SqlDialect(ABC):
     # Default ignores cascade unless overridden by a dialect.
     target = self.render_table_identifier(schema, table)
     return f"DROP TABLE IF EXISTS {target}"
+
+
+  def render_drop_view_if_exists(
+    self,
+    *,
+    schema: str,
+    view: str,
+    materialized: bool = False,
+    cascade: bool = False,
+  ) -> str:
+    """
+    Drop a view if it exists.
+
+    Dialects may override for platform-specific object types or cascade syntax.
+    The default intentionally does not cascade unless a dialect chooses to honor it.
+    """
+    target = self.render_table_identifier(schema, view)
+    obj = "MATERIALIZED VIEW" if materialized else "VIEW"
+    return f"DROP {obj} IF EXISTS {target}"
+
 
   def render_truncate_table(self, *, schema: str, table: str) -> str:
     """
@@ -1553,6 +1592,23 @@ class SqlDialect(ABC):
   # ---------------------------------------------------------------------------
   # 7. Introspection hooks
   # ---------------------------------------------------------------------------
+  def introspect_dependent_views(
+    self,
+    *,
+    schema_name: str,
+    table_name: str,
+    exec_engine: Optional["BaseExecutionEngine"] = None,
+  ) -> list[dict[str, str]]:
+    """
+    Return physical views that depend on the given table.
+
+    Default: unsupported/no-op. Dialects with reliable dependency metadata
+    should override this hook. Execution code must treat this as a physical
+    preflight signal, not as lineage metadata.
+    """
+    return []
+
+
   def introspect_table(
     self,
     *,

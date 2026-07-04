@@ -125,6 +125,52 @@ class FakeApprovalStore:
     return ()
 
 
+def _artifact_context() -> SimpleNamespace:
+  """
+  Return an ArchitectureArtifactContext-shaped object for service tests.
+  """
+  return SimpleNamespace(
+    profile_name="dev",
+    target_system_short="dwh",
+    profile_token="dev",
+    target_system_token="dwh",
+    label="dev/dwh",
+  )
+
+
+def _state_store() -> SimpleNamespace:
+  """
+  Return an ArchitectureStateStore-shaped object for service tests.
+  """
+  state_file = Path(".elevata/state/dev/dwh/architecture_state.json")
+  return SimpleNamespace(
+    base_path=state_file.parent,
+    state_file_path=lambda: state_file,
+  )
+
+
+def _baseline_resolution(
+  *,
+  previous_state: Any | None = None,
+  can_execute: bool = True,
+) -> SimpleNamespace:
+  """
+  Return an ArchitectureBaselineResolution-shaped object for service tests.
+  """
+  state_file = Path(".elevata/state/dev/dwh/architecture_state.json")
+  return SimpleNamespace(
+    previous_state=previous_state,
+    source="recorded_state" if can_execute else "missing_or_unsupported",
+    can_execute=can_execute,
+    message="baseline message",
+    state_file=state_file,
+    warning_count=0,
+    warnings=(),
+    is_recorded=can_execute,
+    is_discovered=False,
+  )
+
+
 def _target_dataset() -> SimpleNamespace:
   """
   Return a TargetDataset-shaped object for service tests.
@@ -167,9 +213,12 @@ def _context(
     scope=scope or control.ArchitectureControlScope.from_target_dataset(
       _target_dataset(),
     ),
+    artifact_context=_artifact_context(),
     report=report or FakeReport(),
     review_status=status or _status("pending"),
     approval_store=store or FakeApprovalStore(),
+    state_store=_state_store(),
+    baseline_resolution=_baseline_resolution(),
   )
 
 
@@ -183,7 +232,7 @@ def _patch_control_context(
   monkeypatch.setattr(
     control,
     "build_architecture_control_context",
-    lambda scope, *, approval_store=None: context,
+    lambda scope, *, approval_store=None, artifact_context=None: context,
   )
 
 
@@ -247,6 +296,15 @@ def test_build_architecture_control_report_uses_target_dataset_scope(
     Architecture state store test double.
     """
 
+    def __init__(self, *args, **kwargs):
+      self.base_path = Path(".elevata/state/dev/dwh")
+
+    def state_file_path(self) -> Path:
+      """
+      Return the configured persisted state file path.
+      """
+      return self.base_path / "architecture_state.json"
+
     def load(self) -> object:
       """
       Return the configured persisted state.
@@ -280,6 +338,11 @@ def test_build_architecture_control_report_uses_target_dataset_scope(
     fake_build_architecture_change_report,
   )
   monkeypatch.setattr(control, "load_materialization_policy", lambda: policy)
+  monkeypatch.setattr(
+    control,
+    "resolve_architecture_artifact_context",
+    _artifact_context,
+  )
 
   scope = control.ArchitectureControlScope.from_target_dataset(_target_dataset())
   result = control.build_architecture_control_report(scope)
@@ -331,6 +394,15 @@ def test_build_architecture_control_report_uses_schema_scope(
     Architecture state store test double.
     """
 
+    def __init__(self, *args, **kwargs):
+      self.base_path = Path(".elevata/state/dev/dwh")
+
+    def state_file_path(self) -> Path:
+      """
+      Return the configured persisted state file path.
+      """
+      return self.base_path / "architecture_state.json"
+
     def load(self) -> object:
       """
       Return the configured persisted state.
@@ -364,6 +436,11 @@ def test_build_architecture_control_report_uses_schema_scope(
     fake_build_architecture_change_report,
   )
   monkeypatch.setattr(control, "load_materialization_policy", lambda: policy)
+  monkeypatch.setattr(
+    control,
+    "resolve_architecture_artifact_context",
+    _artifact_context,
+  )
 
   scope = control.ArchitectureControlScope.for_schema("serving")
   result = control.build_architecture_control_report(scope)
@@ -415,6 +492,15 @@ def test_build_architecture_control_report_uses_all_scope(
     Architecture state store test double.
     """
 
+    def __init__(self, *args, **kwargs):
+      self.base_path = Path(".elevata/state/dev/dwh")
+
+    def state_file_path(self) -> Path:
+      """
+      Return the configured persisted state file path.
+      """
+      return self.base_path / "architecture_state.json"
+
     def load(self) -> object:
       """
       Return the configured persisted state.
@@ -441,6 +527,11 @@ def test_build_architecture_control_report_uses_all_scope(
     fake_build_architecture_change_report,
   )
   monkeypatch.setattr(control, "load_materialization_policy", lambda: policy)
+  monkeypatch.setattr(
+    control,
+    "resolve_architecture_artifact_context",
+    _artifact_context,
+  )
 
   scope = control.ArchitectureControlScope.for_all()
   result = control.build_architecture_control_report(scope)
@@ -468,10 +559,37 @@ def test_build_architecture_control_context_uses_report_and_store(
   status = _status("pending")
   store = FakeApprovalStore()
 
+  artifact_context = _artifact_context()
+  baseline_resolution = _baseline_resolution(previous_state=object())
+
+  class FakeStateStoreForContext:
+    """
+    Architecture state store test double for context construction.
+    """
+
+    def __init__(self, *args, **kwargs):
+      self.base_path = Path(".elevata/state/dev/dwh")
+
+    def state_file_path(self) -> Path:
+      """
+      Return the configured persisted state file path.
+      """
+      return self.base_path / "architecture_state.json"
+
   monkeypatch.setattr(
     control,
-    "build_architecture_control_report",
-    lambda value: report,
+    "resolve_architecture_artifact_context",
+    lambda: artifact_context,
+  )
+  monkeypatch.setattr(
+    control,
+    "ArchitectureStateStore",
+    FakeStateStoreForContext,
+  )
+  monkeypatch.setattr(
+    control,
+    "build_architecture_control_report_with_baseline",
+    lambda value, **kwargs: (report, baseline_resolution),
   )
   monkeypatch.setattr(
     control,
@@ -485,10 +603,12 @@ def test_build_architecture_control_context_uses_report_and_store(
   )
 
   assert context.scope is scope
+  assert context.artifact_context is artifact_context
   assert context.report is report
   assert context.review_status is status
   assert context.approval_store is store
-
+  assert isinstance(context.state_store, FakeStateStoreForContext)
+  assert context.baseline_resolution is baseline_resolution
 
 def test_create_architecture_control_approval_saves_artifact(
   monkeypatch: pytest.MonkeyPatch,

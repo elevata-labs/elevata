@@ -26,6 +26,8 @@ from pathlib import Path
 
 from django.core.management.base import BaseCommand, CommandError
 
+from metadata.architecture.paths import resolve_architecture_artifact_context
+from metadata.architecture.physical_state import resolve_architecture_baseline
 from metadata.architecture.report_builder import build_architecture_change_report
 from metadata.architecture.renderers import (
   render_architecture_report_json,
@@ -114,6 +116,7 @@ class Command(BaseCommand):
       raise CommandError("Specify a target dataset or use --all.")
 
     service = ArchitectureStateService()
+    current_state = service.build_current_state()
     if previous_state_path:
       previous_state = ArchitectureStateStore.load_file(previous_state_path)
       if previous_state is None:
@@ -121,8 +124,16 @@ class Command(BaseCommand):
           f"Architecture state file could not be read: {previous_state_path}"
         )
     else:
-      previous_state = service.load_previous_state()
-    current_state = service.build_current_state()
+      artifact_context = resolve_architecture_artifact_context()
+      state_store = ArchitectureStateStore(context=artifact_context)
+      baseline_resolution = resolve_architecture_baseline(
+        current_state=current_state,
+        artifact_context=artifact_context,
+        state_store=state_store,
+      )
+      previous_state = baseline_resolution.previous_state
+      if not baseline_resolution.can_execute:
+        raise CommandError(baseline_resolution.message)
 
     try:
       relevant_dataset_keys = resolve_dataset_keys_from_state(

@@ -265,7 +265,7 @@ It summarizes what a reviewer should understand before approving or executing th
 - execution readiness  
 - suggested reviewer focus
 
-The briefing is derived from existing Architecture Control signals: the current scoped Architecture Change Report, the Architecture Review Status and the Execution Preview. It is read-only and does not create approvals, run approval checks, xecute loads or mutate metadata.
+The briefing is derived from existing Architecture Control signals: the current scoped Architecture Change Report, the Architecture Review Status and the Execution Preview. It is read-only and does not create approvals, run approval checks, execute loads or mutate metadata.
 
 The UI keeps the briefing compact by showing the main reviewer signals first. Detailed sections are available on demand through an expandable detail area.
 
@@ -304,6 +304,8 @@ Execution uses the selected Architecture Control scope:
 Target-only execution is available only for TargetDataset scopes. It is intended for focused iteration when upstream data is already available.
 
 Controlled execution produces an Architecture Execution Record.
+
+When modeled rawcore references explicitly enable inferred members, controlled load execution can also apply Controlled Reference Member handling. This remains part of the load runner path: Reference Integrity Review is diagnostic only, while default and inferred member creation happens during execution.
 
 ---
 

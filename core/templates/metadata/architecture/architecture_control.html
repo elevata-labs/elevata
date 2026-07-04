@@ -50,6 +50,86 @@ Contact: <https://github.com/elevata-labs/elevata>.
   Review, approve and prepare architecture execution across controlled scopes.
 </div>
 
+{% if runtime_context %}
+  <div class="card mb-4">
+    <div class="card-body">
+      <div class="d-flex align-items-start justify-content-between gap-3 mb-3">
+        <div>
+          <div class="fw-semibold mb-1">Runtime context</div>
+          <p class="text-muted small mb-0">
+            Architecture state, approvals and execution records are scoped by
+            profile and target system.
+          </p>
+        </div>
+        {% if state_baseline_exists %}
+          <span class="badge text-bg-success">Recorded baseline available</span>
+        {% elif baseline_resolution and baseline_resolution.is_discovered %}
+          <span class="badge text-bg-info">Physical baseline discovered</span>
+        {% else %}
+          <span class="badge text-bg-warning">Recorded baseline missing</span>
+        {% endif %}
+      </div>
+
+      <div class="row g-3 small">
+        <div class="col-lg-3 col-md-6">
+          <div class="text-muted">Profile</div>
+          <code>{{ runtime_context.profile_name }}</code>
+        </div>
+        <div class="col-lg-3 col-md-6">
+          <div class="text-muted">Target system</div>
+          <code>{{ runtime_context.target_system_short }}</code>
+        </div>
+        <div class="col-lg-6">
+          <div class="text-muted">Architecture state</div>
+          <code class="small">{{ runtime_paths.state_file }}</code>
+        </div>
+      </div>
+
+      {% if baseline_resolution %}
+        <div class="border rounded p-3 mt-3 small bg-light">
+          <div class="row g-3">
+            <div class="col-lg-3 col-md-6">
+              <div class="text-muted">Comparison baseline source</div>
+              <code>{{ baseline_resolution.source }}</code>
+            </div>
+            <div class="col-lg-3 col-md-6">
+              <div class="text-muted">Baseline safety</div>
+              {% if baseline_resolution.can_execute %}
+                <span class="badge text-bg-success">safe comparison baseline resolved</span>
+              {% else %}
+                <span class="badge text-bg-warning">blocked</span>
+              {% endif %}
+            </div>
+            <div class="col-lg-6">
+              <div class="text-muted">Baseline resolution</div>
+              <div>{{ baseline_resolution.message }}</div>
+              {% if baseline_resolution.is_discovered %}
+                <div class="text-muted mt-1">
+                  Discovery is read-only. The recorded state file is persisted only
+                  after a successful controlled execution.
+                </div>
+              {% endif %}
+            </div>
+          </div>
+          {% if baseline_resolution.warnings %}
+            <div class="mt-2 text-muted">
+              {{ baseline_resolution.warning_count }} discovery warning(s).
+            </div>
+          {% endif %}
+        </div>
+      {% elif not state_baseline_exists %}
+        <div class="alert alert-warning small mb-0 mt-3">
+          <div class="fw-semibold">Architecture baseline missing for this runtime context.</div>
+          <div class="mt-1">
+            Controlled execution is blocked until a recorded baseline or a
+            read-only physical baseline can be resolved.
+          </div>
+        </div>
+      {% endif %}
+    </div>
+  </div>
+{% endif %}
+
 <div class="card mb-4">
   <div class="card-body">
     <div class="d-flex align-items-start justify-content-between gap-3 mb-3">
@@ -154,7 +234,9 @@ Contact: <https://github.com/elevata-labs/elevata>.
         </div>
         <div class="small text-muted mt-1">
           Runs only the selected TargetDataset and skips upstream dependencies.
-          Available for TargetDataset scope only.
+          Available for TargetDataset scope only. Controlled UI execution always
+          runs Architecture Guard in enforce mode, independent of the CLI
+          ELEVATA_ARCH_MODE value.
         </div>
       </div>
     </form>
@@ -998,7 +1080,15 @@ Contact: <https://github.com/elevata-labs/elevata>.
       </div>
 
       {% if perms.metadata.change_targetdataset %}
+        <div
+          id="architecture-control-approval-running"
+          class="alert alert-info small d-none mb-3"
+        >
+          Approval artifact is being created. Larger scopes can take several minutes.
+        </div>
+
         <form
+          id="architecture-control-approval-form"
           method="post"
           action="{% url 'architecture_control_approve' %}"
           class="border-top pt-3 mt-3"
@@ -1026,6 +1116,7 @@ Contact: <https://github.com/elevata-labs/elevata>.
 
           <div class="d-flex align-items-center gap-2 flex-wrap">
             <button
+              id="architecture-control-approval-button"
               type="submit"
               class="btn btn-sm btn-primary"
               {% if not review_status.has_changes or review_status.is_blocked or review_status.status == "approved" %}disabled{% endif %}
@@ -1187,6 +1278,9 @@ Contact: <https://github.com/elevata-labs/elevata>.
     const executeForm = document.getElementById("architecture-control-execute-form");
     const executeButton = document.getElementById("architecture-control-execute-button");
     const runningNotice = document.getElementById("architecture-control-execution-running");
+    const approvalForm = document.getElementById("architecture-control-approval-form");
+    const approvalButton = document.getElementById("architecture-control-approval-button");
+    const approvalNotice = document.getElementById("architecture-control-approval-running");
 
     if (executeForm) {
       executeForm.addEventListener("submit", (event) => {
@@ -1207,6 +1301,22 @@ Contact: <https://github.com/elevata-labs/elevata>.
           executeButton.innerHTML = `
             <span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>
             Running controlled load...
+          `;
+        }
+      });
+    }
+
+    if (approvalForm) {
+      approvalForm.addEventListener("submit", () => {
+        if (approvalNotice) {
+          approvalNotice.classList.remove("d-none");
+        }
+
+        if (approvalButton) {
+          approvalButton.disabled = true;
+          approvalButton.innerHTML = `
+            <span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>
+            Creating approval artifact...
           `;
         }
       });

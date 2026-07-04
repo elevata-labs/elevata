@@ -25,7 +25,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, CommandError
 
 from metadata.architecture.service import ArchitectureStateService
 from metadata.architecture.store import ArchitectureStateStore
@@ -46,10 +46,20 @@ class Command(BaseCommand):
       dest="fingerprint_only",
       help="Print only the current architecture state fingerprint.",
     )
+    parser.add_argument(
+      "--store",
+      action="store_true",
+      dest="store_state",
+      help="Persist the current architecture state to the active profile/target context.",
+    )
 
   def handle(self, *args, **options):
     output_path = options.get("output_path")
     fingerprint_only = bool(options.get("fingerprint_only"))
+    store_state = bool(options.get("store_state"))
+
+    if output_path and store_state:
+      raise CommandError("Use either --output or --store, not both.")
 
     state = ArchitectureStateService().build_current_state()
 
@@ -59,6 +69,14 @@ class Command(BaseCommand):
 
     if output_path:
       ArchitectureStateStore.save_file(Path(output_path), state)
+      return
+
+    if store_state:
+      store = ArchitectureStateStore()
+      store.save(state)
+      self.stdout.write(self.style.SUCCESS(
+        f"Architecture state written to {store.state_file_path()}"
+      ))
       return
 
     rendered = json.dumps(

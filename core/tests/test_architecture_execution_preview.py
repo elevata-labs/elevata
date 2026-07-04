@@ -22,6 +22,7 @@ Contact: <https://github.com/elevata-labs/elevata>.
 
 from __future__ import annotations
 
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
@@ -30,6 +31,51 @@ from metadata.architecture.control import (
   ArchitectureControlScope,
 )
 from metadata.architecture import execution_preview
+
+
+def _artifact_context() -> SimpleNamespace:
+  """
+  Return an ArchitectureArtifactContext-shaped object for execution preview tests.
+  """
+  return SimpleNamespace(
+    profile_name="dev",
+    target_system_short="dwh",
+    profile_token="dev",
+    target_system_token="dwh",
+    label="dev/dwh",
+  )
+
+
+def _state_store() -> SimpleNamespace:
+  """
+  Return an ArchitectureStateStore-shaped object for execution preview tests.
+  """
+  state_file = Path(".elevata/state/dev/dwh/architecture_state.json")
+  return SimpleNamespace(
+    base_path=state_file.parent,
+    state_file_path=lambda: state_file,
+  )
+
+
+def _baseline_resolution(
+  *,
+  can_execute: bool = True,
+) -> SimpleNamespace:
+  """
+  Return an ArchitectureBaselineResolution-shaped object for execution preview tests.
+  """
+  state_file = Path(".elevata/state/dev/dwh/architecture_state.json")
+  return SimpleNamespace(
+    previous_state=SimpleNamespace(),
+    source="recorded_state" if can_execute else "missing_or_unsupported",
+    can_execute=can_execute,
+    message="baseline message",
+    state_file=state_file,
+    warning_count=0,
+    warnings=(),
+    is_recorded=can_execute,
+    is_discovered=False,
+  )
 
 
 class FakeReport:
@@ -89,9 +135,12 @@ def _context(
   """
   return ArchitectureControlContext(
     scope=ArchitectureControlScope.for_all(),
+    artifact_context=_artifact_context(),
     report=report or FakeReport(),
     review_status=status or _status("approved", approval_id="apr_123"),
     approval_store=SimpleNamespace(),
+    state_store=_state_store(),
+    baseline_resolution=_baseline_resolution(),
   )
 
 
@@ -280,9 +329,12 @@ def test_build_architecture_execution_preview_supports_target_only_execution(
   )
   context = ArchitectureControlContext(
     scope=scope,
+    artifact_context=_artifact_context(),
     report=FakeReport(),
     review_status=_status("approved", approval_id="apr_123"),
     approval_store=SimpleNamespace(),
+    state_store=_state_store(),
+    baseline_resolution=_baseline_resolution(),
   )
 
   monkeypatch.setattr(

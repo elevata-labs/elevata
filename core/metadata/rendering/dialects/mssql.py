@@ -325,8 +325,21 @@ class MssqlDialect(SqlDialect):
     return f"ALTER TABLE {tbl} ADD {col} {column_type}"
   
 
-  def render_alter_column_type(self, *, schema: str, table: str, column: str, new_type: str) -> str:
-    # SQL Server: ALTER TABLE <tbl> ALTER COLUMN <col> <type>
+  def render_alter_column_type(
+    self,
+    *,
+    schema: str,
+    table: str,
+    column: str,
+    new_type: str,
+    old_type: str | None = None,
+  ) -> str:
+    """
+    Render SQL Server DDL for changing a column's physical type.
+
+    old_type is accepted to match the base dialect contract. SQL Server does
+    not need it for this SQL shape.
+    """
     tbl = self.render_table_identifier(schema, table)
     col = self.render_identifier(column)
     return f"ALTER TABLE {tbl} ALTER COLUMN {col} {new_type}"
@@ -336,11 +349,29 @@ class MssqlDialect(SqlDialect):
     qtbl = self.render_table_identifier
     return f"TRUNCATE TABLE {qtbl(schema, table)};"
 
+
+  def _sp_rename_literal(self, value: str) -> str:
+    """
+    Return a safe SQL Server sp_rename string literal payload.
+    """
+    return str(value or "").replace("'", "''")
+
+
   def render_rename_table(self, schema: str, old_table: str, new_table: str) -> str:
     old_qualified = f"{self.render_identifier(schema)}.{self.render_identifier(old_table)}"
-    new_name = self.render_identifier(new_table)
-    # sp_rename wants quoted identifiers inside the string; QUOTED_IDENTIFIER should be ON (typisch).
-    return f"EXEC sp_rename N'{old_qualified}', N'{new_name}'"
+    # sp_rename expects the new object name as a one-part name, not as a quoted
+    # multipart identifier. Keep the target name unquoted inside the string
+    # literal and let sp_rename apply SQL Server identifier semantics.
+    new_name = str(new_table or "").strip()
+    if not new_name:
+      return ""
+    return (
+      f"EXEC sp_rename "
+      f"N'{self._sp_rename_literal(old_qualified)}', "
+      f"N'{self._sp_rename_literal(new_name)}', "
+      f"N'OBJECT';"
+    )
+
   
   def render_rename_column(self, schema: str, table: str, old: str, new: str) -> str:
     obj = (
@@ -348,8 +379,16 @@ class MssqlDialect(SqlDialect):
       f"{self.render_identifier(table)}."
       f"{self.render_identifier(old)}"
     )
-    new_name = self.render_identifier(new)
-    return f"EXEC sp_rename N'{obj}', N'{new_name}', 'COLUMN'"
+    # sp_rename expects the new column name as a one-part name.
+    new_name = str(new or "").strip()
+    if not new_name:
+      return ""
+    return (
+      f"EXEC sp_rename "
+      f"N'{self._sp_rename_literal(obj)}', "
+      f"N'{self._sp_rename_literal(new_name)}', "
+      f"N'COLUMN';"
+    )
 
   # ---------------------------------------------------------------------------
   # 5. DML / load SQL primitives
@@ -677,6 +716,135 @@ class MssqlDialect(SqlDialect):
   # ---------------------------------------------------------------------------
   # 7. Introspection hooks
   # ---------------------------------------------------------------------------
+  def _string_literal(self, value: str) -> str:
+    """
+    Return a T-SQL string literal for read-only metadata queries.
+    """
+    return "N'" + str(value or "").replace("'", "''") + "'"
+
+
+  def _format_information_schema_type(
+    self,
+    *,
+    data_type: Any,
+    character_maximum_length: Any = None,
+    numeric_precision: Any = None,
+    numeric_scale: Any = None,
+  ) -> str:
+    """
+    Return a compact physical type string from INFORMATION_SCHEMA metadata.
+    """
+    dtype = str(data_type or "").strip().lower()
+    if not dtype:
+      return ""
+
+    if dtype in {"char", "varchar", "nchar", "nvarchar", "binary", "varbinary"}:
+      if character_maximum_length in (-1, "-1"):
+        return f"{dtype}(max)"
+      if character_maximum_length not in (None, ""):
+        return f"{dtype}({int(character_maximum_length)})"
+      return dtype
+
+    if dtype in {"decimal", "numeric"}:
+      if numeric_precision not in (None, "") and numeric_scale not in (None, ""):
+        return f"{dtype}({int(numeric_precision)},{int(numeric_scale)})"
+      if numeric_precision not in (None, ""):
+        return f"{dtype}({int(numeric_precision)})"
+      return dtype
+
+    if dtype in {"datetime2", "datetimeoffset", "time"}:
+      if numeric_scale not in (None, ""):
+        return f"{dtype}({int(numeric_scale)})"
+      return dtype
+
+    return dtype
+
+
+  def _introspect_relation_with_information_schema(
+    self,
+    *,
+    schema_name: str,
+    table_name: str,
+    exec_engine: Optional["BaseExecutionEngine"],
+  ) -> Dict[str, Any] | None:
+    """
+    Discover MSSQL tables and views through INFORMATION_SCHEMA.
+
+    SQLAlchemy table reflection may miss views depending on driver/settings.
+    Architecture baseline discovery needs managed relations, not only base
+    tables, so MSSQL performs a small read-only relation introspection here.
+    """
+    if exec_engine is None or not hasattr(exec_engine, "fetch_all"):
+      return None
+
+    sql = f"""
+      SELECT
+        c.COLUMN_NAME,
+        c.DATA_TYPE,
+        c.CHARACTER_MAXIMUM_LENGTH,
+        c.NUMERIC_PRECISION,
+        c.NUMERIC_SCALE,
+        c.IS_NULLABLE,
+        t.TABLE_TYPE
+      FROM INFORMATION_SCHEMA.COLUMNS c
+      INNER JOIN INFORMATION_SCHEMA.TABLES t
+        ON t.TABLE_SCHEMA = c.TABLE_SCHEMA
+       AND t.TABLE_NAME = c.TABLE_NAME
+      WHERE c.TABLE_SCHEMA = {self._string_literal(schema_name)}
+        AND c.TABLE_NAME = {self._string_literal(table_name)}
+        AND t.TABLE_TYPE IN ('BASE TABLE', 'VIEW')
+      ORDER BY c.ORDINAL_POSITION
+    """.strip()
+
+    rows = exec_engine.fetch_all(sql)
+    if not rows:
+      return {
+        "table_exists": False,
+        "physical_table": table_name,
+        "physical_object_type": None,
+        "actual_cols_by_norm_name": {},
+      }
+
+    cols: dict[str, dict[str, Any]] = {}
+    relation_type = "table"
+    for row in rows:
+      (
+        column_name,
+        data_type,
+        char_len,
+        numeric_precision,
+        numeric_scale,
+        is_nullable,
+        table_type,
+      ) = row
+
+      name = str(column_name or "").strip()
+      if not name:
+        continue
+
+      if str(table_type or "").strip().upper() == "VIEW":
+        relation_type = "view"
+
+      cols[name.lower()] = {
+        "name": name,
+        "type": self._format_information_schema_type(
+          data_type=data_type,
+          character_maximum_length=char_len,
+          numeric_precision=numeric_precision,
+          numeric_scale=numeric_scale,
+        ),
+        "nullable": str(is_nullable or "").strip().upper() == "YES",
+        "physical_object_type": relation_type,
+      }
+
+    return {
+      "table_exists": bool(cols),
+      "physical_table": table_name,
+      "physical_object_type": relation_type,
+      "actual_cols_by_norm_name": cols,
+    }
+
+
   def introspect_table(
     self,
     *,
@@ -686,7 +854,25 @@ class MssqlDialect(SqlDialect):
     exec_engine: Optional["BaseExecutionEngine"] = None,
     debug_plan: bool = False,
   ) -> Dict[str, Any]:
-    # Use SQLAlchemy-based default introspection for MSSQL.
+    # Prefer MSSQL relation introspection so views are discovered as managed
+    # physical baselines, then fall back to the default SQLAlchemy table path.
+    try:
+      relation_meta = self._introspect_relation_with_information_schema(
+        schema_name=schema_name,
+        table_name=table_name,
+        exec_engine=exec_engine,
+      )
+      if relation_meta is not None:
+        return relation_meta
+    except Exception as exc:
+      if debug_plan:
+        return {
+          "table_exists": False,
+          "physical_table": table_name,
+          "actual_cols_by_norm_name": {},
+          "debug": f"INFORMATION_SCHEMA discovery failed for {schema_name}.{table_name}: {exc}",
+        }
+
     return SqlDialect.introspect_table(
       self,
       schema_name=schema_name,

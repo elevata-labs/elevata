@@ -55,22 +55,22 @@ def _dataset_key(td: TargetDataset) -> str:
 def build_execution_plan(*, batch_run_id: str, execution_order: list[TargetDataset]) -> ExecutionPlan:
   """
   Keep deterministic order, store upstream_keys for blocked semantics.
-  Prefer canonical upstream resolution from metadata.execution.load_graph.
+  Prefer canonical execution upstream resolution from metadata.execution.load_graph.
   """
-  # Canonical upstream resolver (best-effort safe in your codebase)
+  # Canonical execution upstream resolver (best-effort safe in your codebase)
   try:
-    from metadata.execution.load_graph import resolve_upstream_datasets
+    from metadata.execution.load_graph import resolve_execution_upstream_datasets
   except Exception:
-    resolve_upstream_datasets = None  # type: ignore[assignment]
+    resolve_execution_upstream_datasets = None  # type: ignore[assignment]
 
   steps: list[ExecutionStep] = []
   for td in execution_order:
     key = _dataset_key(td)
 
     ups: list[str] = []
-    if resolve_upstream_datasets is not None:
+    if resolve_execution_upstream_datasets is not None:
       try:
-        upstream_datasets = resolve_upstream_datasets(td)
+        upstream_datasets = resolve_execution_upstream_datasets(td)
         ups = sorted(_dataset_key(u) for u in upstream_datasets)
       except Exception:
         # best-effort: never block planning due to upstream resolution issues

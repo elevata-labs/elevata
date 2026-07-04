@@ -109,9 +109,25 @@ def test_arch_mode_enforce_blocks_on_shadow_compare_mismatch(monkeypatch):
   # Ensure execution order is exactly our dataset (no deps)
   monkeypatch.setattr(mod, "resolve_execution_order", lambda **kwargs: [td])
 
-  # Force "previous_state exists" so MigrationPlanner.plan is called
-  monkeypatch.setattr(mod.ArchitectureStateService, "load_previous_state", lambda self: object())
-  monkeypatch.setattr(mod.ArchitectureStateService, "diff_against", lambda self, _prev: (SimpleNamespace(fingerprint="x", datasets_by_key={}), _FakeArchDiff()))
+  # Force a safe baseline and deterministic architecture diff so MigrationPlanner.plan is called.
+  monkeypatch.setattr(
+    mod,
+    "resolve_architecture_baseline",
+    lambda **kwargs: SimpleNamespace(
+      previous_state=object(),
+      source="recorded_state",
+      can_execute=True,
+      message="Recorded architecture baseline is available for this runtime context.",
+      state_file=None,
+      warning_count=0,
+      warnings=(),
+    ),
+  )
+  monkeypatch.setattr(
+    mod,
+    "diff_architecture_states",
+    lambda previous_state, current_state: _FakeArchDiff(),
+  )
 
   # Intent contains a DROP_COLUMN that is not emitted by the materialization shadow plan.
   fake_plan = _FakeMigrationPlan(actions=[
@@ -124,6 +140,18 @@ def test_arch_mode_enforce_blocks_on_shadow_compare_mismatch(monkeypatch):
   def _fake_build_from_mp(**_kwargs):
     return SimpleNamespace(steps=[], warnings=[], blocking_errors=[], requires_rebuild=False)
   monkeypatch.setattr(mod, "build_materialization_from_migration_plan", _fake_build_from_mp)
+
+  # Keep this test focused on a real shadow-compare mismatch.
+  # Full-refresh datasets suppress column-level schema-op expectations because
+  # DROP+CREATE implies ADD/DROP/ALTER/RENAME column changes. If this dataset
+  # were treated as full refresh, the expected DROP_COLUMN token would be
+  # suppressed and the command would continue into the mocked execution path.
+  monkeypatch.setattr(
+    mod,
+    "should_truncate_before_load",
+    lambda _td, _load_plan: False,
+    raising=False,
+  )
 
   cmd = mod.Command()
 

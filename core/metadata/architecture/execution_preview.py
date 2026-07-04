@@ -45,6 +45,7 @@ ArchitectureExecutionGateStatus = Literal[
   "ready_no_changes",
   "pending_approval",
   "blocked_by_policy",
+  "baseline_missing",
 ]
 
 
@@ -269,6 +270,21 @@ def _build_execution_gate(
   """
   Build the execution readiness gate for an Architecture Control context.
   """
+  baseline = getattr(context, "baseline_resolution", None)
+  if baseline is not None and not getattr(baseline, "can_execute", False):
+    return ArchitectureExecutionGate(
+      status="baseline_missing",
+      can_execute=False,
+      label="Baseline unresolved",
+      message=getattr(
+        baseline,
+        "message",
+        "No safe architecture baseline could be resolved for this runtime context.",
+      ),
+      badge_class="text-bg-warning",
+      icon="bi-database-exclamation",
+    )
+
   if context.report.is_blocked:
     return ArchitectureExecutionGate(
       status="blocked_by_policy",
@@ -289,7 +305,8 @@ def _build_execution_gate(
       label="Ready for controlled load",
       message=(
         "The selected scope has no architecture changes. Controlled execution can run "
-        "without an approval artifact because no architecture change approval is required."
+        "without an approval artifact because no architecture change approval is required. "
+        "Architecture Control still enforces the Architecture Guard during execution."
       ),
       badge_class="text-bg-success",
       icon="bi-play-circle",

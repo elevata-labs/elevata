@@ -49,7 +49,7 @@ From these definitions, elevata derives deterministic logical plans, renders dia
 Schema evolution, incremental loads, historization, approvals, and execution evidence are planned, validated, and applied deterministically.
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/elevata-labs/elevata/main/docs/elevata_v2_10_0.png" alt="elevata UI preview" width="900"/>
+  <img src="https://raw.githubusercontent.com/elevata-labs/elevata/main/docs/elevata_v2_11_0.png" alt="elevata UI preview" width="900"/>
   <br/>
   <em>Architecture Runtime UI for discovering, controlling, modeling, and executing metadata-defined data architecture</em>
 </p>
@@ -108,7 +108,8 @@ Each layer is explicitly separated.
 4. Inspect generated SQL, lineage, contracts, health, reference integrity, and execution evidence  
 5. Review architecture changes through Architecture Review Briefing and approve them through Architecture Control  
 6. Execute approved or unchanged scopes deterministically on your target warehouse  
-7. Audit execution through Architecture Execution Records
+7. Resolve controlled reference members during execution where modeled references explicitly allow it  
+8. Audit execution through Architecture Execution Records
 
 ---
 
@@ -116,12 +117,14 @@ Each layer is explicitly separated.
 
 Pipelines are executed dataset-driven and lineage-aware.
 
-Execution supports full and incremental loads, historization, schema evolution, and structured load logging.
+Execution supports full and incremental loads, historization, schema evolution, controlled reference members, and structured load logging.
 
 Behavior is deterministic and observable.
 
 Schema drift is reconciled through Architecture MigrationPlan-driven materialization:  
 renames, adds, type evolution and controlled rebuilds are derived from architecture state, while destructive changes remain explicitly policy-gated.
+
+Controlled Reference Members complement modeled rawcore references. Default members are maintained as artificial fallback rows, and inferred members can be created during child dataset loads when a modeled TargetDatasetReference explicitly enables them. Parent datasets remain authoritative: a later parent full load can replace inferred members with real source-backed rows.
 
 ---
 
@@ -141,7 +144,7 @@ This gives users immediate confidence after import:
 - **PK columns** show detected primary key candidates.  
 - **Needs review** highlights skipped datasets or unresolved metadata decisions.
 
-The import review is deterministic, transient and read-only as a report. It does not introduce a new wizard, oes not persist import history, and does not change the existing source import semantics.
+The import review is deterministic, transient and read-only as a report. It does not introduce a new wizard, does not persist import history, and does not change the existing source import semantics.
 
 ---
 
@@ -158,6 +161,8 @@ Catalog detail pages summarize architecture metadata, ownership, health, upstrea
 
 For datasets with modeled outgoing references, Catalog Detail also provides an on-demand Reference Integrity Review. It checks loaded target data for missing parent examples and keeps the review read-only, bounded and dialect-owned.
 
+Reference Integrity Review is diagnostic. It does not create inferred members. Controlled Reference Members are part of load execution and are created only when the modeled reference explicitly enables inferred members.
+
 Catalog Portfolio summarizes architecture posture across readiness, ownership, contracts, health, review state, execution evidence and layer distribution. Actionable Portfolio KPIs open filtered Catalog worklists so users can inspect affected datasets before navigating to dataset detail or Architecture Control.
 
 Catalog Data Products show which serving-layer datasets are ready for trusted consumption. Readiness is derived from ownership, metadata health, query contracts, lineage, Architecture Control review state and execution evidence.
@@ -166,7 +171,7 @@ Catalog Insights highlight ownership gaps, metadata health findings, custom quer
 
 Catalog Maps show architecture across layers using layer cards, a layer flow overview, a source-to-target layer dependency matrix and expandable direct dependency examples.
 
-The Catalog does not edit metadata and does not execute loads. Reference Integrity Review does not persist review history, create inferred members or repair data automatically. Architecture Control remains responsible for approval, execution, execution records and retention workflows.
+The Catalog does not edit metadata and does not execute loads. Reference Integrity Review does not persist review history, create inferred members or repair data automatically. Controlled load execution remains responsible for any enabled reference member handling. Architecture Control remains responsible for approval, execution, execution records and retention workflows.
 
 ---
 

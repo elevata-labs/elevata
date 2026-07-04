@@ -383,7 +383,8 @@ def _controlled_error_message(message: str) -> str:
   """
   if "Architecture guard blocked execution" in message:
     return (
-      "Architecture Guard blocked controlled execution. "
+      "Architecture Guard blocked controlled execution. Architecture Control "
+      "runs the guard in enforce mode even when the CLI environment uses compare. "
       "Inspect the execution output for shadow-compare details."
     )
 
@@ -394,6 +395,9 @@ def _controlled_error_message(message: str) -> str:
 def _architecture_guard_enforced():
   """
   Run the controlled load path with Architecture Guard enforcement.
+
+  This is intentionally stricter than direct CLI execution. The previous
+  environment value is restored after the controlled command finishes.
   """
   previous = os.environ.get("ELEVATA_ARCH_MODE")
   os.environ["ELEVATA_ARCH_MODE"] = "enforce"

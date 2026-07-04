@@ -229,7 +229,9 @@ Returned examples are proven findings, not statistical samples. Each example mea
 
 The panel is hidden for datasets without outgoing references, because there is no modeled reference to check.
 
-Reference Integrity Review does not edit metadata, execute loads, create approvals, persist review history, insert inferred members, or repair data automatically.
+Reference Integrity Review does not edit metadata, execute loads, create approvals, persist review history, insert default members, insert inferred members, or repair data automatically.
+
+Controlled Reference Members are handled by load execution, not by the Catalog. When a modeled TargetDatasetReference explicitly enables inferred members, a child dataset load may create missing parent members in the referenced rawcore dataset.
 
 For more details, see [Reference Integrity](reference_integrity.md).
 
@@ -307,11 +309,12 @@ It does not:
 - request access  
 - execute loads  
 - run Reference Integrity Review automatically  
+- insert default members  
 - insert inferred members  
 - delete execution records  
 - mutate metadata
 
-Architecture Control remains responsible for approval state, execution preview, controlled execution, execution records, execution history and retention cleanup.
+Architecture Control remains responsible for approval state, execution preview, controlled execution, execution records, execution history and retention cleanup. Controlled load execution remains responsible for enabled default and inferred member handling.
 
 ---
 

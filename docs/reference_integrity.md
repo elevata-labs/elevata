@@ -1,10 +1,13 @@
 # ⚙️ Reference Integrity
 
-Reference Integrity makes modeled TargetDataset references inspectable against loaded target data.
+Reference Integrity makes modeled TargetDataset references inspectable and controllable.
 
-It helps users understand whether child datasets contain key values that do not exist in the referenced parent dataset.
+It has two deliberately separate parts:
 
-The feature is deterministic, read-only, and started explicitly by the user.
+- **Reference Integrity Review** checks loaded target data for missing parent examples.  
+- **Controlled Reference Members** can create default and inferred members during controlled load execution.
+
+The review is diagnostic and read-only. Controlled member creation is part of execution and requires explicit metadata intent.
 
 ---
 
@@ -12,16 +15,21 @@ The feature is deterministic, read-only, and started explicitly by the user.
 
 elevata models relationships between TargetDatasets as architecture metadata.
 
-Reference Integrity uses this metadata to make relationship quality visible without turning the Catalog into an execution workflow.
-
-It answers a focused question:
+Reference Integrity uses this metadata to answer two related questions:
 
 ```text
-Do the loaded child rows contain reference key values
+Do loaded child rows contain reference key values
 that have no matching parent row?
 ```
 
-This helps users find broken modeled relationships after data has been loaded.
+and, when explicitly enabled:
+
+```text
+Can the runtime create controlled artificial parent members
+so downstream relationships remain loadable and explainable?
+```
+
+This keeps relationship quality visible while preserving a clear boundary between review and execution.
 
 ---
 
@@ -42,6 +50,8 @@ For each checkable reference, elevata:
 - reports whether the reference is complete, needs attention, is not applicable, or could not be checked
 
 A dataset without outgoing references has no Reference Integrity Review panel in Catalog Detail.
+
+Reference Integrity Review is diagnostic. It never creates default members, inferred members, approvals, execution records, or metadata changes.
 
 ---
 
@@ -64,34 +74,149 @@ This keeps the review compact and safe for interactive Catalog usage while still
 
 ---
 
-## 🔧 4. Null Handling
+## 🔧 4. Controlled Reference Members
+
+Controlled Reference Members are execution-time artificial parent rows for modeled rawcore references.
+
+They are separate from Reference Integrity Review:
+
+```text
+Reference Integrity Review
+  = read-only diagnosis
+
+Controlled Reference Members
+  = deterministic load-time member handling
+```
+
+Controlled member creation happens only during load execution. It is not triggered by opening Catalog Detail, running the Reference Integrity Review, creating approvals, or checking approvals.
+
+The runtime supports two artificial member types:
+
+| Member type | Marker behavior | Purpose |
+|---|---|---|
+| Default Member | `default_member = true`, `inferred_member = false` | Stable fallback member for a reference table |
+| Inferred Member | `inferred_member = true`, `default_member = false` | Missing parent member derived from a loaded child reference |
+
+Both markers are system-managed columns. Normal source-backed rows are loaded with both markers set to false.
+
+---
+
+## 🔧 5. Default Members
+
+A default member is a deterministic artificial row in a rawcore reference dataset.
+
+It provides a stable fallback member that can be recognized by consumers and frontends without guessing.
+
+Default member behavior:
+
+- created during load execution for controlled rawcore reference datasets  
+- idempotent across repeated executions  
+- marked with `default_member = true`  
+- marked with `inferred_member = false`  
+- uses deterministic artificial values for required columns  
+- uses readable string values such as `(Default)` where a non-null string value is required
+
+Default members are not created by Reference Integrity Review.
+
+---
+
+## 🔧 6. Inferred Members
+
+An inferred member is an artificial parent row created from a missing child reference.
+
+Inferred member creation is **child-load-driven**:
+
+```text
+Load child dataset
+  ↓
+Find child reference values without parent rows
+  ↓
+Insert missing parent members into the referenced rawcore dataset
+```
+
+Loading the parent dataset does not create inferred members. A parent full load can later replace an inferred member with the real source-backed parent row.
+
+Inferred member behavior:
+
+- requires `inferred_members_enabled` on the modeled TargetDatasetReference  
+- runs during the referencing child dataset load  
+- uses the modeled reference components to map child key values to parent business key values  
+- derives the parent surrogate key from the already calculated child foreign key  
+- inserts only missing parent keys  
+- is idempotent across repeated executions  
+- marks inserted rows with `inferred_member = true`  
+- marks inserted rows with `default_member = false`  
+- uses readable string values such as `(Inferred)` where a non-null string value is required
+
+This makes incomplete upstream master data loadable while keeping the artificial nature of the row explicit.
+
+---
+
+## 🔧 7. Parent Data Remains Authoritative
+
+Inferred members are temporary architecture-runtime safeguards, not final master data.
+
+If the referenced parent dataset is later loaded from its real source and the parent row exists, the normal parent load can replace the artificial row with source-backed values.
+
+Typical lifecycle:
+
+```text
+1. Child references parent key 69.
+2. Parent row 69 is missing.
+3. Child load creates parent row 69 as inferred.
+4. Later parent full load reads row 69 from the source.
+5. Parent row 69 becomes source-backed again.
+```
+
+The marker columns make this lifecycle observable:
+
+```text
+inferred_member = true   -> artificial inferred row
+inferred_member = false  -> normal source-backed row
+```
+
+---
+
+## 🔧 8. Null Handling
 
 Reference Integrity Review only checks complete child key combinations.
 
 Rows with null child key components are not reported as missing parent examples by this review.
 
-Nullability remains part of the column contract and metadata health context. Reference Integrity focuses on non-null child keys that claim to reference a parent row.
+For Controlled Reference Members, elevata does not insert null values into modeled not-null columns. Required rtificial member attributes receive deterministic typed sentinel values.
+
+Examples:
+
+| Column kind | Default member value | Inferred member value |
+|---|---|---|
+| Required string | `(Default)` | `(Inferred)` |
+| Required number | `-1` | `-1` |
+| Required boolean | `false` | `false` |
+| Required date/timestamp | deterministic early date/time | deterministic early date/time |
+
+The marker columns remain the authoritative indicator of artificial member semantics.
 
 ---
 
-## 🔧 5. Runtime and Dialect Boundary
+## 🔧 9. Runtime and Dialect Boundary
 
-Reference Integrity Review follows elevata's SQL rendering architecture.
+Reference Integrity follows elevata's SQL rendering architecture.
 
-The review service provides semantic ingredients only:
+The review and controlled member services provide semantic ingredients only:
 
 - child schema and table  
 - parent schema and table  
 - child-to-parent key pairs  
-- example limit
+- example limit or insert semantics  
+- marker-column intent
 
-The active dialect owns the final SQL shape, including identifier quoting, table rendering and backend-specific row limiting syntax.
+The active dialect owns the final SQL shape, including identifier quoting, table rendering, hashing, literals, row limiting and backend-specific DML syntax.
 
 This keeps Reference Integrity aligned with the same dialect boundary used by load SQL, previews and execution logic.
 
 ---
 
-## 🔧 6. Governance Boundary
+## 🔧 10. Governance Boundary
 
 Reference Integrity Review is a read-only Catalog capability.
 
@@ -100,6 +225,7 @@ It does not:
 - edit metadata  
 - create or change TargetDatasetReferences  
 - insert parent rows  
+- create default members  
 - create inferred members  
 - execute loads  
 - create approvals  
@@ -108,11 +234,22 @@ It does not:
 - add database models or migrations  
 - introduce AI-based inference
 
-The review makes modeled relationship issues visible. It does not repair them automatically.
+Controlled Reference Members are an execution capability.
+
+They:
+
+- require explicit modeled metadata intent  
+- run only during load execution  
+- remain deterministic and dialect-owned  
+- mark artificial rows explicitly  
+- do not replace Architecture Control approval or execution guardrails  
+- do not introduce AI-based inference
+
+The review makes modeled relationship issues visible. Controlled execution handles enabled artificial members when the architecture explicitly allows it.
 
 ---
 
-## 🔧 7. Catalog Integration
+## 🔧 11. Catalog Integration
 
 Reference Integrity appears in Catalog Detail only when the selected dataset has modeled outgoing references.
 

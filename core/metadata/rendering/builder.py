@@ -1622,6 +1622,13 @@ def _build_plan_from_dataset_definition(
         # loaded_at uses the same runtime timestamp placeholder used elsewhere
         expr = raw("{{ load_timestamp }}")
 
+    # 1c) Controlled reference-member markers on rawcore parent rows.
+    # Regular loads create real source-backed members, not inferred/default members.
+    # The dedicated inferred-member runtime will set inferred_member=True only for
+    # rows it creates explicitly.
+    elif schema_short == "rawcore" and tcol.system_role in ("inferred_member", "default_member"):
+      expr = lit(False)
+
     # 2) Foreign key hash column
     elif tcol.target_column_name in fk_expr_map:
       # FK: same DSL → AST treatment as SKs

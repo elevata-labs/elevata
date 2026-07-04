@@ -174,3 +174,18 @@ def test_mssql_reference_integrity_missing_examples_uses_top_not_limit():
   assert "SELECT DISTINCT TOP (20)" in sql
   assert "LEFT JOIN" in sql
   assert "LIMIT" not in sql
+
+
+def test_mssql_alter_column_type_accepts_old_type():
+  d = MssqlDialect()
+
+  sql = d.render_alter_column_type(
+    schema="rawcore",
+    table="rc_customer",
+    column="person_type_code",
+    new_type="VARCHAR(50)",
+    old_type="INT",
+  )
+
+  assert "ALTER TABLE rawcore.rc_customer" in sql
+  assert "ALTER COLUMN person_type_code VARCHAR(50)" in sql
