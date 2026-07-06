@@ -24,6 +24,8 @@ from types import SimpleNamespace
 
 from metadata.rendering.dialects.duckdb import DuckDBDialect
 from metadata.rendering.load_sql import (
+  render_controlled_reference_member_sql_for_target,
+  render_default_member_fallback_sql_for_reference,
   render_default_member_sql_for_target,
   render_inferred_members_sql_for_reference,
 )
@@ -184,3 +186,142 @@ def test_inferred_member_sql_is_disabled_by_default():
   )
 
   assert render_inferred_members_sql_for_reference(reference, dialect) is None
+
+
+def test_inferred_member_sql_excludes_blank_string_components():
+  dialect = DuckDBDialect()
+
+  parent_bk = _col("customer_id", "business_key", datatype="STRING", ordinal=2)
+  parent = _rawcore_dataset("rc_customer", [
+    _col("rc_customer_key", "surrogate_key", ordinal=1),
+    parent_bk,
+    _col("inferred_member", "inferred_member", datatype="BOOLEAN", ordinal=3),
+  ])
+
+  child_col = _col("customer_id", "business_key", datatype="STRING", ordinal=1)
+  child = _rawcore_dataset("rc_order", [
+    _col("rc_order_key", "surrogate_key", ordinal=1),
+    child_col,
+    _col("rc_customer_key", "foreign_key", ordinal=2),
+  ])
+
+  component = SimpleNamespace(
+    from_column=child_col,
+    to_column=parent_bk,
+    ordinal_position=1,
+    id=1,
+  )
+
+  reference = SimpleNamespace(
+    referencing_dataset=child,
+    referenced_dataset=parent,
+    inferred_members_enabled=True,
+    key_components=FakeRelated([component]),
+    get_child_fk_name=lambda: "rc_customer_key",
+  )
+
+  sql = render_inferred_members_sql_for_reference(reference, dialect)
+
+  assert "c.customer_id IS NOT NULL" in sql
+  assert "TRIM(c.customer_id) <> ''" in sql
+
+
+def test_default_member_fallback_sql_updates_unresolved_child_reference_key():
+  dialect = DuckDBDialect()
+
+  parent = _rawcore_dataset("rc_customer", [
+    _col("rc_customer_key", "surrogate_key", ordinal=1),
+    _col("customer_id", "business_key", datatype="INTEGER", ordinal=2),
+    _col("default_member", "default_member", datatype="BOOLEAN", ordinal=3),
+  ])
+
+  child = _rawcore_dataset("rc_order", [
+    _col("rc_order_key", "surrogate_key", ordinal=1),
+    _col("customer_id", "business_key", datatype="INTEGER", ordinal=2),
+    _col("rc_customer_key", "foreign_key", ordinal=3),
+  ])
+
+  reference = SimpleNamespace(
+    referencing_dataset=child,
+    referenced_dataset=parent,
+    default_member_fallback_enabled=True,
+    get_child_fk_name=lambda: "rc_customer_key",
+  )
+
+  sql = render_default_member_fallback_sql_for_reference(reference, dialect)
+
+  assert "UPDATE rawcore.rc_order AS c" in sql
+  assert "SET rc_customer_key =" in sql
+  assert "default_member:rawcore.rc_customer" in sql
+  assert "NOT EXISTS" in sql
+  assert "FROM rawcore.rc_customer AS p" in sql
+  assert "p.rc_customer_key = c.rc_customer_key" in sql
+
+
+def test_default_member_fallback_sql_is_disabled_by_default():
+  dialect = DuckDBDialect()
+
+  parent = _rawcore_dataset("rc_customer", [
+    _col("rc_customer_key", "surrogate_key", ordinal=1),
+    _col("default_member", "default_member", datatype="BOOLEAN", ordinal=2),
+  ])
+  child = _rawcore_dataset("rc_order", [
+    _col("rc_customer_key", "foreign_key", ordinal=1),
+  ])
+
+  reference = SimpleNamespace(
+    referencing_dataset=child,
+    referenced_dataset=parent,
+    default_member_fallback_enabled=False,
+    get_child_fk_name=lambda: "rc_customer_key",
+  )
+
+  assert render_default_member_fallback_sql_for_reference(reference, dialect) is None
+
+
+def test_controlled_reference_member_sql_orders_default_inferred_then_fallback():
+  dialect = DuckDBDialect()
+
+  parent_bk = _col("customer_id", "business_key", datatype="INTEGER", ordinal=2)
+  parent = _rawcore_dataset("rc_customer", [
+    _col("rc_customer_key", "surrogate_key", ordinal=1),
+    parent_bk,
+    _col("row_hash", "row_hash", ordinal=3),
+    _col("inferred_member", "inferred_member", datatype="BOOLEAN", ordinal=4),
+    _col("default_member", "default_member", datatype="BOOLEAN", ordinal=5),
+  ])
+
+  child_col = _col("customer_id", "business_key", datatype="INTEGER", ordinal=2)
+  child = _rawcore_dataset("rc_order", [
+    _col("rc_order_key", "surrogate_key", ordinal=1),
+    child_col,
+    _col("rc_customer_key", "foreign_key", ordinal=3),
+    _col("default_member", "default_member", datatype="BOOLEAN", ordinal=4),
+  ])
+
+  component = SimpleNamespace(
+    from_column=child_col,
+    to_column=parent_bk,
+    ordinal_position=1,
+    id=1,
+  )
+
+  reference = SimpleNamespace(
+    referencing_dataset=child,
+    referenced_dataset=parent,
+    inferred_members_enabled=True,
+    default_member_fallback_enabled=True,
+    key_components=FakeRelated([component]),
+    get_child_fk_name=lambda: "rc_customer_key",
+  )
+
+  child.outgoing_references = FakeRelated([reference])
+
+  sqls = render_controlled_reference_member_sql_for_target(child, dialect)
+
+  assert len(sqls) == 4
+  assert "INSERT INTO rawcore.rc_order" in sqls[0]
+  assert "INSERT INTO rawcore.rc_customer" in sqls[1]
+  assert "SELECT DISTINCT" in sqls[2]
+  assert "INSERT INTO rawcore.rc_customer" in sqls[2]
+  assert "UPDATE rawcore.rc_order AS c" in sqls[3]

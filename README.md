@@ -49,7 +49,7 @@ From these definitions, elevata derives deterministic logical plans, renders dia
 Schema evolution, incremental loads, historization, approvals, and execution evidence are planned, validated, and applied deterministically.
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/elevata-labs/elevata/main/docs/elevata_v2_11_0.png" alt="elevata UI preview" width="900"/>
+  <img src="https://raw.githubusercontent.com/elevata-labs/elevata/main/docs/elevata_v2_12_0.png" alt="elevata UI preview" width="900"/>
   <br/>
   <em>Architecture Runtime UI for discovering, controlling, modeling, and executing metadata-defined data architecture</em>
 </p>
@@ -124,7 +124,7 @@ Behavior is deterministic and observable.
 Schema drift is reconciled through Architecture MigrationPlan-driven materialization:  
 renames, adds, type evolution and controlled rebuilds are derived from architecture state, while destructive changes remain explicitly policy-gated.
 
-Controlled Reference Members complement modeled rawcore references. Default members are maintained as artificial fallback rows, and inferred members can be created during child dataset loads when a modeled TargetDatasetReference explicitly enables them. Parent datasets remain authoritative: a later parent full load can replace inferred members with real source-backed rows.
+Controlled Reference Members complement modeled rawcore references. Default members are maintained as artificial fallback rows, inferred members can be created during child dataset loads when a modeled TargetDatasetReference explicitly enables them, and Default Member Fallback can map still-unresolved child reference keys to the parent default member. Parent datasets remain authoritative: a later parent full load can replace inferred members with real source-backed rows. When controlled reference completion is enabled, referenced parent datasets become execution dependencies so parent readiness is enforced before child loads.
 
 ---
 
@@ -161,7 +161,7 @@ Catalog detail pages summarize architecture metadata, ownership, health, upstrea
 
 For datasets with modeled outgoing references, Catalog Detail also provides an on-demand Reference Integrity Review. It checks loaded target data for missing parent examples and keeps the review read-only, bounded and dialect-owned.
 
-Reference Integrity Review is diagnostic. It does not create inferred members. Controlled Reference Members are part of load execution and are created only when the modeled reference explicitly enables inferred members.
+Reference Integrity Review is diagnostic. It does not create inferred members, apply Default Member Fallback, or repair data automatically. Controlled Reference Members are part of load execution and run only when the modeled reference explicitly enables the relevant behavior.
 
 Catalog Portfolio summarizes architecture posture across readiness, ownership, contracts, health, review state, execution evidence and layer distribution. Actionable Portfolio KPIs open filtered Catalog worklists so users can inspect affected datasets before navigating to dataset detail or Architecture Control.
 
@@ -183,7 +183,7 @@ Architecture State, Change Reports, Promotion Reports, Approval Artifacts and Ex
 
 This supports controlled review, CI checks and environment-to-environment architecture promotion while keeping execution guardrails inside the load runner.
 
-The Architecture Control UI makes approval state, scope, policy status, change summary, execution preview, dependency mode, captured output and execution records visible for controlled scopes.
+The Architecture Control UI makes approval state, scope, policy status, change summary, execution preview, dependency mode, controlled reference readiness, captured output and execution records visible for controlled scopes.
 
 Architecture Review Briefing adds compact reviewer guidance directly inside Architecture Control. It summarizes the selected scope, review state, change volume, policy attention, destructive or blocking signals, execution readiness and suggested reviewer focus before approval or execution.
 

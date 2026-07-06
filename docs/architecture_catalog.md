@@ -225,13 +225,13 @@ For datasets with modeled outgoing references, the Catalog detail view can run a
 
 The review checks the selected dataset as the child side of modeled TargetDatasetReferences and reports missing parent examples from the currently loaded target data.
 
-Returned examples are proven findings, not statistical samples. Each example means that a non-null child key combination exists without a matching parent key combination.
+Returned examples are proven findings, not statistical samples. Each example means that a complete child key combination exists without a matching parent key combination.
 
 The panel is hidden for datasets without outgoing references, because there is no modeled reference to check.
 
-Reference Integrity Review does not edit metadata, execute loads, create approvals, persist review history, insert default members, insert inferred members, or repair data automatically.
+Reference Integrity Review does not edit metadata, execute loads, create approvals, persist review history, insert default members, insert inferred members, apply Default Member Fallback, or repair data automatically.
 
-Controlled Reference Members are handled by load execution, not by the Catalog. When a modeled TargetDatasetReference explicitly enables inferred members, a child dataset load may create missing parent members in the referenced rawcore dataset.
+Controlled Reference Members are handled by load execution, not by the Catalog. When a modeled TargetDatasetReference explicitly enables inferred members, a child dataset load may create missing parent members in the referenced rawcore dataset. When `default_member_fallback_enabled` is enabled, load execution may map still-unresolved child reference keys to the referenced dataset's default member.
 
 For more details, see [Reference Integrity](reference_integrity.md).
 
@@ -314,7 +314,7 @@ It does not:
 - delete execution records  
 - mutate metadata
 
-Architecture Control remains responsible for approval state, execution preview, controlled execution, execution records, execution history and retention cleanup. Controlled load execution remains responsible for enabled default and inferred member handling.
+Architecture Control remains responsible for approval state, execution preview, controlled execution, execution records, execution history and retention cleanup. Controlled load execution remains responsible for enabled default member, inferred member and Default Member Fallback handling. Reference-parent readiness is an execution dependency, not a Catalog mutation or lineage edit.
 
 ---
 

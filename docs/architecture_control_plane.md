@@ -278,6 +278,7 @@ The Architecture Control UI provides controlled actions for architecture artifac
 - refresh the Architecture Review Status  
 - inspect the Architecture Review Briefing  
 - inspect the Execution Preview  
+- inspect controlled reference readiness signals in the Execution Preview  
 - run controlled load execution  
 - inspect captured execution output  
 - inspect the Architecture Execution Record  
@@ -301,11 +302,13 @@ Execution uses the selected Architecture Control scope:
 | TargetDataset | Executes the selected TargetDataset with dependency ordering |
 | TargetDataset, target-only | Executes only the selected TargetDataset |
 
-Target-only execution is available only for TargetDataset scopes. It is intended for focused iteration when upstream data is already available.
+Dependency execution includes lineage inputs and runtime execution dependencies. When controlled reference completion is enabled through inferred members or Default Member Fallback, the referenced parent dataset is treated as an execution dependency so parent data and default members are available before the child load applies controlled reference handling.
+
+Target-only execution is available only for TargetDataset scopes. It is intended for focused iteration when upstream data is already available. Target-only execution skips upstream execution dependencies, including controlled reference parent readiness dependencies.
 
 Controlled execution produces an Architecture Execution Record.
 
-When modeled rawcore references explicitly enable inferred members, controlled load execution can also apply Controlled Reference Member handling. This remains part of the load runner path: Reference Integrity Review is diagnostic only, while default and inferred member creation happens during execution.
+When modeled rawcore references explicitly enable controlled member behavior, controlled load execution can also apply Controlled Reference Member handling. This remains part of the load runner path: Reference Integrity Review is diagnostic only, while default member creation, inferred member creation and Default Member Fallback happen during execution.
 
 ---
 
@@ -443,7 +446,7 @@ This preserves a strict separation:
 | `elevata_approval_check` | Verify approval artifact against a change report |
 | `elevata_load` | Execute loads with preflight and guard checks |
 
-The Architecture Control UI invokes the same load runner through a constrained execution path. The UI does not expose arbitrary load runner flags. It exposes controlled scope selection, approval status, execution preview, target-only execution for TargetDataset scopes, captured output, and execution records.
+The Architecture Control UI invokes the same load runner through a constrained execution path. The UI does not expose arbitrary load runner flags. It exposes controlled scope selection, approval status, execution preview, controlled reference readiness, target-only execution for TargetDataset scopes, captured output, and execution records.
 
 ---
 

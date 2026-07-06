@@ -12,6 +12,83 @@ This project adheres to [Semantic Versioning](https://semver.org/) and [Keep a C
 
 ---
 
+## [2.12.0] - 2026-07-06
+
+This release adds **Controlled Reference Completion**:  
+Default Member Fallback for modeled rawcore TargetDatasetReferences.
+
+Controlled Reference Members can now keep modeled relationships joinable not only by creating inferred parent members for complete missing parent keys, but also by mapping still-unresolved child reference keys to the referenced default member hen explicitly enabled.
+
+Reference Integrity Review remains read-only and diagnostic.  
+Default Member Fallback is execution-owned and runs only during controlled load execution.
+
+---
+
+### ✨ Added
+
+#### Default Member Fallback
+
+- Added `default_member_fallback_enabled` on TargetDatasetReference  
+- Added explicit Default Member Fallback for still-unresolved child reference keys  
+- Added fallback behavior for null, empty, blank and incomplete child reference components when no matching parent row exists  
+- Added fallback handling for complete missing parent references when inferred members are not enabled  
+- Added automatic fallback enablement when `inferred_members_enabled` is switched on  
+- Added migration behavior to enable fallback for existing references where inferred members were already enabled  
+- Added tests for default fallback SQL rendering, toggle behavior and controlled execution ordering  
+- Added reference-parent execution dependencies for controlled references so parent datasets are scheduled before child loads when inferred members or fallback handling is enabled
+
+---
+
+### 🔄 Improved
+
+#### Controlled Reference Completion
+
+- Clarified the separation between inferred members and Default Member Fallback  
+- Kept inferred members responsible for complete child reference values with missing parent rows  
+- Kept Default Member Fallback responsible for child reference keys that remain unresolved after real and inferred parents have been considered  
+- Preserved user control: fallback can be enabled independently and disabled after inferred members enabled it as a modeling default  
+- Kept reference-parent readiness as an execution dependency rather than semantic lineage, so orchestration order is strengthened without changing relationship meaning  
+- Kept business-invalid but technically complete values out of runtime interpretation and reserved them for future quality checks
+
+---
+
+### 🔒 Governance & Determinism
+
+- Reference Integrity Review remains read-only, on-demand and bounded  
+- Default Member Fallback does not create parent rows  
+- Real parent rows and inferred parent rows win before fallback is applied  
+- Runtime resolution follows a deterministic priority: real parent, inferred parent, default member, unresolved  
+- SQL rendering remains dialect-owned; load/runtime code provides semantic ingredients only
+
+---
+
+### 🧪 Quality & Stability
+
+- Verified unit tests for Controlled Reference Members and Default Member Fallback  
+- Verified the UI toggle behavior for `default_member_fallback_enabled`  
+- Verified that enabling inferred members activates fallback as a modeling default  
+- Verified that enabling fallback alone does not enable inferred members  
+- Verified controlled reference parent ordering in Architecture Control execution preview  
+- Recommended cross-backend execution validation across supported target platforms
+
+---
+
+### 🛠️ Fixed
+
+- Fixed MSSQL and Fabric Warehouse Default Member Fallback update rendering by using dialect-specific T-SQL update shape  
+- Fixed BigQuery idempotent artificial-member inserts by rendering synthetic single-row selects with an explicit source when predicates are required  
+- Fixed BigQuery artificial-member inserts by rendering typed NULL placeholders for nullable inferred/default member attributes  
+
+---
+
+### ⬆️ Upgrade Notes
+
+- Added a metadata database migration for `TargetDatasetReference.default_member_fallback_enabled`.  
+- Run `python manage.py migrate` after upgrading.  
+- Existing references with `inferred_members_enabled=True` are migrated to `default_member_fallback_enabled=True`.
+
+---
+
 ## [2.11.0] - 2026-07-04
 
 This release adds **Controlled Reference Members**:  

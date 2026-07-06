@@ -1259,6 +1259,37 @@ def _inferred_member_literal_for_column(col: TargetColumn, dialect) -> str:
   )
 
 
+def _typed_null_literal_for_column(col: TargetColumn, dialect) -> str:
+  """
+  Return a dialect-rendered typed NULL literal for one target column.
+
+  Some engines, especially BigQuery, infer a concrete type for a bare NULL in
+  SELECT-based INSERT statements. Artificial-member DML must therefore cast
+  nullable placeholder values to the physical target column type instead of
+  emitting an untyped NULL.
+  """
+  datatype = str(getattr(col, "datatype", "") or "").strip()
+  if not datatype:
+    return "NULL"
+
+  try:
+    physical_type = dialect.map_logical_type(
+      datatype=datatype,
+      max_length=getattr(col, "max_length", None),
+      precision=getattr(col, "decimal_precision", None),
+      scale=getattr(col, "decimal_scale", None),
+      strict=False,
+    )
+  except Exception:
+    physical_type = ""
+
+  physical_type = str(physical_type or "").strip()
+  if not physical_type:
+    return "NULL"
+
+  return dialect.cast_expression("NULL", physical_type)
+
+
 def _requires_artificial_member_placeholder(col: TargetColumn) -> bool:
   """
   Return True when an artificial member row must provide a non-null value.
@@ -1295,7 +1326,25 @@ def _default_member_key_expr(td: TargetDataset, dialect) -> str:
   return _controlled_member_hash_expr(dialect, f"default_member:{dataset_key}")
 
 
-def _render_select_without_from(select_exprs: Sequence[str], where_sql: str | None = None) -> str:
+def _render_single_row_select(
+  select_exprs: Sequence[str],
+  *,
+  dialect,
+  where_sql: str | None = None,
+) -> str:
+  """
+  Render a single-row SELECT through the active dialect.
+
+  Some backends, notably BigQuery, require a FROM source when a WHERE clause is
+  present even if all projected values are constants. Keeping this behind the
+  dialect preserves the SQL ownership boundary.
+  """
+  if hasattr(dialect, "render_single_row_select"):
+    return dialect.render_single_row_select(
+      select_exprs=select_exprs,
+      where_sql=where_sql,
+    )
+
   select_sql = "SELECT\n  " + ",\n  ".join(select_exprs)
   if where_sql:
     select_sql += "\nWHERE " + where_sql
@@ -1360,7 +1409,7 @@ def render_default_member_sql_for_target(td: TargetDataset, dialect) -> str | No
     elif _requires_artificial_member_placeholder(col):
       select_exprs.append(_default_member_literal_for_column(col, dialect))
     else:
-      select_exprs.append("NULL")
+      select_exprs.append(_typed_null_literal_for_column(col, dialect))
 
   if not target_columns:
     return None
@@ -1373,7 +1422,11 @@ def render_default_member_sql_for_target(td: TargetDataset, dialect) -> str | No
     f"  WHERE {parent_alias}.{default_flag} = {dialect.render_literal(True)}\n"
     ")"
   )
-  select_sql = _render_select_without_from(select_exprs, where_sql=where_sql)
+  select_sql = _render_single_row_select(
+    select_exprs,
+    dialect=dialect,
+    where_sql=where_sql,
+  )
 
   return dialect.render_insert_into_table(
     schema_name,
@@ -1514,14 +1567,27 @@ def render_inferred_members_sql_for_reference(reference, dialect) -> str | None:
     elif _requires_artificial_member_placeholder(col):
       select_exprs.append(_inferred_member_literal_for_column(col, dialect))
     else:
-      select_exprs.append("NULL")
+      select_exprs.append(_typed_null_literal_for_column(col, dialect))
 
   if not target_columns:
     return None
 
+  component_cols_by_name = {
+    str(getattr(comp.from_column, "target_column_name", "") or ""): comp.from_column
+    for comp in _iter_reference_components(reference)
+    if getattr(comp, "from_column", None) is not None
+  }
+
   not_null_predicates = [f"{child_fk_sql} IS NOT NULL"]
   for child_col in bk_mapping.values():
-    not_null_predicates.append(f"{child_alias}.{q(child_col)} IS NOT NULL")
+    child_col_obj = component_cols_by_name.get(str(child_col))
+    not_null_predicates.append(
+      dialect.render_reference_component_populated_predicate(
+        table_alias=child_alias,
+        column_name=child_col,
+        datatype=getattr(child_col_obj, "datatype", None),
+      )
+    )
 
   where_sql = "\n  AND ".join(not_null_predicates + [
     "NOT EXISTS (\n"
@@ -1546,13 +1612,70 @@ def render_inferred_members_sql_for_reference(reference, dialect) -> str | None:
   )
 
 
+def render_default_member_fallback_sql_for_reference(reference, dialect) -> str | None:
+  """
+  Render an idempotent update that maps unresolved child reference keys to the
+  referenced dataset's default member for one explicitly enabled reference.
+
+  The fallback is applied after inferred-member creation. Therefore:
+    - existing real parents win
+    - newly created inferred parents win
+    - only still-unresolved child reference keys fall back to the default member
+  """
+  if not bool(getattr(reference, "default_member_fallback_enabled", False)):
+    return None
+
+  child = getattr(reference, "referencing_dataset", None)
+  parent = getattr(reference, "referenced_dataset", None)
+  if child is None or parent is None:
+    return None
+
+  if not _is_rawcore_base_dataset(child) or not _is_rawcore_base_dataset(parent):
+    return None
+
+  parent_cols = _iter_active_target_columns_for_members(parent)
+  if not parent_cols:
+    return None
+
+  parent_sk_col = _first_column_by_role(parent_cols, "surrogate_key")
+  default_col = _first_column_by_role(parent_cols, "default_member")
+  if parent_sk_col is None or default_col is None:
+    return None
+
+  parent_schema_name = _controlled_member_schema_name(parent)
+  parent_table_name = getattr(parent, "target_dataset_name", None)
+  child_schema_name = _controlled_member_schema_name(child)
+  child_table_name = getattr(child, "target_dataset_name", None)
+  if not parent_schema_name or not parent_table_name or not child_schema_name or not child_table_name:
+    return None
+
+  try:
+    child_reference_key_name = reference.get_child_fk_name()
+  except Exception:
+    child_reference_key_name = None
+  if not child_reference_key_name:
+    return None
+
+  return dialect.render_default_member_fallback_statement(
+    child_schema=child_schema_name,
+    child_table=child_table_name,
+    parent_schema=parent_schema_name,
+    parent_table=parent_table_name,
+    child_reference_key_column=child_reference_key_name,
+    parent_surrogate_key_column=getattr(parent_sk_col, "target_column_name"),
+    default_member_key_sql=_default_member_key_expr(parent, dialect),
+  )
+
+
 def render_controlled_reference_member_sql_for_target(td: TargetDataset, dialect) -> list[str]:
   """
   Render all controlled reference-member DML statements for one loaded dataset.
 
   The list is intentionally idempotent:
     1. ensure the dataset's own default member when it is a rawcore base table
-    2. create inferred parent members for enabled outgoing references
+    2. ensure referenced parent default members for enabled fallback references
+    3. create inferred parent members for enabled outgoing references
+    4. map still-unresolved child reference keys to parent default members
   """
   sqls: list[str] = []
 
@@ -1574,16 +1697,45 @@ def render_controlled_reference_member_sql_for_target(td: TargetDataset, dialect
         "referencing_dataset__target_schema",
       )
       .prefetch_related("key_components__from_column", "key_components__to_column")
-      .filter(inferred_members_enabled=True)
+      .all()
     )
   except Exception:
     try:
-      refs = [r for r in list(refs_obj) if bool(getattr(r, "inferred_members_enabled", False))]
+      refs = list(refs_obj)
     except Exception:
       refs = []
 
-  for ref in refs:
+  fallback_refs = [
+    ref for ref in refs
+    if bool(getattr(ref, "default_member_fallback_enabled", False))
+  ]
+  inferred_refs = [
+    ref for ref in refs
+    if bool(getattr(ref, "inferred_members_enabled", False))
+  ]
+
+  rendered_parent_defaults: set[str] = set()
+  for ref in fallback_refs:
+    parent = getattr(ref, "referenced_dataset", None)
+    if parent is None:
+      continue
+
+    parent_key = _dataset_key(parent)
+    if parent_key in rendered_parent_defaults:
+      continue
+
+    parent_default_sql = render_default_member_sql_for_target(parent, dialect)
+    if parent_default_sql:
+      sqls.append(parent_default_sql)
+      rendered_parent_defaults.add(parent_key)
+
+  for ref in inferred_refs:
     sql = render_inferred_members_sql_for_reference(ref, dialect)
+    if sql:
+      sqls.append(sql)
+
+  for ref in fallback_refs:
+    sql = render_default_member_fallback_sql_for_reference(ref, dialect)
     if sql:
       sqls.append(sql)
 

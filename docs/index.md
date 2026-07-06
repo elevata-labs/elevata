@@ -70,7 +70,7 @@ This index gives you an overview of all major topics and how they fit together.
   Consumer-readiness perspective for serving-layer datasets, derived from ownership, health, lineage, contracts, review state and execution evidence.
 
 - [Reference Integrity](reference_integrity.md)  
-  Read-only, on-demand review of modeled outgoing references against loaded target data, plus controlled default and inferred member behavior during load execution.
+  Read-only, on-demand review of modeled outgoing references against loaded target data, plus controlled default member, inferred member, Default Member Fallback and reference-parent execution readiness behavior during load execution.
 
 - [Architecture Control Plane](architecture_control_plane.md)  
   Deterministic architecture state, change reports, review briefing, promotion reports, approval artifacts, policy decisions and fingerprints for review, CI, controlled approval, and architecture promotion workflows.

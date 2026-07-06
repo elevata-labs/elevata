@@ -27,6 +27,7 @@ from metadata.models import TargetSchema, TargetDataset
 
 EXECUTION_DEPENDENCY_LINEAGE_INPUT = "lineage_input"
 EXECUTION_DEPENDENCY_SOURCE_RAW_READY = "source_raw_ready"
+EXECUTION_DEPENDENCY_REFERENCE_PARENT_READY = "reference_parent_ready"
 
 
 @dataclass(frozen=True)
@@ -114,13 +115,14 @@ def resolve_execution_dependencies(td: TargetDataset) -> tuple[ExecutionDependen
   """
   Resolve immediate execution dependencies for a TargetDataset.
 
-  Execution dependencies drive scheduling. Today they are derived from modeled
-  upstream inputs and optional SourceDataset -> raw TargetDataset readiness.
-  Future reference-member dependencies can be added here without changing
-  semantic lineage.
+  Execution dependencies drive scheduling. They are derived from modeled
+  upstream inputs, optional SourceDataset -> raw TargetDataset readiness, and
+  controlled reference-member parent readiness where enabled.
   """
-  # Dummy/test datasets may not have input_links; treat as leaf node.
-  if not hasattr(td, "input_links"):
+  # Dummy/test datasets may not have ORM managers; treat them as leaf nodes.
+  has_input_links = hasattr(td, "input_links")
+  has_outgoing_references = hasattr(td, "outgoing_references")
+  if not has_input_links and not has_outgoing_references:
     return ()
 
   dependencies: list[ExecutionDependency] = []
@@ -153,28 +155,56 @@ def resolve_execution_dependencies(td: TargetDataset) -> tuple[ExecutionDependen
       reference_id=reference_id,
     ))
 
-  links = td.input_links.select_related(
-    "upstream_target_dataset",
-    "source_dataset",
-  )
+  if has_input_links:
+    links = td.input_links.select_related(
+      "upstream_target_dataset",
+      "source_dataset",
+    )
 
-  for link in links:
-    # TargetDataset -> TargetDataset execution dependency.
-    if link.upstream_target_dataset is not None:
-      add_dependency(
-        link.upstream_target_dataset,
-        reason=EXECUTION_DEPENDENCY_LINEAGE_INPUT,
-      )
-      continue
+    for link in links:
+      # TargetDataset -> TargetDataset execution dependency.
+      if link.upstream_target_dataset is not None:
+        add_dependency(
+          link.upstream_target_dataset,
+          reason=EXECUTION_DEPENDENCY_LINEAGE_INPUT,
+        )
+        continue
 
-    # SourceDataset -> raw TargetDataset readiness dependency (optional).
-    if link.source_dataset is not None:
-      raw_td = resolve_raw_dataset_for_source(link.source_dataset)
-      add_dependency(
-        raw_td,
-        reason=EXECUTION_DEPENDENCY_SOURCE_RAW_READY,
+      # SourceDataset -> raw TargetDataset readiness dependency (optional).
+      if link.source_dataset is not None:
+        raw_td = resolve_raw_dataset_for_source(link.source_dataset)
+        add_dependency(
+          raw_td,
+          reason=EXECUTION_DEPENDENCY_SOURCE_RAW_READY,
+        )
+        # raw_td may be None for federated / external source setups.
+
+  if has_outgoing_references:
+    refs_obj = getattr(td, "outgoing_references", None)
+    try:
+      refs = (
+        refs_obj
+        .select_related("referenced_dataset", "referenced_dataset__target_schema")
+        .all()
       )
-      # raw_td may be None for federated / external source setups.
+    except Exception:
+      try:
+        refs = list(refs_obj)
+      except Exception:
+        refs = []
+
+    for ref in refs:
+      if not (
+        bool(getattr(ref, "inferred_members_enabled", False))
+        or bool(getattr(ref, "default_member_fallback_enabled", False))
+      ):
+        continue
+
+      add_dependency(
+        getattr(ref, "referenced_dataset", None),
+        reason=EXECUTION_DEPENDENCY_REFERENCE_PARENT_READY,
+        reference_id=getattr(ref, "id", None),
+      )
 
   return tuple(sorted(
     dependencies,

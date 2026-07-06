@@ -226,16 +226,43 @@ Execution always runs **inside the target system**.
 
 ---
 
-## 🔧 10. Execution, Auto‑Provisioning & Warehouse Logging
+## 🔧 10. Controlled Reference Completion
 
-### 🧩 10.1 Execution Modes
+Controlled Reference Completion is rendered as deterministic load-time SQL for modeled rawcore references.
+
+The execution order is intentionally stable:
+
+```text
+1. Ensure the loaded dataset's own default member where applicable  
+2. Ensure referenced parent default members for enabled fallback references  
+3. Insert inferred parent members for complete missing parent keys where enabled  
+4. Map still-unresolved child reference keys to the parent default member where enabled
+```
+
+This order preserves the reference priority:
+
+```text
+real parent > inferred parent > default member > unresolved
+```
+
+Default Member Fallback is controlled by `default_member_fallback_enabled` on the modeled `TargetDatasetReference`. Enabling `inferred_members_enabled` automatically enables the fallback as a modeling default, but users can disable the fallback explicitly afterwards.
+
+Fallback updates do not create parent rows. They update child reference keys only when no matching parent row exists after real and inferred parents have been considered. Null, empty or blank values in any modeled reference component make a composite reference incomplete for fallback purposes unless the calculated child reference key still matches an existing parent row. Business-invalid but technically complete values are not interpreted by this runtime feature; they remain candidates for inferred members when enabled or for separate quality checks.
+
+Controlled reference completion also contributes runtime execution dependencies. When inferred members or Default Member Fallback are enabled for a reference, the referenced parent dataset is scheduled before the child dataset. This strengthens execution order without turning the reference into semantic lineage.
+
+---
+
+## 🔧 11. Execution, Auto‑Provisioning & Warehouse Logging
+
+### 🧩 11.1 Execution Modes
 
 `elevata_load` supports:
 
 - **Dry‑run**: render SQL without executing it  
 - **Execute** (`--execute`): render and execute SQL in the target warehouse
 
-### 🧩 10.2 Layer-aware execution (RAW = ingestion)
+### 🧩 11.2 Layer-aware execution (RAW = ingestion)
 
 `elevata_load --execute` is intentionally **layer-aware**:
 
@@ -268,7 +295,7 @@ Regardless of source type, RAW ingestion is always executed as **Full Replace**:
 - Truncate  
 - Insert
 
-### 🧩 10.3 Auto‑Provisioning
+### 🧩 11.3 Auto‑Provisioning
 
 When enabled, execution automatically provisions:
 
@@ -278,7 +305,7 @@ When enabled, execution automatically provisions:
 
 All DDL is idempotent.
 
-### 🧩 10.4 Warehouse‑level Load Run Log
+### 🧩 11.4 Warehouse‑level Load Run Log
 
 Each executed load writes a row into `meta.load_run_log`, capturing:
 
@@ -290,7 +317,7 @@ Each executed load writes a row into `meta.load_run_log`, capturing:
 
 This enables warehouse‑native observability and auditing.
 
-### 🧩 10.5 Schema Evolution (MigrationPlan-driven)
+### 🧩 11.5 Schema Evolution (MigrationPlan-driven)
 
 Before executing generated DML, elevata applies deterministic **schema evolution steps** that align physical target tables with metadata-defined schemas:
 
@@ -308,19 +335,19 @@ Table creation remains the responsibility of the load runner via `ensure_target_
 
 ---
 
-## 🔧 11. Load Observability & Debugging
+## 🔧 12. Load Observability & Debugging
 
 Load runs expose structured summaries, batch grouping, and CLI‑level logging to support debugging and monitoring.
 
 ---
 
-## 🔧 12. CLI Usage
+## 🔧 13. CLI Usage
 
 The `elevata_load` command supports preview, debugging, batch execution, and warehouse execution.
 
 ---
 
-## 🔧 13. Execute Mode
+## 🔧 14. Execute Mode
 
 The `--execute` flag enables direct execution of load SQL in the target warehouse via dialect‑specific execution engines.
 

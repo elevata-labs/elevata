@@ -24,7 +24,7 @@ from __future__ import annotations
 
 import os
 import time
-from typing import Any
+from typing import Any, Sequence
 from datetime import date, datetime, time as dt_time, timezone
 import time as time_module
 from decimal import Decimal
@@ -595,6 +595,25 @@ class BigQueryDialect(SqlDialect):
   # ---------------------------------------------------------------------------
   # 5. DML / load SQL primitives
   # ---------------------------------------------------------------------------
+  def render_single_row_select(
+    self,
+    *,
+    select_exprs: Sequence[str],
+    where_sql: str | None = None,
+  ) -> str:
+    """
+    Render a single-row SELECT for BigQuery.
+
+    BigQuery accepts SELECT without FROM, but not SELECT without FROM followed
+    by a WHERE clause. When an idempotency predicate is needed, use a synthetic
+    one-row subquery as the FROM source.
+    """
+    select_sql = "SELECT\n  " + ",\n  ".join(select_exprs)
+    if where_sql:
+      select_sql += "\nFROM (SELECT 1) AS _elevata_single_row\nWHERE " + where_sql
+    return select_sql
+
+
   def render_merge_statement(
     self,
     *,

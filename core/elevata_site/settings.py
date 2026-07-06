@@ -43,7 +43,7 @@ from utils.db import build_metadata_database_url
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(find_dotenv(filename=".env", raise_error_if_not_found=False))
 
-ELEVATA_VERSION = "2.11.0"
+ELEVATA_VERSION = "2.12.0"
 
 
 def _resolve_runtime_path_env(var_name: str, default: str) -> str:
@@ -489,6 +489,12 @@ ELEVATA_CRUD = {
           "label_on": "Infer enabled",
           "label_off": "Infer enabled",
           "title": "Inferred members enabled",
+        },
+        {
+          "field": "default_member_fallback_enabled",
+          "label_on": "Default Fallback enabled",
+          "label_off": "Default Fallback enabled",
+          "title": "Default member fallback enabled",
         },
       ],
     },

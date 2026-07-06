@@ -679,6 +679,25 @@ class SqlDialect(ABC):
       cols = ", ".join(self.render_identifier(c) for c in target_columns)
       return f"INSERT INTO {table} ({cols})\n{select_sql}"
     return f"INSERT INTO {table}\n{select_sql}"
+
+
+  def render_single_row_select(
+    self,
+    *,
+    select_exprs: Sequence[str],
+    where_sql: str | None = None,
+  ) -> str:
+    """
+    Render a SELECT that produces one synthetic row.
+
+    This is used for idempotent artificial-member INSERT statements where the
+    projected values are constants or runtime placeholders and no physical
+    source table is needed.
+    """
+    select_sql = "SELECT\n  " + ",\n  ".join(select_exprs)
+    if where_sql:
+      select_sql += "\nWHERE " + where_sql
+    return select_sql
   
 
   def render_insert_values_statement(
@@ -882,6 +901,82 @@ class SqlDialect(ABC):
 
     sql = "\n".join([p for p in parts if p is not None]).rstrip()
     return sql + "\n"
+
+
+  def render_reference_component_populated_predicate(
+    self,
+    *,
+    table_alias: str,
+    column_name: str,
+    datatype: str | None = None,
+  ) -> str:
+    """
+    Render a predicate that checks whether a child reference component is
+    usable for inferred-member creation.
+
+    NULL values are never usable. For text-like columns, empty or blank values
+    are treated as incomplete reference components as well.
+    """
+    alias_sql = self.render_identifier(table_alias)
+    column_sql = self.render_identifier(column_name)
+    ref_sql = f"{alias_sql}.{column_sql}"
+
+    dtype = str(datatype or "").strip().upper()
+    text_like = dtype in {
+      "CHAR",
+      "NCHAR",
+      "NVARCHAR",
+      "STRING",
+      "TEXT",
+      "VARCHAR",
+    }
+
+    if text_like:
+      return (
+        f"{ref_sql} IS NOT NULL "
+        f"AND TRIM({ref_sql}) <> {self.render_literal('')}"
+      )
+
+    return f"{ref_sql} IS NOT NULL"
+
+
+  def render_default_member_fallback_statement(
+    self,
+    *,
+    child_schema: str | None,
+    child_table: str,
+    parent_schema: str | None,
+    parent_table: str,
+    child_reference_key_column: str,
+    parent_surrogate_key_column: str,
+    default_member_key_sql: str,
+    child_alias: str = "c",
+    parent_alias: str = "p",
+  ) -> str:
+    """
+    Render an idempotent update that maps unresolved child reference keys to
+    the referenced dataset's default member key.
+
+    The semantic service decides whether a modeled reference allows fallback.
+    The dialect owns the final DML shape.
+    """
+    child_table_sql = self.render_table_identifier(child_schema, child_table)
+    parent_table_sql = self.render_table_identifier(parent_schema, parent_table)
+
+    child_alias_sql = self.render_identifier(child_alias)
+    parent_alias_sql = self.render_identifier(parent_alias)
+    child_key_sql = self.render_identifier(child_reference_key_column)
+    parent_key_sql = self.render_identifier(parent_surrogate_key_column)
+
+    return "\n".join([
+      f"UPDATE {child_table_sql} AS {child_alias_sql}",
+      f"SET {child_key_sql} = {default_member_key_sql}",
+      "WHERE NOT EXISTS (",
+      "  SELECT 1",
+      f"  FROM {parent_table_sql} AS {parent_alias_sql}",
+      f"  WHERE {parent_alias_sql}.{parent_key_sql} = {child_alias_sql}.{child_key_sql}",
+      ")",
+    ])
 
 
   def render_reference_integrity_missing_examples_statement(

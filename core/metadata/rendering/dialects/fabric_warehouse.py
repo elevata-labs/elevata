@@ -717,6 +717,39 @@ CREATE TABLE {target} (
     )
 
 
+  def render_default_member_fallback_statement(
+    self,
+    *,
+    child_schema: str | None,
+    child_table: str,
+    parent_schema: str | None,
+    parent_table: str,
+    child_reference_key_column: str,
+    parent_surrogate_key_column: str,
+    default_member_key_sql: str,
+    child_alias: str = "c",
+    parent_alias: str = "p",
+  ) -> str:
+    child_table_sql = self.render_table_identifier(child_schema, child_table)
+    parent_table_sql = self.render_table_identifier(parent_schema, parent_table)
+
+    child_alias_sql = self.render_identifier(child_alias)
+    parent_alias_sql = self.render_identifier(parent_alias)
+    child_key_sql = self.render_identifier(child_reference_key_column)
+    parent_key_sql = self.render_identifier(parent_surrogate_key_column)
+
+    return "\n".join([
+      f"UPDATE {child_alias_sql}",
+      f"SET {child_key_sql} = {default_member_key_sql}",
+      f"FROM {child_table_sql} AS {child_alias_sql}",
+      "WHERE NOT EXISTS (",
+      "  SELECT 1",
+      f"  FROM {parent_table_sql} AS {parent_alias_sql}",
+      f"  WHERE {parent_alias_sql}.{parent_key_sql} = {child_alias_sql}.{child_key_sql}",
+      ");",
+    ])
+  
+
   def render_reference_integrity_missing_examples_statement(
     self,
     *,

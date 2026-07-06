@@ -668,6 +668,22 @@ Contact: <https://github.com/elevata-labs/elevata>.
             {% endif %}
           </div>
         </div>
+
+        <div class="alert alert-light border small mt-3 mb-0">
+          <div class="fw-semibold mb-1">Controlled reference readiness</div>
+          {% if execution_preview.dependency_mode == "target_only" %}
+            Target-only execution skips upstream execution dependencies. If the selected
+            dataset uses Controlled Reference Members or Default Member Fallback,
+            referenced parent datasets are not loaded automatically. Use dependency
+            execution when parent readiness should be enforced before child reference
+            completion runs.
+          {% else %}
+            Dependency execution includes lineage inputs and runtime execution
+            dependencies. For controlled references, referenced parent datasets may
+            appear as upstreams so parent data and default members are available
+            before child reference completion runs.
+          {% endif %}
+        </div>
       {% else %}
         <div class="alert alert-secondary small mb-0">
           Execution preview is available after a valid Architecture Control scope is selected.

@@ -123,12 +123,13 @@ Incremental scoping and ingestion behavior are derived from SourceDataset metada
 - Incremental merge: upsert logic based on natural key lineage  
 - Delete detection: anti-join removal of missing rows  
 - Controlled reference members for explicitly enabled rawcore references  
+- Reference-parent readiness dependencies for controlled reference completion
 
 ### 🧩 2.7.1 Controlled Reference Members
 
 Controlled Reference Members are runtime safeguards for modeled rawcore references.
 
-Default members provide stable artificial fallback rows in reference datasets. Inferred members can be created during child dataset loads when a modeled TargetDatasetReference explicitly enables inferred members and the child contains non-null reference values without a matching parent row.
+Default members provide stable artificial fallback rows in reference datasets. Inferred members can be created during child dataset loads when a modeled TargetDatasetReference explicitly enables inferred members and the child contains complete reference values without a matching parent row. Default Member Fallback can map still-unresolved child reference keys to the referenced dataset's default member when `default_member_fallback_enabled` is enabled.
 
 This behavior is intentionally execution-owned:
 
@@ -140,7 +141,7 @@ Controlled Reference Members
   = deterministic load-time handling
 ```
 
-Inferred members are child-load-driven. Loading the parent dataset does not create inferred members, but a later parent full load can replace an inferred row with real source-backed parent data.
+Inferred members are child-load-driven. Loading the parent dataset does not create inferred members, but a later parent full load can replace an inferred row with real source-backed parent data. Default Member Fallback runs after inferred-member creation, so real and inferred parent rows win before unresolved child reference keys fall back to the default member. When controlled reference completion is enabled, the referenced parent dataset is added as an execution dependency before the child load; this is a scheduling concern, not semantic lineage.
 
 ### 🧩 2.7.2 Schema Evolution (MigrationPlan + Applier)
 
@@ -198,7 +199,7 @@ Catalog Insights provide read-only signals for ownership gaps, metadata health f
 
 Catalog Maps provide a read-only architecture lens across populated schemas and direct TargetDataset dependencies. Layer cards, layer flow overview, dependency matrix and transition examples make architecture structure visible without introducing graph editing, execution controls or metadata mutation.
 
-Reference Integrity Review provides a read-only, on-demand check for modeled outgoing references in Catalog Detail. It checks loaded target data for missing parent examples and keeps SQL rendering dialect-owned. It does not execute loads, mutate metadata, persist review history, or create inferred members. Controlled Reference Members are created only by load execution when the modeled reference explicitly allows inferred members.
+Reference Integrity Review provides a read-only, on-demand check for modeled outgoing references in Catalog Detail. It checks loaded target data for missing parent examples and keeps SQL rendering dialect-owned. It does not execute loads, mutate metadata, persist review history, create inferred members, or apply Default Member Fallback. Controlled Reference Members are handled only by load execution when the modeled reference explicitly allows the relevant behavior.
 
 ### 🧩 2.7.4 Architecture Control
 

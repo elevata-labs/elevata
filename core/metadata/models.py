@@ -2275,6 +2275,16 @@ class TargetDatasetReference(AuditFields):
       "loads."
     )
   )
+  default_member_fallback_enabled = models.BooleanField(default=False,
+    help_text=(
+      "If enabled, controlled load execution may map unresolved child reference "
+      "keys to the referenced dataset's default member. This keeps modeled "
+      "references joinable for null, empty, incomplete, or otherwise unresolved "
+      "child reference values. When inferred members are enabled, this fallback "
+      "is automatically enabled as a modeling default, but it can be disabled "
+      "explicitly afterwards."
+    )
+  )
 
   class Meta:
     db_table = "target_dataset_reference"
@@ -2492,6 +2502,34 @@ class TargetDatasetReference(AuditFields):
     return fk_col
 
   def save(self, *args, **kwargs):
+    inferred_was_enabled = False
+
+    if self.pk:
+      try:
+        inferred_was_enabled = bool(
+          type(self).objects
+          .filter(pk=self.pk)
+          .values_list("inferred_members_enabled", flat=True)
+          .first()
+        )
+      except Exception:
+        inferred_was_enabled = False
+
+    should_enable_default_fallback = (
+      bool(getattr(self, "inferred_members_enabled", False))
+      and not inferred_was_enabled
+      and not bool(getattr(self, "default_member_fallback_enabled", False))
+    )
+
+    if should_enable_default_fallback:
+      self.default_member_fallback_enabled = True
+
+      update_fields = kwargs.get("update_fields")
+      if update_fields is not None:
+        kwargs["update_fields"] = set(update_fields) | {
+          "default_member_fallback_enabled",
+        }
+
     super().save(*args, **kwargs)
     # Try to sync FK column whenever the reference itself changes.
     # This will only create/update the FK if the BK components are complete.
