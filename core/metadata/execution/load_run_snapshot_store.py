@@ -36,6 +36,51 @@ LOAD_RUN_SNAPSHOT_COLUMNS = list(LOAD_RUN_SNAPSHOT_REGISTRY.keys())
 _DATABRICKS_DUPLICATE_COL_RE = re.compile(r"(FIELD_ALREADY_EXISTS|SQLSTATE:\s*42710)", re.IGNORECASE)
 
 
+def _dialect_key(dialect) -> str:
+  return str(
+    getattr(dialect, "DIALECT_NAME", None)
+    or getattr(dialect.__class__, "DIALECT_NAME", None)
+    or dialect.__class__.__name__
+  )
+
+
+def ensure_load_run_snapshot_table_once(
+  *,
+  engine,
+  dialect,
+  meta_schema: str,
+  auto_provision: bool,
+  ensure_state: set[tuple[str, str]] | None = None,
+) -> None:
+  """
+  Ensure meta.load_run_snapshot at most once per batch/dialect/schema context.
+
+  The underlying ensure function remains best-effort and dialect-owned for SQL
+  rendering. This helper only removes redundant runtime calls across REST
+  cursor-state handling and execution snapshot persistence.
+  """
+  if ensure_state is None:
+    ensure_load_run_snapshot_table(
+      engine=engine,
+      dialect=dialect,
+      meta_schema=meta_schema,
+      auto_provision=auto_provision,
+    )
+    return
+
+  key = (_dialect_key(dialect), str(meta_schema))
+  if key in ensure_state:
+    return
+
+  ensure_load_run_snapshot_table(
+    engine=engine,
+    dialect=dialect,
+    meta_schema=meta_schema,
+    auto_provision=auto_provision,
+  )
+  ensure_state.add(key)
+
+
 def build_load_run_snapshot_row(
   *,
   batch_run_id: str,

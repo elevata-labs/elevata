@@ -49,7 +49,7 @@ From these definitions, elevata derives deterministic logical plans, renders dia
 Schema evolution, incremental loads, historization, approvals, and execution evidence are planned, validated, and applied deterministically.
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/elevata-labs/elevata/main/docs/elevata_v2_12_0.png" alt="elevata UI preview" width="900"/>
+  <img src="https://raw.githubusercontent.com/elevata-labs/elevata/main/docs/elevata_v2_13_0.png" alt="elevata UI preview" width="900"/>
   <br/>
   <em>Architecture Runtime UI for discovering, controlling, modeling, and executing metadata-defined data architecture</em>
 </p>

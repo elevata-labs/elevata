@@ -79,6 +79,7 @@ from metadata.execution.snapshot import (
 from metadata.execution.load_run_snapshot_store import (
   build_load_run_snapshot_row,
   ensure_load_run_snapshot_table,
+  ensure_load_run_snapshot_table_once,
   render_select_load_run_snapshot_json,
   fetch_one_value,
 )
@@ -192,6 +193,89 @@ ALLOW_ORPHAN_MANAGED_SCHEMA_DEPENDENT_VIEW_DROP = _get_bool_env(
 )
 META_SCHEMA_NAME = os.getenv("ELEVATA_META_SCHEMA_NAME", "meta")
 
+
+def _ensure_load_run_log_table_for_batch(
+  *,
+  engine,
+  dialect,
+  meta_schema: str,
+  auto_provision: bool,
+  ensure_state: set[tuple[str, str]] | None = None,
+) -> None:
+  """
+  Ensure meta.load_run_log at most once per batch/dialect/schema context.
+
+  The underlying ensure function is intentionally best-effort and dialect-owned
+  for SQL rendering. This wrapper only removes redundant orchestration calls.
+  """
+  if ensure_state is None:
+    ensure_load_run_log_table(
+      engine=engine,
+      dialect=dialect,
+      meta_schema=meta_schema,
+      auto_provision=auto_provision,
+    )
+    return
+
+  dialect_key = str(
+    getattr(dialect, "DIALECT_NAME", None)
+    or getattr(dialect.__class__, "DIALECT_NAME", None)
+    or dialect.__class__.__name__
+  )
+  key = (dialect_key, str(meta_schema))
+  if key in ensure_state:
+    return
+
+  ensure_load_run_log_table(
+    engine=engine,
+    dialect=dialect,
+    meta_schema=meta_schema,
+    auto_provision=auto_provision,
+  )
+  ensure_state.add(key)
+
+
+def _ensure_target_schema_for_batch(
+  *,
+  engine,
+  dialect,
+  schema_name: str,
+  auto_provision: bool,
+  ensure_state: set[tuple[str, str]] | None = None,
+) -> None:
+  """
+  Ensure a target schema at most once per batch/dialect/schema context.
+
+  Schema creation remains dialect-rendered and idempotent. This helper only
+  prevents repeated orchestration calls during one load run.
+  """
+  if ensure_state is None:
+    ensure_target_schema(
+      engine=engine,
+      dialect=dialect,
+      schema_name=schema_name,
+      auto_provision=auto_provision,
+    )
+    return
+
+  dialect_key = str(
+    getattr(dialect, "DIALECT_NAME", None)
+    or getattr(dialect.__class__, "DIALECT_NAME", None)
+    or dialect.__class__.__name__
+  )
+  key = (dialect_key, str(schema_name))
+  if key in ensure_state:
+    return
+
+  ensure_target_schema(
+    engine=engine,
+    dialect=dialect,
+    schema_name=schema_name,
+    auto_provision=auto_provision,
+  )
+  ensure_state.add(key)
+
+
 def _target_table_exists_for_ensure(
   *,
   dialect,
@@ -217,6 +301,31 @@ def _target_table_exists_for_ensure(
 
   if not schema_name or not table_name:
     return None
+  
+  exists = getattr(dialect, "table_exists", None)
+  if callable(exists):
+    try:
+      value = exists(
+        schema_name=schema_name,
+        table_name=table_name,
+        introspection_engine=None,
+        exec_engine=exec_engine,
+      )
+      if value is not None:
+        return bool(value)
+    except TypeError:
+      try:
+        value = exists(
+          schema=schema_name,
+          table=table_name,
+          exec_engine=exec_engine,
+        )
+        if value is not None:
+          return bool(value)
+      except TypeError:
+        pass
+    except Exception:
+      pass
 
   try:
     info = inspect(
@@ -1106,6 +1215,10 @@ def run_single_target_dataset(
   allow_type_alter: bool = False,
   migration_plan=None,
   execution_dataset_keys: set[str] | None = None,
+  meta_log_ensure_state: set[tuple[str, str]] | None = None,
+  schema_ensure_state: set[tuple[str, str]] | None = None,
+  load_run_snapshot_ensure_state: set[tuple[str, str]] | None = None,
+  materialization_schema_ensure_sql_state: set[str] | None = None,
 ) -> dict[str, object]:
   """
   Execute or render exactly one dataset.
@@ -1161,6 +1274,10 @@ def run_single_target_dataset(
       chunk_size=chunk_size,
       batch_run_id=batch_run_id,
       load_run_id=load_run_id,
+      target_system_engine=target_system_engine,
+      meta_log_ensure_state=meta_log_ensure_state,
+      schema_ensure_state=schema_ensure_state,
+      load_run_snapshot_ensure_state=load_run_snapshot_ensure_state,
     )
 
     if not no_print:
@@ -1442,7 +1559,13 @@ def run_single_target_dataset(
             f"for {dataset_key}: {', '.join(items)}{more}"
           ))
 
-      apply_materialization_plan(plan=plan, exec_engine=target_system_engine)
+      apply_kwargs = {
+        "plan": plan,
+        "exec_engine": target_system_engine,
+      }
+      if materialization_schema_ensure_sql_state is not None:
+        apply_kwargs["ensure_schema_sql_state"] = materialization_schema_ensure_sql_state
+      apply_materialization_plan(**apply_kwargs)
       # Treat "materialization provisioned table" as: any step that touches the table itself.
       # ENSURE_SCHEMA alone does NOT provision the table.
       did_materialization_provision = _plan_did_provision(plan)
@@ -1562,7 +1685,13 @@ def run_single_target_dataset(
                 stdout.write(style.WARNING(f"-- Hist materialization step: {s.op}: {s.sql}"))
 
             # Always apply hist sync (best-effort), regardless of no_type_changes.
-            apply_materialization_plan(plan=hist_plan, exec_engine=target_system_engine)
+            hist_apply_kwargs = {
+              "plan": hist_plan,
+              "exec_engine": target_system_engine,
+            }
+            if materialization_schema_ensure_sql_state is not None:
+              hist_apply_kwargs["ensure_schema_sql_state"] = materialization_schema_ensure_sql_state
+            apply_materialization_plan(**hist_apply_kwargs)
 
             # After migration-driven hist sync, the companion table must match
             # active metadata before the base dataset load can safely reference it.
@@ -1661,11 +1790,12 @@ def run_single_target_dataset(
     raise CommandError("Missing execution engine in execute mode.")
 
   # 2) Execute SQL in target system
-  ensure_target_schema(
+  _ensure_target_schema_for_batch(
     engine=target_system_engine,
     dialect=dialect,
     schema_name=td.target_schema.schema_name,
     auto_provision=AUTO_PROVISION_SCHEMAS,
+    ensure_state=schema_ensure_state,
   )
 
   if mat in ("table", "incremental") or is_hist:
@@ -1688,11 +1818,12 @@ def run_single_target_dataset(
     # no table provisioning for views
     pass
 
-  ensure_load_run_log_table(
+  _ensure_load_run_log_table_for_batch(
     engine=target_system_engine,
     dialect=dialect,
     meta_schema=META_SCHEMA_NAME,
     auto_provision=AUTO_PROVISION_META_LOG,
+    ensure_state=meta_log_ensure_state,
   )
 
   # Guardrail: warn for stage that is fed directly from sources (no RAW)
@@ -1927,6 +2058,10 @@ def execute_raw_via_ingestion(
   chunk_size=5000,
   batch_run_id=None,
   load_run_id=None,
+  target_system_engine=None,
+  meta_log_ensure_state: set[tuple[str, str]] | None = None,
+  schema_ensure_state: set[tuple[str, str]] | None = None,
+  load_run_snapshot_ensure_state: set[tuple[str, str]] | None = None,
 ):
   """
   Execute semantics for RAW: run ingestion instead of load-SQL.
@@ -1968,7 +2103,12 @@ def execute_raw_via_ingestion(
     profile=profile,
     batch_run_id=batch_run_id,
     load_run_id=load_run_id,
+    meta_schema=META_SCHEMA_NAME,
     chunk_size=chunk_size,
+    target_engine=target_system_engine,
+    meta_log_ensure_state=meta_log_ensure_state,
+    schema_ensure_state=schema_ensure_state,
+    load_run_snapshot_ensure_state=load_run_snapshot_ensure_state,
   )
 
 
@@ -2506,6 +2646,11 @@ class Command(BaseCommand):
       )
 
       # 8) Execute datasets in order and collect summary
+      meta_log_ensure_state: set[tuple[str, str]] = set()
+      schema_ensure_state: set[tuple[str, str]] = set()
+      load_run_snapshot_ensure_state: set[tuple[str, str]] = set()
+      materialization_schema_ensure_sql_state: set[str] = set()
+
       def _run_dataset_fn(*, target_dataset, batch_run_id, load_run_id, load_plan_override, attempt_no):
 
         # Predictability guard: detect metadata/contract drift after plan creation.
@@ -2544,6 +2689,10 @@ class Command(BaseCommand):
           allow_type_alter=allow_type_alter,
           migration_plan=migration_plan,
           execution_dataset_keys=execution_dataset_keys,
+          meta_log_ensure_state=meta_log_ensure_state,
+          schema_ensure_state=schema_ensure_state,
+          load_run_snapshot_ensure_state=load_run_snapshot_ensure_state,
+          materialization_schema_ensure_sql_state=materialization_schema_ensure_sql_state,
         )
  
       # --- Architecture State (best effort, scope-aware) ---
@@ -3086,11 +3235,12 @@ class Command(BaseCommand):
       # Persist snapshot to meta.load_run_snapshot (best-effort)
       if execute and engine is not None:
         try:
-          ensure_load_run_snapshot_table(
+          ensure_load_run_snapshot_table_once(
             engine=engine,
             dialect=dialect,
             meta_schema=META_SCHEMA_NAME,
             auto_provision=AUTO_PROVISION_META_LOG,
+            ensure_state=load_run_snapshot_ensure_state,
           )
 
           snapshot_json = render_execution_snapshot_json(snapshot)
@@ -3176,11 +3326,12 @@ class Command(BaseCommand):
       # Best-effort: must never block the load runner.
       if execute and engine is not None and hasattr(dialect, "render_insert_load_run_log"):
         try:
-          ensure_load_run_log_table(
+          _ensure_load_run_log_table_for_batch(
             engine=engine,
             dialect=dialect,
             meta_schema=META_SCHEMA_NAME,
             auto_provision=AUTO_PROVISION_META_LOG,
+            ensure_state=meta_log_ensure_state,
           )
 
           for r in results:

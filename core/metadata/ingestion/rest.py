@@ -34,6 +34,7 @@ from typing import Any
 from metadata.execution.load_run_snapshot_store import (
   build_load_run_snapshot_row,
   ensure_load_run_snapshot_table,
+  ensure_load_run_snapshot_table_once,
   fetch_one_value,
   render_select_latest_load_run_snapshot_json_by_root_key,
 )
@@ -113,6 +114,30 @@ def _extract_records(payload: Any, record_path: str | None) -> list[dict[str, An
   return []
 
 
+def _contains_cursor_placeholder(value: Any) -> bool:
+  """
+  Return True when a REST config value references the persisted cursor state.
+  """
+  if isinstance(value, str):
+    return "{{CURSOR}}" in value
+  if isinstance(value, dict):
+    return any(_contains_cursor_placeholder(v) for v in value.values())
+  if isinstance(value, (list, tuple, set)):
+    return any(_contains_cursor_placeholder(v) for v in value)
+  return False
+
+
+def _uses_persisted_cursor_state(*, query_tpl: dict, cursor_cfg: dict) -> bool:
+  """
+  Return whether REST ingestion should read/write cursor state snapshots.
+
+  Plain one-shot REST datasets do not need meta.load_run_snapshot access.
+  Persisted cursor state is only required when the dataset explicitly declares
+  cursor handling or references {{CURSOR}} in the request template.
+  """
+  return bool(cursor_cfg) or _contains_cursor_placeholder(query_tpl)
+
+
 def ingest_raw_rest(
   *,
   source_dataset,
@@ -125,6 +150,10 @@ def ingest_raw_rest(
   meta_schema: str = "meta",
   max_pages: int = 10_000,
   chunk_size: int = 10_000,
+  target_engine=None,
+  meta_log_ensure_state: set[tuple[str, str]] | None = None,
+  schema_ensure_state: set[tuple[str, str]] | None = None,
+  load_run_snapshot_ensure_state: set[tuple[str, str]] | None = None,
 ) -> dict[str, Any]:
   """
   REST ingestion (JSON array).
@@ -170,6 +199,10 @@ def ingest_raw_rest(
   record_path = str(cfg.get("record_path") or "").strip() or None
   query_tpl = dict(cfg.get("query") or {})
   cursor_cfg = dict(cfg.get("cursor") or {})
+  uses_cursor_state = _uses_persisted_cursor_state(
+    query_tpl=query_tpl,
+    cursor_cfg=cursor_cfg,
+  )
   cursor_type = str(cursor_cfg.get("type") or "page_token").strip().lower()
 
   sys_rest = rest_config_for_source_system(system_type=str(sys.type), short_name=str(sys.short_name))
@@ -192,26 +225,33 @@ def ingest_raw_rest(
 
   # Warehouse engine (target) for snapshot/log writes + RAW landing
   # Use dialect execution engine (works consistently across supported warehouses).
-  target_engine = dialect.get_execution_engine(target_system)
+  if target_engine is None:
+    target_engine = dialect.get_execution_engine(target_system)
 
-  # Ensure snapshot table exists (best-effort)
-  ensure_load_run_snapshot_table(engine=target_engine, dialect=dialect, meta_schema=meta_schema, auto_provision=True)
-
-  # Load last cursor (best-effort)
+  # Load persisted cursor state only when the REST dataset explicitly uses it.
+  # One-shot REST endpoints should not pay for meta.load_run_snapshot access.
   cursor_state: dict[str, Any] = {}
-  try:
-    sel = render_select_latest_load_run_snapshot_json_by_root_key(
-      dialect=dialect,
-      meta_schema=meta_schema,
-      root_dataset_key=root_key,
-    )
-    raw = fetch_one_value(target_engine, sel)
-    if raw:
-      cursor_state = json.loads(raw) if isinstance(raw, str) else {}
-  except Exception:
-    cursor_state = {}
+  if uses_cursor_state:
+    try:
+      ensure_load_run_snapshot_table_once(
+        engine=target_engine,
+        dialect=dialect,
+        meta_schema=meta_schema,
+        auto_provision=True,
+        ensure_state=load_run_snapshot_ensure_state,
+      )
+      sel = render_select_latest_load_run_snapshot_json_by_root_key(
+        dialect=dialect,
+        meta_schema=meta_schema,
+        root_dataset_key=root_key,
+      )
+      raw = fetch_one_value(target_engine, sel)
+      if raw:
+        cursor_state = json.loads(raw) if isinstance(raw, str) else {}
+    except Exception:
+      cursor_state = {}
 
-  next_cursor = cursor_state.get("cursor")
+  next_cursor = cursor_state.get("cursor") if uses_cursor_state else None
   pages = 0
   all_rows: list[dict[str, Any]] = []
   empty_pages = 0
@@ -276,25 +316,33 @@ def ingest_raw_rest(
     else:
       break
 
-  # Persist cursor state snapshot (best-effort)
-  try:
-    cursor_state_out = {"cursor": next_cursor, "updated_at": _utc_now().isoformat()}
-    row = build_load_run_snapshot_row(
-      batch_run_id=batch_run_id,
-      created_at=_utc_now(),
-      root_dataset_key=root_key,
-      is_execute=True,
-      continue_on_error=True,
-      max_retries=0,
-      had_error=False,
-      step_count=1,
-      snapshot_json=json.dumps(cursor_state_out),
-    )
-    sql = dialect.render_insert_load_run_snapshot(meta_schema=meta_schema, values=row)
-    if sql:
-      target_engine.execute(sql)
-  except Exception:
-    pass
+  # Persist cursor state snapshot (best-effort) only for cursor-enabled REST datasets.
+  if uses_cursor_state:
+    try:
+      ensure_load_run_snapshot_table_once(
+        engine=target_engine,
+        dialect=dialect,
+        meta_schema=meta_schema,
+        auto_provision=True,
+        ensure_state=load_run_snapshot_ensure_state,
+      )
+      cursor_state_out = {"cursor": next_cursor, "updated_at": _utc_now().isoformat()}
+      row = build_load_run_snapshot_row(
+        batch_run_id=batch_run_id,
+        created_at=_utc_now(),
+        root_dataset_key=root_key,
+        is_execute=True,
+        continue_on_error=True,
+        max_retries=0,
+        had_error=False,
+        step_count=1,
+        snapshot_json=json.dumps(cursor_state_out),
+      )
+      sql = dialect.render_insert_load_run_snapshot(meta_schema=meta_schema, values=row)
+      if sql:
+        target_engine.execute(sql)
+    except Exception:
+      pass
 
   # Land into RAW (transient landing zone)
   validate_row_count(len(all_rows), vcfg)
@@ -344,6 +392,8 @@ def ingest_raw_rest(
     chunk_size=chunk_size,
     source_dataset=source_dataset,
     strict=vcfg.strict,
+    meta_log_ensure_state=meta_log_ensure_state,
+    schema_ensure_state=schema_ensure_state,
   )
 
   return {

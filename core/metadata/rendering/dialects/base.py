@@ -1704,6 +1704,24 @@ class SqlDialect(ABC):
     return []
 
 
+  def table_exists(
+    self,
+    *,
+    schema_name: str,
+    table_name: str,
+    introspection_engine: Any = None,
+    exec_engine: Optional["BaseExecutionEngine"] = None,
+  ) -> bool | None:
+    """
+    Return whether a physical table exists when the dialect has a cheap path.
+
+    Default: unsupported. Callers should fall back to full introspection or
+    conservative provisioning behavior. Dialects may override this to avoid
+    expensive column-level introspection when only existence is needed.
+    """
+    return None
+
+
   def introspect_table(
     self,
     *,

@@ -12,6 +12,88 @@ This project adheres to [Semantic Versioning](https://semver.org/) and [Keep a C
 
 ---
 
+## [2.13.0] - 2026-07-07
+
+This release hardens **Databricks Full Execution** and reduces unnecessary runtime overhead in the load runner.
+
+The focus is controlled execution performance: fewer redundant remote calls, fewer repeated provisioning checks and a more efficient RAW ingestion path, while preserving deterministic load semantics across supported platforms.
+
+No metadata model changes or migrations are required.
+
+---
+
+### 🔄 Improved
+
+#### Databricks Full Execution Performance
+
+- Reused Databricks SQL execution connections across statements within a load run  
+- Reduced repeated `USE CATALOG` overhead by keeping the active execution connection open during the run  
+- Added a Databricks table-exists shortcut for target table provisioning  
+- Avoided full table introspection when `ensure_target_table` only needs to know whether the table already exists  
+- Reduced redundant `SHOW TABLES` / `DESCRIBE TABLE` calls in target provisioning paths where possible without weakening physical schema guards
+
+#### Load Runner Runtime Efficiency
+
+- Added batch-level schema ensure state to avoid repeated `CREATE SCHEMA IF NOT EXISTS` execution for the same schema during one run  
+- Added batch-level load-run-log ensure state to avoid repeated `meta.load_run_log` provisioning checks  
+- Reused runtime ensure state across SQL load and RAW ingestion paths  
+- Kept load-run-log event granularity unchanged: dataset-level and orchestration-level log rows are still written explicitly
+
+#### RAW Ingestion Runtime Path
+
+- Reused the active target execution engine in RAW ingestion where available  
+- Propagated runtime ensure state through relational, file and REST RAW ingestion paths  
+- Removed redundant RAW truncate/delete execution after successful `DROP TABLE` and `CREATE TABLE` rebuilds  
+- Kept RAW rebuild semantics unchanged: RAW landing tables are still rebuilt deterministically before loading  
+- Avoided REST cursor snapshot reads and writes when no cursor state is configured  
+- Kept REST cursor snapshots available for explicit cursor-based ingestion configurations
+
+---
+
+### 🔒 Governance & Determinism
+
+- Load SQL semantics remain unchanged  
+- SQL rendering remains dialect-owned  
+- Runtime code only coordinates execution state and provisioning scope  
+- Physical schema guards remain active  
+- Execution snapshots and load-run logs remain deterministic audit artifacts  
+- Reference Integrity Review and Controlled Reference Completion semantics remain unchanged
+
+---
+
+### 🧪 Quality & Stability
+
+- Verified Databricks `schema:raw` execution with significantly reduced runtime overhead  
+- Verified Databricks full controlled execution successfully after load runner hardening  
+- Verified `meta.load_run_log` completeness and plausibility after optimized runs  
+- Verified cross-platform controlled execution across supported platforms  
+- Added regression coverage for Databricks connection reuse  
+- Added regression coverage for batch-level schema and log ensure deduplication  
+- Added regression coverage for RAW ingestion runtime-state propagation  
+- Added regression coverage for REST cursor snapshot guarding  
+- Added regression coverage for RAW rebuild behavior without redundant truncate/delete
+
+---
+
+### 🛠️ Fixed
+
+- Fixed excessive Databricks connection churn during full execution  
+- Fixed repeated load-run-log provisioning during multi-dataset execution  
+- Fixed repeated schema provisioning calls across SQL and RAW ingestion paths  
+- Fixed redundant RAW `DELETE FROM` / truncate execution after table rebuild  
+- Fixed unnecessary REST cursor snapshot persistence for non-cursor REST ingestion  
+- Fixed compatibility gaps in ingestion unit tests caused by runtime-state optimization hooks
+
+---
+
+### ⬆️ Upgrade Notes
+
+- No metadata database migration is required.  
+- Existing metadata, references, controlled reference settings and execution artifacts remain compatible.  
+- Databricks users should see fewer SQL Warehouse queries during full execution and RAW ingestion runs.
+
+---
+
 ## [2.12.0] - 2026-07-06
 
 This release adds **Controlled Reference Completion**:  

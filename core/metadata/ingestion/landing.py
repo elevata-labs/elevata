@@ -28,7 +28,14 @@ from typing import Any
 
 from metadata.ingestion.json_path import extract_json_path
 from metadata.ingestion.normalization import normalize_param_value
-from metadata.materialization.logging import ensure_load_run_log_table, build_load_run_log_row
+from metadata.materialization.logging import (
+  build_load_run_log_row,
+  ensure_load_run_log_table,
+)
+from metadata.ingestion.runtime_state import (
+  ensure_load_run_log_table_once,
+  ensure_target_schema_once,
+)
 
 
 def _now_utc():
@@ -79,6 +86,8 @@ def land_raw_json_records(
   strict: bool = False,
   rebuild: bool = True,
   write_run_log: bool = True,
+  meta_log_ensure_state: set[tuple[str, str]] | None = None,
+  schema_ensure_state: set[tuple[str, str]] | None = None,
 ) -> dict[str, Any]:
   """
   Land JSON records into a RAW target dataset.
@@ -151,18 +160,25 @@ def land_raw_json_records(
 
   if rebuild:
     # Ensure log table exists
-    ensure_load_run_log_table(
+    ensure_load_run_log_table_once(
       engine=target_engine,
       dialect=target_dialect,
       meta_schema=meta_schema,
       auto_provision=True,
+      ensure_state=meta_log_ensure_state,
+      ensure_func=ensure_load_run_log_table,
     )
 
     # Ensure RAW schema/table exist
-    target_engine.execute(
-      target_dialect.render_create_schema_if_not_exists(td.target_schema.schema_name)
+    ensure_target_schema_once(
+      engine=target_engine,
+      dialect=target_dialect,
+      schema_name=td.target_schema.schema_name,
+      auto_provision=True,
+      ensure_state=schema_ensure_state,
     )
 
+    dropped_table = False
     if hasattr(target_dialect, "render_drop_table_if_exists"):
       is_raw = (getattr(getattr(td, "target_schema", None), "short_name", None) or "").lower() == "raw"
       drop_sql = target_dialect.render_drop_table_if_exists(
@@ -172,15 +188,19 @@ def land_raw_json_records(
       )
       if drop_sql:
         target_engine.execute(drop_sql)
+        dropped_table = True
 
     target_engine.execute(target_dialect.render_create_table_if_not_exists(td))
 
-    target_engine.execute(
-      target_dialect.render_truncate_table(
-        schema=td.target_schema.schema_name,
-        table=td.target_dataset_name,
+    # DROP + CREATE already leaves RAW empty. Keep TRUNCATE/DELETE only as a
+    # fallback for dialects/paths that cannot render a physical drop statement.
+    if not dropped_table:
+      target_engine.execute(
+        target_dialect.render_truncate_table(
+          schema=td.target_schema.schema_name,
+          table=td.target_dataset_name,
+        )
       )
-    )
 
   insert_sql = render_param_insert_sql(
     dialect=target_dialect,

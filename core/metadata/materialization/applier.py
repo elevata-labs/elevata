@@ -25,9 +25,17 @@ from __future__ import annotations
 from metadata.materialization.plan import MaterializationPlan
 
 
-def apply_materialization_plan(*, plan: MaterializationPlan, exec_engine) -> None:
+def apply_materialization_plan(
+  *,
+  plan: MaterializationPlan,
+  exec_engine,
+  ensure_schema_sql_state: set[str] | None = None,
+) -> None:
   """
   Apply safe steps from a materialization plan.
+
+  ensure_schema_sql_state can be provided by orchestration to suppress
+  repeated idempotent ENSURE_SCHEMA statements within one batch run.
   """
   if plan.is_blocked():
     # Caller should surface plan.blocking_errors nicely.
@@ -40,4 +48,17 @@ def apply_materialization_plan(*, plan: MaterializationPlan, exec_engine) -> Non
       continue
     if not step.sql:
       continue
-    exec_engine.execute(step.sql)
+
+    sql = str(step.sql).strip()
+    if not sql:
+      continue
+
+    if getattr(step, "op", None) == "ENSURE_SCHEMA" and ensure_schema_sql_state is not None:
+      key = " ".join(sql.rstrip(";").split()).lower()
+      if key in ensure_schema_sql_state:
+        continue
+      exec_engine.execute(sql)
+      ensure_schema_sql_state.add(key)
+      continue
+
+    exec_engine.execute(sql)

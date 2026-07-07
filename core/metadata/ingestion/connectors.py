@@ -438,7 +438,6 @@ def ingest_raw_for_source_dataset(
 
   # File-like sources: source_system.type is the file type (csv/json/jsonl/...)
   # (matches auto-import behavior in file_import.py).
-  # File-like sources: source_system.type is the file type (csv/json/jsonl/...)
   if st in ("file", "csv", "json", "jsonl", "ndjson", "parquet", "excel"):
     return ingest_raw_file(
       source_dataset=source_dataset,
@@ -462,5 +461,6 @@ def ingest_raw_for_source_dataset(
     profile=profile,
     batch_run_id=batch_run_id,
     load_run_id=load_run_id,
+    meta_schema=meta_schema,
     **kwargs,
   )

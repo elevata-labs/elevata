@@ -130,8 +130,72 @@ class DatabricksExecutionEngine(BaseExecutionEngine):
       raise ValueError(
         "Databricks system.security must contain server_hostname/hostname, http_path, access_token/token."
       )
-    
-    
+
+    # Keep one connector session for the lifetime of the execution engine.
+    # Databricks SQL startup and USE CATALOG are expensive compared to small
+    # DDL/DML statements, so per-statement connections make full executions
+    # unnecessarily chatty.
+    self._connection = None
+    self._cursor = None
+    self._catalog_applied = False
+     
+     
+  def _load_connector(self):
+    try:
+      from databricks import sql as dbsql
+      return dbsql
+    except Exception as exc:
+      raise ImportError(
+        "Missing dependency for Databricks execution. Install 'databricks-sql-connector'."
+      ) from exc
+
+
+  def _ensure_cursor(self):
+    if self._connection is None or self._cursor is None:
+      dbsql = self._load_connector()
+      self._connection = dbsql.connect(
+        server_hostname=self.server_hostname,
+        http_path=self.http_path,
+        access_token=self.access_token,
+      )
+      self._cursor = self._connection.cursor()
+      self._catalog_applied = False
+
+    # Unity Catalog: ensure correct catalog context once per connection.
+    # Do NOT set schema here; elevata switches schemas constantly.
+    if self.catalog and not self._catalog_applied:
+      self._cursor.execute(f"USE CATALOG {self.catalog}")
+      self._catalog_applied = True
+
+    return self._cursor
+
+
+  def close(self) -> None:
+    """
+    Close the reusable Databricks connector resources.
+
+    The load runner calls this at the end of a run. Closing is best-effort so
+    cleanup cannot mask the actual load outcome.
+    """
+    cursor = self._cursor
+    connection = self._connection
+    self._cursor = None
+    self._connection = None
+    self._catalog_applied = False
+
+    if cursor is not None:
+      try:
+        cursor.close()
+      except Exception:
+        pass
+
+    if connection is not None:
+      try:
+        connection.close()
+      except Exception:
+        pass
+
+
   def _sanitize_sql(self, sql: str) -> str:
     """
     Databricks SQL does not allow semicolons inside a multi-row VALUES list.
@@ -240,52 +304,31 @@ class DatabricksExecutionEngine(BaseExecutionEngine):
 
 
   def execute(self, sql: str) -> int | None:
-    try:
-      from databricks import sql as dbsql
-    except Exception as exc:
-      raise ImportError(
-        "Missing dependency for Databricks execution. Install 'databricks-sql-connector'."
-      ) from exc
+    cur = self._ensure_cursor()
 
-    with dbsql.connect(
-      server_hostname=self.server_hostname,
-      http_path=self.http_path,
-      access_token=self.access_token,
-    ) as conn:
-      with conn.cursor() as cur:
-        # Unity Catalog: ensure correct catalog context. Do NOT set schema (elevata switches schemas).
-        if self.catalog:
-          cur.execute(f"USE CATALOG {self.catalog}")
+    # Normalize Databricks-specific quirks (e.g. ';' inside multi-row VALUES lists)
+    sql = self._sanitize_sql(sql)
 
-        # Normalize Databricks-specific quirks (e.g. ';' inside multi-row VALUES lists)
-        sql = self._sanitize_sql(sql)
-
-        # Databricks connector executes one statement at a time: split scripts like "DELETE ...; MERGE ..."
-        statements = self._split_statements(sql)
-        last_rowcount = None
-        for stmt in statements:
-          try:
-            cur.execute(stmt)
-            try:
-              last_rowcount = cur.rowcount
-            except Exception:
-              last_rowcount = None
-          except Exception as exc:
-            # Best-effort preflight (e.g. column mapping enablement) must not block.
-            if self._is_ignorable_preflight_error(stmt, exc):
-              continue
-            raise
-        return last_rowcount        
+    # Databricks connector executes one statement at a time: split scripts like "DELETE ...; MERGE ..."
+    statements = self._split_statements(sql)
+    last_rowcount = None
+    for stmt in statements:
+      try:
+        cur.execute(stmt)
+        try:
+          last_rowcount = cur.rowcount
+        except Exception:
+          last_rowcount = None
+      except Exception as exc:
+        # Best-effort preflight (e.g. column mapping enablement) must not block.
+        if self._is_ignorable_preflight_error(stmt, exc):
+          continue
+        self.close()
+        raise
+    return last_rowcount        
 
 
   def execute_many(self, sql: str, params_seq) -> int | None:
-    try:
-      from databricks import sql as dbsql
-    except Exception as exc:
-      raise ImportError(
-        "Missing dependency for Databricks execution. Install 'databricks-sql-connector'."
-      ) from exc
-    
     # ------------------------------------------------------------------
     # Databricks optimization:
     # The SQL connector's executemany() often results in one INSERT per row.
@@ -328,46 +371,32 @@ class DatabricksExecutionEngine(BaseExecutionEngine):
         # Fallback to default behavior if rewrite fails for any reason.
         pass
 
-    with dbsql.connect(
-      server_hostname=self.server_hostname,
-      http_path=self.http_path,
-      access_token=self.access_token,
-    ) as conn:
-      with conn.cursor() as cur:
-        # Unity Catalog: ensure correct catalog context. Do NOT set schema (elevata switches schemas).
-        if self.catalog:
-          cur.execute(f"USE CATALOG {self.catalog}")
-        sql = self._sanitize_sql(sql)
-        if len(params_seq) == 1:
-          cur.execute(sql, params_seq[0])
-        else:
-          cur.executemany(sql, params_seq)
-        try:
-          return cur.rowcount
-        except Exception:
-          return None
+    cur = self._ensure_cursor()
+    sql = self._sanitize_sql(sql)
+    try:
+      if len(params_seq) == 1:
+        cur.execute(sql, params_seq[0])
+      else:
+        cur.executemany(sql, params_seq)
+      try:
+        return cur.rowcount
+      except Exception:
+        return None
+    except Exception:
+      self.close()
+      raise
 
 
   def fetch_all(self, sql: str) -> list[tuple]:
+    cur = self._ensure_cursor()
     try:
-      from databricks import sql as dbsql
-    except Exception as exc:
-      raise ImportError(
-        "Missing dependency for Databricks execution. Install 'databricks-sql-connector'."
-      ) from exc
+      cur.execute(sql)
+      rows = cur.fetchall()
+      return [tuple(r) for r in (rows or [])]
+    except Exception:
+      self.close()
+      raise
 
-    with dbsql.connect(
-      server_hostname=self.server_hostname,
-      http_path=self.http_path,
-      access_token=self.access_token,
-    ) as conn:
-      with conn.cursor() as cur:
-        # Unity Catalog: ensure correct catalog context (same as execute/execute_many).
-        if self.catalog:
-          cur.execute(f"USE CATALOG {self.catalog}")
-        cur.execute(sql)
-        rows = cur.fetchall()
-        return [tuple(r) for r in (rows or [])]
 
   def execute_scalar(self, sql: str):
     rows = self.fetch_all(sql)
@@ -915,6 +944,37 @@ class DatabricksDialect(SqlDialect):
   # ---------------------------------------------------------------------------
   # 7. Introspection hooks
   # ---------------------------------------------------------------------------
+  def table_exists(
+    self,
+    *,
+    schema_name: str,
+    table_name: str,
+    introspection_engine=None,
+    exec_engine=None,
+  ) -> bool | None:
+    """
+    Cheap Databricks / Unity Catalog table existence check.
+
+    This intentionally does not DESCRIBE the table because callers such as
+    ensure_target_table() only need to know whether CREATE TABLE can be skipped.
+    """
+    if introspection_engine is not None or exec_engine is None:
+      return None
+
+    fetch_all = getattr(exec_engine, "fetch_all", None)
+    if not callable(fetch_all):
+      return None
+
+    sch = self._normalize_uc_object_name(schema_name)
+    tbl = self._normalize_uc_object_name(table_name)
+
+    try:
+      rows = fetch_all(f"SHOW TABLES IN {sch} LIKE '{tbl}'")
+      return bool(rows)
+    except Exception:
+      return None
+
+
   def introspect_table(
     self,
     *,

@@ -42,8 +42,12 @@ from metadata.rendering.placeholders import (
   apply_delta_cutoff_placeholder,
 )
 from metadata.materialization.logging import (
-  ensure_load_run_log_table,
   build_load_run_log_row,
+  ensure_load_run_log_table,
+)
+from metadata.ingestion.runtime_state import (
+  ensure_load_run_log_table_once,
+  ensure_target_schema_once,
 )
 from metadata.ingestion.landing import render_param_insert_sql, land_raw_json_records
 from metadata.ingestion.normalization import (
@@ -286,7 +290,11 @@ def ingest_raw_relational(
   profile,
   batch_run_id: str,
   load_run_id: str,
+  meta_schema: str = META_SCHEMA,
   chunk_size: int = 5000,
+  target_engine=None,
+  meta_log_ensure_state: set[tuple[str, str]] | None = None,
+  schema_ensure_state: set[tuple[str, str]] | None = None,
   **kwargs,
 ) -> dict[str, object]:
   """
@@ -294,7 +302,8 @@ def ingest_raw_relational(
   With externally provided td/load_run_id/batch_run_id to keep orchestration stable.
   """
   target_dialect = dialect
-  target_engine = target_dialect.get_execution_engine(target_system)
+  if target_engine is None:
+    target_engine = target_dialect.get_execution_engine(target_system)
 
   source_sa_engine = engine_for_source_system(
     system_type=source_dataset.source_system.type,
@@ -408,17 +417,26 @@ def ingest_raw_relational(
 
   try:
     # Ensure meta logging table exists
-    ensure_load_run_log_table(
+    ensure_load_run_log_table_once(
       engine=target_engine,
       dialect=target_dialect,
-      meta_schema=META_SCHEMA,
+      meta_schema=meta_schema,
       auto_provision=True,
+      ensure_state=meta_log_ensure_state,
+      ensure_func=ensure_load_run_log_table,
     )
 
     # Ensure RAW schema/table exist
-    target_engine.execute(target_dialect.render_create_schema_if_not_exists(td.target_schema.schema_name))
+    ensure_target_schema_once(
+      engine=target_engine,
+      dialect=target_dialect,
+      schema_name=td.target_schema.schema_name,
+      auto_provision=True,
+      ensure_state=schema_ensure_state,
+    )
     # RAW is a landing area and expected to evolve with the source schema.
     # For full ingests we prefer DROP+CREATE to avoid stale schemas (missing new columns).
+    dropped_table = False
     if hasattr(target_dialect, "render_drop_table_if_exists"):
       is_raw = (getattr(getattr(td, "target_schema", None), "short_name", None) or "").lower() == "raw"
       drop_sql = target_dialect.render_drop_table_if_exists(
@@ -428,15 +446,18 @@ def ingest_raw_relational(
       )
       if drop_sql:
         target_engine.execute(drop_sql)
+        dropped_table = True
     target_engine.execute(target_dialect.render_create_table_if_not_exists(td))
 
-    # Truncate RAW table (RAW is always materialized as table)
-    target_engine.execute(
-      target_dialect.render_truncate_table(
-        schema=td.target_schema.schema_name,
-        table=td.target_dataset_name,
+    # DROP + CREATE already leaves RAW empty. Keep TRUNCATE/DELETE only as a
+    # fallback for dialects/paths that cannot render a physical drop statement.
+    if not dropped_table:
+      target_engine.execute(
+        target_dialect.render_truncate_table(
+          schema=td.target_schema.schema_name,
+          table=td.target_dataset_name,
+        )
       )
-    )
 
     # Stream source rows and insert into RAW in chunks
     with source_sa_engine.connect() as conn:
@@ -520,7 +541,7 @@ def ingest_raw_relational(
       status_reason=None,
       blocked_by=None,
     )
-    log_sql = target_dialect.render_insert_load_run_log(meta_schema=META_SCHEMA, values=values)
+    log_sql = target_dialect.render_insert_load_run_log(meta_schema=meta_schema, values=values)
     if log_sql:
       target_engine.execute(log_sql)
 
@@ -578,7 +599,7 @@ def ingest_raw_relational(
         status_reason=None,
         blocked_by=None,
       )
-      log_sql = target_dialect.render_insert_load_run_log(meta_schema=META_SCHEMA, values=values)
+      log_sql = target_dialect.render_insert_load_run_log(meta_schema=meta_schema, values=values)
       if log_sql:
         target_engine.execute(log_sql)
     except Exception:
@@ -600,6 +621,10 @@ def ingest_raw_file(
   meta_schema: str = "meta",
   chunk_size: int = 10_000,
   file_type: str | None = None,
+  target_engine=None,
+  meta_log_ensure_state: set[tuple[str, str]] | None = None,
+  schema_ensure_state: set[tuple[str, str]] | None = None,
+  **_runtime_state_kwargs,
 ):
   """
   File ingestion (JSON array / JSONL / CSV / Parquet).
@@ -623,7 +648,8 @@ def ingest_raw_file(
 
   # Use dialect-owned execution engine (consistent with relational ingestion).
   # This avoids relying on SQLAlchemy Engine semantics for landing.
-  target_engine = dialect.get_execution_engine(target_system)
+  if target_engine is None:
+    target_engine = dialect.get_execution_engine(target_system)
 
   rows_extracted = 0
   landing = None
@@ -637,11 +663,13 @@ def ingest_raw_file(
     started_at = datetime.datetime.now(datetime.timezone.utc)
 
     # Ensure log table exists once
-    ensure_load_run_log_table(
+    ensure_load_run_log_table_once(
       engine=target_engine,
       dialect=dialect,
       meta_schema=meta_schema,
       auto_provision=True,
+      ensure_state=meta_log_ensure_state,
+      ensure_func=ensure_load_run_log_table,
     )
 
     first = True
@@ -667,6 +695,8 @@ def ingest_raw_file(
         strict=False,
         rebuild=first,
         write_run_log=False,
+        meta_log_ensure_state=meta_log_ensure_state,
+        schema_ensure_state=schema_ensure_state,
       )
       rows_inserted_total += int((landing_part or {}).get("rows_inserted") or 0)
       landing = landing_part
@@ -779,6 +809,8 @@ def ingest_raw_file(
       chunk_size=chunk_size,
       source_dataset=source_dataset,
       strict=False,
+      meta_log_ensure_state=meta_log_ensure_state,
+      schema_ensure_state=schema_ensure_state,
     )
 
   return {

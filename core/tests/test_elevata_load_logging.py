@@ -26,6 +26,7 @@ import logging
 import pytest
 
 from metadata.management.commands.elevata_load import Command as ElevataLoadCommand
+import metadata.management.commands.elevata_load as elevata_load_mod
 from tests._dialect_test_mixin import DialectTestMixin
 
 
@@ -171,3 +172,200 @@ def test_elevata_load_execute_logs_without_raising(monkeypatch, caplog):
 
   assert len(start_records) == 1
   assert len(finish_records) == 1
+
+
+def test_meta_log_table_is_ensured_once_per_batch(monkeypatch):
+  calls = []
+
+  class DummyEngine:
+    pass
+
+  class DummyDialectForEnsure:
+    DIALECT_NAME = "databricks"
+
+  def fake_ensure_load_run_log_table(**kwargs):
+    calls.append(kwargs)
+
+  monkeypatch.setattr(
+    elevata_load_mod,
+    "ensure_load_run_log_table",
+    fake_ensure_load_run_log_table,
+  )
+
+  state: set[tuple[str, str]] = set()
+  for _ in range(3):
+    elevata_load_mod._ensure_load_run_log_table_for_batch(
+      engine=DummyEngine(),
+      dialect=DummyDialectForEnsure(),
+      meta_schema="meta",
+      auto_provision=True,
+      ensure_state=state,
+    )
+
+  assert len(calls) == 1
+  assert state == {("databricks", "meta")}
+
+
+def test_target_schema_is_ensured_once_per_batch(monkeypatch):
+  calls = []
+
+  class DummyEngine:
+    pass
+
+  class DummyDialectForEnsure:
+    DIALECT_NAME = "databricks"
+
+  def fake_ensure_target_schema(**kwargs):
+    calls.append(kwargs)
+
+  monkeypatch.setattr(
+    elevata_load_mod,
+    "ensure_target_schema",
+    fake_ensure_target_schema,
+  )
+
+  state: set[tuple[str, str]] = set()
+  for _ in range(3):
+    elevata_load_mod._ensure_target_schema_for_batch(
+      engine=DummyEngine(),
+      dialect=DummyDialectForEnsure(),
+      schema_name="rawcore",
+      auto_provision=True,
+      ensure_state=state,
+    )
+
+  assert len(calls) == 1
+  assert state == {("databricks", "rawcore")}
+
+
+def test_materialization_applier_skips_repeated_ensure_schema_statements():
+  from metadata.materialization.applier import apply_materialization_plan
+  from metadata.materialization.plan import MaterializationPlan, MaterializationStep
+
+  class DummyEngine:
+    def __init__(self):
+      self.executed = []
+
+    def execute(self, sql):
+      self.executed.append(sql)
+
+  plan = MaterializationPlan(
+    dataset_key="rawcore.rc_customer",
+    steps=[
+      MaterializationStep(
+        op="ENSURE_SCHEMA",
+        sql="CREATE SCHEMA IF NOT EXISTS rawcore;",
+        safe=True,
+        reason="ensure schema",
+      ),
+      MaterializationStep(
+        op="ENSURE_SCHEMA",
+        sql="CREATE SCHEMA IF NOT EXISTS rawcore;",
+        safe=True,
+        reason="ensure schema again",
+      ),
+      MaterializationStep(
+        op="CREATE_TABLE_IF_NOT_EXISTS",
+        sql="CREATE TABLE IF NOT EXISTS rawcore.rc_customer (id INT);",
+        safe=True,
+        reason="ensure table",
+      ),
+    ],
+    warnings=[],
+    blocking_errors=[],
+  )
+
+  engine = DummyEngine()
+  ensure_state: set[str] = set()
+
+  apply_materialization_plan(
+    plan=plan,
+    exec_engine=engine,
+    ensure_schema_sql_state=ensure_state,
+  )
+
+  assert engine.executed == [
+    "CREATE SCHEMA IF NOT EXISTS rawcore;",
+    "CREATE TABLE IF NOT EXISTS rawcore.rc_customer (id INT);",
+  ]
+  assert ensure_state == {"create schema if not exists rawcore"}
+
+
+def test_ensure_target_table_prefers_table_exists_hook():
+  calls = {"table_exists": 0, "introspect": 0, "ddl": 0, "execute": 0}
+
+  class DummyEngine:
+    def execute(self, _sql):
+      calls["execute"] += 1
+
+  class DummySchema:
+    short_name = "rawcore"
+    schema_name = "rawcore"
+
+  class DummyTD:
+    target_schema = DummySchema()
+    target_dataset_name = "rc_customer"
+
+  class DummyDialect:
+    def table_exists(self, **_kwargs):
+      calls["table_exists"] += 1
+      return True
+
+    def introspect_table(self, **_kwargs):
+      calls["introspect"] += 1
+      raise AssertionError("full introspection should not be used")
+
+    def render_create_table_if_not_exists(self, _td):
+      calls["ddl"] += 1
+      return "CREATE TABLE rawcore.rc_customer (id INT);"
+
+  elevata_load_mod.ensure_target_table(
+    engine=DummyEngine(),
+    dialect=DummyDialect(),
+    td=DummyTD(),
+    auto_provision=True,
+  )
+
+  assert calls == {
+    "table_exists": 1,
+    "introspect": 0,
+    "ddl": 0,
+    "execute": 0,
+  }
+
+
+def test_execute_raw_via_ingestion_passes_runtime_state(monkeypatch):
+  import metadata.management.commands.elevata_load as mod
+
+  td = DummyTD("raw_customer", "raw")
+  source_dataset = object()
+  target_engine = object()
+  meta_state: set[tuple[str, str]] = set()
+  schema_state: set[tuple[str, str]] = set()
+  captured = {}
+
+  monkeypatch.setattr(mod, "resolve_single_source_dataset_for_raw", lambda _td: source_dataset)
+  monkeypatch.setattr(mod, "resolve_ingest_mode", lambda _ds: "native")
+  monkeypatch.setattr(mod, "get_active_dialect", lambda _name: DummyDialect())
+
+  def fake_ingest_raw_for_source_dataset(**kwargs):
+    captured.update(kwargs)
+    return {"status": "success"}
+
+  monkeypatch.setattr(mod, "ingest_raw_for_source_dataset", fake_ingest_raw_for_source_dataset)
+
+  mod.execute_raw_via_ingestion(
+    target_dataset=td,
+    target_system=DummySystem(short_name="dwh", type_="databricks"),
+    profile=DummyProfile(name="dev"),
+    batch_run_id="batch",
+    load_run_id="load",
+    target_system_engine=target_engine,
+    meta_log_ensure_state=meta_state,
+    schema_ensure_state=schema_state,
+  )
+
+  assert captured["target_engine"] is target_engine
+  assert captured["meta_log_ensure_state"] is meta_state
+  assert captured["schema_ensure_state"] is schema_state
+  assert captured["meta_schema"] == "meta"
