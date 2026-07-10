@@ -83,7 +83,7 @@ When the package is imported, dialect classes are discovered and registered into
 REGISTRY = {
     "bigquery": BigQueryDialect,
     "databricks": DatabricksDialect,
-    "duckdb": DuckDbDialect,
+    "duckdb": DuckDBDialect,
     "fabric_warehouse": FabricWarehouseDialect,
     "mssql": MssqlDialect,
     "postgres": PostgresDialect,

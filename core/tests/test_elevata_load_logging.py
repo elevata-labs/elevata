@@ -369,3 +369,261 @@ def test_execute_raw_via_ingestion_passes_runtime_state(monkeypatch):
   assert captured["meta_log_ensure_state"] is meta_state
   assert captured["schema_ensure_state"] is schema_state
   assert captured["meta_schema"] == "meta"
+
+
+def test_load_run_runtime_state_empty_returns_independent_sets():
+  first = elevata_load_mod.LoadRunRuntimeState.empty()
+  second = elevata_load_mod.LoadRunRuntimeState.empty()
+
+  first.meta_log_ensure_state.add(("duckdb", "meta"))
+  first.schema_ensure_state.add(("duckdb", "rawcore"))
+  first.load_run_snapshot_ensure_state.add(("duckdb", "meta"))
+  first.materialization_schema_ensure_sql_state.add("create schema rawcore")
+
+  assert second.meta_log_ensure_state == set()
+  assert second.schema_ensure_state == set()
+  assert second.load_run_snapshot_ensure_state == set()
+  assert second.materialization_schema_ensure_sql_state == set()
+
+
+def test_persist_load_run_snapshot_uses_runtime_state_and_executes_insert(monkeypatch):
+  calls = {"ensure": [], "executed": [], "values": None}
+
+  class DummyEngine:
+    def execute(self, sql):
+      calls["executed"].append(sql)
+
+  class DummyDialectForSnapshot:
+    DIALECT_NAME = "duckdb"
+
+    def render_insert_load_run_snapshot(self, *, meta_schema, values):
+      calls["values"] = values
+      return f"INSERT INTO {meta_schema}.load_run_snapshot VALUES (...)"
+
+  def fake_ensure_load_run_snapshot_table_once(**kwargs):
+    calls["ensure"].append(kwargs)
+    kwargs["ensure_state"].add(("duckdb", kwargs["meta_schema"]))
+
+  monkeypatch.setattr(
+    elevata_load_mod,
+    "ensure_load_run_snapshot_table_once",
+    fake_ensure_load_run_snapshot_table_once,
+  )
+
+  runtime_state = elevata_load_mod.LoadRunRuntimeState.empty()
+
+  elevata_load_mod._persist_load_run_snapshot_best_effort(
+    engine=DummyEngine(),
+    dialect=DummyDialectForSnapshot(),
+    runtime_state=runtime_state,
+    snapshot={"batch_run_id": "batch-001"},
+    batch_run_id="batch-001",
+    created_at="2026-07-09T12:00:00Z",
+    root_dataset_key="rawcore.customer",
+    execute=True,
+    continue_on_error=False,
+    max_retries=1,
+    had_error=False,
+    step_count=2,
+    meta_schema="meta",
+    auto_provision=True,
+  )
+
+  assert len(calls["ensure"]) == 1
+  assert calls["ensure"][0]["ensure_state"] is runtime_state.load_run_snapshot_ensure_state
+  assert runtime_state.load_run_snapshot_ensure_state == {("duckdb", "meta")}
+  assert calls["executed"] == ["INSERT INTO meta.load_run_snapshot VALUES (...)"]
+  assert calls["values"]["batch_run_id"] == "batch-001"
+  assert calls["values"]["root_dataset_key"] == "rawcore.customer"
+  assert calls["values"]["step_count"] == 2
+  assert '"batch_run_id": "batch-001"' in calls["values"]["snapshot_json"]
+
+
+def test_persist_load_run_snapshot_skips_non_execute_runs(monkeypatch):
+  calls = []
+
+  def fake_ensure_load_run_snapshot_table_once(**kwargs):
+    calls.append(kwargs)
+
+  monkeypatch.setattr(
+    elevata_load_mod,
+    "ensure_load_run_snapshot_table_once",
+    fake_ensure_load_run_snapshot_table_once,
+  )
+
+  elevata_load_mod._persist_load_run_snapshot_best_effort(
+    engine=object(),
+    dialect=object(),
+    runtime_state=elevata_load_mod.LoadRunRuntimeState.empty(),
+    snapshot={"batch_run_id": "dry-run"},
+    batch_run_id="dry-run",
+    created_at="2026-07-09T12:00:00Z",
+    root_dataset_key="rawcore.customer",
+    execute=False,
+    continue_on_error=False,
+    max_retries=0,
+    had_error=None,
+    step_count=1,
+  )
+
+  assert calls == []
+
+
+def test_persist_orchestration_skip_rows_uses_runtime_state_and_filters_results(monkeypatch):
+  calls = {"ensure": [], "executed": [], "values": []}
+
+  class DummyEngine:
+    def execute(self, sql):
+      calls["executed"].append(sql)
+
+  class DummyDialectForLog:
+    DIALECT_NAME = "duckdb"
+
+    def render_insert_load_run_log(self, *, meta_schema, values):
+      calls["values"].append(values)
+      return f"INSERT INTO {meta_schema}.load_run_log VALUES ({values['target_dataset']})"
+
+  def fake_ensure_load_run_log_table_for_batch(**kwargs):
+    calls["ensure"].append(kwargs)
+    kwargs["ensure_state"].add(("duckdb", kwargs["meta_schema"]))
+
+  monkeypatch.setattr(
+    elevata_load_mod,
+    "_ensure_load_run_log_table_for_batch",
+    fake_ensure_load_run_log_table_for_batch,
+  )
+
+  runtime_state = elevata_load_mod.LoadRunRuntimeState.empty()
+
+  elevata_load_mod._persist_orchestration_skip_rows_best_effort(
+    engine=DummyEngine(),
+    dialect=DummyDialectForLog(),
+    runtime_state=runtime_state,
+    results=[
+      {"dataset": "rawcore.loaded", "status": "success", "kind": "sql"},
+      {
+        "dataset": "rawcore.blocked_child",
+        "status": "skipped",
+        "kind": "blocked",
+        "message": "Upstream failed",
+        "attempt_no": 2,
+        "status_reason": "dependency_failed",
+        "blocked_by": "rawcore.parent",
+        "load_run_id": "blocked-run",
+      },
+      {
+        "dataset": "rawcore.aborted_child",
+        "status": "skipped",
+        "kind": "aborted",
+      },
+      {"dataset": "rawcore.other", "status": "skipped", "kind": "not_applicable"},
+      {"dataset": "malformed", "status": "skipped", "kind": "blocked"},
+    ],
+    batch_run_id="batch-001",
+    target_system_name="dwh",
+    profile_name="dev",
+    execute=True,
+    meta_schema="meta",
+    auto_provision=True,
+  )
+
+  assert len(calls["ensure"]) == 1
+  assert calls["ensure"][0]["ensure_state"] is runtime_state.meta_log_ensure_state
+  assert runtime_state.meta_log_ensure_state == {("duckdb", "meta")}
+  assert calls["executed"] == [
+    "INSERT INTO meta.load_run_log VALUES (blocked_child)",
+    "INSERT INTO meta.load_run_log VALUES (aborted_child)",
+  ]
+
+  first, second = calls["values"]
+  assert first["batch_run_id"] == "batch-001"
+  assert first["load_run_id"] == "blocked-run"
+  assert first["target_schema"] == "rawcore"
+  assert first["target_dataset"] == "blocked_child"
+  assert first["target_system"] == "dwh"
+  assert first["profile"] == "dev"
+  assert first["run_kind"] == "orchestration"
+  assert first["mode"] == "orchestration"
+  assert first["status"] == "skipped"
+  assert first["attempt_no"] == 2
+  assert first["status_reason"] == "dependency_failed"
+  assert first["blocked_by"] == "rawcore.parent"
+
+  assert second["target_dataset"] == "aborted_child"
+  assert second["run_kind"] == "orchestration"
+  assert second["status"] == "skipped"
+
+
+def test_persist_orchestration_skip_rows_skips_non_execute_runs(monkeypatch):
+  calls = []
+
+  def fake_ensure_load_run_log_table_for_batch(**kwargs):
+    calls.append(kwargs)
+
+  monkeypatch.setattr(
+    elevata_load_mod,
+    "_ensure_load_run_log_table_for_batch",
+    fake_ensure_load_run_log_table_for_batch,
+  )
+
+  elevata_load_mod._persist_orchestration_skip_rows_best_effort(
+    engine=object(),
+    dialect=object(),
+    runtime_state=elevata_load_mod.LoadRunRuntimeState.empty(),
+    results=[{"dataset": "rawcore.blocked_child", "status": "skipped", "kind": "blocked"}],
+    batch_run_id="dry-run",
+    target_system_name="dwh",
+    profile_name="dev",
+    execute=False,
+  )
+
+  assert calls == []
+
+
+def test_format_execution_summary_lines_keeps_preflight_output_actionable():
+  lines = elevata_load_mod._format_execution_summary_lines({
+    "dataset": "rawcore.customer",
+    "status": "blocked",
+    "kind": "preflight",
+    "message": "UNSAFE_TYPE_DRIFT: customer_id narrowing",
+  })
+
+  assert lines == [
+    " ⚠ rawcore.customer                    preflight – blocked by UNSAFE_TYPE_DRIFT",
+    "     hint: use --allow-type-alter to allow explicit narrowing/rebuild",
+  ]
+
+
+def test_raise_for_execution_failures_uses_first_exception_detail():
+  with pytest.raises(elevata_load_mod.CommandError) as excinfo:
+    elevata_load_mod._raise_for_execution_failures(
+      had_error=True,
+      continue_on_error=False,
+      results=[{
+        "dataset": "rawcore.customer",
+        "status": "error",
+        "kind": "exception",
+        "message": "Connection failed",
+      }],
+    )
+
+  assert str(excinfo.value) == "Load execution failed: rawcore.customer: Connection failed"
+
+
+def test_raise_for_execution_failures_uses_continue_on_error_prefix():
+  with pytest.raises(elevata_load_mod.CommandError) as excinfo:
+    elevata_load_mod._raise_for_execution_failures(
+      had_error=True,
+      continue_on_error=True,
+      results=[{
+        "dataset": "rawcore.customer",
+        "status": "blocked",
+        "kind": "preflight",
+        "message": "UNSAFE_TYPE_DRIFT",
+      }],
+    )
+
+  assert str(excinfo.value) == (
+    "One or more datasets were blocked by preflight checks: "
+    "rawcore.customer: UNSAFE_TYPE_DRIFT"
+  )

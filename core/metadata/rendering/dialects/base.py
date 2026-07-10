@@ -1104,6 +1104,317 @@ class SqlDialect(ABC):
     return sql.rstrip()
 
 
+  def render_quality_not_null_examples_statement(
+    self,
+    *,
+    schema_name: str | None,
+    table_name: str,
+    column_name: str,
+    context_columns: list[str] | None = None,
+    example_limit: int = 20,
+    table_alias: str = "q",
+  ) -> str:
+    """
+    Render a bounded read-only query for NOT NULL quality violations.
+
+    The quality review service supplies only semantic ingredients: target table,
+    checked column and optional context columns. The dialect owns identifier
+    rendering, pagination syntax and final SQL shape.
+    """
+    return self._render_quality_not_null_examples_statement(
+      schema_name=schema_name,
+      table_name=table_name,
+      column_name=column_name,
+      context_columns=context_columns,
+      example_limit=example_limit,
+      table_alias=table_alias,
+      limit_style="limit",
+    )
+
+
+  def _render_quality_not_null_examples_statement(
+    self,
+    *,
+    schema_name: str | None,
+    table_name: str,
+    column_name: str,
+    context_columns: list[str] | None,
+    example_limit: int,
+    table_alias: str,
+    limit_style: str,
+  ) -> str:
+    """Render the shared NOT NULL violation example query shape."""
+    checked_column = str(column_name or "").strip()
+    if not checked_column:
+      raise ValueError(
+        "render_quality_not_null_examples_statement requires column_name"
+      )
+
+    limit = max(1, int(example_limit or 20))
+    q = self.render_identifier
+    alias_sql = q(table_alias)
+    table_sql = self.render_table_identifier(schema_name, table_name)
+
+    selected_columns: list[str] = []
+    for raw_column in list(context_columns or []) + [checked_column]:
+      col = str(raw_column or "").strip()
+      if col and col not in selected_columns:
+        selected_columns.append(col)
+
+    select_head = "SELECT"
+    if limit_style == "top":
+      select_head = f"SELECT TOP ({limit})"
+
+    def col_sql(col: str) -> str:
+      return f"{alias_sql}.{q(col)}"
+
+    select_items = [
+      f"{col_sql(col)} AS {q(col)}"
+      for col in selected_columns
+    ]
+    order_items = [
+      col_sql(col)
+      for col in selected_columns
+      if col != checked_column
+    ]
+
+    lines = [
+      select_head,
+      "  " + ",\n  ".join(select_items),
+      f"FROM {table_sql} AS {alias_sql}",
+      f"WHERE {col_sql(checked_column)} IS NULL",
+    ]
+    if order_items:
+      lines.append("ORDER BY " + ", ".join(order_items))
+
+    sql = "\n".join(lines)
+    if limit_style == "limit":
+      sql = f"{sql}\nLIMIT {limit}"
+
+    return sql.rstrip()
+
+
+  def render_quality_duplicate_key_examples_statement(
+    self,
+    *,
+    schema_name: str | None,
+    table_name: str,
+    key_columns: list[str],
+    example_limit: int = 20,
+    table_alias: str = "q",
+  ) -> str:
+    """
+    Render a bounded read-only query for duplicate key examples.
+
+    The quality review service decides which metadata-defined key columns form
+    the check. The dialect owns the SQL shape and pagination syntax.
+    """
+    return self._render_quality_duplicate_key_examples_statement(
+      schema_name=schema_name,
+      table_name=table_name,
+      key_columns=key_columns,
+      example_limit=example_limit,
+      table_alias=table_alias,
+      limit_style="limit",
+    )
+
+
+  def _render_quality_duplicate_key_examples_statement(
+    self,
+    *,
+    schema_name: str | None,
+    table_name: str,
+    key_columns: list[str],
+    example_limit: int,
+    table_alias: str,
+    limit_style: str,
+  ) -> str:
+    """Render the shared duplicate-key example query shape."""
+    keys: list[str] = []
+    for raw_column in key_columns or []:
+      col = str(raw_column or "").strip()
+      if col and col not in keys:
+        keys.append(col)
+
+    if not keys:
+      raise ValueError(
+        "render_quality_duplicate_key_examples_statement requires key_columns"
+      )
+
+    limit = max(1, int(example_limit or 20))
+    q = self.render_identifier
+    alias_sql = q(table_alias)
+    table_sql = self.render_table_identifier(schema_name, table_name)
+
+    def col_sql(col: str) -> str:
+      return f"{alias_sql}.{q(col)}"
+
+    select_head = "SELECT"
+    if limit_style == "top":
+      select_head = f"SELECT TOP ({limit})"
+
+    select_items = [
+      f"{col_sql(col)} AS {q(col)}"
+      for col in keys
+    ] + [
+      "COUNT(*) AS duplicate_count",
+    ]
+    populated_predicates = [
+      f"{col_sql(col)} IS NOT NULL"
+      for col in keys
+    ]
+    group_items = [col_sql(col) for col in keys]
+    order_items = ["duplicate_count DESC"] + group_items
+
+    sql = "\n".join([
+      select_head,
+      "  " + ",\n  ".join(select_items),
+      f"FROM {table_sql} AS {alias_sql}",
+      "WHERE " + "\n  AND ".join(populated_predicates),
+      "GROUP BY " + ", ".join(group_items),
+      "HAVING COUNT(*) > 1",
+      "ORDER BY " + ", ".join(order_items),
+    ])
+
+    if limit_style == "limit":
+      sql = f"{sql}\nLIMIT {limit}"
+
+    return sql.rstrip()
+
+
+  def render_quality_blank_string_examples_statement(
+    self,
+    *,
+    schema_name: str | None,
+    table_name: str,
+    column_name: str,
+    context_columns: list[str] | None = None,
+    example_limit: int = 20,
+    table_alias: str = "q",
+  ) -> str:
+    """
+    Render a bounded read-only query for blank string quality warnings.
+
+    The quality review service decides which metadata-defined text column should
+    be checked. The dialect owns identifier rendering, trimming expression and
+    pagination syntax.
+    """
+    return self._render_quality_blank_string_examples_statement(
+      schema_name=schema_name,
+      table_name=table_name,
+      column_name=column_name,
+      context_columns=context_columns,
+      example_limit=example_limit,
+      table_alias=table_alias,
+      limit_style="limit",
+    )
+
+
+  def _render_quality_blank_string_examples_statement(
+    self,
+    *,
+    schema_name: str | None,
+    table_name: str,
+    column_name: str,
+    context_columns: list[str] | None,
+    example_limit: int,
+    table_alias: str,
+    limit_style: str,
+  ) -> str:
+    """Render the shared blank-string example query shape."""
+    checked_column = str(column_name or "").strip()
+    if not checked_column:
+      raise ValueError(
+        "render_quality_blank_string_examples_statement requires column_name"
+      )
+
+    limit = max(1, int(example_limit or 20))
+    q = self.render_identifier
+    alias_sql = q(table_alias)
+    table_sql = self.render_table_identifier(schema_name, table_name)
+
+    selected_columns: list[str] = []
+    for raw_column in list(context_columns or []) + [checked_column]:
+      col = str(raw_column or "").strip()
+      if col and col not in selected_columns:
+        selected_columns.append(col)
+
+    select_head = "SELECT"
+    if limit_style == "top":
+      select_head = f"SELECT TOP ({limit})"
+
+    def col_sql(col: str) -> str:
+      return f"{alias_sql}.{q(col)}"
+
+    select_items = [
+      f"{col_sql(col)} AS {q(col)}"
+      for col in selected_columns
+    ]
+    order_items = [
+      col_sql(col)
+      for col in selected_columns
+      if col != checked_column
+    ]
+    checked_sql = col_sql(checked_column)
+
+    lines = [
+      select_head,
+      "  " + ",\n  ".join(select_items),
+      f"FROM {table_sql} AS {alias_sql}",
+      f"WHERE {checked_sql} IS NOT NULL",
+      f"  AND TRIM({checked_sql}) = ''",
+    ]
+    if order_items:
+      lines.append("ORDER BY " + ", ".join(order_items))
+
+    sql = "\n".join(lines)
+    if limit_style == "limit":
+      sql = f"{sql}\nLIMIT {limit}"
+
+    return sql.rstrip()
+
+
+  def render_quality_row_presence_statement(
+    self,
+    *,
+    schema_name: str | None,
+    table_name: str,
+    probe_column: str | None = None,
+  ) -> str:
+    """
+    Render a bounded read-only row-presence statement for dataset-level quality checks.
+
+    The quality review service only needs to know whether at least one row
+    exists. The dialect owns the concrete table identifier and pagination shape.
+
+    probe_column is optional and allows callers to select a real target column
+    instead of a literal. This avoids connector-specific metadata issues for
+    constant-only result sets on some backends while keeping the check bounded.
+    """
+    table_sql = self.render_table_identifier(schema_name, table_name)
+    probe = str(probe_column or "").strip()
+    if probe:
+      probe_sql = self.render_identifier(probe)
+      return f"SELECT {probe_sql} AS row_exists\nFROM {table_sql}\nLIMIT 1"
+    return f"SELECT 1 AS row_exists\nFROM {table_sql}\nLIMIT 1"
+
+
+  def render_quality_row_count_statement(
+    self,
+    *,
+    schema_name: str | None,
+    table_name: str,
+  ) -> str:
+    """
+    Render a read-only row-count statement for callers that need an exact count.
+
+    Architecture Quality Review uses row presence instead of exact counts so
+    dataset-level checks remain bounded and lightweight.
+    """
+    table_sql = self.render_table_identifier(schema_name, table_name)
+    return f"SELECT COUNT(*) AS row_count\nFROM {table_sql}"
+
+
   def render_merge_statement(
     self,
     *,

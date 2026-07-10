@@ -48,7 +48,7 @@ def test_load_run_snapshot_is_json_serializable():
     profile_name="test",
     target_system_short="wh",
     target_system_type="duckdb",
-    dialect_name="DuckDbDialect",
+    dialect_name="DuckDBDialect",
     root_dataset_key="raw.a",
     created_at=datetime(2026, 1, 2, tzinfo=timezone.utc),
     results=[

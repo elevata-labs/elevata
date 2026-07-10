@@ -49,7 +49,7 @@ From these definitions, elevata derives deterministic logical plans, renders dia
 Schema evolution, incremental loads, historization, approvals, and execution evidence are planned, validated, and applied deterministically.
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/elevata-labs/elevata/main/docs/elevata_v2_13_0.png" alt="elevata UI preview" width="900"/>
+  <img src="https://raw.githubusercontent.com/elevata-labs/elevata/main/docs/elevata_v2_14_0.png" alt="elevata UI preview" width="900"/>
   <br/>
   <em>Architecture Runtime UI for discovering, controlling, modeling, and executing metadata-defined data architecture</em>
 </p>
@@ -105,7 +105,7 @@ Each layer is explicitly separated.
 1. Import or define source metadata, lineage, contracts, and execution semantics  
 2. Review source metadata import outcomes before generation  
 3. Discover architecture through Catalog, Data Products, Portfolio, Insights, and Maps  
-4. Inspect generated SQL, lineage, contracts, health, reference integrity, and execution evidence  
+4. Inspect generated SQL, lineage, contracts, health, quality review, reference integrity, and execution evidence  
 5. Review architecture changes through Architecture Review Briefing and approve them through Architecture Control  
 6. Execute approved or unchanged scopes deterministically on your target warehouse  
 7. Resolve controlled reference members during execution where modeled references explicitly allow it  
@@ -159,6 +159,8 @@ Users can search and filter TargetDatasets by schema, owner, lifecycle status, s
 
 Catalog detail pages summarize architecture metadata, ownership, health, upstream inputs, downstream consumers, column contract signals and the latest Architecture Execution Record for the dataset scope.
 
+Catalog Detail also provides an on-demand Architecture Quality Review. It checks loaded target data against metadata-defined expectations such as non-nullable columns, duplicate surrogate or business keys, empty datasets and blank string business keys. The review is read-only, bounded and dialect-owned.
+
 For datasets with modeled outgoing references, Catalog Detail also provides an on-demand Reference Integrity Review. It checks loaded target data for missing parent examples and keeps the review read-only, bounded and dialect-owned.
 
 Reference Integrity Review is diagnostic. It does not create inferred members, apply Default Member Fallback, or repair data automatically. Controlled Reference Members are part of load execution and run only when the modeled reference explicitly enables the relevant behavior.
@@ -171,7 +173,7 @@ Catalog Insights highlight ownership gaps, metadata health findings, custom quer
 
 Catalog Maps show architecture across layers using layer cards, a layer flow overview, a source-to-target layer dependency matrix and expandable direct dependency examples.
 
-The Catalog does not edit metadata and does not execute loads. Reference Integrity Review does not persist review history, create inferred members or repair data automatically. Controlled load execution remains responsible for any enabled reference member handling. Architecture Control remains responsible for approval, execution, execution records and retention workflows.
+The Catalog does not edit metadata and does not execute loads. Architecture Quality Review and Reference Integrity Review do not persist review history, create inferred members or repair data automatically. Controlled load execution remains responsible for any enabled reference member handling. Architecture Control remains responsible for approval, execution, execution records and retention workflows.
 
 ---
 
@@ -221,7 +223,7 @@ Recommended names can be applied directly from the TargetColumn inline editor, b
 elevata evolves along four strategic axes:
 
 **1. Architecture Catalog & Portfolio**  
-Making executable architecture discoverable across datasets, lineage, contracts, ownership, readiness, health, and execution evidence.
+Making executable architecture discoverable across datasets, lineage, contracts, ownership, readiness, quality review, health, and execution evidence.
 
 **2. Architecture Control & Auditability**  
 Strengthening review briefing, approval, execution evidence, promotion, retention, and controlled runtime operation.

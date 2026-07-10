@@ -14,6 +14,7 @@ It helps users understand:
 - how portfolio posture looks across governance and execution evidence  
 - which serving-layer datasets are ready for trusted consumption  
 - which architecture quality and governance signals need attention  
+- where metadata-defined Quality Review can check loaded target data  
 - where modeled references can be checked against loaded target data
 
 The Catalog does not edit metadata and does not execute loads.
@@ -213,13 +214,36 @@ It displays:
 - dataset-specific Consumer Readiness  
 - dataset-specific Catalog insight signals  
 - Architecture Control review status summary  
+- on-demand Architecture Quality Review for loaded target data  
 - on-demand Reference Integrity Review for datasets with modeled outgoing references
 
 The detail view remains read-only. Editing stays on the dataset detail and scoped metadata pages. Execution and approval workflows stay in Architecture Control.
 
 ---
 
-## 🔧 8. Reference Integrity
+## 🔧 8. Architecture Quality Review
+
+For loaded TargetDatasets, the Catalog detail view can run a read-only Architecture Quality Review on demand.
+
+The review derives deterministic checks from existing metadata and evaluates the currently loaded target data through dialect-rendered SQL.
+
+The first review scope includes:
+
+- NOT NULL violations for non-nullable TargetColumns  
+- duplicate key examples for surrogate-key columns  
+- duplicate key examples for business-key columns  
+- empty dataset advisory checks  
+- blank string business-key advisory checks
+
+The review output is bounded and diagnostic. Passed checks can be expanded into a compact grouped detail view. Findings show limited examples so users can understand the issue without turning Catalog Detail into a data browser.
+
+Architecture Quality Review does not edit metadata, execute loads, create approvals, persist review history, repair data, insert default members, insert inferred members, apply Default Member Fallback, or act as an execution gate.
+
+Future Architecture Control gates may use selected quality signals explicitly, but the Catalog review remains read-only.
+
+---
+
+## 🔧 9. Reference Integrity
 
 For datasets with modeled outgoing references, the Catalog detail view can run a read-only Reference Integrity Review on demand.
 
@@ -237,7 +261,7 @@ For more details, see [Reference Integrity](reference_integrity.md).
 
 ---
 
-## 🔧 9. Review Status
+## 🔧 10. Review Status
  
 For TargetDataset scopes, the Catalog detail view surfaces the Architecture Control review status as a read-only summary.
 
@@ -254,7 +278,7 @@ Catalog detail pages use the existing Architecture Control review status contrac
 
 ---
 
-## 🔧 10. Execution Evidence
+## 🔧 11. Execution Evidence
 
 For TargetDataset scopes, the Catalog detail view surfaces the latest Architecture Execution Record summary when one exists.
 
@@ -273,7 +297,7 @@ The Catalog shows the latest evidence reference in dataset context without dupli
 
 ---
 
-## 🔧 11. Lineage and Contract Signals
+## 🔧 12. Lineage and Contract Signals
 
 The Catalog shows direct upstream and downstream relationships.
 
@@ -298,7 +322,7 @@ This makes the dataset structure inspectable without replacing dedicated lineage
 
 ---
 
-## 🔧 12. Governance Boundary
+## 🔧 13. Governance Boundary
 
 The Architecture Catalog is a discovery surface.
 
@@ -308,13 +332,15 @@ It does not:
 - check approvals  
 - request access  
 - execute loads  
+- run Architecture Quality Review automatically  
 - run Reference Integrity Review automatically  
+- treat Catalog diagnostics as execution gates  
 - insert default members  
 - insert inferred members  
 - delete execution records  
 - mutate metadata
 
-Architecture Control remains responsible for approval state, execution preview, controlled execution, execution records, execution history and retention cleanup. Controlled load execution remains responsible for enabled default member, inferred member and Default Member Fallback handling. Reference-parent readiness is an execution dependency, not a Catalog mutation or lineage edit.
+Architecture Control remains responsible for approval state, execution preview, controlled execution, execution records, execution history and retention cleanup. Controlled load execution remains responsible for enabled default member, inferred member and Default Member Fallback handling. Architecture Quality Review and Reference Integrity Review are Catalog diagnostics, not mutating workflows. Reference-parent readiness is an execution dependency, not a Catalog mutation or lineage edit.
 
 ---
 

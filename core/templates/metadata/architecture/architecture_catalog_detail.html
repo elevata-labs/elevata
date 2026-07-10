@@ -209,6 +209,48 @@ Contact: <https://github.com/elevata-labs/elevata>.
   </div>
 {% endif %}
 
+<div class="card mb-4">
+  <div class="card-body">
+    <div class="d-flex align-items-start justify-content-between gap-3 mb-3">
+      <div>
+        <div class="fw-semibold">Quality review</div>
+        <div class="small text-muted">
+          Read-only on-demand review of metadata-defined quality checks against loaded target data.
+        </div>
+      </div>
+      <button
+        id="quality-review-run-button"
+        type="button"
+        class="btn btn-sm btn-outline-primary"
+        hx-get="{% url 'architecture_catalog_quality_review' dataset.target_dataset_id %}"
+        hx-target="#quality-review-panel"
+        hx-swap="innerHTML"
+      >
+        <i class="bi bi-check2-square"></i>
+        Run review
+      </button>
+    </div>
+
+    <div id="quality-review-running" class="alert alert-info small d-none mb-3">
+      <div class="d-flex align-items-center gap-2">
+        <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
+        <span>Running Architecture Quality Review against the current target data...</span>
+      </div>
+    </div>
+
+    <div id="quality-review-panel">
+      <div class="alert alert-secondary small mb-0">
+        <div class="fw-semibold mb-1">Review not run yet</div>
+        <div>
+          The review derives checks from TargetColumn metadata and runs them
+          against the current target data only when requested.
+          The first checks cover NOT NULL contracts, duplicate keys, blank business keys and empty dataset advisories.
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
 {% if has_outgoing_references %}
   <div class="card mb-4">
     <div class="card-body">
@@ -591,4 +633,38 @@ Contact: <https://github.com/elevata-labs/elevata>.
     </div>
   </div>
 </div>
+
+<script>
+  (() => {
+    const reviewButton = document.getElementById("quality-review-run-button");
+    const runningNotice = document.getElementById("quality-review-running");
+
+    if (!reviewButton) {
+      return;
+    }
+
+    const defaultButtonHtml = reviewButton.innerHTML;
+
+    reviewButton.addEventListener("htmx:beforeRequest", () => {
+      if (runningNotice) {
+        runningNotice.classList.remove("d-none");
+      }
+
+      reviewButton.disabled = true;
+      reviewButton.innerHTML = `
+        <span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>
+        Running review...
+      `;
+    });
+
+    reviewButton.addEventListener("htmx:afterRequest", () => {
+      if (runningNotice) {
+        runningNotice.classList.add("d-none");
+      }
+
+      reviewButton.disabled = false;
+      reviewButton.innerHTML = defaultButtonHtml;
+    });
+  })();
+</script>
 {% endblock %}

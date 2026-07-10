@@ -1,0 +1,174 @@
+<!--
+elevata - Metadata-driven Data Platform Framework
+Copyright © 2025-2026 Ilona Tag
+
+This file is part of elevata.
+
+elevata is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of
+the License, or (at your option) any later version.
+
+elevata is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with elevata. If not, see <https://www.gnu.org/licenses/>.
+
+Contact: <https://github.com/elevata-labs/elevata>.
+-->
+
+{% if review_error %}
+  <div class="alert alert-warning small mb-0">
+    <div class="fw-semibold mb-1">Quality review unavailable</div>
+    <div>{{ review_error }}</div>
+  </div>
+{% elif review %}
+  <div class="border rounded p-3 bg-light small">
+    <div class="d-flex align-items-start justify-content-between gap-3 mb-3">
+      <div>
+        <div class="fw-semibold mb-1">Architecture Quality Review</div>
+        <div class="text-muted">
+          {% if review.status == "passed" %}
+            {{ review.passed_count }} check{% if review.passed_count != 1 %}s{% endif %} passed.
+          {% else %}
+            {{ review.failed_count }} failed,
+            {{ review.warning_count }} warning{% if review.warning_count != 1 %}s{% endif %},
+            {{ review.unavailable_count }} unavailable,
+            {{ review.passed_count }} passed.
+          {% endif %}
+        </div>
+      </div>
+      {% if review.status == "passed" %}
+        <span class="badge text-bg-success">passed</span>
+      {% elif review.status == "failed" %}
+        <span class="badge text-bg-danger">failed</span>
+      {% elif review.status == "warning" %}
+        <span class="badge text-bg-warning">warning</span>
+      {% elif review.status == "unavailable" %}
+        <span class="badge text-bg-secondary">unavailable</span>
+      {% else %}
+        <span class="badge text-bg-secondary">not applicable</span>
+      {% endif %}
+    </div>
+
+    {% if review.notes %}
+      <div class="alert alert-secondary small mb-3">
+        {% for note in review.notes %}
+          <div>{{ note }}</div>
+        {% endfor %}
+      </div>
+    {% endif %}
+
+    {% if review.results and review.status == "passed" %}
+      <div class="alert alert-success small mb-3">
+        <div class="fw-semibold mb-1">All executed quality checks passed.</div>
+        <div>
+          No failed, warning or unavailable checks were returned for this dataset.
+        </div>
+      </div>
+
+      <details class="small">
+        <summary class="text-muted">Show executed checks</summary>
+        <div class="list-group list-group-flush border rounded bg-white mt-2">
+          {% for group in review.passed_check_groups %}
+            <div class="list-group-item d-flex align-items-center justify-content-between gap-3 py-2">
+              <div>
+                <span class="fw-semibold">{{ group.subject }}</span>
+                <span class="text-muted ms-2">{{ group.checks|join:", " }}</span>
+              </div>
+              <span class="badge text-bg-success">passed</span>
+            </div>
+          {% endfor %}
+        </div>
+      </details>
+    {% elif review.results %}
+      <div class="list-group list-group-flush border rounded bg-white">
+        {% for result in review.results %}
+          <div class="list-group-item py-2">
+            <div class="d-flex align-items-start justify-content-between gap-3">
+              <div>
+                <div>
+                  <span class="fw-semibold">{{ result.definition.label }}</span>
+                  <span class="text-muted ms-2">
+                    {% if result.definition.columns %}
+                      {{ result.definition.columns|join:", " }}
+                    {% else %}
+                      Dataset
+                    {% endif %}
+                  </span>
+                </div>
+                {% if result.status != "passed" and result.definition.check_type == "blank_string" %}
+                  <div class="text-muted mt-1">Blank business key</div>
+                {% elif result.status != "passed" %}
+                  <div class="text-muted mt-1">{{ result.definition.check_type }}</div>
+                {% endif %}
+              </div>
+              {% if result.status == "passed" %}
+                <span class="badge text-bg-success">passed</span>
+              {% elif result.status == "failed" %}
+                <span class="badge text-bg-danger">failed</span>
+              {% elif result.status == "warning" %}
+                <span class="badge text-bg-warning">warning</span>
+              {% elif result.status == "unavailable" %}
+                <span class="badge text-bg-secondary">unavailable</span>
+              {% else %}
+                <span class="badge text-bg-secondary">not applicable</span>
+              {% endif %}
+            </div>
+
+            {% if result.status != "passed" %}
+              {% if result.notes %}
+                <div class="text-muted mt-2">
+                  {% for note in result.notes %}
+                    <div>{{ note }}</div>
+                  {% endfor %}
+                </div>
+              {% endif %}
+
+              {% if result.examples %}
+                <div class="table-responsive mt-2">
+                  <table class="table table-sm table-bordered align-middle mb-0">
+                    <thead>
+                      <tr>
+                        {% for key, value in result.examples.0.values.items %}
+                          <th>{{ key }}</th>
+                        {% endfor %}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {% for example in result.examples %}
+                        <tr>
+                          {% for key, value in example.values.items %}
+                            <td><code>{{ value }}</code></td>
+                          {% endfor %}
+                        </tr>
+                      {% endfor %}
+                    </tbody>
+                  </table>
+                </div>
+                <div class="text-muted mt-2">
+                  Showing up to {{ result.example_limit }} bounded example row{% if result.example_limit != 1 %}s{% endif %}.
+                </div>
+              {% endif %}
+            {% endif %}
+
+            {% if result.sql %}
+              <details class="mt-2">
+                <summary class="text-muted">Rendered SQL</summary>
+                <pre class="small bg-light border rounded p-2 mt-2 mb-0"><code>{{ result.sql }}</code></pre>
+              </details>
+            {% endif %}
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  </div>
+{% else %}
+  <div class="alert alert-secondary small mb-0">
+    <div class="fw-semibold mb-1">Quality review not available</div>
+    <div>No review result was returned.</div>
+  </div>
+{% endif %}

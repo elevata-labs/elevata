@@ -176,6 +176,11 @@ urlpatterns += [
     name="architecture_catalog_map",
   ),
   path(
+    "architecture-catalog/<int:pk>/quality-review/",
+    views_catalog.architecture_catalog_quality_review,
+    name="architecture_catalog_quality_review",
+  ),
+  path(
     "architecture-catalog/<int:pk>/reference-integrity/",
     views_catalog.architecture_catalog_reference_integrity,
     name="architecture_catalog_reference_integrity",
@@ -191,6 +196,11 @@ urlpatterns += [
   path("architecture-control/check/", views.architecture_control_approval_check, name="architecture_control_approval_check"),
   path("architecture-control/execute/", views.architecture_control_execute, name="architecture_control_execute"),
   path(
+    "architecture-control/executions/delete-old/",
+    views.architecture_execution_record_delete_old,
+    name="architecture_execution_record_delete_old",
+  ),
+  path(
     "architecture-control/executions/<str:execution_id>/",
     views.architecture_execution_record_detail,
     name="architecture_execution_record_detail",
@@ -199,11 +209,6 @@ urlpatterns += [
     "architecture-control/executions/<str:execution_id>/download/",
     views.architecture_execution_record_download,
     name="architecture_execution_record_download",
-  ),
-  path(
-    "architecture-control/executions/delete-old/",
-    views.architecture_execution_record_delete_old,
-    name="architecture_execution_record_delete_old",
   ),
 ]
 

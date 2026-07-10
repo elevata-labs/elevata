@@ -40,6 +40,9 @@ from metadata.architecture.catalog_portfolio import (
   build_architecture_catalog_portfolio_context,
 )
 from metadata.models import TargetDataset
+from metadata.services.quality_review import (
+  build_quality_review,
+)
 from metadata.services.reference_integrity_review import (
   build_reference_integrity_review,
 )
@@ -127,6 +130,56 @@ def architecture_catalog_detail(request, pk: int):
     request,
     "metadata/architecture/architecture_catalog_detail.html",
     context,
+  )
+
+
+def _quality_review_example_limit(request) -> int:
+  """Return a bounded example limit for UI-triggered quality reviews."""
+  raw_value = (request.GET.get("limit") or "").strip()
+  try:
+    value = int(raw_value)
+  except (TypeError, ValueError):
+    value = 20
+
+  return min(max(value, 1), 100)
+
+
+@login_required
+@permission_required("metadata.view_targetdataset", raise_exception=True)
+def architecture_catalog_quality_review(request, pk: int):
+  """
+  Render the on-demand Architecture Quality Review panel for one TargetDataset.
+  """
+  target_dataset = get_object_or_404(TargetDataset, pk=pk)
+  example_limit = _quality_review_example_limit(request)
+  include_sql = (request.GET.get("include_sql") or "").strip().lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+  }
+
+  review = None
+  review_error = ""
+
+  try:
+    review = build_quality_review(
+      target_dataset,
+      example_limit=example_limit,
+      include_sql=include_sql,
+    )
+  except Exception as exc:
+    review_error = str(exc)
+
+  return render(
+    request,
+    "metadata/partials/_quality_review.html",
+    {
+      "target_dataset": target_dataset,
+      "review": review,
+      "review_error": review_error,
+      "example_limit": example_limit,
+    },
   )
 
 

@@ -34,7 +34,7 @@ from pathlib import Path
 from collections import defaultdict
 from django.utils.timezone import now
 from django.core.management.base import BaseCommand, CommandError
-from dataclasses import replace
+from dataclasses import dataclass, replace
 
 from metadata.architecture.scope import (
   dataset_keys_from_execution_items,
@@ -194,6 +194,36 @@ ALLOW_ORPHAN_MANAGED_SCHEMA_DEPENDENT_VIEW_DROP = _get_bool_env(
 META_SCHEMA_NAME = os.getenv("ELEVATA_META_SCHEMA_NAME", "meta")
 
 
+@dataclass
+class LoadRunRuntimeState:
+  """Batch-scoped runtime state for idempotent best-effort provisioning."""
+
+  meta_log_ensure_state: set[tuple[str, str]]
+  schema_ensure_state: set[tuple[str, str]]
+  load_run_snapshot_ensure_state: set[tuple[str, str]]
+  materialization_schema_ensure_sql_state: set[str]
+
+  @classmethod
+  def empty(cls) -> "LoadRunRuntimeState":
+    """Return a fresh state container for one load run."""
+    return cls(
+      meta_log_ensure_state=set(),
+      schema_ensure_state=set(),
+      load_run_snapshot_ensure_state=set(),
+      materialization_schema_ensure_sql_state=set(),
+    )
+
+
+def _dialect_runtime_key(dialect, scope_name: str) -> tuple[str, str]:
+  """Return a stable key for batch-scoped runtime ensure state."""
+  dialect_key = str(
+    getattr(dialect, "DIALECT_NAME", None)
+    or getattr(dialect.__class__, "DIALECT_NAME", None)
+    or dialect.__class__.__name__
+  )
+  return (dialect_key, str(scope_name))
+
+
 def _ensure_load_run_log_table_for_batch(
   *,
   engine,
@@ -217,12 +247,7 @@ def _ensure_load_run_log_table_for_batch(
     )
     return
 
-  dialect_key = str(
-    getattr(dialect, "DIALECT_NAME", None)
-    or getattr(dialect.__class__, "DIALECT_NAME", None)
-    or dialect.__class__.__name__
-  )
-  key = (dialect_key, str(meta_schema))
+  key = _dialect_runtime_key(dialect, meta_schema)
   if key in ensure_state:
     return
 
@@ -258,12 +283,7 @@ def _ensure_target_schema_for_batch(
     )
     return
 
-  dialect_key = str(
-    getattr(dialect, "DIALECT_NAME", None)
-    or getattr(dialect.__class__, "DIALECT_NAME", None)
-    or dialect.__class__.__name__
-  )
-  key = (dialect_key, str(schema_name))
+  key = _dialect_runtime_key(dialect, schema_name)
   if key in ensure_state:
     return
 
@@ -274,6 +294,275 @@ def _ensure_target_schema_for_batch(
     auto_provision=auto_provision,
   )
   ensure_state.add(key)
+
+
+def _write_execution_snapshot_file_best_effort(
+  *,
+  snapshot: dict[str, Any],
+  snapshot_dir,
+  batch_run_id: str,
+  write_snapshot: bool,
+  stdout=None,
+  style=None,
+  no_print: bool = False,
+) -> None:
+  """Persist the execution snapshot file without blocking the load run."""
+  if not write_snapshot:
+    return
+
+  try:
+    path = write_execution_snapshot_file(
+      snapshot=snapshot,
+      snapshot_dir=snapshot_dir,
+      batch_run_id=batch_run_id,
+    )
+    if not no_print and stdout is not None:
+      notice = getattr(style, "NOTICE", None) if style is not None else None
+      message = f"Execution snapshot written: {path}"
+      stdout.write(notice(message) if callable(notice) else message)
+  except Exception:
+    # Best-effort only: never block the run because of snapshot writing.
+    pass
+
+
+def _persist_load_run_snapshot_best_effort(
+  *,
+  engine,
+  dialect,
+  runtime_state: LoadRunRuntimeState,
+  snapshot: dict[str, Any],
+  batch_run_id: str,
+  created_at,
+  root_dataset_key: str,
+  execute: bool,
+  continue_on_error: bool,
+  max_retries: int,
+  had_error: bool | None,
+  step_count: int,
+  meta_schema: str = META_SCHEMA_NAME,
+  auto_provision: bool = AUTO_PROVISION_META_LOG,
+) -> None:
+  """Persist meta.load_run_snapshot without blocking the load run."""
+  if not execute or engine is None:
+    return
+
+  try:
+    ensure_load_run_snapshot_table_once(
+      engine=engine,
+      dialect=dialect,
+      meta_schema=meta_schema,
+      auto_provision=auto_provision,
+      ensure_state=runtime_state.load_run_snapshot_ensure_state,
+    )
+
+    snapshot_json = render_execution_snapshot_json(snapshot)
+
+    row = build_load_run_snapshot_row(
+      batch_run_id=batch_run_id,
+      created_at=created_at,
+      root_dataset_key=root_dataset_key,
+      is_execute=bool(execute),
+      continue_on_error=bool(continue_on_error),
+      max_retries=int(max_retries),
+      had_error=bool(had_error),
+      step_count=int(step_count),
+      snapshot_json=snapshot_json,
+    )
+
+    sql = dialect.render_insert_load_run_snapshot(
+      meta_schema=meta_schema,
+      values=row,
+    )
+    if sql:
+      engine.execute(sql)
+
+  except Exception:
+    # Best-effort: must never block the run.
+    pass
+
+
+def _persist_orchestration_skip_rows_best_effort(
+  *,
+  engine,
+  dialect,
+  runtime_state: LoadRunRuntimeState,
+  results: list[dict[str, object]],
+  batch_run_id: str,
+  target_system_name: str,
+  profile_name: str,
+  execute: bool,
+  meta_schema: str = META_SCHEMA_NAME,
+  auto_provision: bool = AUTO_PROVISION_META_LOG,
+) -> None:
+  """Persist orchestration-only skipped outcomes without blocking the load run."""
+  if not execute or engine is None:
+    return
+
+  if not hasattr(dialect, "render_insert_load_run_log"):
+    return
+
+  try:
+    _ensure_load_run_log_table_for_batch(
+      engine=engine,
+      dialect=dialect,
+      meta_schema=meta_schema,
+      auto_provision=auto_provision,
+      ensure_state=runtime_state.meta_log_ensure_state,
+    )
+
+    for r in results:
+      if r.get("status") != "skipped":
+        continue
+      if r.get("kind") not in ("blocked", "aborted"):
+        continue
+
+      ds = str(r.get("dataset") or "")
+      if "." not in ds:
+        continue
+      target_schema, target_dataset = ds.split(".", 1)
+
+      load_run_id = str(r.get("load_run_id") or uuid.uuid4())
+      ts = now()
+
+      values = build_load_run_log_row(
+        batch_run_id=batch_run_id,
+        load_run_id=load_run_id,
+        target_schema=target_schema,
+        target_dataset=target_dataset,
+        target_system=target_system_name,
+        profile=profile_name,
+        run_kind="orchestration",
+        mode="orchestration",
+        handle_deletes=False,
+        historize=False,
+        started_at=ts,
+        finished_at=ts,
+        render_ms=0.0,
+        execution_ms=0.0,
+        sql_length=0,
+        rows_affected=None,
+        status="skipped",
+        error_message=str(r.get("message") or None),
+        attempt_no=int(r.get("attempt_no") or 1),
+        status_reason=str(r.get("status_reason") or None),
+        blocked_by=str(r.get("blocked_by") or None),
+      )
+
+      log_insert_sql = dialect.render_insert_load_run_log(
+        meta_schema=meta_schema,
+        values=values,
+      )
+      if log_insert_sql:
+        engine.execute(log_insert_sql)
+
+  except Exception:
+    # Best-effort: must never block execution due to meta logging inserts.
+    pass
+
+
+def _execution_summary_symbol(*, status: str, kind: str) -> str:
+  """Return the CLI summary symbol for one execution result."""
+  status_lc = (status or "").lower()
+  kind_lc = (kind or "").lower()
+
+  if status_lc in ("success", "dry_run"):
+    return "✔"
+  if status_lc == "blocked" and kind_lc == "preflight":
+    return "⚠"
+  if status_lc == "skipped" and kind_lc in ("blocked", "aborted"):
+    return "⏸"
+  if status_lc == "skipped":
+    return "⏭"
+  return "✖"
+
+
+def _format_execution_summary_lines(result: dict[str, object]) -> list[str]:
+  """Return deterministic CLI summary lines for one execution result."""
+  status = str(result.get("status", "unknown"))
+  kind = str(result.get("kind", "unknown"))
+  ds = str(result.get("dataset", "unknown"))
+
+  status_lc = (status or "").lower()
+  kind_lc = (kind or "").lower()
+
+  symbol = _execution_summary_symbol(status=status, kind=kind)
+  line = f" {symbol} {ds:<35} {kind}"
+
+  msg = result.get("message")
+  if msg:
+    # Shorten noisy preflight messages for readability.
+    if status_lc == "blocked" and kind_lc == "preflight":
+      if "UNSAFE_TYPE_DRIFT" in str(msg):
+        line += " – blocked by UNSAFE_TYPE_DRIFT"
+      else:
+        line += " – blocked by schema preflight checks"
+    else:
+      line += f" – {msg}"
+
+  lines = [line]
+
+  if status_lc == "blocked" and kind_lc == "preflight":
+    if msg and "UNSAFE_TYPE_DRIFT" in str(msg):
+      lines.append("     hint: use --allow-type-alter to allow explicit narrowing/rebuild")
+
+  return lines
+
+
+def _first_failure_detail(results: list[dict[str, object]] | None) -> str | None:
+  """Return a compact user-facing detail string for the first failing result."""
+  for r in (results or []):
+    status = str((r or {}).get("status") or "").lower()
+    kind = str((r or {}).get("kind") or "").lower()
+    if status in ("error", "exception") or (status == "blocked" and kind == "preflight"):
+      ds = str((r or {}).get("dataset") or "").strip()
+      msg = str((r or {}).get("message") or "").strip()
+      if msg:
+        return f"{ds}: {msg}" if ds else msg
+  return None
+
+
+def _raise_for_execution_failures(
+  *,
+  had_error: bool,
+  continue_on_error: bool,
+  results: list[dict[str, object]] | None,
+) -> None:
+  """Raise the same CommandError messages as the legacy inline failure block."""
+  if not had_error:
+    return
+
+  statuses = [str((r or {}).get("status") or "") for r in (results or [])]
+  kinds = [str((r or {}).get("kind") or "") for r in (results or [])]
+  has_exception = any(s in ("error", "exception") for s in statuses)
+  has_preflight_block = any((s == "blocked" and k == "preflight") for s, k in zip(statuses, kinds))
+  detail = _first_failure_detail(results)
+
+  if not continue_on_error:
+    if has_exception:
+      if detail:
+        raise CommandError(f"Load execution failed: {detail}")
+      raise CommandError("Load execution failed. See execution summary above for details.")
+
+    if has_preflight_block:
+      if detail:
+        raise CommandError(f"Load blocked by preflight checks: {detail}")
+      raise CommandError("Load blocked by preflight checks. See execution summary above for details.")
+    if detail:
+      raise CommandError(f"Load execution failed: {detail}")
+    raise CommandError("Load execution failed. See execution summary above for details.")
+
+  if has_exception:
+    if detail:
+      raise CommandError(f"One or more datasets failed during execution: {detail}")
+    raise CommandError("One or more datasets failed during execution. See execution summary above for details.")
+
+  if has_preflight_block:
+    if detail:
+      raise CommandError(f"One or more datasets were blocked by preflight checks: {detail}")
+    raise CommandError("One or more datasets were blocked by preflight checks. See execution summary above for details.")
+  if detail:
+    raise CommandError(f"One or more datasets failed during execution: {detail}")
+  raise CommandError("One or more datasets failed during execution. See execution summary above for details.")
 
 
 def _target_table_exists_for_ensure(
@@ -2646,10 +2935,7 @@ class Command(BaseCommand):
       )
 
       # 8) Execute datasets in order and collect summary
-      meta_log_ensure_state: set[tuple[str, str]] = set()
-      schema_ensure_state: set[tuple[str, str]] = set()
-      load_run_snapshot_ensure_state: set[tuple[str, str]] = set()
-      materialization_schema_ensure_sql_state: set[str] = set()
+      runtime_state = LoadRunRuntimeState.empty()
 
       def _run_dataset_fn(*, target_dataset, batch_run_id, load_run_id, load_plan_override, attempt_no):
 
@@ -2689,10 +2975,10 @@ class Command(BaseCommand):
           allow_type_alter=allow_type_alter,
           migration_plan=migration_plan,
           execution_dataset_keys=execution_dataset_keys,
-          meta_log_ensure_state=meta_log_ensure_state,
-          schema_ensure_state=schema_ensure_state,
-          load_run_snapshot_ensure_state=load_run_snapshot_ensure_state,
-          materialization_schema_ensure_sql_state=materialization_schema_ensure_sql_state,
+          meta_log_ensure_state=runtime_state.meta_log_ensure_state,
+          schema_ensure_state=runtime_state.schema_ensure_state,
+          load_run_snapshot_ensure_state=runtime_state.load_run_snapshot_ensure_state,
+          materialization_schema_ensure_sql_state=runtime_state.materialization_schema_ensure_sql_state,
         )
  
       # --- Architecture State (best effort, scope-aware) ---
@@ -3219,54 +3505,31 @@ class Command(BaseCommand):
         self.stdout.write(render_execution_snapshot_json(snapshot))
         self.stdout.write("")
 
-      if write_execution_snapshot:
-        try:
-          path = write_execution_snapshot_file(
-            snapshot=snapshot,
-            snapshot_dir=execution_snapshot_dir,
-            batch_run_id=batch_run_id,
-          )
-          if not no_print:
-            self.stdout.write(self.style.NOTICE(f"Execution snapshot written: {path}"))
-        except Exception:
-          # Best-effort only: never block the run because of snapshot writing.
-          pass
+      _write_execution_snapshot_file_best_effort(
+        snapshot=snapshot,
+        snapshot_dir=execution_snapshot_dir,
+        batch_run_id=batch_run_id,
+        write_snapshot=bool(write_execution_snapshot),
+        stdout=self.stdout,
+        style=self.style,
+        no_print=bool(no_print),
+      )
 
       # Persist snapshot to meta.load_run_snapshot (best-effort)
-      if execute and engine is not None:
-        try:
-          ensure_load_run_snapshot_table_once(
-            engine=engine,
-            dialect=dialect,
-            meta_schema=META_SCHEMA_NAME,
-            auto_provision=AUTO_PROVISION_META_LOG,
-            ensure_state=load_run_snapshot_ensure_state,
-          )
-
-          snapshot_json = render_execution_snapshot_json(snapshot)
-
-          row = build_load_run_snapshot_row(
-            batch_run_id=batch_run_id,
-            created_at=created_at,
-            root_dataset_key=root_dataset_key,
-            is_execute=bool(execute),
-            continue_on_error=bool(continue_on_error),
-            max_retries=int(max_retries),
-            had_error=bool(had_error),
-            step_count=len(plan.steps),
-            snapshot_json=snapshot_json,
-          )
-
-          sql = dialect.render_insert_load_run_snapshot(
-            meta_schema=META_SCHEMA_NAME,
-            values=row,
-          )
-          if sql:
-            engine.execute(sql)
-
-        except Exception:
-          # Best-effort: must never block the run
-          pass
+      _persist_load_run_snapshot_best_effort(
+        engine=engine,
+        dialect=dialect,
+        runtime_state=runtime_state,
+        snapshot=snapshot,
+        batch_run_id=batch_run_id,
+        created_at=created_at,
+        root_dataset_key=root_dataset_key,
+        execute=bool(execute),
+        continue_on_error=bool(continue_on_error),
+        max_retries=int(max_retries),
+        had_error=had_error,
+        step_count=len(plan.steps),
+      )
 
       # Snapshot diff (best-effort): DB baseline preferred, file baseline fallback
       baseline = None
@@ -3323,67 +3586,16 @@ class Command(BaseCommand):
           pass
 
       # 8.1) Persist orchestration-only outcomes (blocked/aborted) to meta.load_run_log
-      # Best-effort: must never block the load runner.
-      if execute and engine is not None and hasattr(dialect, "render_insert_load_run_log"):
-        try:
-          _ensure_load_run_log_table_for_batch(
-            engine=engine,
-            dialect=dialect,
-            meta_schema=META_SCHEMA_NAME,
-            auto_provision=AUTO_PROVISION_META_LOG,
-            ensure_state=meta_log_ensure_state,
-          )
-
-          for r in results:
-            if r.get("status") != "skipped":
-              continue
-            if r.get("kind") not in ("blocked", "aborted"):
-              continue
-
-            ds = str(r.get("dataset") or "")
-            if "." not in ds:
-              continue
-            target_schema, target_dataset = ds.split(".", 1)
-
-            # Use per-step load_run_id if provided, otherwise generate one.
-            load_run_id = str(r.get("load_run_id") or uuid.uuid4())
-
-            ts = now()
-            values = build_load_run_log_row(
-              batch_run_id=batch_run_id,
-              load_run_id=load_run_id,
-              target_schema=target_schema,
-              target_dataset=target_dataset,
-              target_system=system.short_name,
-              profile=profile.name,
-              run_kind="orchestration",
-              # Orchestration-only rows: still need non-null semantics fields
-              mode="orchestration",
-              handle_deletes=False,
-              historize=False,
-              started_at=ts,
-              finished_at=ts,
-              render_ms=0.0,
-              execution_ms=0.0,
-              sql_length=0,
-              rows_affected=None,
-              status="skipped",
-              error_message=str(r.get("message") or None),
-              # v0.8.0 extra fields (you added these in logging.py)
-              attempt_no=int(r.get("attempt_no") or 1),
-              status_reason=str(r.get("status_reason") or None),
-              blocked_by=str(r.get("blocked_by") or None),
-            )
-
-            log_insert_sql = dialect.render_insert_load_run_log(
-              meta_schema=META_SCHEMA_NAME,
-              values=values,
-            )
-            if log_insert_sql:
-              engine.execute(log_insert_sql)
-        except Exception:
-          # Never block execution due to meta logging inserts
-          pass
+      _persist_orchestration_skip_rows_best_effort(
+        engine=engine,
+        dialect=dialect,
+        runtime_state=runtime_state,
+        results=results,
+        batch_run_id=batch_run_id,
+        target_system_name=system.short_name,
+        profile_name=profile.name,
+        execute=bool(execute),
+      )
 
       # 9) Execution summary
       if not no_print:
@@ -3397,45 +3609,8 @@ class Command(BaseCommand):
           self.stdout.write(self.style.NOTICE(f"Execution summary (batch_run_id={batch_run_id}):"))
 
         for r in results:
-          status = str(r.get("status", "unknown"))
-          kind = str(r.get("kind", "unknown"))
-          ds = str(r.get("dataset", "unknown"))
-
-          status_lc = (status or "").lower()
-          kind_lc = (kind or "").lower()
-
-          if status_lc in ("success", "dry_run"):
-            symbol = "✔"
-          elif status_lc == "blocked" and kind_lc == "preflight":
-            symbol = "⚠"
-          elif status_lc == "skipped" and kind_lc in ("blocked", "aborted"):
-            symbol = "⏸"
-          elif status_lc == "skipped":
-            symbol = "⏭"
-          else:
-            symbol = "✖"
-
-          line = f" {symbol} {ds:<35} {kind}"
-
-          msg = r.get("message")
-          if msg:
-            # Shorten noisy preflight messages for readability
-            if status_lc == "blocked" and kind_lc == "preflight":
-              if "UNSAFE_TYPE_DRIFT" in msg:
-                line += " – blocked by UNSAFE_TYPE_DRIFT"
-              else:
-                line += " – blocked by schema preflight checks"
-            else:
-              line += f" – {msg}"
-
-          self.stdout.write(line)
-
-          # Optional hint line for actionable preflight blocks
-          if status_lc == "blocked" and kind_lc == "preflight":
-            if msg and "UNSAFE_TYPE_DRIFT" in msg:
-              self.stdout.write(
-                "     hint: use --allow-type-alter to allow explicit narrowing/rebuild"
-              )          
+          for line in _format_execution_summary_lines(r):
+            self.stdout.write(line)
 
         self.stdout.write("")
 
@@ -3470,61 +3645,12 @@ class Command(BaseCommand):
         },
       )
 
-      def _first_failure_detail(results: list[dict[str, object]] | None) -> str | None:
-        """
-        Return a compact, user-facing detail string for the first failing result.
-        This makes CLI errors actionable and keeps tests stable (guardrails assert on this).
-        """
-        for r in (results or []):
-          status = str((r or {}).get("status") or "").lower()
-          kind = str((r or {}).get("kind") or "").lower()
-          if status in ("error", "exception") or (status == "blocked" and kind == "preflight"):
-            ds = str((r or {}).get("dataset") or "").strip()
-            msg = str((r or {}).get("message") or "").strip()
-            if msg:
-              return f"{ds}: {msg}" if ds else msg
-        return None
-
-      # If we stopped early due to error and continue_on_error is False, re-raise now
-      if had_error and not continue_on_error:
-        statuses = [str((r or {}).get("status") or "") for r in (results or [])]
-        kinds = [str((r or {}).get("kind") or "") for r in (results or [])]
-        has_exception = any(s in ("error", "exception") for s in statuses)
-        has_preflight_block = any((s == "blocked" and k == "preflight") for s, k in zip(statuses, kinds))
-        detail = _first_failure_detail(results)
-
-        if has_exception:
-          if detail:
-            raise CommandError(f"Load execution failed: {detail}")
-          raise CommandError("Load execution failed. See execution summary above for details.")
-
-        if has_preflight_block:
-          if detail:
-            raise CommandError(f"Load blocked by preflight checks: {detail}")
-          raise CommandError("Load blocked by preflight checks. See execution summary above for details.")
-        if detail:
-          raise CommandError(f"Load execution failed: {detail}")
-        raise CommandError("Load execution failed. See execution summary above for details.")   
-
-      if had_error:
-        statuses = [str((r or {}).get("status") or "") for r in (results or [])]
-        kinds = [str((r or {}).get("kind") or "") for r in (results or [])]
-        has_exception = any(s in ("error", "exception") for s in statuses)
-        has_preflight_block = any((s == "blocked" and k == "preflight") for s, k in zip(statuses, kinds))
-        detail = _first_failure_detail(results)
-
-        if has_exception:
-          if detail:
-            raise CommandError(f"One or more datasets failed during execution: {detail}")
-          raise CommandError("One or more datasets failed during execution. See execution summary above for details.")
-
-        if has_preflight_block:
-          if detail:
-            raise CommandError(f"One or more datasets were blocked by preflight checks: {detail}")
-          raise CommandError("One or more datasets were blocked by preflight checks. See execution summary above for details.")
-        if detail:
-          raise CommandError(f"One or more datasets failed during execution: {detail}")
-        raise CommandError("One or more datasets failed during execution. See execution summary above for details.")    
+      # If the run had failures, raise after summary/logging so the CLI remains actionable.
+      _raise_for_execution_failures(
+        had_error=bool(had_error),
+        continue_on_error=bool(continue_on_error),
+        results=results,
+      )
 
     finally:
       # Always close the execution engine if it supports close()

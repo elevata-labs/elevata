@@ -516,6 +516,86 @@ class MssqlDialect(SqlDialect):
     )
 
 
+  def render_quality_row_presence_statement(
+    self,
+    *,
+    schema_name: str | None,
+    table_name: str,
+    probe_column: str | None = None,
+  ) -> str:
+    """Render a bounded row-presence query using T-SQL TOP syntax."""
+    table_sql = self.render_table_identifier(schema_name, table_name)
+    probe = str(probe_column or "").strip()
+    if probe:
+      probe_sql = self.render_identifier(probe)
+      return f"SELECT TOP (1) {probe_sql} AS row_exists\nFROM {table_sql}"
+    return f"SELECT TOP (1) 1 AS row_exists\nFROM {table_sql}"
+
+
+  def render_quality_not_null_examples_statement(
+    self,
+    *,
+    schema_name: str | None,
+    table_name: str,
+    column_name: str,
+    context_columns: list[str] | None = None,
+    example_limit: int = 20,
+    table_alias: str = "q",
+  ) -> str:
+    """Render NOT NULL quality examples using T-SQL TOP syntax."""
+    return self._render_quality_not_null_examples_statement(
+      schema_name=schema_name,
+      table_name=table_name,
+      column_name=column_name,
+      context_columns=context_columns,
+      example_limit=example_limit,
+      table_alias=table_alias,
+      limit_style="top",
+    )
+
+
+  def render_quality_duplicate_key_examples_statement(
+    self,
+    *,
+    schema_name: str | None,
+    table_name: str,
+    key_columns: list[str],
+    example_limit: int = 20,
+    table_alias: str = "q",
+  ) -> str:
+    """Render duplicate-key quality examples using T-SQL TOP syntax."""
+    return self._render_quality_duplicate_key_examples_statement(
+      schema_name=schema_name,
+      table_name=table_name,
+      key_columns=key_columns,
+      example_limit=example_limit,
+      table_alias=table_alias,
+      limit_style="top",
+    )
+
+
+  def render_quality_blank_string_examples_statement(
+    self,
+    *,
+    schema_name: str | None,
+    table_name: str,
+    column_name: str,
+    context_columns: list[str] | None = None,
+    example_limit: int = 20,
+    table_alias: str = "q",
+  ) -> str:
+    """Render blank-string quality examples using T-SQL TOP syntax."""
+    return self._render_quality_blank_string_examples_statement(
+      schema_name=schema_name,
+      table_name=table_name,
+      column_name=column_name,
+      context_columns=context_columns,
+      example_limit=example_limit,
+      table_alias=table_alias,
+      limit_style="top",
+    )
+
+
   def render_merge_statement(
     self,
     *,

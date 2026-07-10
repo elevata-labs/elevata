@@ -313,6 +313,16 @@ Execution observability is **best-effort by design**.
 
 Execution correctness always takes precedence over observability.
 
+### 🧩 11.1 Batch-scoped Runtime State
+
+The load runner keeps batch-scoped runtime state for best-effort provisioning and observability helpers.
+
+This state records which schema, `meta.load_run_log`, and `meta.load_run_snapshot` ensure operations were already requested for the current batch context. It reduces repeated ensure calls across SQL loads, RAW ingestion, orchestration-only log rows, and snapshot persistence without changing load semantics.
+
+The runtime state does not decide what should be executed. Execution order, retry behavior, dependency blocking, load logging granularity, and snapshot content remain derived from the execution plan and policy.
+
+Snapshot file persistence, warehouse snapshot persistence, and orchestration-only log rows are handled through best-effort helpers so observability failures stay isolated from load correctness.
+
 ---
 
 ## 🔧 12. CLI Integration (`elevata_load`)
@@ -399,6 +409,7 @@ The execution architecture of elevata is:
 - Deterministic, not heuristic  
 - Metadata-driven, not SQL-driven  
 - Observable by default  
+- Explicit about batch-scoped runtime state  
 - Extensible without breaking changes
 
 This provides a robust foundation for: orchestration integrations, governance rules, and execution analytics.

@@ -12,6 +12,103 @@ This project adheres to [Semantic Versioning](https://semver.org/) and [Keep a C
 
 ---
 
+## [2.14.0] - 2026-07-10
+
+This release adds **Architecture Quality Review** to Catalog Detail and continues the internal load runner cleanup started after the Databricks execution hardening work.
+
+The focus is transparent, metadata-defined quality diagnosis for loaded TargetDatasets, combined with smaller runtime-structure improvements that keep execution observability explicit and easier to maintain.
+
+No metadata model changes or migrations are required.
+
+---
+
+### ✨ Added
+
+#### Architecture Quality Review
+
+- Added read-only Architecture Quality Review for TargetDataset scopes in Catalog Detail  
+- Added on-demand HTMX execution so target-data checks do not run during initial page load  
+- Added NOT NULL violation checks for non-nullable TargetColumns  
+- Added duplicate surrogate-key checks for system-managed surrogate-key columns  
+- Added duplicate business-key checks for business-key columns  
+- Added empty dataset advisory checks  
+- Added blank string business-key advisory checks  
+- Added bounded example output for interactive review results  
+- Added compact passed-check details grouped by subject and sorted alphabetically  
+- Added dialect-owned SQL rendering hooks for quality review statements  
+- Added T-SQL `TOP` rendering for MSSQL and Fabric Warehouse quality review examples
+
+---
+
+### 🔄 Improved
+
+#### Catalog Detail Quality UX
+
+- Kept Architecture Quality Review out of the initial page load to avoid automatic target-data queries  
+- Kept fully passed reviews compact while still allowing users to inspect executed checks on demand  
+- Prioritized review findings by status so failed, warning and unavailable checks appear before passed checks  
+- Kept SQL text hidden from the UI while preserving deterministic, dialect-owned SQL rendering in the service boundary  
+- Kept Architecture Quality Review separate from Reference Integrity Review so dataset quality checks and modeled-reference checks remain explainable
+
+#### Load Runner Cleanup
+
+- Added a batch-scoped runtime state container for load-run provisioning and observability helpers  
+- Centralized batch-level ensure-state key handling for schema, `meta.load_run_log` and `meta.load_run_snapshot` helpers  
+- Extracted execution snapshot file persistence into a best-effort helper  
+- Extracted warehouse `meta.load_run_snapshot` persistence into a best-effort helper  
+- Extracted orchestration-only `meta.load_run_log` row persistence into a best-effort helper  
+- Extracted CLI summary formatting and failure-to-CommandError mapping helpers  
+- Kept dataset-level load semantics, retry behavior, execution ordering and log granularity unchanged
+
+---
+
+### 🔒 Governance & Determinism
+
+- Architecture Quality Review is read-only  
+- Architecture Quality Review runs only on demand  
+- Architecture Quality Review does not mutate metadata  
+- Architecture Quality Review does not execute loads  
+- Architecture Quality Review does not create approvals or check approvals  
+- Architecture Quality Review does not persist review history  
+- Architecture Quality Review does not repair data  
+- Architecture Quality Review does not create default members or inferred members  
+- Architecture Quality Review does not apply Default Member Fallback  
+- Architecture Quality Review is not an execution gate in this release  
+- Quality-check SQL shape remains owned by dialect files, not by Catalog or service code  
+- Load runner cleanup keeps observability best-effort and execution correctness authoritative
+
+---
+
+### 🧪 Quality & Stability
+
+- Added service tests for Architecture Quality Review result construction  
+- Added service tests for NOT NULL, duplicate key, empty dataset and blank business-key checks  
+- Added tests for compact passed-check grouping and sorting  
+- Added dialect tests for quality review LIMIT rendering  
+- Added dialect tests for MSSQL and Fabric Warehouse TOP rendering  
+- Added Catalog view tests for Quality Review HTMX rendering  
+- Added regression coverage for load runner runtime-state cleanup  
+- Added regression coverage for snapshot persistence helpers  
+- Added regression coverage for orchestration-only log helper behavior  
+- Added regression coverage for CLI summary and failure mapping helpers  
+- Verified DuckDB Full Execution successfully after the load runner cleanup
+
+---
+
+### 🛠️ Fixed
+
+- Fixed Architecture Execution Record retention cleanup routing so `Delete old records` resolves to the retention cleanup view instead of the execution record detail view.
+
+---
+
+### ⬆️ Upgrade Notes
+
+- No metadata database migration is required.  
+- Existing metadata, references, controlled reference settings and execution artifacts remain compatible.  
+- Architecture Quality Review is diagnostic and does not change controlled execution behavior.
+
+---
+
 ## [2.13.0] - 2026-07-07
 
 This release hardens **Databricks Full Execution** and reduces unnecessary runtime overhead in the load runner.
