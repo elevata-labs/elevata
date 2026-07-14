@@ -49,7 +49,7 @@ From these definitions, elevata derives deterministic logical plans, renders dia
 Schema evolution, incremental loads, historization, approvals, and execution evidence are planned, validated, and applied deterministically.
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/elevata-labs/elevata/main/docs/elevata_v2_14_0.png" alt="elevata UI preview" width="900"/>
+  <img src="https://raw.githubusercontent.com/elevata-labs/elevata/main/docs/elevata_v2_15_0.png" alt="elevata UI preview" width="900"/>
   <br/>
   <em>Architecture Runtime UI for discovering, controlling, modeling, and executing metadata-defined data architecture</em>
 </p>
@@ -104,7 +104,7 @@ Each layer is explicitly separated.
 
 1. Import or define source metadata, lineage, contracts, and execution semantics  
 2. Review source metadata import outcomes before generation  
-3. Discover architecture through Catalog, Data Products, Portfolio, Insights, and Maps  
+3. Discover architecture from Source Systems through Target Datasets to Data Products using Catalog, Portfolio, Insights, and Map    
 4. Inspect generated SQL, lineage, contracts, health, quality review, reference integrity, and execution evidence  
 5. Review architecture changes through Architecture Review Briefing and approve them through Architecture Control  
 6. Execute approved or unchanged scopes deterministically on your target warehouse  
@@ -148,16 +148,36 @@ The import review is deterministic, transient and read-only as a report. It does
 
 ---
 
+## 🚦 Source & Ingestion Readiness
+
+elevata makes the handoff from source metadata into executable architecture inspectable before load execution.
+
+For each SourceDataset, Source Ingestion Readiness evaluates metadata-defined conditions such as lifecycle and integration scope, RAW landing intent, native or external ingestion mode, integrated SourceColumns, active RAW TargetDataset links, file or REST configuration shape, JSON paths and incremental policy requirements.
+
+Readiness is expressed through transparent states:
+
+- **Ready** - no blocking or warning signal is present.  
+- **Attention** - metadata contains a blocking or warning signal that should be resolved or reviewed.  
+- **Not applicable** - the dataset is inactive, outside integration scope, or intentionally uses direct or federated access without elevata-managed RAW landing.  
+- **Unavailable** - the dataset cannot be evaluated as a valid source architecture object.
+
+The same readiness semantics appear on SourceDataset detail pages, in the Architecture Catalog Source Systems view, in the Catalog Portfolio and in Source-to-RAW handoffs on the Catalog Map.
+
+Readiness is deterministic and read-only. It does not connect to sources, resolve secrets, read files, call REST endpoints, import metadata, edit configuration or execute loads.
+
+---
+
 ## 🧭 Architecture Catalog
 
-elevata provides a read-only Architecture Catalog for discovering metadata-defined
-executable architecture.
+elevata provides a read-only Architecture Catalog for discovering metadata-defined executable architecture from Source Systems through Target Datasets to Data Products.
 
-The Catalog shows what exists, how datasets are defined, how they are connected, how they are controlled, where execution evidence is available, how portfolio posture looks, and which architecture quality and governance signals need attention.
+The Catalog shows what exists, how sources enter the platform, how datasets are defined and connected, how architecture is controlled, where execution evidence is available, how portfolio posture looks, and which readiness, quality and governance signals need attention.
 
-Users can search and filter TargetDatasets by schema, owner, lifecycle status, system-managed status, materialization type, incremental strategy and query logic.
+The Source Systems view groups SourceDatasets by their owning Source System and shows source type, declared ingestion mode, lifecycle posture, readiness distribution, diagnostic counts, RAW landing intent and linked RAW TargetDatasets. Search and filters support readiness state, Source System, source type and ingestion mode.
 
-Catalog detail pages summarize architecture metadata, ownership, health, upstream inputs, downstream consumers, column contract signals and the latest Architecture Execution Record for the dataset scope.
+The Target Datasets view supports search and filtering by schema, owner, lifecycle status, system-managed status, materialization type, incremental strategy and query logic.
+
+Catalog detail pages summarize architecture metadata, ownership, health, upstream inputs, downstream consumers, column contract signals and the latest Architecture Execution Record for the dataset scope. SourceDataset detail pages expose the same Source Ingestion Readiness semantics used by the global Catalog views.
 
 Catalog Detail also provides an on-demand Architecture Quality Review. It checks loaded target data against metadata-defined expectations such as non-nullable columns, duplicate surrogate or business keys, empty datasets and blank string business keys. The review is read-only, bounded and dialect-owned.
 
@@ -165,13 +185,13 @@ For datasets with modeled outgoing references, Catalog Detail also provides an o
 
 Reference Integrity Review is diagnostic. It does not create inferred members, apply Default Member Fallback, or repair data automatically. Controlled Reference Members are part of load execution and run only when the modeled reference explicitly enables the relevant behavior.
 
-Catalog Portfolio summarizes architecture posture across readiness, ownership, contracts, health, review state, execution evidence and layer distribution. Actionable Portfolio KPIs open filtered Catalog worklists so users can inspect affected datasets before navigating to dataset detail or Architecture Control.
+Catalog Portfolio places Source ingestion readiness beside Data Product readiness while keeping TargetDataset ownership, contracts, health, review state, execution evidence and layer distribution as separate posture signals. Readiness groups and actionable Portfolio KPIs open filtered Catalog worklists for focused drill-down.
 
 Catalog Data Products show which serving-layer datasets are ready for trusted consumption. Readiness is derived from ownership, metadata health, query contracts, lineage, Architecture Control review state and execution evidence.
 
 Catalog Insights highlight ownership gaps, metadata health findings, custom query logic, downstream consumer visibility, inactive datasets with consumers, missing execution evidence, and dataset-specific Architecture Control review status summaries.
 
-Catalog Maps show architecture across layers using layer cards, a layer flow overview, a source-to-target layer dependency matrix and expandable direct dependency examples.
+Catalog Maps show the end-to-end entry path from Source Systems through SourceDatasets into RAW TargetDatasets, followed by the target-layer flow, dependency matrix and expandable direct dependency examples.
 
 The Catalog does not edit metadata and does not execute loads. Architecture Quality Review and Reference Integrity Review do not persist review history, create inferred members or repair data automatically. Controlled load execution remains responsible for any enabled reference member handling. Architecture Control remains responsible for approval, execution, execution records and retention workflows.
 
@@ -187,7 +207,7 @@ This supports controlled review, CI checks and environment-to-environment archit
 
 The Architecture Control UI makes approval state, scope, policy status, change summary, execution preview, dependency mode, controlled reference readiness, captured output and execution records visible for controlled scopes.
 
-Architecture Review Briefing adds compact reviewer guidance directly inside Architecture Control. It summarizes the selected scope, review state, change volume, policy attention, destructive or blocking signals, execution readiness and suggested reviewer focus before approval or execution.
+Architecture Review Briefing adds compact reviewer guidance directly inside Architecture Control. It summarizes the selected scope, review state, change volume, policy evaluation, destructive or blocking signals, execution readiness and suggested reviewer focus before approval or execution. Allowed and metadata-only policy decisions are shown as evaluated outcomes, while preflight and blocked decisions remain reviewer attention.
 
 Users can inspect reports, open the Review Briefing details on demand, download report JSON, create Approval Artifacts, verify approvals, execute approved or no-change scopes, inspect the resulting Architecture Execution Record, review stored execution history, download record JSON, and apply execution record retention.
 
@@ -222,17 +242,17 @@ Recommended names can be applied directly from the TargetColumn inline editor, b
 
 elevata evolves along four strategic axes:
 
-**1. Architecture Catalog & Portfolio**  
-Making executable architecture discoverable across datasets, lineage, contracts, ownership, readiness, quality review, health, and execution evidence.
+**1. Architecture Discovery & Trust**  
+Keeping executable architecture discoverable across datasets, lineage, contracts, ownership, readiness, quality review, reference integrity, health and execution evidence.
 
-**2. Architecture Control & Auditability**  
-Strengthening review briefing, approval, execution evidence, promotion, retention, and controlled runtime operation.
+**2. Controlled Runtime Operation**  
+Strengthening deterministic review, approval, execution, audit evidence, retention and controlled runtime safety without adding unnecessary control layers.
 
-**3. Source Abstraction & Ingestion**  
-Expanding source patterns such as files, APIs, cloud transports, federated access and reviewable metadata import while preserving deterministic RAW and Stage semantics.
- 
-**4. Runtime Hardening & Execution Semantics**  
-Improving backend coverage, dialect behavior, schema evolution safety, and reproducible execution across supported warehouses.
+**3. Source & Ingestion Readiness**  
+Keeping source onboarding, RAW landing intent, ingestion modes, file/API patterns, external ingestion and federated access explicit, inspectable and deterministic.
+
+**4. Platform Coverage & Runtime Hardening**  
+Improving backend coverage, dialect behavior, schema evolution safety, historization, logging and reproducible execution across supported warehouses.
 
 See `/docs` for architectural depth.
 

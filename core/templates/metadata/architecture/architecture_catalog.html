@@ -22,14 +22,14 @@ Contact: <https://github.com/elevata-labs/elevata>.
 
 {% extends "base.html" %}
 
-{% block title %}Architecture Catalog · elevata{% endblock %}
+{% block title %}Architecture Catalog Target Datasets · elevata{% endblock %}
 
 {% block content %}
 <div class="d-flex align-items-start justify-content-between gap-3 mb-3">
   <div>
-    <h1 class="h4 mb-1">Architecture Catalog</h1>
+    <h1 class="h4 mb-1">Architecture Catalog Target Datasets</h1>
     <div class="small text-muted">
-      Read-only discovery layer for metadata-defined executable architecture.
+      Read-only target dataset discovery for metadata-defined executable architecture.
     </div>
   </div>
   <div class="d-flex align-items-center justify-content-end gap-2 flex-wrap">
@@ -41,6 +41,13 @@ Contact: <https://github.com/elevata-labs/elevata>.
       Portfolio
     </a>
     <a
+      href="{% url 'architecture_catalog_source_systems' %}"
+      class="btn btn-sm btn-outline-primary"
+    >
+      <i class="bi bi-database"></i>
+      Source Systems
+    </a>
+    <a
       href="{% url 'architecture_catalog_data_products' %}"
       class="btn btn-sm btn-outline-primary"
     >
@@ -48,18 +55,18 @@ Contact: <https://github.com/elevata-labs/elevata>.
       Data Products
     </a>
     <a
-      href="{% url 'architecture_catalog_map' %}"
-      class="btn btn-sm btn-outline-secondary"
-    >
-      <i class="bi bi-map"></i>
-      Map
-    </a>
-    <a
       href="{% url 'architecture_catalog_insights' %}"
       class="btn btn-sm btn-outline-secondary"
     >
       <i class="bi bi-graph-up-arrow"></i>
       Insights
+    </a>
+    <a
+      href="{% url 'architecture_catalog_map' %}"
+      class="btn btn-sm btn-outline-secondary"
+    >
+      <i class="bi bi-map"></i>
+      Map
     </a>
     <span class="badge text-bg-secondary">
       {{ filtered_count }} / {{ total_count }} datasets

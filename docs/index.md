@@ -61,10 +61,13 @@ This index gives you an overview of all major topics and how they fit together.
   How elevata executes load plans: dependency graphs, retries, failure semantics, load run logging and execution snapshots.
 
 - [Architecture Catalog](architecture_catalog.md)  
-  Read-only discovery layer for metadata-defined executable architecture, including dataset search, Portfolio, Catalog Maps, Catalog Insights, lineage entry points, query contract links and execution evidence references.
+  End-to-end read-only discovery layer from Source Systems through Target Datasets to Data Products, including Source Readiness, Portfolio, Maps, Insights, lineage, contracts and execution evidence references.
+
+- [Architecture Catalog Source Systems](architecture_catalog_source_systems.md)  
+  Grouped source landscape with deterministic Source Ingestion Readiness, ingestion posture, RAW landing intent and SourceDataset-to-RAW handoffs.
 
 - [Architecture Catalog Portfolio](architecture_catalog_portfolio.md)  
-  Executive architecture posture lens across readiness, ownership, contracts, health, review state, execution evidence and layer distribution.
+  Executive architecture posture lens across Source ingestion readiness, Data Product readiness, ownership, contracts, health, review state, execution evidence and layer distribution.
 
 - [Architecture Catalog Data Products](architecture_catalog_data_products.md)  
   Consumer-readiness perspective for serving-layer datasets, derived from ownership, health, lineage, contracts, review state and execution evidence.
@@ -111,7 +114,7 @@ This index gives you an overview of all major topics and how they fit together.
 ### 🌐 Source Integration
 
 - [Source Backends](source_backends.md)  
-  Overview of supported source systems and how to configure them (JDBC/ODBC, file-based, etc.).
+  Overview of supported source systems, file and REST configuration contracts, and how Source Ingestion Readiness evaluates those contracts.
 
 - [Source Metadata Import Review](source_metadata_import_review.md)  
   Deterministic import outcome review for SourceDataset and SourceSystem metadata imports, including created, changed, unchanged, removed and review-needed signals.
@@ -187,7 +190,7 @@ A personal open-source initiative exploring how data architecture can be defined
 
 ---
 
-_Last updated: 2026-07-04_
+_Last updated: 2026-07-14_
 
 © 2025-2026 elevata - Technical Documentation  
 Built with purpose. Rendered with precision. 🪶

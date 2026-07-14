@@ -4,13 +4,16 @@ The Architecture Catalog is the read-only discovery layer for metadata-defined e
 
 It helps users understand:
 
-- what datasets exist  
+- which Source Systems and SourceDatasets exist  
+- how sources are expected to enter the platform  
+- what TargetDatasets exist  
 - why they exist  
 - how they are defined  
 - how they are connected  
 - how they are controlled  
 - where execution evidence is available  
-- how architecture flows across layers  
+- how architecture flows from sources into RAW and across target layers  
+- where Source Ingestion Readiness needs attention  
 - how portfolio posture looks across governance and execution evidence  
 - which serving-layer datasets are ready for trusted consumption  
 - which architecture quality and governance signals need attention  
@@ -33,7 +36,7 @@ It complements Architecture Control:
 Architecture Catalog
   = What exists, why it exists, how it is defined, how it is connected,
     how it is controlled, where its execution evidence is,
-    and how portfolio posture looks across the architecture.
+    how sources hand off into RAW, and how portfolio posture looks across the architecture.
 
 Architecture Control
   = Review, approve, preview, execute and inspect execution evidence.
@@ -43,9 +46,9 @@ This separation keeps discovery, control and execution responsibilities clear.
 
 ---
 
-## 🔧 2. Catalog Workspace
+## 🔧 2. Target Dataset Workspace
 
-The Architecture Catalog workspace provides a compact inventory of TargetDatasets.
+The Architecture Catalog Target Datasets workspace provides a compact inventory of TargetDatasets.
 
 It supports filtering by:
 
@@ -74,6 +77,7 @@ Each catalog row shows:
 - query logic  
 - direct navigation links  
 - entry point to Catalog Portfolio  
+- entry point to Catalog Source Systems  
 - entry point to Catalog Data Products  
 - entry point to Catalog Insights  
 - entry point to Catalog Map
@@ -86,12 +90,49 @@ The workspace links to:
 - Architecture Control  
 - Catalog detail  
 - Catalog Portfolio  
+- Catalog Source Systems  
 - Catalog Data Products  
+- Catalog Insights  
 - Catalog Map
 
 ---
 
-## 🔧 3. Catalog Portfolio
+## 🔧 3. Catalog Source Systems
+
+Architecture Catalog Source Systems provide the read-only source-side lens of the metadata-defined architecture.
+
+They answer:
+
+```text
+Which Source Systems and SourceDatasets exist, how are they expected to enter
+the platform, and where does Source Ingestion Readiness need attention?
+```
+
+The view groups SourceDatasets by Source System and shows:
+
+- Source System name and short name  
+- source type  
+- declared native, external or no-ingestion mode  
+- lifecycle state  
+- SourceDataset count  
+- ready, attention, not-applicable and unavailable counts  
+- blocking and warning diagnostic counts  
+- RAW landing intent  
+- linked RAW TargetDatasets  
+- integrated SourceColumn count  
+- compact primary findings
+
+Datasets requiring attention are visible first. Ready and not-applicable datasets remain available through bounded expanders that show only hidden rows.
+
+The view supports filtering by search term, readiness state, Source System, source type and declared ingestion mode. Dataset names link to SourceDataset detail pages, where the complete diagnostic explanation is available.
+
+Readiness remains owned by the central Source Ingestion Readiness service. The Catalog view only aggregates and presents those results.
+
+For more details, see [Architecture Catalog Source Systems](architecture_catalog_source_systems.md).
+
+---
+
+## 🔧 4. Catalog Portfolio
 
 The Architecture Catalog Portfolio provides a read-only executive lens across metadata-defined executable architecture.
 
@@ -110,6 +151,9 @@ The Portfolio shows:
 - metadata health clearance  
 - Architecture Control review clearance  
 - Architecture Execution Record evidence coverage  
+- Source ingestion readiness distribution  
+- Source System and SourceDataset counts  
+- Source readiness blocking and warning findings  
 - Data Product readiness distribution  
 - aggregated attention areas  
 - layer-level ownership, contract, health, execution evidence and custom query signals
@@ -123,7 +167,7 @@ The Portfolio does not edit metadata, create approvals, check approvals or execu
 
 ---
 
-## 🔧 4. Catalog Insights
+## 🔧 5. Catalog Insights
 
 Architecture Catalog Insights provide read-only architecture quality and governance signals across TargetDatasets.
 
@@ -145,7 +189,7 @@ Catalog Insights do not create approvals, check approvals, execute loads, delete
 
 ---
 
-## 🔧 5. Catalog Data Products
+## 🔧 6. Catalog Data Products
 
 Architecture Catalog Data Products provide a read-only consumer-readiness perspective for serving-layer datasets.
 
@@ -174,31 +218,39 @@ Catalog Data Products derive readiness from existing architecture metadata. They
 
 ---
 
-## 🔧 6. Catalog Map
+## 🔧 7. Catalog Map
 
-The Architecture Catalog Map provides a read-only architecture lens across schemas, layers and direct TargetDataset dependencies.
+The Architecture Catalog Map provides a read-only architecture lens from Source Systems and SourceDatasets into RAW, then across target layers and direct TargetDataset dependencies.
 
 It helps users understand:
 
+- which SourceDatasets map to RAW TargetDatasets  
+- which sources intentionally require no RAW landing  
+- where a required RAW target is missing or ambiguous  
 - how datasets are distributed across architecture layers  
 - how populated layers connect to each other  
 - which direct TargetDataset dependencies cross layer boundaries  
 - where custom query logic appears in layer context  
-- which datasets and dependency examples explain each layer transition
+- which datasets and dependency examples explain each architecture transition
 
 The Catalog Map includes:
 
+- Source-to-RAW handoff summary across Source Systems, SourceDatasets and RAW TargetDatasets  
+- mapped, no-landing and attention posture per Source System  
+- direct links to SourceDataset and RAW TargetDataset details  
 - layer summary cards grouped by schema / layer  
-- layer flow overview for populated architecture layers  
-- source-to-target layer dependency matrix  
+- layer flow overview for populated target architecture layers  
+- TargetDataset layer dependency matrix  
 - layer transition groups with expandable dependency examples  
 - dataset links to Catalog detail pages and lineage pages
 
-The Catalog Map uses direct TargetDataset dependencies. It does not replace the dedicated lineage view and does not introduce graph editing, execution controls or metadata mutations.
+Source-to-RAW handoffs reuse Source Ingestion Readiness and modeled RAW input links. The target-layer dependency matrix remains limited to direct TargetDataset dependencies, so Source Systems are not treated as TargetSchemas.
+
+The Catalog Map does not replace the dedicated lineage view and does not introduce graph editing, source connectivity, execution controls or metadata mutations.
 
 ---
 
-## 🔧 7. Catalog Detail View
+## 🔧 8. Catalog Detail View
 
 The Catalog detail view summarizes one TargetDataset as an architecture object.
 
@@ -221,7 +273,7 @@ The detail view remains read-only. Editing stays on the dataset detail and scope
 
 ---
 
-## 🔧 8. Architecture Quality Review
+## 🔧 9. Architecture Quality Review
 
 For loaded TargetDatasets, the Catalog detail view can run a read-only Architecture Quality Review on demand.
 
@@ -243,7 +295,7 @@ Future Architecture Control gates may use selected quality signals explicitly, b
 
 ---
 
-## 🔧 9. Reference Integrity
+## 🔧 10. Reference Integrity
 
 For datasets with modeled outgoing references, the Catalog detail view can run a read-only Reference Integrity Review on demand.
 
@@ -261,7 +313,7 @@ For more details, see [Reference Integrity](reference_integrity.md).
 
 ---
 
-## 🔧 10. Review Status
+## 🔧 11. Review Status
  
 For TargetDataset scopes, the Catalog detail view surfaces the Architecture Control review status as a read-only summary.
 
@@ -278,7 +330,7 @@ Catalog detail pages use the existing Architecture Control review status contrac
 
 ---
 
-## 🔧 11. Execution Evidence
+## 🔧 12. Execution Evidence
 
 For TargetDataset scopes, the Catalog detail view surfaces the latest Architecture Execution Record summary when one exists.
 
@@ -297,7 +349,7 @@ The Catalog shows the latest evidence reference in dataset context without dupli
 
 ---
 
-## 🔧 12. Lineage and Contract Signals
+## 🔧 13. Lineage and Contract Signals
 
 The Catalog shows direct upstream and downstream relationships.
 
@@ -322,12 +374,17 @@ This makes the dataset structure inspectable without replacing dedicated lineage
 
 ---
 
-## 🔧 13. Governance Boundary
+## 🔧 14. Governance Boundary
 
 The Architecture Catalog is a discovery surface.
 
 It does not:
 
+- connect to source systems  
+- resolve source secrets  
+- read source files or call REST endpoints  
+- import source metadata  
+- edit ingestion configuration  
 - create Approval Artifacts  
 - check approvals  
 - request access  

@@ -103,6 +103,9 @@ def _patch_reverse(monkeypatch) -> None:
     if name == "architecture_catalog_portfolio":
       return "/architecture-catalog/portfolio/"
 
+    if name == "architecture_catalog_source_systems":
+      return "/architecture-catalog/source-systems/"
+
     if name == "architecture_catalog_data_products":
       return "/architecture-catalog/data-products/"
 
@@ -1076,6 +1079,163 @@ def test_architecture_catalog_map_context_groups_layers_and_transitions(
 
 
 @pytest.mark.django_db
+def test_architecture_catalog_map_context_summarizes_source_to_raw_handoffs(
+  monkeypatch,
+) -> None:
+  """
+  Verify SourceDataset-to-RAW handoff aggregation in the Catalog Map.
+  """
+  _patch_reverse(monkeypatch)
+
+  raw = _get_or_create_target_schema(
+    "raw",
+    display_name="Raw",
+  )
+  raw_customer = TargetDataset.objects.create(
+    target_schema=raw,
+    target_dataset_name="catalog_map_source_customer",
+  )
+  raw_orders = TargetDataset.objects.create(
+    target_schema=raw,
+    target_dataset_name="catalog_map_source_orders",
+  )
+
+  source_datasets = (
+    SimpleNamespace(
+      dataset_key="dbo.customer",
+      detail_url="/sourcedataset_detail/11/",
+      status="ready",
+      status_label="Ready",
+      badge_class="text-bg-success",
+      landing_required=True,
+      raw_target_keys=("raw.catalog_map_source_customer",),
+    ),
+    SimpleNamespace(
+      dataset_key="dbo.reference",
+      detail_url="/sourcedataset_detail/12/",
+      status="not_applicable",
+      status_label="Not applicable",
+      badge_class="text-bg-secondary",
+      landing_required=False,
+      raw_target_keys=(),
+    ),
+    SimpleNamespace(
+      dataset_key="dbo.missing",
+      detail_url="/sourcedataset_detail/13/",
+      status="attention",
+      status_label="Attention",
+      badge_class="text-bg-warning",
+      landing_required=True,
+      raw_target_keys=(),
+    ),
+    SimpleNamespace(
+      dataset_key="dbo.multiple",
+      detail_url="/sourcedataset_detail/14/",
+      status="attention",
+      status_label="Attention",
+      badge_class="text-bg-warning",
+      landing_required=True,
+      raw_target_keys=(
+        "raw.catalog_map_source_customer",
+        "raw.catalog_map_source_orders",
+      ),
+    ),
+  )
+  source_system = SimpleNamespace(
+    short_name="erp",
+    name="ERP",
+    source_type="mssql",
+    ingest_mode="native",
+    active=True,
+    status_label="Attention",
+    badge_class="text-bg-warning",
+    detail_url="/system_detail/1/",
+    datasets=source_datasets,
+  )
+
+  monkeypatch.setattr(
+    catalog_map,
+    "build_architecture_catalog_sources_context",
+    lambda: {
+      "source_systems": (source_system,),
+      "total_source_system_count": 1,
+      "total_dataset_count": len(source_datasets),
+    },
+  )
+
+  context = catalog_map.build_architecture_catalog_map_context()
+
+  assert context["source_system_count"] == 1
+  assert context["source_dataset_count"] == 4
+  assert context["source_raw_target_count"] == 2
+  assert context["source_handoff_mapped_count"] == 1
+  assert context["source_handoff_not_required_count"] == 1
+  assert context["source_handoff_attention_count"] == 2
+
+  summary = context["source_handoff_systems"][0]
+  assert summary.short_name == "erp"
+  assert summary.dataset_count == 4
+  assert summary.mapped_count == 1
+  assert summary.not_required_count == 1
+  assert summary.attention_count == 2
+
+  handoffs = {
+    handoff.source_dataset_key: handoff
+    for handoff in summary.handoff_examples
+  }
+  assert handoffs["dbo.customer"].mapping_status == "mapped"
+  assert handoffs["dbo.customer"].raw_targets[0].catalog_detail_url == (
+    f"/architecture-catalog/{raw_customer.pk}/"
+  )
+  assert handoffs["dbo.reference"].mapping_status == "not_required"
+  assert handoffs["dbo.missing"].mapping_status == "missing"
+  assert handoffs["dbo.missing"].finding == (
+    "RAW landing is required, but no RAW TargetDataset is linked."
+  )
+  assert handoffs["dbo.multiple"].mapping_status == "multiple"
+  assert len(handoffs["dbo.multiple"].raw_targets) == 2
+
+
+def test_architecture_catalog_map_source_handoffs_keep_collapsed_items() -> None:
+  """
+  Verify Source System handoff summaries retain items beyond the display limit.
+  """
+  source_datasets = tuple(
+    SimpleNamespace(
+      dataset_key=f"dbo.dataset_{index:02d}",
+      detail_url=f"/sourcedataset_detail/{index}/",
+      status="not_applicable",
+      status_label="Not applicable",
+      badge_class="text-bg-secondary",
+      landing_required=False,
+      raw_target_keys=(),
+    )
+    for index in range(catalog_map.SOURCE_HANDOFF_LIMIT + 2)
+  )
+  source_system = SimpleNamespace(
+    short_name="files",
+    name="File Source",
+    source_type="csv",
+    ingest_mode="native",
+    active=True,
+    status_label="Not applicable",
+    badge_class="text-bg-secondary",
+    detail_url="/system_detail/2/",
+    datasets=source_datasets,
+  )
+
+  summary = catalog_map._source_handoff_summary(
+    source_system,
+    {},
+  )
+
+  assert summary.dataset_count == catalog_map.SOURCE_HANDOFF_LIMIT + 2
+  assert len(summary.handoff_examples) == catalog_map.SOURCE_HANDOFF_LIMIT
+  assert summary.remaining_handoff_count == 2
+  assert summary.remaining_handoffs[0].source_dataset_key == "dbo.dataset_05"
+
+
+@pytest.mark.django_db
 def test_architecture_catalog_map_context_keeps_collapsed_items(
   monkeypatch,
 ) -> None:
@@ -1248,6 +1408,42 @@ def test_architecture_catalog_portfolio_context_summarizes_metrics(
   )
   monkeypatch.setattr(
     catalog_portfolio,
+    "build_architecture_catalog_sources_context",
+    lambda: {
+      "status_counts": (
+        SimpleNamespace(
+          key="ready",
+          label="Ready",
+          count=2,
+          badge_class="text-bg-success",
+        ),
+        SimpleNamespace(
+          key="attention",
+          label="Attention",
+          count=1,
+          badge_class="text-bg-warning",
+        ),
+        SimpleNamespace(
+          key="not_applicable",
+          label="Not applicable",
+          count=1,
+          badge_class="text-bg-secondary",
+        ),
+        SimpleNamespace(
+          key="unavailable",
+          label="Unavailable",
+          count=0,
+          badge_class="text-bg-dark",
+        ),
+      ),
+      "total_source_system_count": 2,
+      "total_dataset_count": 4,
+      "blocking_signal_count": 1,
+      "warning_signal_count": 2,
+    },
+  )
+  monkeypatch.setattr(
+    catalog_portfolio,
     "_data_product_readiness_groups",
     lambda: (
       (
@@ -1266,12 +1462,32 @@ def test_architecture_catalog_portfolio_context_summarizes_metrics(
 
   context = catalog_portfolio.build_architecture_catalog_portfolio_context()
   metrics = {metric.key: metric for metric in context["metrics"]}
+  source_readiness = context["source_readiness"]
+  source_groups = {
+    group.key: group
+    for group in source_readiness.groups
+  }
   hotspots = {hotspot.key: hotspot for hotspot in context["hotspots"]}
   layers = {layer.schema_short: layer for layer in context["layer_summaries"]}
 
   assert context["total_dataset_count"] == 3
   assert context["active_dataset_count"] == 2
   assert context["data_product_count"] == 1
+  assert source_readiness.source_system_count == 2
+  assert source_readiness.source_dataset_count == 4
+  assert source_readiness.blocking_signal_count == 1
+  assert source_readiness.warning_signal_count == 2
+  assert source_readiness.url == "/architecture-catalog/source-systems/"
+  assert source_groups["ready"].count == 2
+  assert source_groups["ready"].share_label == "50%"
+  assert source_groups["attention"].count == 1
+  assert source_groups["attention"].url == (
+    "/architecture-catalog/source-systems/?status=attention"
+  )
+  assert source_groups["not_applicable"].url == (
+    "/architecture-catalog/source-systems/?status=not_applicable"
+  )
+  assert source_groups["unavailable"].count == 0
   assert metrics["ownership_coverage"].value == 1
   assert metrics["contract_coverage"].value == 1
   assert metrics["health_clearance"].value == 1
@@ -1490,6 +1706,13 @@ def test_architecture_catalog_map_view_renders_map_template(
     views_catalog,
     "build_architecture_catalog_map_context",
     lambda: {
+      "source_handoff_systems": (),
+      "source_system_count": 0,
+      "source_dataset_count": 0,
+      "source_raw_target_count": 0,
+      "source_handoff_mapped_count": 0,
+      "source_handoff_not_required_count": 0,
+      "source_handoff_attention_count": 0,
       "layer_summaries": (),
       "layer_flow_steps": (),
       "layer_matrix_columns": (),
@@ -1508,6 +1731,8 @@ def test_architecture_catalog_map_view_renders_map_template(
   assert rendered["template_name"] == (
     "metadata/architecture/architecture_catalog_map.html"
   )
+  assert rendered["context"]["source_handoff_systems"] == ()
+  assert rendered["context"]["source_handoff_attention_count"] == 0
   assert rendered["context"]["layer_flow_steps"] == ()
   assert rendered["context"]["layer_matrix_rows"] == ()
   assert rendered["context"]["transitions"] == ()

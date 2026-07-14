@@ -393,6 +393,93 @@ def test_review_briefing_highlights_blocked_policy() -> None:
   )
 
 
+def test_review_briefing_treats_allowed_policy_decisions_as_evaluated() -> None:
+  """
+  Verify allowed policy decisions are evidence, not attention signals.
+  """
+  policy_decisions = [
+    {
+      "status": "ALLOW",
+      "code": "ADD_COLUMN_ALLOWED",
+      "action_type": "ADD_COLUMN",
+      "dataset_key": "raw.customer",
+      "column_name": f"column_{index}",
+      "message": "The action is allowed by the active materialization policy.",
+    }
+    for index in range(8)
+  ]
+  report = FakeReport(
+    payload=_report_payload(
+      policy_decisions=policy_decisions,
+      summary={
+        "dataset_change_count": 0,
+        "column_change_count": 8,
+        "migration_action_count": 8,
+        "policy_decision_count": 8,
+        "blocking_policy_decision_count": 0,
+      },
+    ),
+  )
+
+  briefing = build_architecture_review_briefing(
+    control_context=_context(report=report, status=_status("pending")),
+    execution_preview=_preview(_gate("pending_approval", can_execute=False)),
+  )
+
+  signal = _section(briefing, "policy_attention").signals[0]
+  assert signal.level == "success"
+  assert signal.title == "Policy decisions evaluated"
+  assert "All actions are allowed or metadata-only" in signal.message
+  assert signal.detail_count == 8
+  assert len(signal.preview_details) == 6
+  assert signal.remaining_detail_count == 2
+  assert signal.has_remaining_details is True
+  assert signal.details[0].startswith("ALLOW · ADD_COLUMN")
+
+
+def test_review_briefing_marks_preflight_policy_decisions_as_attention() -> None:
+  """
+  Verify preflight policy decisions remain explicit warning signals.
+  """
+  report = FakeReport(
+    payload=_report_payload(
+      policy_decisions=[
+        {
+          "status": "ALLOW",
+          "action_type": "ADD_COLUMN",
+          "dataset_key": "raw.customer",
+          "column_name": "customer_name",
+          "message": "The action is allowed by the active materialization policy.",
+        },
+        {
+          "status": "REQUIRES_PREFLIGHT",
+          "action_type": "ALTER_COLUMN",
+          "dataset_key": "raw.customer",
+          "column_name": "customer_id",
+          "message": "The action requires schema preflight validation before execution.",
+        },
+      ],
+      summary={
+        "dataset_change_count": 0,
+        "column_change_count": 2,
+        "migration_action_count": 2,
+        "policy_decision_count": 2,
+        "blocking_policy_decision_count": 0,
+      },
+    ),
+  )
+
+  briefing = build_architecture_review_briefing(
+    control_context=_context(report=report, status=_status("pending")),
+    execution_preview=_preview(_gate("pending_approval", can_execute=False)),
+  )
+
+  signal = _section(briefing, "policy_attention").signals[0]
+  assert signal.level == "warning"
+  assert "1 policy decision(s) require schema preflight" in signal.message
+  assert signal.detail_count == 2
+
+
 def test_review_briefing_highlights_destructive_attention() -> None:
   """
   Verify destructive migration action detection.

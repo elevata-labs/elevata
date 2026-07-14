@@ -75,6 +75,7 @@ nav:
   - Execution & Observability:
       - ⚙️ Load Execution & Orchestration Architecture: load_execution_architecture.md
       - ⚙️ Architecture Catalog: architecture_catalog.md
+      - ⚙️ Architecture Catalog Source Systems: architecture_catalog_source_systems.md
       - ⚙️ Architecture Catalog Portfolio: architecture_catalog_portfolio.md
       - ⚙️ Architecture Catalog Data Products: architecture_catalog_data_products.md
       - ⚙️ Reference Integrity: reference_integrity.md

@@ -35,6 +35,9 @@ from metadata.architecture.catalog_data_products import (
   build_architecture_catalog_data_products_context,
 )
 from metadata.architecture.catalog_map import CANONICAL_LAYER_ORDER
+from metadata.architecture.catalog_sources import (
+  build_architecture_catalog_sources_context,
+)
 from metadata.architecture.execution_record import ArchitectureExecutionRecordStore
 from metadata.architecture.review_status import (
   ArchitectureReviewStatusError,
@@ -105,7 +108,7 @@ class ArchitectureCatalogPortfolioMetric:
 @dataclass(frozen=True)
 class ArchitectureCatalogPortfolioReadinessGroup:
   """
-  Read-only Data Product readiness group for the Portfolio page.
+  Read-only readiness group displayed on the Portfolio page.
   """
   key: str
   label: str
@@ -122,6 +125,19 @@ class ArchitectureCatalogPortfolioReadinessGroup:
     if self.total <= 0:
       return "—"
     return f"{round((self.count / self.total) * 100)}%"
+
+
+@dataclass(frozen=True)
+class ArchitectureCatalogPortfolioSourceReadiness:
+  """
+  Read-only SourceDataset ingestion readiness for the Portfolio page.
+  """
+  groups: tuple[ArchitectureCatalogPortfolioReadinessGroup, ...]
+  source_system_count: int
+  source_dataset_count: int
+  blocking_signal_count: int
+  warning_signal_count: int
+  url: str
 
 
 @dataclass(frozen=True)
@@ -188,6 +204,7 @@ class ArchitectureCatalogPortfolioContext:
   Template context for the Architecture Catalog Portfolio page.
   """
   metrics: tuple[ArchitectureCatalogPortfolioMetric, ...]
+  source_readiness: ArchitectureCatalogPortfolioSourceReadiness
   readiness_groups: tuple[ArchitectureCatalogPortfolioReadinessGroup, ...]
   hotspots: tuple[ArchitectureCatalogPortfolioHotspot, ...]
   layer_summaries: tuple[ArchitectureCatalogPortfolioLayerSummary, ...]
@@ -211,6 +228,7 @@ def build_architecture_catalog_portfolio_context() -> dict[str, Any]:
   health_by_dataset_id = _health_by_dataset_id(active_datasets)
   review_counts = _review_status_counts(active_datasets)
   execution_scope_keys = _execution_scope_keys()
+  source_readiness = _source_readiness_summary()
   readiness_groups, data_product_count = _data_product_readiness_groups()
 
   context = ArchitectureCatalogPortfolioContext(
@@ -221,6 +239,7 @@ def build_architecture_catalog_portfolio_context() -> dict[str, Any]:
       review_counts=review_counts,
       execution_scope_keys=execution_scope_keys,
     ),
+    source_readiness=source_readiness,
     readiness_groups=readiness_groups,
     hotspots=_portfolio_hotspots(
       active_datasets=active_datasets,
@@ -526,6 +545,41 @@ def _layer_summary(
   )
 
 
+def _source_readiness_summary(
+) -> ArchitectureCatalogPortfolioSourceReadiness:
+  """
+  Return SourceDataset ingestion readiness for the Portfolio page.
+  """
+  context = build_architecture_catalog_sources_context()
+  total = int(context.get("total_dataset_count", 0) or 0)
+  groups = tuple(
+    ArchitectureCatalogPortfolioReadinessGroup(
+      key=str(status.key),
+      label=str(status.label),
+      count=int(status.count or 0),
+      total=total,
+      badge_class=str(status.badge_class),
+      url=_source_systems_filter_url(str(status.key)),
+    )
+    for status in context.get("status_counts", ())
+  )
+
+  return ArchitectureCatalogPortfolioSourceReadiness(
+    groups=groups,
+    source_system_count=int(
+      context.get("total_source_system_count", 0) or 0
+    ),
+    source_dataset_count=total,
+    blocking_signal_count=int(
+      context.get("blocking_signal_count", 0) or 0
+    ),
+    warning_signal_count=int(
+      context.get("warning_signal_count", 0) or 0
+    ),
+    url=reverse("architecture_catalog_source_systems"),
+  )
+
+
 def _data_product_readiness_groups(
 ) -> tuple[tuple[ArchitectureCatalogPortfolioReadinessGroup, ...], int]:
   """
@@ -691,6 +745,14 @@ def _data_products_filter_url(readiness: str) -> str:
     "status": "active",
   })
   return f"{reverse('architecture_catalog_data_products')}?{query}"
+
+
+def _source_systems_filter_url(status: str) -> str:
+  """
+  Return a Source Systems URL filtered by SourceDataset readiness.
+  """
+  query = urlencode({"status": status})
+  return f"{reverse('architecture_catalog_source_systems')}?{query}"
 
 
 def _layer_sort_key(schema_short: str) -> tuple[int, str]:

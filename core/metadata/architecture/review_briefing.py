@@ -35,6 +35,7 @@ ArchitectureReviewBriefingLevel = Literal[
 ]
 
 _ATTENTION_LEVELS = {"warning", "danger"}
+_DETAIL_PREVIEW_LIMIT = 6
 _DESTRUCTIVE_TOKENS = (
   "drop",
   "delete",
@@ -62,6 +63,31 @@ class ArchitectureReviewBriefingSignal:
     Return True when the signal should attract explicit reviewer attention.
     """
     return self.level in _ATTENTION_LEVELS
+  
+  @property
+  def detail_count(self) -> int:
+    """Return the number of detail lines attached to this signal."""
+    return len(self.details)
+
+  @property
+  def preview_details(self) -> tuple[str, ...]:
+    """Return the detail lines shown before explicit expansion."""
+    return self.details[:_DETAIL_PREVIEW_LIMIT]
+
+  @property
+  def remaining_details(self) -> tuple[str, ...]:
+    """Return detail lines hidden behind explicit expansion."""
+    return self.details[_DETAIL_PREVIEW_LIMIT:]
+
+  @property
+  def has_remaining_details(self) -> bool:
+    """Return True when more detail lines exist than the compact preview shows."""
+    return bool(self.remaining_details)
+
+  @property
+  def remaining_detail_count(self) -> int:
+    """Return the number of detail lines hidden behind expansion."""
+    return len(self.remaining_details)
 
 
 @dataclass(frozen=True)
@@ -364,7 +390,20 @@ def _policy_signal(
   summary = _dict_value(payload, "summary")
   policy_count = _int_value(summary.get("policy_decision_count"))
   blocking_count = _int_value(summary.get("blocking_policy_decision_count"))
-  details = _item_examples(payload.get("policy_decisions"))
+  policy_decisions = _tuple_value(payload.get("policy_decisions"))
+  status_counts = _policy_status_counts(policy_decisions)
+  preflight_count = status_counts.get("REQUIRES_PREFLIGHT", 0)
+  recognized_count = sum(
+    status_counts.get(status, 0)
+    for status in (
+      "ALLOW",
+      "METADATA_ONLY",
+      "REQUIRES_PREFLIGHT",
+      "BLOCKED_BY_POLICY",
+    )
+  )
+  unclassified_count = max(policy_count - recognized_count, 0)
+  details = _item_examples(policy_decisions, limit=None)
 
   if blocking_count > 0 or is_blocked:
     if blocking_count > 0:
@@ -385,11 +424,34 @@ def _policy_signal(
       details=details,
     )
 
-  if policy_count > 0:
+  if preflight_count > 0 or unclassified_count > 0:
+    attention_count = preflight_count + unclassified_count
+    if preflight_count > 0 and unclassified_count == 0:
+      message = (
+        f"{preflight_count} policy decision(s) require schema preflight before "
+        f"execution. {policy_count} policy decision(s) were evaluated in total."
+      )
+    else:
+      message = (
+        f"{attention_count} of {policy_count} policy decision(s) require "
+        "additional review before execution."
+      )
     return _signal(
       title="Policy attention",
-      message=f"{policy_count} policy decision(s) should be reviewed.",
+      message=message,
       level="warning",
+      icon="bi-shield-check",
+      details=details,
+    )
+
+  if policy_count > 0:
+    return _signal(
+      title="Policy decisions evaluated",
+      message=(
+        f"{policy_count} policy decision(s) were evaluated. "
+        "All actions are allowed or metadata-only."
+      ),
+      level="success",
       icon="bi-shield-check",
       details=details,
     )
@@ -564,13 +626,33 @@ def _destructive_actions(value: Any) -> tuple[str, ...]:
   )
 
 
-def _item_examples(value: Any, *, limit: int = 6) -> tuple[str, ...]:
+def _policy_status_counts(value: tuple[Any, ...]) -> dict[str, int]:
+  """Return normalized policy decision counts by status."""
+  counts: dict[str, int] = {}
+  for item in value:
+    if not isinstance(item, dict):
+      continue
+    status = _str_value(item.get("status")).upper()
+    if not status:
+      continue
+    counts[status] = counts.get(status, 0) + 1
+  return counts
+
+
+def _item_examples(
+  value: Any,
+  *,
+  limit: int | None = 6,
+) -> tuple[str, ...]:
   """
   Return compact text examples for report item payloads.
   """
+  items = _tuple_value(value)
+  if limit is not None:
+    items = items[:limit]
   return tuple(
     label
-    for label in (_item_label(item) for item in _tuple_value(value)[:limit])
+    for label in (_item_label(item) for item in items)
     if label
   )
 
@@ -584,6 +666,7 @@ def _item_label(item: Any) -> str:
 
   parts = []
   for key in (
+    "status",
     "action",
     "action_type",
     "change_type",

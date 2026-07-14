@@ -1,0 +1,168 @@
+<!--
+elevata - Metadata-driven Data Platform Framework
+Copyright © 2025-2026 Ilona Tag
+
+This file is part of elevata.
+
+elevata is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of
+the License, or (at your option) any later version.
+
+elevata is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with elevata. If not, see <https://www.gnu.org/licenses/>.
+
+Contact: <https://github.com/elevata-labs/elevata>.
+-->
+
+<section class="card mb-4" aria-labelledby="source-ingestion-readiness-title">
+  <div class="card-body">
+    <div class="d-flex align-items-start justify-content-between gap-3 flex-wrap">
+      <div>
+        <h2 id="source-ingestion-readiness-title" class="h5 mb-1">
+          Source Ingestion Readiness
+        </h2>
+        <p class="text-muted small mb-0">
+          Read-only assessment of the declared source, landing and ingestion metadata.
+          No source connection or load is executed.
+        </p>
+      </div>
+
+      {% if readiness.status == "ready" %}
+        <span class="badge text-bg-success">Ready</span>
+      {% elif readiness.status == "attention" %}
+        <span class="badge text-bg-warning">Attention</span>
+      {% elif readiness.status == "not_applicable" %}
+        <span class="badge text-bg-secondary">Not applicable</span>
+      {% else %}
+        <span class="badge text-bg-dark">Unavailable</span>
+      {% endif %}
+    </div>
+
+    <div class="row g-3 mt-1 small">
+      <div class="col-sm-6 col-lg-3">
+        <div class="text-muted">Source type</div>
+        <div class="fw-semibold">{{ readiness.source_type|default:"-" }}</div>
+      </div>
+      <div class="col-sm-6 col-lg-3">
+        <div class="text-muted">Metadata import</div>
+        <div class="fw-semibold">{{ readiness.metadata_import_mode|title }}</div>
+      </div>
+      <div class="col-sm-6 col-lg-3">
+        <div class="text-muted">RAW landing</div>
+        <div class="fw-semibold">
+          {% if readiness.landing_required %}Required{% else %}Not required{% endif %}
+        </div>
+      </div>
+      <div class="col-sm-6 col-lg-3">
+        <div class="text-muted">Ingestion mode</div>
+        <div class="fw-semibold">{{ readiness.ingest_mode|title }}</div>
+      </div>
+      <div class="col-sm-6 col-lg-3">
+        <div class="text-muted">Integrated columns</div>
+        <div class="fw-semibold">{{ readiness.integrated_column_count }}</div>
+      </div>
+      <div class="col-sm-6 col-lg-9">
+        <div class="text-muted">RAW target</div>
+        <div class="fw-semibold">
+          {% if readiness.raw_target_keys %}
+            {{ readiness.raw_target_keys|join:", " }}
+          {% else %}
+            -
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <div class="mt-3">
+      <div class="d-flex align-items-center gap-2 flex-wrap">
+        <span class="fw-semibold">Diagnostic signals</span>
+        <span class="badge text-bg-light border">
+          {{ readiness.signals|length }} total
+        </span>
+        {% if readiness.blocking_signal_count %}
+          <span class="badge text-bg-danger">
+            {{ readiness.blocking_signal_count }} blocking
+          </span>
+        {% endif %}
+        {% if readiness.warning_signal_count %}
+          <span class="badge text-bg-warning">
+            {{ readiness.warning_signal_count }} warning
+          </span>
+        {% endif %}
+      </div>
+
+      {% if readiness.signals %}
+        <div class="list-group list-group-flush mt-2">
+          {% for signal in readiness.signals|slice:":4" %}
+            <div class="list-group-item px-0">
+              <div class="d-flex align-items-start gap-2">
+                {% if signal.severity == "blocking" %}
+                  <span class="badge text-bg-danger mt-1">Blocking</span>
+                {% elif signal.severity == "warning" %}
+                  <span class="badge text-bg-warning mt-1">Warning</span>
+                {% elif signal.severity == "ok" %}
+                  <span class="badge text-bg-success mt-1">OK</span>
+                {% else %}
+                  <span class="badge text-bg-secondary mt-1">Info</span>
+                {% endif %}
+
+                <div>
+                  <div class="fw-semibold">{{ signal.label }}</div>
+                  <div class="text-muted small">{{ signal.message }}</div>
+                </div>
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+
+        {% if readiness.signals|length > 4 %}
+          <div class="small text-muted mt-2">
+            Showing first 4 of {{ readiness.signals|length }} diagnostic signals.
+          </div>
+
+          <details class="mt-2">
+            <summary class="small fw-semibold">
+              <span class="details-closed-label">
+                Show remaining diagnostic signals ({{ readiness.signals|length|add:"-4" }})
+              </span>
+              <span class="details-open-label">Hide remaining diagnostic signals</span>
+            </summary>
+
+            <div class="list-group list-group-flush mt-2">
+              {% for signal in readiness.signals|slice:"4:" %}
+                <div class="list-group-item px-0">
+                  <div class="d-flex align-items-start gap-2">
+                    {% if signal.severity == "blocking" %}
+                      <span class="badge text-bg-danger mt-1">Blocking</span>
+                    {% elif signal.severity == "warning" %}
+                      <span class="badge text-bg-warning mt-1">Warning</span>
+                    {% elif signal.severity == "ok" %}
+                      <span class="badge text-bg-success mt-1">OK</span>
+                    {% else %}
+                      <span class="badge text-bg-secondary mt-1">Info</span>
+                    {% endif %}
+
+                    <div>
+                      <div class="fw-semibold">{{ signal.label }}</div>
+                      <div class="text-muted small">{{ signal.message }}</div>
+                    </div>
+                  </div>
+                </div>
+              {% endfor %}
+            </div>
+          </details>
+        {% endif %}
+      {% else %}
+        <div class="text-muted small mt-2">
+          No diagnostic signals are available.
+        </div>
+      {% endif %}
+    </div>
+  </div>
+</section>

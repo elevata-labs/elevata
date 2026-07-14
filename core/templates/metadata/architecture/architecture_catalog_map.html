@@ -29,7 +29,7 @@ Contact: <https://github.com/elevata-labs/elevata>.
   <div>
     <h1 class="h4 mb-1">Architecture Catalog Map</h1>
     <div class="small text-muted">
-      Read-only architecture lens across layers and direct TargetDataset dependencies.
+      Read-only architecture lens from SourceDataset handoffs through target layers.
     </div>
   </div>
 
@@ -37,6 +37,14 @@ Contact: <https://github.com/elevata-labs/elevata>.
     <a href="{% url 'architecture_catalog_portfolio' %}" class="btn btn-sm btn-outline-primary">
       <i class="bi bi-speedometer2"></i>
       Portfolio
+    </a>
+    <a href="{% url 'architecture_catalog_source_systems' %}" class="btn btn-sm btn-outline-primary">
+      <i class="bi bi-database"></i>
+      Source Systems
+    </a>
+    <a href="{{ catalog_url }}" class="btn btn-sm btn-outline-primary">
+      <i class="bi bi-collection"></i>
+      Target Datasets
     </a>
     <a href="{% url 'architecture_catalog_data_products' %}" class="btn btn-sm btn-outline-primary">
       <i class="bi bi-box-seam"></i>
@@ -46,10 +54,6 @@ Contact: <https://github.com/elevata-labs/elevata>.
       <i class="bi bi-graph-up-arrow"></i>
       Insights
     </a>
-    <a href="{{ catalog_url }}" class="btn btn-sm btn-outline-secondary">
-      <i class="bi bi-collection"></i>
-      Catalog
-    </a>
     <span class="badge text-bg-secondary">
       {{ active_dataset_count }} active / {{ total_dataset_count }} datasets
     </span>
@@ -57,13 +61,189 @@ Contact: <https://github.com/elevata-labs/elevata>.
 </div>
 
 <div class="alert alert-info small mb-4">
-  <div class="fw-semibold mb-1">Layer lens only</div>
+  <div class="fw-semibold mb-1">Architecture map only</div>
   <div>
-    The Architecture Catalog Map groups datasets by schema/layer and summarizes direct
-    TargetDataset-to-TargetDataset dependencies. It does not edit metadata and does not
-    execute loads.
+    The Architecture Catalog Map summarizes metadata-defined SourceDataset-to-RAW
+    handoffs, target layers and direct TargetDataset dependencies. It does not edit
+    metadata, connect to sources or execute loads.
   </div>
 </div>
+
+{% if source_handoff_systems %}
+  <div class="card mb-4">
+    <div class="card-body p-0">
+      <div class="d-flex align-items-start justify-content-between gap-3 p-3 border-bottom">
+        <div>
+          <div class="fw-semibold">Source-to-RAW handoff</div>
+          <div class="small text-muted">
+            Metadata-defined entry points from Source Systems and SourceDatasets into RAW.
+          </div>
+        </div>
+        <div class="d-flex align-items-center justify-content-end gap-2 flex-wrap">
+          <span class="badge text-bg-secondary">
+            {{ source_system_count }} source system(s)
+          </span>
+          <span class="badge text-bg-secondary">
+            {{ source_dataset_count }} source dataset(s)
+          </span>
+          {% if source_handoff_attention_count %}
+            <span class="badge text-bg-warning">
+              {{ source_handoff_attention_count }} handoff attention
+            </span>
+          {% else %}
+            <span class="badge text-bg-success">
+              {{ source_handoff_attention_count }} handoff attention
+            </span>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="p-3 border-bottom">
+        <div class="architecture-map-flow-overview">
+          <div class="architecture-map-flow-step">
+            <span class="badge badge-lineage-layer mb-2">
+              Sources
+            </span>
+            <div class="fw-semibold">Source Systems</div>
+            <div class="small text-muted">
+              {{ source_system_count }} system(s)
+            </div>
+          </div>
+
+          <div class="architecture-map-flow-edge">
+            <span class="architecture-map-arrow">→</span>
+            <span class="small text-muted">
+              metadata
+            </span>
+          </div>
+
+          <div class="architecture-map-flow-step">
+            <span class="badge badge-lineage-layer mb-2">
+              Source
+            </span>
+            <div class="fw-semibold">SourceDatasets</div>
+            <div class="small text-muted">
+              {{ source_dataset_count }} dataset(s)
+            </div>
+          </div>
+
+          <div class="architecture-map-flow-edge">
+            <span class="architecture-map-arrow">→</span>
+            <span class="small text-muted">
+              {{ source_handoff_mapped_count }} mapped
+            </span>
+          </div>
+
+          <div class="architecture-map-flow-step">
+            <span class="badge badge-lineage-layer mb-2">
+              raw
+            </span>
+            <div class="fw-semibold">RAW Targets</div>
+            <div class="small text-muted">
+              {{ source_raw_target_count }} target(s)
+              · {{ source_handoff_not_required_count }} without landing
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0">
+          <thead>
+            <tr>
+              <th>Source System</th>
+              <th>Source profile</th>
+              <th>Handoff posture</th>
+              <th>SourceDataset → RAW TargetDataset</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for source_system in source_handoff_systems %}
+              <tr>
+                <td>
+                  <div class="d-flex align-items-center gap-2 flex-wrap">
+                    <a href="{{ source_system.detail_url }}" class="text-decoration-none">
+                      <code>{{ source_system.short_name }}</code>
+                    </a>
+                    <span class="fw-semibold">{{ source_system.name }}</span>
+                    <span class="badge {{ source_system.badge_class }}">
+                      {{ source_system.status_label }}
+                    </span>
+                  </div>
+                  <div class="small text-muted mt-1">
+                    {{ source_system.dataset_count }} SourceDataset(s)
+                    · {% if source_system.active %}Active{% else %}Inactive{% endif %}
+                  </div>
+                </td>
+                <td>
+                  <div>
+                    <code>{{ source_system.source_type|default:"—" }}</code>
+                  </div>
+                  <div class="small text-muted">
+                    Ingestion {{ source_system.ingest_mode|default:"none" }}
+                  </div>
+                </td>
+                <td>
+                  <div class="d-flex align-items-center gap-1 flex-wrap">
+                    <span class="badge text-bg-success">
+                      {{ source_system.mapped_count }} mapped
+                    </span>
+                    <span class="badge text-bg-secondary">
+                      {{ source_system.not_required_count }} no landing
+                    </span>
+                    {% if source_system.attention_count %}
+                      <span class="badge text-bg-warning">
+                        {{ source_system.attention_count }} attention
+                      </span>
+                    {% else %}
+                      <span class="badge text-bg-success">
+                        {{ source_system.attention_count }} attention
+                      </span>
+                    {% endif %}
+                  </div>
+                </td>
+                <td>
+                  {% if source_system.handoff_examples %}
+                    <div class="list-group list-group-flush architecture-map-transition-list">
+                      {% for handoff in source_system.handoff_examples %}
+                        {% include "metadata/partials/_architecture_catalog_source_handoff_row.html" with handoff=handoff %}
+                      {% endfor %}
+                    </div>
+
+                    {% if source_system.has_more %}
+                      <details class="catalog-insight-more mt-2">
+                        <summary class="small text-muted">
+                          <span class="catalog-insight-summary-closed">
+                            Showing {{ source_system.handoff_examples|length }} of {{ source_system.dataset_count }} handoffs
+                            · show remaining {{ source_system.remaining_handoff_count }}
+                          </span>
+                          <span class="catalog-insight-summary-open">
+                            Showing all {{ source_system.dataset_count }} handoffs
+                            · show first {{ source_system.handoff_examples|length }} only
+                          </span>
+                        </summary>
+
+                        <div class="list-group list-group-flush architecture-map-transition-list mt-2">
+                          {% for handoff in source_system.remaining_handoffs %}
+                            {% include "metadata/partials/_architecture_catalog_source_handoff_row.html" with handoff=handoff %}
+                          {% endfor %}
+                        </div>
+                      </details>
+                    {% endif %}
+                  {% else %}
+                    <span class="small text-muted">
+                      No SourceDatasets are defined.
+                    </span>
+                  {% endif %}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+{% endif %}
 
 {% if layer_flow_steps %}
   <div class="card mb-4">

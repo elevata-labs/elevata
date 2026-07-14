@@ -1,0 +1,75 @@
+<!--
+elevata - Metadata-driven Data Platform Framework
+Copyright © 2025-2026 Ilona Tag
+
+This file is part of elevata.
+
+elevata is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of
+the License, or (at your option) any later version.
+
+elevata is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with elevata. If not, see <https://www.gnu.org/licenses/>.
+
+Contact: <https://github.com/elevata-labs/elevata>.
+-->
+
+<tr>
+  <td>
+    <a href="{{ dataset.detail_url }}" class="fw-semibold text-decoration-none">
+      <code>{{ dataset.dataset_key }}</code>
+    </a>
+    {% if dataset.description %}
+      <div class="small text-muted mt-1">{{ dataset.description }}</div>
+    {% endif %}
+  </td>
+  <td>
+    {% if dataset.landing_required %}
+      <span class="badge text-bg-light border">Required</span>
+    {% else %}
+      <span class="badge text-bg-secondary">Not required</span>
+    {% endif %}
+  </td>
+  <td><code>{{ dataset.ingest_mode }}</code></td>
+  <td>
+    {% if dataset.raw_target_keys %}
+      {% for raw_target_key in dataset.raw_target_keys %}
+        <div><code>{{ raw_target_key }}</code></div>
+      {% endfor %}
+    {% else %}
+      <span class="text-muted">—</span>
+    {% endif %}
+  </td>
+  <td class="text-end">{{ dataset.integrated_column_count }}</td>
+  <td>
+    {% if dataset.primary_finding %}
+      <div class="fw-semibold small">{{ dataset.primary_finding.label }}</div>
+      <div class="small text-muted">{{ dataset.primary_finding.message }}</div>
+      {% if dataset.finding_signals|length > 1 %}
+        <div class="small text-muted mt-1">
+          {{ dataset.finding_signals|length }} finding(s) in total
+        </div>
+      {% endif %}
+    {% elif dataset.status == "ready" %}
+      <span class="small text-muted">No attention signals.</span>
+    {% else %}
+      <span class="small text-muted">No additional finding.</span>
+    {% endif %}
+  </td>
+  <td class="text-end">
+    <span class="badge {{ dataset.badge_class }} mb-2">
+      {{ dataset.status_label }}
+    </span>
+    <div>
+      <a href="{{ dataset.detail_url }}" class="btn btn-sm btn-outline-secondary">
+        Details
+      </a>
+    </div>
+  </td>
+</tr>

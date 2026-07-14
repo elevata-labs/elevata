@@ -186,6 +186,7 @@ class GenericCRUDView(LoginRequiredMixin, View):
   template_confirm_delete = None
   success_url = None
   action = "list"
+  detail_context_provider = None
 
   # --------------------------------------------------
   # Dispatch routing
@@ -1657,6 +1658,24 @@ class GenericCRUDView(LoginRequiredMixin, View):
 
     return related
 
+  def get_detail_extra_context(self, request, instance) -> dict:
+    """
+    Return optional model-specific context for the generic detail template.
+
+    Dynamically generated CRUD views may register a detail_context_provider
+    without replacing the shared detail view or template.
+    """
+    provider = getattr(self, "detail_context_provider", None)
+    if provider is None:
+      return {}
+
+    extra_context = provider(
+      request=request,
+      instance=instance,
+    )
+    return extra_context or {}
+
+
   def detail(self, request, pk):
     """Display a read-only detail view for one record."""
     obj = get_object_or_404(self.model, pk=pk)
@@ -1680,5 +1699,5 @@ class GenericCRUDView(LoginRequiredMixin, View):
       "many_to_many": [f for f in self.model._meta.many_to_many if f.name not in excluded],
       "related_objects": self.get_related_objects(obj),
     }
+    context.update(self.get_detail_extra_context(request, obj))
     return render(request, "generic/detail.html", context)
-  

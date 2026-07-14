@@ -429,5 +429,29 @@ For a dedicated overview, see [Source Metadata Import Review](source_metadata_im
 
 ---
 
-© 2025-2026 elevata - Technical Documentation
+## 🔧 8. Source Ingestion Readiness
 
+After source metadata is defined or imported, elevata evaluates deterministic Source Ingestion Readiness for each SourceDataset.
+
+The evaluation uses metadata contracts documented in this page, including:
+
+- Source System type and declared ingestion mode  
+- SourceDataset integration and RAW landing intent  
+- integrated SourceColumns and semi-structured `json_path` values  
+- active RAW TargetDataset links  
+- canonical file `ingestion_config.uri`  
+- JSON Lines source-type alignment  
+- REST dataset path and nested configuration shape  
+- relational incremental filter and policy alignment
+
+Readiness distinguishes native ingestion, external ingestion and datasets that intentionally require no elevata-managed RAW landing.
+
+The check does not connect to the backend, resolve credentials, read files, call REST endpoints or execute ingestion. It explains whether the metadata contract is coherent before controlled execution.
+
+Readiness is visible on SourceDataset detail pages and across Architecture Catalog Source Systems, Portfolio and Map.
+
+For details, see [Architecture Catalog Source Systems](architecture_catalog_source_systems.md).
+
+---
+
+© 2025-2026 elevata - Technical Documentation

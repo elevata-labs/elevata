@@ -34,21 +34,25 @@ Contact: <https://github.com/elevata-labs/elevata>.
   </div>
 
   <div class="d-flex align-items-center justify-content-end gap-2 flex-wrap">
+    <a href="{% url 'architecture_catalog_source_systems' %}" class="btn btn-sm btn-outline-primary">
+      <i class="bi bi-database"></i>
+      Source Systems
+    </a>
+    <a href="{{ catalog_url }}" class="btn btn-sm btn-outline-primary">
+      <i class="bi bi-collection"></i>
+      Target Datasets
+    </a>
     <a href="{{ data_products_url }}" class="btn btn-sm btn-outline-primary">
       <i class="bi bi-box-seam"></i>
       Data Products
-    </a>
-    <a href="{{ map_url }}" class="btn btn-sm btn-outline-secondary">
-      <i class="bi bi-map"></i>
-      Map
     </a>
     <a href="{{ insights_url }}" class="btn btn-sm btn-outline-secondary">
       <i class="bi bi-graph-up-arrow"></i>
       Insights
     </a>
-    <a href="{{ catalog_url }}" class="btn btn-sm btn-outline-secondary">
-      <i class="bi bi-collection"></i>
-      Catalog
+    <a href="{{ map_url }}" class="btn btn-sm btn-outline-secondary">
+      <i class="bi bi-map"></i>
+      Map
     </a>
     <span class="badge text-bg-secondary">
       {{ active_dataset_count }} active / {{ total_dataset_count }} datasets
@@ -59,9 +63,9 @@ Contact: <https://github.com/elevata-labs/elevata>.
 <div class="alert alert-info small mb-4">
   <div class="fw-semibold mb-1">Portfolio lens only</div>
   <div>
-    The Architecture Catalog Portfolio summarizes readiness, ownership, contracts,
-    health, review state, execution evidence and layer distribution. It does not edit
-    metadata, approve changes or execute loads.
+    The Architecture Catalog Portfolio summarizes source ingestion readiness, data
+    product readiness, ownership, contracts, health, review state, execution evidence
+    and layer distribution. It does not edit metadata, approve changes or execute loads.
   </div>
 </div>
 
@@ -107,12 +111,84 @@ Contact: <https://github.com/elevata-labs/elevata>.
 </div>
 
 <div class="row g-3 mb-4">
-  <div class="col-lg-5">
+  <div class="col-lg-6">
     <div class="card h-100">
       <div class="card-body">
         <div class="d-flex align-items-start justify-content-between gap-3 mb-3">
           <div>
-            <div class="fw-semibold">Data Product readiness</div>
+            <a
+              href="{{ source_readiness.url }}"
+              class="fw-semibold text-decoration-none"
+            >
+              Source ingestion readiness
+            </a>
+            <div class="small text-muted">
+              Deterministic ingestion readiness across metadata-defined source datasets.
+            </div>
+          </div>
+          <div class="d-flex align-items-center justify-content-end gap-1 flex-wrap">
+            <span class="badge text-bg-secondary">
+              {{ source_readiness.source_system_count }} source system(s)
+            </span>
+            <span class="badge text-bg-secondary">
+              {{ source_readiness.source_dataset_count }} source dataset(s)
+            </span>
+          </div>
+        </div>
+
+        {% if source_readiness.source_dataset_count %}
+          <div class="d-grid gap-2">
+            {% for group in source_readiness.groups %}
+              <a
+                href="{{ group.url }}"
+                class="border rounded p-3 text-decoration-none text-body"
+              >
+                <div class="d-flex align-items-center justify-content-between gap-3">
+                  <div>
+                    <div class="fw-semibold">{{ group.label }}</div>
+                    <div class="small text-muted">
+                      {{ group.share_label }} of source datasets
+                    </div>
+                  </div>
+                  <span class="badge {{ group.badge_class }}">
+                    {{ group.count }}
+                  </span>
+                </div>
+              </a>
+            {% endfor %}
+          </div>
+
+          <div class="border-top mt-3 pt-3">
+            <div class="small text-muted mb-2">Diagnostic findings</div>
+            <div class="d-flex align-items-center gap-2 flex-wrap">
+              <span class="badge text-bg-danger">
+                {{ source_readiness.blocking_signal_count }} blocking
+              </span>
+              <span class="badge text-bg-warning">
+                {{ source_readiness.warning_signal_count }} warning
+              </span>
+            </div>
+          </div>
+        {% else %}
+          <div class="text-muted small">
+            No SourceDatasets are available.
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-6">
+    <div class="card h-100">
+      <div class="card-body">
+        <div class="d-flex align-items-start justify-content-between gap-3 mb-3">
+          <div>
+            <a
+              href="{{ data_products_url }}"
+              class="fw-semibold text-decoration-none"
+            >
+              Data Product readiness
+            </a>
             <div class="small text-muted">
               Consumer readiness distribution across serving-layer data products.
             </div>
@@ -149,53 +225,51 @@ Contact: <https://github.com/elevata-labs/elevata>.
       </div>
     </div>
   </div>
+</div>
 
-  <div class="col-lg-7">
-    <div class="card h-100">
-      <div class="card-body">
-        <div class="mb-3">
-          <div class="fw-semibold">Portfolio attention areas</div>
-          <div class="small text-muted">
-            Aggregated signals across Catalog, Insights and Control.
-          </div>
-        </div>
-
-        <div class="table-responsive">
-          <table class="table table-sm align-middle mb-0">
-            <thead>
-              <tr>
-                <th>Signal</th>
-                <th class="text-end">Count</th>
-                <th>Meaning</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for hotspot in hotspots %}
-                <tr>
-                  <td class="fw-semibold">
-                    {% if hotspot.has_attention %}
-                      <a
-                        href="{{ hotspot.url }}"
-                        class="text-decoration-none"
-                      >
-                        {{ hotspot.label }}
-                      </a>
-                    {% else %}
-                      {{ hotspot.label }}
-                    {% endif %}
-                  </td>
-                  <td class="text-end">
-                    <span class="badge {{ hotspot.badge_class }}">
-                      {{ hotspot.count }}
-                    </span>
-                  </td>
-                  <td class="small text-muted">{{ hotspot.message }}</td>
-                </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
+<div class="card mb-4">
+  <div class="card-body">
+    <div class="mb-3">
+      <div class="fw-semibold">Portfolio attention areas</div>
+      <div class="small text-muted">
+        Aggregated signals across Catalog, Insights and Control.
       </div>
+    </div>
+
+    <div class="table-responsive">
+      <table class="table table-sm align-middle mb-0">
+        <thead>
+          <tr>
+            <th>Signal</th>
+            <th class="text-end">Count</th>
+            <th>Meaning</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for hotspot in hotspots %}
+            <tr>
+              <td class="fw-semibold">
+                {% if hotspot.has_attention %}
+                  <a
+                    href="{{ hotspot.url }}"
+                    class="text-decoration-none"
+                  >
+                    {{ hotspot.label }}
+                  </a>
+                {% else %}
+                  {{ hotspot.label }}
+                {% endif %}
+              </td>
+              <td class="text-end">
+                <span class="badge {{ hotspot.badge_class }}">
+                  {{ hotspot.count }}
+                </span>
+              </td>
+              <td class="small text-muted">{{ hotspot.message }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
     </div>
   </div>
 </div>

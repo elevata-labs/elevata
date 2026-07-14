@@ -12,6 +12,126 @@ This project adheres to [Semantic Versioning](https://semver.org/) and [Keep a C
 
 ---
 
+## [2.15.0] - 2026-07-14
+
+This release adds **Source & Ingestion Readiness** and extends the Architecture Catalog into an end-to-end view from Source Systems through Target Datasets to Data Products.
+
+The focus is deterministic source onboarding transparency: explain whether metadata-defined sources are prepared for RAW landing, expose source posture across the Catalog, and connect SourceDataset-to-RAW handoffs with the existing target-layer rchitecture map.
+
+No metadata model changes or migrations are required.
+
+---
+
+### ✨ Added
+
+#### Source & Ingestion Readiness
+
+- Added deterministic, read-only SourceDataset readiness evaluation  
+- Added explicit `ready`, `attention`, `not_applicable` and `unavailable` readiness states  
+- Added diagnostic signals for source-system classification, integration scope, RAW landing intent, ingestion mode, integrated SourceColumns and RAW TargetDataset links  
+- Added file-ingestion checks for canonical `ingestion_config.uri`, JSON Lines source-type alignment and conflicting Excel sheet selectors  
+- Added REST-ingestion checks for dataset path, structured query/cursor/validation/retry configuration and supported cursor modes  
+- Added relational incremental checks for missing filters and missing active increment policies  
+- Added Source Ingestion Readiness to SourceDataset detail pages  
+- Added compact bounded diagnostics with consistent remaining-item expanders
+
+#### Architecture Catalog Source Systems
+
+- Added a dedicated Architecture Catalog Source Systems view  
+- Added global Source System, SourceDataset, readiness and diagnostic counts  
+- Added grouping by Source System with source type, declared ingestion mode and lifecycle posture  
+- Added filters for search, readiness state, Source System, source type and ingestion mode  
+- Added prioritized visibility for SourceDatasets requiring attention  
+- Added direct drill-down links to Source System and SourceDataset details  
+- Added compact expanders for ready and not-applicable datasets without duplicating visible rows
+
+#### End-to-End Architecture Catalog Map
+
+- Added Source System to SourceDataset to RAW TargetDataset handoffs to the Catalog Map  
+- Added mapped, no-landing, missing and multiple-target handoff states  
+- Added Source-to-RAW posture counts per Source System and across the full architecture  
+- Added direct links from handoff rows to SourceDataset and RAW TargetDataset details  
+- Kept the existing target-layer dependency matrix limited to TargetDataset dependencies
+
+---
+
+### 🔄 Improved
+
+#### Architecture Catalog Portfolio
+
+- Added Source ingestion readiness beside Data Product readiness  
+- Added Source System, SourceDataset, blocking and warning counts  
+- Added readiness distribution links to filtered Source Systems worklists  
+- Kept TargetDataset coverage metrics, attention areas and layer posture separate from SourceDataset readiness
+
+#### Architecture Review Briefing
+
+- Distinguished allowed and metadata-only policy decisions from decisions requiring reviewer attention  
+- Rendered all policy decisions while keeping the first six details directly visible  
+- Added explicit remaining-detail expanders instead of silently truncating policy evidence  
+- Added policy status to each displayed decision detail
+
+#### Catalog Navigation and UX
+
+- Ordered the Catalog navigation as Portfolio, Source Systems, Target Datasets, Data Products, Insights and Map  
+- Clarified Target Datasets as one Catalog lens rather than the full Catalog scope  
+- Standardized bounded list behavior so expanded sections show only remaining items  
+- Kept Source Systems without SourceDatasets visible as modeled architecture objects
+
+#### Documentation
+
+- Added dedicated Architecture Catalog Source Systems documentation  
+- Updated Architecture Catalog documentation for the end-to-end Source Systems to Data Products structure  
+- Updated Catalog Portfolio, Architecture Overview, Source Backends and documentation index  
+- Updated README workflow, Catalog summary and Source & Ingestion Readiness positioning
+
+---
+
+### 🔒 Governance & Determinism
+
+- Source Ingestion Readiness is derived only from metadata already available to elevata  
+- Readiness evaluation does not connect to source systems  
+- Readiness evaluation does not resolve secrets or inspect secret values  
+- Readiness evaluation does not read files or call REST endpoints  
+- Readiness evaluation does not import metadata, mutate configuration or execute loads  
+- External ingestion is treated as an explicit architecture contract rather than a native connector check  
+- Federated or direct-access datasets without RAW landing remain explicitly not applicable  
+- Architecture Catalog Source Systems, Portfolio and Map remain read-only discovery surfaces  
+- Architecture Control remains responsible for review, approval, execution and audit evidence
+
+---
+
+### 🧪 Quality & Stability
+
+- Added service tests for relational, file, REST, external and non-applicable readiness states  
+- Added tests for canonical file URI requirements and JSON Lines source-type alignment  
+- Added tests for SourceDataset readiness detail rendering and bounded diagnostics  
+- Added aggregation and filtering tests for Architecture Catalog Source Systems  
+- Added Catalog Portfolio tests for Source readiness distribution and drill-down links  
+- Added Catalog Map tests for mapped, no-landing, missing and multiple RAW handoffs  
+- Added regression tests for collapsed SourceDataset and Source-to-RAW handoff lists  
+- Added Architecture Review Briefing tests for allowed, preflight and blocked policy decisions  
+- Verified Architecture Catalog, Source Ingestion Readiness and related regression tests successfully
+
+---
+
+### 🛠️ Fixed
+
+- Fixed Architecture Review Briefing policy cards that marked every policy decision as reviewer attention  
+- Fixed policy decision summaries that reported a larger count than the visible evidence without an expansion path  
+- Fixed SourceDataset diagnostics that repeated already visible signals after expansion  
+- Fixed Catalog Source System expanders that described all hidden datasets as remaining when no dataset rows were initially visible
+
+---
+
+### ⬆️ Upgrade Notes
+
+- No metadata database migration is required.  
+- Existing Source Systems, SourceDatasets, SourceColumns, TargetDatasets and ingestion configuration remain compatible.  
+- Readiness is diagnostic and does not change metadata import, target generation, ingestion or controlled execution behavior.
+
+---
+
 ## [2.14.0] - 2026-07-10
 
 This release adds **Architecture Quality Review** to Catalog Detail and continues the internal load runner cleanup started after the Databricks execution hardening work.

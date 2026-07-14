@@ -1,0 +1,344 @@
+<!--
+elevata - Metadata-driven Data Platform Framework
+Copyright © 2025-2026 Ilona Tag
+
+This file is part of elevata.
+
+elevata is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of
+the License, or (at your option) any later version.
+
+elevata is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with elevata. If not, see <https://www.gnu.org/licenses/>.
+
+Contact: <https://github.com/elevata-labs/elevata>.
+-->
+
+{% extends "base.html" %}
+
+{% block title %}Architecture Catalog Source Systems · elevata{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-start justify-content-between gap-3 mb-3">
+  <div>
+    <h1 class="h4 mb-1">Architecture Catalog Source Systems</h1>
+    <div class="small text-muted">
+      Read-only source landscape and ingestion readiness across metadata-defined architecture.
+    </div>
+  </div>
+
+  <div class="d-flex align-items-center justify-content-end gap-2 flex-wrap">
+    <a href="{% url 'architecture_catalog_portfolio' %}" class="btn btn-sm btn-outline-primary">
+      <i class="bi bi-speedometer2"></i>
+      Portfolio
+    </a>
+    <a href="{% url 'architecture_catalog' %}" class="btn btn-sm btn-outline-primary">
+      <i class="bi bi-collection"></i>
+      Target Datasets
+    </a>
+    <a href="{% url 'architecture_catalog_data_products' %}" class="btn btn-sm btn-outline-primary">
+      <i class="bi bi-box-seam"></i>
+      Data Products
+    </a>
+    <a href="{% url 'architecture_catalog_insights' %}" class="btn btn-sm btn-outline-secondary">
+      <i class="bi bi-graph-up-arrow"></i>
+      Insights
+    </a>
+    <a href="{% url 'architecture_catalog_map' %}" class="btn btn-sm btn-outline-secondary">
+      <i class="bi bi-map"></i>
+      Map
+    </a>
+    <span class="badge text-bg-secondary">
+      {{ filtered_source_system_count }} / {{ total_source_system_count }} systems
+      · {{ filtered_dataset_count }} / {{ total_dataset_count }} datasets
+    </span>
+  </div>
+</div>
+
+<div class="alert alert-info small mb-4">
+  <div class="fw-semibold mb-1">Source architecture only</div>
+  <div>
+    Catalog Source Systems summarize source metadata, RAW landing intent and deterministic
+    ingestion readiness. The page does not connect to sources, import metadata, edit
+    configuration or execute loads.
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+  {% for status_count in filtered_status_counts %}
+    <div class="col-xl col-md-6">
+      <div class="card h-100">
+        <div class="card-body d-flex align-items-start justify-content-between gap-3">
+          <div>
+            <div class="small text-muted mb-1">SourceDataset readiness</div>
+            <div class="fw-semibold">{{ status_count.label }}</div>
+          </div>
+          <span class="badge {{ status_count.badge_class }}">
+            {{ status_count.count }}
+          </span>
+        </div>
+      </div>
+    </div>
+  {% endfor %}
+
+  <div class="col-xl col-md-6">
+    <div class="card h-100">
+      <div class="card-body">
+        <div class="small text-muted mb-1">Diagnostic findings</div>
+        <div class="d-flex gap-2 flex-wrap">
+          <span class="badge text-bg-danger">
+            {{ filtered_blocking_signal_count }} blocking
+          </span>
+          <span class="badge text-bg-warning">
+            {{ filtered_warning_signal_count }} warning
+          </span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card mb-4">
+  <div class="card-body">
+    <form method="get" action="{% url 'architecture_catalog_source_systems' %}">
+      <div class="row g-3 align-items-end">
+        <div class="col-lg-3">
+          <label for="catalog-source-search" class="form-label small fw-semibold">
+            Search
+          </label>
+          <input
+            id="catalog-source-search"
+            name="q"
+            class="form-control form-control-sm"
+            value="{{ filters.q }}"
+            placeholder="System, dataset, schema, RAW target"
+          >
+        </div>
+
+        <div class="col-lg-2">
+          <label for="catalog-source-status" class="form-label small fw-semibold">
+            Readiness
+          </label>
+          <select id="catalog-source-status" name="status" class="form-select form-select-sm">
+            <option value="all" {% if filters.status == "all" %}selected{% endif %}>All</option>
+            <option value="ready" {% if filters.status == "ready" %}selected{% endif %}>Ready</option>
+            <option value="attention" {% if filters.status == "attention" %}selected{% endif %}>Attention</option>
+            <option value="not_applicable" {% if filters.status == "not_applicable" %}selected{% endif %}>Not applicable</option>
+            <option value="unavailable" {% if filters.status == "unavailable" %}selected{% endif %}>Unavailable</option>
+          </select>
+        </div>
+
+        <div class="col-lg-2">
+          <label for="catalog-source-system" class="form-label small fw-semibold">
+            Source System
+          </label>
+          <select id="catalog-source-system" name="source_system" class="form-select form-select-sm">
+            <option value="">All Source Systems</option>
+            {% for option in source_system_options %}
+              <option value="{{ option.value }}" {% if filters.source_system == option.value %}selected{% endif %}>
+                {{ option.label }}
+              </option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="col-lg-2">
+          <label for="catalog-source-type" class="form-label small fw-semibold">
+            Source Type
+          </label>
+          <select id="catalog-source-type" name="source_type" class="form-select form-select-sm">
+            <option value="">All source types</option>
+            {% for option in source_type_options %}
+              <option value="{{ option }}" {% if filters.source_type == option %}selected{% endif %}>
+                {{ option }}
+              </option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="col-lg-3">
+          <label for="catalog-source-ingest-mode" class="form-label small fw-semibold">
+            Ingestion Mode
+          </label>
+          <select id="catalog-source-ingest-mode" name="ingest_mode" class="form-select form-select-sm">
+            <option value="">All ingestion modes</option>
+            {% for option in ingest_mode_options %}
+              <option value="{{ option }}" {% if filters.ingest_mode == option %}selected{% endif %}>
+                {{ option|capfirst }}
+              </option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="col-lg-3 d-flex gap-2">
+          <button type="submit" class="btn btn-sm btn-primary flex-fill">
+            <i class="bi bi-search"></i>
+            Apply filters
+          </button>
+          <a href="{% url 'architecture_catalog_source_systems' %}" class="btn btn-sm btn-outline-secondary">
+            Clear
+          </a>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="row g-4">
+  {% for source_system in source_systems %}
+    <div class="col-12">
+      <div class="card">
+        <div class="card-body p-0">
+          <div class="d-flex align-items-start justify-content-between gap-3 p-3 border-bottom">
+            <div>
+              <div class="d-flex align-items-center gap-2 flex-wrap mb-1">
+                <a href="{{ source_system.detail_url }}" class="fw-semibold text-decoration-none">
+                  <code>{{ source_system.short_name }}</code>
+                </a>
+                {% if source_system.name %}
+                  <span>{{ source_system.name }}</span>
+                {% endif %}
+                <span class="badge {{ source_system.badge_class }}">
+                  {{ source_system.status_label }}
+                </span>
+                {% if source_system.active %}
+                  <span class="badge badge-health-ok">Active</span>
+                {% else %}
+                  <span class="badge badge-health-warning">Inactive</span>
+                {% endif %}
+              </div>
+              {% if source_system.description %}
+                <div class="small text-muted">{{ source_system.description }}</div>
+              {% endif %}
+              <div class="small text-muted mt-1">
+                Source type <code>{{ source_system.source_type }}</code>
+                · ingestion <code>{{ source_system.ingest_mode }}</code>
+                · {{ source_system.dataset_count }} of {{ source_system.total_dataset_count }} dataset(s) in view
+              </div>
+            </div>
+
+            <div class="d-flex align-items-center gap-2 flex-wrap justify-content-end">
+              <span class="badge text-bg-success">{{ source_system.ready_count }} ready</span>
+              <span class="badge text-bg-warning">{{ source_system.attention_count }} attention</span>
+              <span class="badge text-bg-secondary">{{ source_system.not_applicable_count }} not applicable</span>
+              <span class="badge text-bg-dark">{{ source_system.unavailable_count }} unavailable</span>
+              {% if source_system.blocking_signal_count %}
+                <span class="badge text-bg-danger">
+                  {{ source_system.blocking_signal_count }} blocking
+                </span>
+              {% endif %}
+              {% if source_system.warning_signal_count %}
+                <span class="badge text-bg-warning">
+                  {{ source_system.warning_signal_count }} warning
+                </span>
+              {% endif %}
+              <a href="{{ source_system.detail_url }}" class="btn btn-sm btn-outline-secondary">
+                System details
+              </a>
+            </div>
+          </div>
+
+          {% if source_system.datasets %}
+            {% if filters.q or filters.status != "all" or filters.source_system or filters.source_type or filters.ingest_mode %}
+              <div class="table-responsive">
+                <table class="table table-sm table-striped align-middle mb-0">
+                  <thead>
+                    <tr>
+                      <th>SourceDataset</th>
+                      <th>RAW landing</th>
+                      <th>Ingestion</th>
+                      <th>RAW target</th>
+                      <th class="text-end">Columns</th>
+                      <th>Finding</th>
+                      <th class="text-end">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {% for dataset in source_system.datasets %}
+                      {% include "metadata/partials/_architecture_catalog_source_dataset_row.html" with dataset=dataset %}
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+            {% else %}
+              {% if source_system.actionable_datasets %}
+                <div class="table-responsive">
+                  <table class="table table-sm table-striped align-middle mb-0">
+                    <thead>
+                      <tr>
+                        <th>SourceDataset</th>
+                        <th>RAW landing</th>
+                        <th>Ingestion</th>
+                        <th>RAW target</th>
+                        <th class="text-end">Columns</th>
+                        <th>Finding</th>
+                        <th class="text-end">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {% for dataset in source_system.actionable_datasets %}
+                        {% include "metadata/partials/_architecture_catalog_source_dataset_row.html" with dataset=dataset %}
+                      {% endfor %}
+                    </tbody>
+                  </table>
+                </div>
+              {% endif %}
+
+              {% if source_system.remaining_datasets %}
+                <details class="catalog-insight-more m-3">
+                  <summary class="small text-muted">
+                    <span class="catalog-insight-summary-closed">
+                      Show{% if source_system.actionable_datasets %} remaining{% endif %} datasets ({{ source_system.remaining_dataset_count }})
+                    </span>
+                    <span class="catalog-insight-summary-open">
+                      Hide{% if source_system.actionable_datasets %} remaining{% endif %} datasets
+                    </span>
+                  </summary>
+                  <div class="table-responsive mt-2 border rounded">
+                    <table class="table table-sm table-striped align-middle mb-0">
+                      <thead>
+                        <tr>
+                          <th>SourceDataset</th>
+                          <th>RAW landing</th>
+                          <th>Ingestion</th>
+                          <th>RAW target</th>
+                          <th class="text-end">Columns</th>
+                          <th>Finding</th>
+                          <th class="text-end">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {% for dataset in source_system.remaining_datasets %}
+                          {% include "metadata/partials/_architecture_catalog_source_dataset_row.html" with dataset=dataset %}
+                        {% endfor %}
+                      </tbody>
+                    </table>
+                  </div>
+                </details>
+              {% endif %}
+            {% endif %}
+          {% else %}
+            <div class="p-3 small text-muted">
+              No SourceDatasets are defined for this Source System.
+            </div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  {% empty %}
+    <div class="col-12">
+      <div class="card">
+        <div class="card-body text-center text-muted py-5">
+          No Source Systems match the selected Catalog filters.
+        </div>
+      </div>
+    </div>
+  {% endfor %}
+</div>
+{% endblock %}

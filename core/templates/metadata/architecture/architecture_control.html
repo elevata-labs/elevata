@@ -387,10 +387,32 @@ Contact: <https://github.com/elevata-labs/elevata>.
                         </div>
                         {% if signal.details %}
                           <ul class="mb-0 mt-2 ps-3">
-                            {% for detail in signal.details %}
+                            {% for detail in signal.preview_details %}
                               <li>{{ detail }}</li>
                             {% endfor %}
                           </ul>
+
+                          {% if signal.has_remaining_details %}
+                            <div class="small text-muted mt-2">
+                              Showing first {{ signal.preview_details|length }} of
+                              {{ signal.detail_count }} details.
+                            </div>
+                            <details class="mt-2">
+                              <summary class="small fw-semibold">
+                                <span class="details-closed-label">
+                                  Show remaining {{ signal.remaining_detail_count }} details
+                                </span>
+                                <span class="details-open-label">
+                                  Hide remaining details
+                                </span>
+                              </summary>
+                              <ul class="mb-0 mt-2 ps-3">
+                                {% for detail in signal.remaining_details %}
+                                  <li>{{ detail }}</li>
+                                {% endfor %}
+                              </ul>
+                            </details>
+                          {% endif %}
                         {% endif %}
                       </div>
                     {% endfor %}

@@ -14,6 +14,8 @@ Source Metadata (DB reflection, APIs)
   ↓
 Metadata Model (Datasets, Columns, Lineage)
   ↓
+Source Ingestion Readiness (Landing, Ingestion, RAW Handoff)
+  ↓
 Generation Logic (TargetDataset & Columns)
   ↓
 Lineage Model (Dataset + Column Lineage)
@@ -89,6 +91,25 @@ It reports what elevata discovered and how the SourceColumn metadata changed:
 Changed and unchanged are intentionally separated. A changed column means the stored technical source metadata now differs from the previous state. An unchanged column means the source was checked and still matches the previous metadata state.
 
 The review result is transient and read-only as a report. It does not persist import history, introduce a new workflow, execute loads, or generate target architecture. It only makes the existing metadata import outcome transparent before downstream generation and control steps.
+
+#### 🔎 2.1.2 Source Ingestion Readiness
+
+Source Ingestion Readiness evaluates whether a SourceDataset is coherently prepared for its modeled architecture handoff.
+
+It combines:
+
+- Source System and SourceDataset lifecycle metadata  
+- integration scope  
+- RAW landing intent  
+- native, external or no-ingestion mode  
+- integrated SourceColumns  
+- active RAW TargetDataset links  
+- file, REST and relational configuration contracts  
+- incremental filter and policy alignment
+
+The result is deterministic and read-only. It does not connect to sources, resolve secrets, import metadata, read files, call APIs or execute loads.
+
+Readiness appears on SourceDataset detail pages and is aggregated in Architecture Catalog Source Systems, Portfolio and Map.
  
 ### 🧩 2.2 Generation Layer
 - Creates TargetDatasets in Raw, Stage, Rawcore  
@@ -166,7 +187,10 @@ Architecture Catalog provides the read-only discovery layer for metadata-defined
 
 It helps users inspect:
 
-- dataset inventory  
+- Source System and SourceDataset inventory  
+- Source Ingestion Readiness  
+- Source-to-RAW handoffs  
+- TargetDataset inventory  
 - schema / layer placement  
 - materialization semantics  
 - incremental strategy  
@@ -188,17 +212,26 @@ The Catalog links to dedicated pages for:
 - dataset details  
 - lineage  
 - query contracts  
+- Catalog Source Systems  
+- Catalog Target Datasets  
+- Catalog Portfolio  
 - Catalog Data Products  
+- Catalog Insights  
+- Catalog Map  
 - Architecture Control  
 - execution history
 
-Architecture Catalog does not edit metadata and does not execute loads.
+Architecture Catalog does not connect to sources, edit metadata or execute loads.
+
+Catalog Source Systems group SourceDatasets by Source System and expose deterministic Source Ingestion Readiness, ingestion posture, RAW landing intent and RAW TargetDataset handoffs.
+
+Catalog Portfolio places Source ingestion readiness beside Data Product readiness while keeping TargetDataset coverage and attention signals separate.
 
 Catalog Data Products provide a read-only consumer-readiness perspective for serving-layer datasets. They combine ownership, metadata health, query contracts, lineage, review state and execution evidence into transparent readiness groups: Consumption-ready, Review recommended and Not consumption-ready.
 
 Catalog Insights provide read-only signals for ownership gaps, metadata health findings, custom query logic, downstream consumer visibility, inactive datasets with consumers, and missing execution evidence. Dataset-specific insight signals are also shown on Catalog detail pages.
 
-Catalog Maps provide a read-only architecture lens across populated schemas and direct TargetDataset dependencies. Layer cards, layer flow overview, dependency matrix and transition examples make architecture structure visible without introducing graph editing, execution controls or metadata mutation.
+Catalog Maps provide a read-only architecture lens from Source Systems through SourceDatasets into RAW TargetDatasets and across populated target schemas. Source-to-RAW handoffs, layer cards, layer flow overview, dependency matrix and transition examples make architecture structure visible without introducing graph editing, source connectivity, execution controls or metadata mutation.
 
 Architecture Quality Review provides read-only, on-demand checks against loaded TargetDataset data in Catalog Detail. It derives checks from metadata and delegates SQL rendering to dialects. Initial checks cover non-nullable columns, duplicate surrogate and business keys, empty datasets, and blank string business keys. It does not mutate metadata, execute loads, persist review history, repair data, or gate execution.
 
@@ -237,7 +270,7 @@ Architecture Control uses the same semantic path as execution:
 Architecture State → Architecture Diff → MigrationPlan → Policy Decisions
 ```
 
-The Architecture Control UI adds a constrained operational layer. Architecture Review Briefing summarizes reviewer attention from the current scoped report, review status and execution preview before approval or execution:
+The Architecture Control UI adds a constrained operational layer. Architecture Review Briefing summarizes the current scoped report, review status and execution preview before approval or execution. Allowed and metadata-only policy decisions remain confirmation signals, while preflight and blocked decisions are surfaced as reviewer attention:
 
 - scope-aware report and review status  
 - compact Architecture Review Briefing  
@@ -380,6 +413,10 @@ Metadata Model
 ---
 
 ## 🔧 8. Related Documents
+- [Architecture Catalog](architecture_catalog.md)  
+- [Architecture Catalog Source Systems](architecture_catalog_source_systems.md)  
+- [Architecture Catalog Portfolio](architecture_catalog_portfolio.md)  
+- [Source Backends](source_backends.md)  
 - [Generation Logic](generation_logic.md)  
 - [Incremental Load Architecture](incremental_load.md)  
 - [Load SQL Architecture](load_sql_architecture.md)  

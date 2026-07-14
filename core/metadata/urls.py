@@ -75,6 +75,10 @@ ORDER = CFG.get("order", [])
 EXCLUDE = set(CFG.get("exclude", []))
 PATHS = CFG.get("paths", {})
 
+DETAIL_CONTEXT_PROVIDERS = {
+  SourceDataset: views.source_dataset_detail_context,
+}
+
 # ------------------------------------------------------------
 # Helper functions
 # ------------------------------------------------------------
@@ -86,6 +90,11 @@ def make_view(model):
     "template_form": "generic/form.html",
     "template_confirm_delete": "generic/confirm_delete.html",
   }
+
+  detail_context_provider = DETAIL_CONTEXT_PROVIDERS.get(model)
+  if detail_context_provider is not None:
+    attrs["detail_context_provider"] = staticmethod(detail_context_provider)
+
   return type(f"{model.__name__}CRUDView", (GenericCRUDView,), attrs)
 
 def path_segment_for(model):
@@ -159,6 +168,11 @@ urlpatterns += [
     "architecture-catalog/portfolio/",
     views_catalog.architecture_catalog_portfolio,
     name="architecture_catalog_portfolio",
+  ),
+  path(
+    "architecture-catalog/source-systems/",
+    views_catalog.architecture_catalog_source_systems,
+    name="architecture_catalog_source_systems",
   ),
   path(
     "architecture-catalog/data-products/",

@@ -109,9 +109,21 @@ from metadata.rendering.sql_service import (
   render_delete_detection_sql,
 )
 from metadata.services.lineage_analysis import collect_upstream_targets_extra, collect_downstream_targets_extra
+from metadata.services.source_ingestion_readiness import (
+  build_source_ingestion_readiness,
+)
 
 import logging
 logger = logging.getLogger(__name__)
+
+
+def source_dataset_detail_context(*, request, instance) -> dict[str, Any]:
+  """
+  Build SourceDataset-specific context for the shared generic detail view.
+  """
+  return {
+    "source_ingestion_readiness": build_source_ingestion_readiness(instance),
+  }
 
 
 def _normalize_colname(name: str) -> str:

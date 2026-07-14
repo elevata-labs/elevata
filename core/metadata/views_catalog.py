@@ -39,6 +39,9 @@ from metadata.architecture.catalog_map import (
 from metadata.architecture.catalog_portfolio import (
   build_architecture_catalog_portfolio_context,
 )
+from metadata.architecture.catalog_sources import (
+  build_architecture_catalog_sources_context,
+)
 from metadata.models import TargetDataset
 from metadata.services.quality_review import (
   build_quality_review,
@@ -72,6 +75,23 @@ def architecture_catalog_portfolio(request):
   return render(
     request,
     "metadata/architecture/architecture_catalog_portfolio.html",
+    context,
+  )
+
+
+@login_required
+@permission_required(
+  ("metadata.view_system", "metadata.view_sourcedataset"),
+  raise_exception=True,
+)
+def architecture_catalog_source_systems(request):
+  """
+  Render the read-only Architecture Catalog Source Systems page.
+  """
+  context = build_architecture_catalog_sources_context(request.GET)
+  return render(
+    request,
+    "metadata/architecture/architecture_catalog_source_systems.html",
     context,
   )
 

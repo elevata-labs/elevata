@@ -2,7 +2,7 @@
 
 Architecture Catalog Portfolio is the read-only executive lens across metadata-defined executable architecture.
 
-It summarizes platform posture across readiness, ownership, contracts, health, review state, execution evidence and architecture layers without turning the Catalog into a reporting dashboard or an execution surface.
+It summarizes platform posture across Source ingestion readiness, Data Product readiness, ownership, contracts, health, review state, execution evidence and architecture layers without turning the Catalog into a reporting dashboard or an execution surface.
 
 ---
 
@@ -15,20 +15,24 @@ The Architecture Catalog Portfolio provides a compact way to understand the stat
 ```text
 Architecture Catalog Portfolio
   = Overall architecture posture across governance coverage,
-    execution evidence, review state, Data Product readiness and layers.
+    Source ingestion readiness, execution evidence, review state,
+    Data Product readiness and layers.
 ```
 
 The Portfolio complements the other Catalog lenses:
 
 ```text
-Catalog Workspace
-  = Find and inspect architecture objects.
+Catalog Source Systems
+  = Understand source landscape, ingestion posture and RAW handoffs.
+
+Catalog Target Datasets
+  = Find and inspect target architecture objects.
 
 Catalog Insights
   = Understand concrete quality and governance signals.
 
 Catalog Map
-  = Understand layer structure and direct dependencies.
+  = Understand Source-to-RAW handoffs, layer structure and direct dependencies.
 
 Catalog Data Products
   = Understand consumer readiness for serving-layer datasets.
@@ -78,7 +82,30 @@ The full Catalog reset link returns from a worklist or layer filter to the unfil
 
 ---
 
-## 🔧 4. Data Product Readiness Summary
+## 🔧 4. Source Ingestion Readiness Summary
+
+The Portfolio includes Source ingestion readiness across metadata-defined SourceDatasets.
+
+It shows:
+
+- Source System count  
+- SourceDataset count  
+- Ready count  
+- Attention count  
+- Not applicable count  
+- Unavailable count  
+- blocking finding count  
+- warning finding count
+
+Readiness groups link to filtered Architecture Catalog Source Systems worklists.
+
+Source readiness remains owned by the Catalog Source Systems lens. The Portfolio uses the same results as an aggregated posture signal and does not reimplement readiness rules.
+
+SourceDataset readiness is kept separate from TargetDataset coverage metrics and attention areas because the populations represent different architecture objects.
+
+---
+
+## 🔧 5. Data Product Readiness Summary
 
 The Portfolio includes the Data Product readiness distribution for serving-layer datasets.
 
@@ -94,7 +121,7 @@ Data Product readiness remains owned by the Catalog Data Products lens. The Port
 
 ---
 
-## 🔧 5. Portfolio Attention Areas
+## 🔧 6. Portfolio Attention Areas
 
 Portfolio attention areas summarize the main governance and quality signals that need attention across the active architecture portfolio.
 
@@ -111,7 +138,7 @@ Signals with affected datasets link to focused Catalog worklists. Signals withou
 
 ---
 
-## 🔧 6. Layer Portfolio Overview
+## 🔧 7. Layer Portfolio Overview
 
 The layer portfolio overview groups posture signals by architecture layer.
 
@@ -131,7 +158,7 @@ This makes layer posture explainable without replacing the Catalog Map or dedica
 
 ---
 
-## 🔧 7. Governance Boundary
+## 🔧 8. Governance Boundary
 
 Architecture Catalog Portfolio is part of the read-only Architecture Catalog.
 

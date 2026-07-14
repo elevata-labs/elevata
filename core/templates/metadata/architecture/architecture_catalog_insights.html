@@ -38,6 +38,14 @@ Contact: <https://github.com/elevata-labs/elevata>.
       <i class="bi bi-speedometer2"></i>
       Portfolio
     </a>
+    <a href="{% url 'architecture_catalog_source_systems' %}" class="btn btn-sm btn-outline-primary">
+      <i class="bi bi-database"></i>
+      Source Systems
+    </a>
+    <a href="{{ catalog_url }}" class="btn btn-sm btn-outline-primary">
+      <i class="bi bi-collection"></i>
+      Target Datasets
+    </a>
     <a href="{% url 'architecture_catalog_data_products' %}" class="btn btn-sm btn-outline-primary">
       <i class="bi bi-box-seam"></i>
       Data Products
@@ -45,10 +53,6 @@ Contact: <https://github.com/elevata-labs/elevata>.
     <a href="{% url 'architecture_catalog_map' %}" class="btn btn-sm btn-outline-secondary">
       <i class="bi bi-map"></i>
       Map
-    </a>
-    <a href="{{ catalog_url }}" class="btn btn-sm btn-outline-secondary">
-      <i class="bi bi-collection"></i>
-      Catalog
     </a>
     <span class="badge text-bg-secondary">
       {{ active_dataset_count }} active / {{ total_dataset_count }} datasets
