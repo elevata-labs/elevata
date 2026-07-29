@@ -123,7 +123,11 @@ def evaluate_migration_policy_decisions(
     dataset_key = action.dataset_key
     is_hist = _is_hist_dataset(dataset_key)
 
-    if action_type in {"RETIRE_COLUMN", "UNRETIRE_COLUMN"}:
+    if action_type in {
+      "RETIRE_DATASET",
+      "RETIRE_COLUMN",
+      "UNRETIRE_COLUMN",
+    }:
       decisions.append(_decision(
         action=action,
         status="METADATA_ONLY",

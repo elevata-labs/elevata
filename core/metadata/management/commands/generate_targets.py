@@ -85,18 +85,29 @@ class Command(BaseCommand):
       self.stdout.write(self.style.WARNING("No target schemas in scope. Nothing to do."))
       return
 
-    total_datasets = 0
-    total_columns = 0
+    total_processed_datasets = 0
+    total_processed_columns = 0
+    total_retired_datasets = 0
+    total_reactivated_datasets = 0
 
     for schema in schemas:
       eligible = svc.get_eligible_source_datasets_for_schema(schema)
       if not eligible:
+        if dry_run:
+          self.stdout.write(
+            self.style.WARNING(
+              f"[DRY-RUN] {schema.physical_prefix or schema.short_name}: "
+              "no eligible source datasets."
+            )
+          )
+          continue
+
         self.stdout.write(
           self.style.WARNING(
-            f"{schema.physical_prefix or schema.short_name}: no eligible source datasets, skipping."
+            f"{schema.physical_prefix or schema.short_name}: "
+            "no eligible source datasets; reconciling generated target lifecycle."
           )
         )
-        continue
 
       if dry_run:
         # Only show which schema would be processed
@@ -107,31 +118,29 @@ class Command(BaseCommand):
         continue
 
       # Run generation for this schema
-      result_text = svc.apply_all(eligible, schema)
+      result = svc.apply_all_result(
+        eligible,
+        schema,
+        reconcile_lifecycle=True,
+      )
       self.stdout.write(
         self.style.SUCCESS(
-          f"{schema.physical_prefix or schema.short_name}: {result_text}"
+          f"{schema.physical_prefix or schema.short_name}: {result.summary_text}"
         )
       )
 
-      # Try to parse "X target datasets and Y target columns ..."
-      try:
-        parts = result_text.split(" ")
-        if parts:
-          count = int(parts[0])
-          total_datasets += count
-        if "and" in parts:
-          and_index = parts.index("and")
-          col_count = int(parts[and_index + 1])
-          total_columns += col_count
-      except Exception:
-        # Ignore parsing errors
-        pass
+      total_processed_datasets += result.processed_dataset_count
+      total_processed_columns += result.processed_column_count
+      total_retired_datasets += result.retired_dataset_count
+      total_reactivated_datasets += result.reactivated_dataset_count
 
     if not dry_run:
       self.stdout.write(
         self.style.SUCCESS(
-          f"Done. Total: {total_datasets} target datasets and {total_columns} target columns generated/updated."
+          f"Done. Total: {total_processed_datasets} target datasets processed and "
+          f"{total_processed_columns} target columns processed; "
+          f"{total_retired_datasets} target datasets retired and "
+          f"{total_reactivated_datasets} reactivated."
         )
       )
     else:

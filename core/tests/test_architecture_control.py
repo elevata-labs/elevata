@@ -411,10 +411,14 @@ def test_build_architecture_control_report_uses_schema_scope(
 
   def fake_resolve_dataset_keys_from_state(**kwargs) -> set[str]:
     """
-    Capture scope resolution input and return the schema scope.
+    Return current and recorded schema members for review-scope assembly.
     """
-    calls["scope"] = kwargs
-    return {"serving.Customer", "serving.Order"}
+    calls.setdefault("scope", []).append(kwargs)
+    if kwargs["state"] is current_state:
+      return {"serving.Customer"}
+    if kwargs["state"] is previous_state:
+      return {"serving.Customer", "serving.Retired"}
+    raise AssertionError("Unexpected Architecture State used for scope resolution.")
 
   def fake_build_architecture_change_report(**kwargs) -> FakeReport:
     """
@@ -446,18 +450,27 @@ def test_build_architecture_control_report_uses_schema_scope(
   result = control.build_architecture_control_report(scope)
 
   assert result is report
-  assert calls["scope"] == {
-    "state": current_state,
-    "target_name": None,
-    "schema_short": "serving",
-    "all_datasets": True,
-    "include_related_hist": True,
-  }
+  assert calls["scope"] == [
+    {
+      "state": current_state,
+      "target_name": None,
+      "schema_short": "serving",
+      "all_datasets": True,
+      "include_related_hist": True,
+    },
+    {
+      "state": previous_state,
+      "target_name": None,
+      "schema_short": "serving",
+      "all_datasets": True,
+      "include_related_hist": True,
+    },
+  ]
   assert calls["report"] == {
     "previous_state": previous_state,
     "current_state": current_state,
     "policy": policy,
-    "relevant_dataset_keys": {"serving.Customer", "serving.Order"},
+    "relevant_dataset_keys": {"serving.Customer", "serving.Retired"},
     "schema_short": "serving",
     "target_name": None,
     "scope_mode": "scoped",
@@ -548,34 +561,100 @@ def test_build_architecture_control_report_uses_all_scope(
   }
 
 
-def test_build_architecture_control_context_uses_report_and_store(
+def test_build_architecture_control_report_reuses_supplied_current_state(
   monkeypatch: pytest.MonkeyPatch,
 ) -> None:
   """
-  Verify context construction from report, status and store.
+  Verify report construction does not rebuild an explicitly supplied state.
+  """
+  current_state = object()
+  previous_state = object()
+  report = FakeReport()
+  calls: dict[str, Any] = {}
+
+  monkeypatch.setattr(
+    control.ArchitectureStateService,
+    "build_current_state",
+    lambda self: pytest.fail("Current state must not be rebuilt."),
+  )
+
+  def fake_resolve_relevant_dataset_keys(**kwargs) -> set[str]:
+    calls["current_state"] = kwargs["current_state"]
+    return {"serving.Customer"}
+
+  monkeypatch.setattr(
+    control,
+    "_resolve_relevant_dataset_keys",
+    fake_resolve_relevant_dataset_keys,
+  )
+  monkeypatch.setattr(
+    control,
+    "resolve_architecture_baseline",
+    lambda **kwargs: _baseline_resolution(previous_state=previous_state),
+  )
+  monkeypatch.setattr(
+    control,
+    "build_architecture_change_report",
+    lambda **kwargs: report,
+  )
+  monkeypatch.setattr(control, "load_materialization_policy", object)
+
+  result, baseline = control.build_architecture_control_report_with_baseline(
+    control.ArchitectureControlScope.from_target_dataset(_target_dataset()),
+    artifact_context=_artifact_context(),
+    state_store=_state_store(),
+    current_state=current_state,
+  )
+
+  assert result is report
+  assert baseline.previous_state is previous_state
+  assert calls["current_state"] is current_state
+
+
+def test_build_architecture_control_context_uses_shared_state_and_impact_plan(
+  monkeypatch: pytest.MonkeyPatch,
+) -> None:
+  """
+  Verify context construction shares one current state across all artifacts.
   """
   scope = control.ArchitectureControlScope.from_target_dataset(_target_dataset())
   report = FakeReport()
   status = _status("pending")
   store = FakeApprovalStore()
-
+  current_state = object()
+  impact_plan = object()
   artifact_context = _artifact_context()
   baseline_resolution = _baseline_resolution(previous_state=object())
+  calls: dict[str, Any] = {}
+
+  class FakeStateService:
+    def build_current_state(self) -> object:
+      calls["state_build_count"] = calls.get("state_build_count", 0) + 1
+      return current_state
 
   class FakeStateStoreForContext:
-    """
-    Architecture state store test double for context construction.
-    """
-
     def __init__(self, *args, **kwargs):
       self.base_path = Path(".elevata/state/dev/dwh")
 
     def state_file_path(self) -> Path:
-      """
-      Return the configured persisted state file path.
-      """
       return self.base_path / "architecture_state.json"
 
+  def fake_build_report(value, **kwargs):
+    calls["report_current_state"] = kwargs.get("current_state")
+    return report, baseline_resolution
+
+  def fake_build_impact(**kwargs):
+    calls["impact"] = kwargs
+    return impact_plan, None
+
+  def fake_build_review_status(**kwargs):
+    """
+    Capture authoritative review inputs and return the configured status.
+    """
+    calls["review"] = kwargs
+    return status
+
+  monkeypatch.setattr(control, "ArchitectureStateService", FakeStateService)
   monkeypatch.setattr(
     control,
     "resolve_architecture_artifact_context",
@@ -589,12 +668,17 @@ def test_build_architecture_control_context_uses_report_and_store(
   monkeypatch.setattr(
     control,
     "build_architecture_control_report_with_baseline",
-    lambda value, **kwargs: (report, baseline_resolution),
+    fake_build_report,
   )
   monkeypatch.setattr(
     control,
     "build_architecture_review_status_for_report",
-    lambda **kwargs: status,
+    fake_build_review_status,
+  )
+  monkeypatch.setattr(
+    control,
+    "_build_architecture_control_execution_impact_plan",
+    fake_build_impact,
   )
 
   context = control.build_architecture_control_context(
@@ -602,6 +686,13 @@ def test_build_architecture_control_context_uses_report_and_store(
     approval_store=store,
   )
 
+  assert calls["state_build_count"] == 1
+  assert calls["report_current_state"] is current_state
+  assert calls["review"]["baseline_resolution"] is baseline_resolution
+  assert calls["impact"]["current_state"] is current_state
+  assert calls["impact"]["baseline_resolution"] is baseline_resolution
+  assert calls["impact"]["report"] is report
+  assert calls["impact"]["review_status"] is status
   assert context.scope is scope
   assert context.artifact_context is artifact_context
   assert context.report is report
@@ -609,6 +700,245 @@ def test_build_architecture_control_context_uses_report_and_store(
   assert context.approval_store is store
   assert isinstance(context.state_store, FakeStateStoreForContext)
   assert context.baseline_resolution is baseline_resolution
+  assert context.current_state is current_state
+  assert context.execution_impact_plan is impact_plan
+  assert context.execution_impact_plan_error is None
+
+
+def test_execution_impact_plan_context_integration_passes_runtime_inputs(
+  monkeypatch: pytest.MonkeyPatch,
+) -> None:
+  """
+  Verify the impact service receives active targets and the scoped record store.
+  """
+  scope = control.ArchitectureControlScope.from_target_dataset(_target_dataset())
+  current_state = object()
+  baseline_resolution = _baseline_resolution(previous_state=object())
+  report = FakeReport()
+  status = _status("pending")
+  impact_plan = object()
+  target_datasets = (object(), object())
+  artifact_context = _artifact_context()
+  calls: dict[str, Any] = {}
+
+  class FakeTargetDatasetManager:
+    def select_related(self, *args):
+      calls["select_related"] = args
+      return self
+
+    def filter(self, **kwargs):
+      calls["filter"] = kwargs
+      return self
+
+    def order_by(self, *args):
+      calls["order_by"] = args
+      return target_datasets
+
+  class FakeExecutionRecordStore:
+    def __init__(self, *, context):
+      calls["store_context"] = context
+      calls["store_instance"] = self
+
+  def fake_build_execution_impact_plan(**kwargs):
+    calls["service"] = kwargs
+    return impact_plan
+
+  monkeypatch.setattr(
+    control.TargetDataset,
+    "objects",
+    FakeTargetDatasetManager(),
+  )
+  monkeypatch.setattr(
+    control,
+    "ArchitectureExecutionRecordStore",
+    FakeExecutionRecordStore,
+  )
+  monkeypatch.setattr(
+    control,
+    "build_execution_impact_plan",
+    fake_build_execution_impact_plan,
+  )
+
+  result, error = control._build_architecture_control_execution_impact_plan(
+    scope=scope,
+    artifact_context=artifact_context,
+    current_state=current_state,
+    baseline_resolution=baseline_resolution,
+    report=report,
+    review_status=status,
+  )
+
+  assert result is impact_plan
+  assert error is None
+  assert calls["select_related"] == ("target_schema",)
+  assert calls["filter"] == {"active": True}
+  assert calls["order_by"] == (
+    "target_schema__short_name",
+    "target_dataset_name",
+    "id",
+  )
+  assert calls["store_context"] is artifact_context
+  assert calls["service"] == {
+    "scope_key": scope.key,
+    "current_state": current_state,
+    "baseline_resolution": baseline_resolution,
+    "report": report,
+    "review_status": status,
+    "target_datasets": target_datasets,
+    "execution_record_store": calls["store_instance"],
+    "execution_dataset_keys": None,
+    "dependency_mode": "with_dependencies",
+  }
+
+
+def test_execution_impact_context_accepts_concrete_execution_scope(
+  monkeypatch: pytest.MonkeyPatch,
+) -> None:
+  """
+  Verify the context binds the plan to the concrete execution dataset scope.
+  """
+  scope = control.ArchitectureControlScope.from_target_dataset(
+    _target_dataset()
+  )
+  current_state = object()
+  baseline_resolution = _baseline_resolution(previous_state=object())
+  report = FakeReport()
+  status = _status("no_changes")
+  impact_plan = SimpleNamespace(
+    items=(
+      SimpleNamespace(dataset_key="serving.Customer"),
+    ),
+  )
+  calls: dict[str, Any] = {}
+
+  class FakeStateService:
+    def build_current_state(self):
+      return current_state
+
+  class FakeStateStore:
+    def __init__(self, *args, **kwargs):
+      self.base_path = Path(".elevata/state/dev/dwh")
+
+    def state_file_path(self):
+      return self.base_path / "architecture_state.json"
+
+  monkeypatch.setattr(control, "ArchitectureStateService", FakeStateService)
+  monkeypatch.setattr(control, "ArchitectureStateStore", FakeStateStore)
+  monkeypatch.setattr(
+    control,
+    "resolve_architecture_artifact_context",
+    _artifact_context,
+  )
+  monkeypatch.setattr(
+    control,
+    "build_architecture_control_report_with_baseline",
+    lambda *args, **kwargs: (report, baseline_resolution),
+  )
+  monkeypatch.setattr(
+    control,
+    "build_architecture_review_status_for_report",
+    lambda **kwargs: status,
+  )
+
+  def fake_build_impact(**kwargs):
+    calls.update(kwargs)
+    return impact_plan, None
+
+  monkeypatch.setattr(
+    control,
+    "_build_architecture_control_execution_impact_plan",
+    fake_build_impact,
+  )
+
+  context = control.build_architecture_control_context(
+    scope,
+    execution_dataset_keys=("serving.Customer",),
+    dependency_mode="target_only",
+  )
+
+  assert calls["execution_dataset_keys"] == ("serving.Customer",)
+  assert calls["dependency_mode"] == "target_only"
+  assert context.execution_dataset_keys == ("serving.Customer",)
+  assert context.execution_dependency_mode == "target_only"
+
+
+def test_execution_impact_plan_error_remains_optional_context_evidence(
+  monkeypatch: pytest.MonkeyPatch,
+) -> None:
+  """
+  Verify a plan-service error remains an explicit optional context outcome.
+  """
+  class FakeTargetDatasetManager:
+    def select_related(self, *args):
+      return self
+
+    def filter(self, **kwargs):
+      return self
+
+    def order_by(self, *args):
+      return ()
+
+  monkeypatch.setattr(
+    control.TargetDataset,
+    "objects",
+    FakeTargetDatasetManager(),
+  )
+  monkeypatch.setattr(
+    control,
+    "ArchitectureExecutionRecordStore",
+    lambda **kwargs: object(),
+  )
+  monkeypatch.setattr(
+    control,
+    "build_execution_impact_plan",
+    lambda **kwargs: (_ for _ in ()).throw(
+      control.ExecutionImpactPlanError("impact evidence unavailable")
+    ),
+  )
+
+  plan, error = control._build_architecture_control_execution_impact_plan(
+    scope=control.ArchitectureControlScope.for_all(),
+    artifact_context=_artifact_context(),
+    current_state=object(),
+    baseline_resolution=_baseline_resolution(),
+    report=FakeReport(),
+    review_status=_status("pending"),
+  )
+
+  assert plan is None
+  assert error == "impact evidence unavailable"
+
+
+def test_execution_impact_integration_error_is_isolated(
+  monkeypatch: pytest.MonkeyPatch,
+) -> None:
+  """
+  Verify unexpected integration failures do not remove the control context.
+  """
+  class FailingTargetDatasetManager:
+    def select_related(self, *args):
+      raise RuntimeError("target metadata unavailable")
+
+  monkeypatch.setattr(
+    control.TargetDataset,
+    "objects",
+    FailingTargetDatasetManager(),
+  )
+
+  plan, error = control._build_architecture_control_execution_impact_plan(
+    scope=control.ArchitectureControlScope.for_all(),
+    artifact_context=_artifact_context(),
+    current_state=object(),
+    baseline_resolution=_baseline_resolution(),
+    report=FakeReport(),
+    review_status=_status("pending"),
+  )
+
+  assert plan is None
+  assert error == (
+    "Execution Impact Plan integration failed: target metadata unavailable"
+  )
+
 
 def test_create_architecture_control_approval_saves_artifact(
   monkeypatch: pytest.MonkeyPatch,
@@ -669,6 +999,13 @@ def test_create_architecture_control_approval_saves_artifact(
     (
       _context(status=_status("approved")),
       "A matching approval artifact already exists for this report.",
+    ),
+    (
+      _context(status=_status("initial_deployment")),
+      (
+        "An Approval Artifact is not required for a verified "
+        "initial deployment."
+      ),
     ),
   ],
 )

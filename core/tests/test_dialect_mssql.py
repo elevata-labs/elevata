@@ -58,6 +58,24 @@ def test_mssql_date_literal_uses_cast():
   assert " AS DATE)" in sql
 
 
+def test_mssql_datetime_literal_normalizes_utc_and_preserves_microseconds():
+  d = MssqlDialect()
+  dval = datetime.datetime(
+    2026,
+    7,
+    24,
+    6,
+    18,
+    38,
+    123456,
+    tzinfo=datetime.timezone(datetime.timedelta(hours=2)),
+  )
+
+  assert d.render_literal(dval) == (
+    "CAST('2026-07-24 04:18:38.123456' AS DATETIME2)"
+  )
+
+
 def test_mssql_concat_expression_uses_plus_operator():
   d = MssqlDialect()
   expr = d.concat_expression(["'a'", "'b'", "'c'"])

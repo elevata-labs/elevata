@@ -12,6 +12,160 @@ This project adheres to [Semantic Versioning](https://semver.org/) and [Keep a C
 
 ---
 
+## [2.16.0] - 2026-07-29
+
+This release adds **Immutable Execution Run Plans** and **Controlled Generated Dataset Lifecycle**.
+
+Scheduler-managed executions are now bound to exact active dataset scopes, Execution Impact decisions, and a Planned Architecture State snapshot. Finalization persists the architecture actually applied by the completed run, while later metadata changes remain explicit post-plan drift for the next run.
+
+Generated TargetDatasets can retire and reactivate deterministically without implicit physical deletion. Architecture Control keeps retirement reviewable at schema scope while execution remains active-only.
+
+No metadata model changes or migrations are required.
+
+---
+
+### ✨ Added
+
+#### Immutable Execution Run Plans
+
+- Added a public, immutable Execution Run Plan contract for scheduler-managed execution  
+- Bound each Run Plan to profile, target system, Architecture Control scope, dependency mode, review status and approval identifier  
+- Bound Run Plans to Architecture State, Architecture Change Report, Execution Impact, Execution Preview and ExecutionPlan fingerprints  
+- Added exact ordered dataset decisions for `REUSE`, `INCREMENTAL_EXECUTE` and `FULL_REBUILD`  
+- Prevented `REVALIDATE` and `BLOCKED` decisions from becoming executable Run Plans  
+- Added immutable Run Plan storage with fingerprint-safe reuse for scheduler retries
+
+#### Planned Architecture State and Finalization
+
+- Added a Planned Architecture State snapshot beside every newly created Run Plan  
+- Added dataset-level metadata validation against the planned snapshot before scheduler-step execution  
+- Added structured scheduler-step outcome artifacts for every planned dataset  
+- Added batch finalization that requires one semantically valid outcome per planned dataset  
+- Added finalization evidence and exact persistence of the Planned Architecture State applied by the completed run  
+- Added explicit post-plan drift reporting when metadata changes after Run Plan creation  
+- Kept newer recorded Architecture State safe from rollback during idempotent finalizer retries
+
+#### Initial Deployment and Recovery
+
+- Added verified empty-target bootstrap for the first full-scope Architecture State  
+- Added strict read-only physical validation before establishing an initial baseline  
+- Added explicit recovery for legacy interrupted initial deployments without Planned Architecture State snapshots  
+- Added recovery evidence with original plan fingerprints, current and physical validation fingerprints, outcome summaries and metadata-change signals  
+- Kept recovery non-destructive: no target reset, reload or database deletion is required
+
+#### Generated TargetDataset Lifecycle
+
+- Added schema-level reconciliation for generator-owned TargetDatasets  
+- Added metadata-only retirement when a generated dataset leaves the complete eligible source scope  
+- Added `active=False` and `retired_at` lifecycle state without automatic physical deletion  
+- Added deterministic in-place reactivation when the source scope becomes eligible again  
+- Limited lifecycle reconciliation to system-managed datasets with generator-owned lineage keys  
+- Kept targeted generation unable to retire unrelated generated datasets
+
+#### Architecture Control Retirement Review
+
+- Added schema review-key resolution across current active datasets and matching previous-state datasets  
+- Kept inactive TargetDatasets out of the TargetDataset selector  
+- Kept retired datasets visible as approvable schema-level architecture changes  
+- Kept Execution Impact, Execution Preview, manifests and Run Plans strictly active-only
+
+---
+
+### 🔄 Improved
+
+#### Execution Impact and Runtime Binding
+
+- Bound FULL_REBUILD decisions to the load runtime and renderer instead of treating them as presentation-only evidence  
+- Bound execution decisions to immutable Run Plan dataset order and runtime context  
+- Added active-only execution manifest generation  
+- Added active-only dataset tasks for scheduler execution  
+- Kept external ingestion as an explicit successful skip outcome rather than a failed or ambiguous execution state
+
+#### Architecture Change Reporting
+
+- Represented dataset retirement atomically as `DATASET_REMOVED → RETIRE_DATASET → METADATA_ONLY`  
+- Removed one top-level `COLUMN_REMOVED` change per column of a retired dataset  
+- Removed retired-column detail payloads that could imply individual physical drop operations  
+- Kept previous Architecture State as the historical source for the retired dataset structure
+
+#### Target Generation
+
+- Derived multi-source STAGE UNION nullability from every participating branch  
+- Marked a UNION output column nullable when any branch is nullable or does not provide the column  
+- Kept synthetic generated columns on their explicit contracts  
+- Added structured `TargetGenerationResult` counters  
+- Changed Generate Targets summaries from ambiguous `generated/updated` wording to exact `processed` counts  
+- Kept retired and reactivated dataset counts separate from processing volume
+
+#### Scheduler Documentation
+
+- Documented `create_execution_run_plan`, Planned Architecture State snapshots, structured outcomes and finalization in the Airflow example  
+- Documented the correct metadata-change rescue workflow: create a new DAG run instead of clearing tasks against a superseded Run Plan  
+- Documented Run Plan, planned-state, outcome, finalization and recovery artifact paths  
+- Documented the explicit interrupted-initial-deployment recovery command and safety boundary
+
+---
+
+### 🔒 Governance & Determinism
+
+- Metadata remains authoritative, but an active scheduler run is governed by its immutable planned snapshot  
+- Metadata changes after Run Plan creation never silently reinterpret the active run  
+- Dataset tasks fail closed when their metadata no longer matches the planned dataset contract  
+- Recorded Architecture State advances only through successful finalization or explicit guarded recovery  
+- Finalization records the architecture actually applied, not whichever metadata state happens to be current later  
+- Inactive TargetDatasets cannot re-enter execution implicitly  
+- Dataset retirement requires explicit review and approval where the selected scope contains the change  
+- Metadata-only retirement never implies automatic physical DDL  
+- Recovery is limited to verified legacy initial-deployment conditions and rejects foreign or incomplete state
+
+---
+
+### 🧪 Quality & Stability
+
+- Added and updated tests for immutable Run Plan construction, storage, reuse and service binding  
+- Added tests for Planned Architecture State persistence, validation and dataset drift guards  
+- Added tests for scheduler-step outcome semantics and batch finalization  
+- Added tests for interrupted initial-deployment recovery safety and idempotency  
+- Added tests for external ingestion outcome compatibility  
+- Added tests for generated dataset retirement, reactivation and active-only execution  
+- Added tests for schema review scope visibility of retired datasets  
+- Added tests for atomic dataset retirement reports  
+- Added tests for multi-source UNION nullability  
+- Added tests for SQL Server managed-view physical type normalization  
+- Added tests for structured Generate Targets processing summaries  
+- Verified a 38-dataset legacy initial-deployment recovery successfully  
+- Verified a completely new Airflow Run Plan and finalization successfully  
+- Verified scheduler decisions across 29 full rebuilds and 9 incremental executions  
+- Verified the full test suite successfully
+
+---
+
+### 🛠️ Fixed
+
+- Fixed successful scheduler finalization being rejected only because metadata changed after Run Plan creation  
+- Fixed missing-table FULL_REBUILD decisions not reaching the load runtime  
+- Fixed legacy initial deployments being left without recoverable Architecture State after successful physical execution  
+- Fixed external ingestion `skipped` outcomes being rejected despite representing the explicit `external_ingest` contract  
+- Fixed SQL Server managed views being reported as datatype drift when literal-width inference produced a narrower `NVARCHAR` than the logical string contract  
+- Fixed removed datasets producing noisy top-level removed-column changes  
+- Fixed schema-scoped Architecture Control reports omitting retirement because the dataset was no longer active  
+- Fixed multi-source STAGE targets inheriting nullability only from the representative source  
+- Fixed Generate Targets summaries implying that every processed object was generated or updated
+
+---
+
+### ⬆️ Upgrade Notes
+
+- No metadata database migration is required.  
+- Existing metadata, recorded Architecture State, Approval Artifacts and Architecture Execution Records remain compatible.  
+- Newly created scheduler Run Plans are stored together with Planned Architecture State snapshots.  
+- After metadata changes, start a new scheduler or Airflow run; do not clear and retry dataset tasks against the previous immutable Run Plan.  
+- Legacy interrupted initial deployments can use the explicit guarded recovery command only when all recovery preconditions are satisfied.  
+- Target databases do not need to be reset for the supported recovery path.  
+- Generate Targets output now reports processed object counts instead of ambiguous generated/updated counts.
+
+---
+
 ## [2.15.0] - 2026-07-14
 
 This release adds **Source & Ingestion Readiness** and extends the Architecture Catalog into an end-to-end view from Source Systems through Target Datasets to Data Products.

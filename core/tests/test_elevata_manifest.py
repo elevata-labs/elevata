@@ -175,6 +175,98 @@ def test_manifest_stage_can_depend_directly_on_source():
 
 
 @pytest.mark.django_db
+def test_manifest_excludes_inactive_target_datasets():
+  """
+  Verify retired TargetDatasets do not become scheduler tasks.
+  """
+  raw_schema, _ = TargetSchema.objects.get_or_create(
+    short_name="raw",
+    schema_name="raw",
+  )
+  active_target = TargetDataset.objects.create(
+    target_schema=raw_schema,
+    target_dataset_name="raw_active",
+    incremental_strategy="full",
+    is_system_managed=False,
+    active=True,
+  )
+  inactive_target = TargetDataset.objects.create(
+    target_schema=raw_schema,
+    target_dataset_name="raw_retired",
+    incremental_strategy="full",
+    is_system_managed=False,
+    active=False,
+  )
+
+  manifest = build_manifest(
+    profile_name="dev",
+    target_system_short="dbdwh",
+    include_system_managed=True,
+    include_sources=False,
+  )
+  node_ids = {
+    node.id
+    for node in manifest.nodes
+  }
+
+  assert (
+    f"{active_target.target_schema.short_name}."
+    f"{active_target.target_dataset_name}"
+  ) in node_ids
+  assert (
+    f"{inactive_target.target_schema.short_name}."
+    f"{inactive_target.target_dataset_name}"
+  ) not in node_ids
+
+
+@pytest.mark.django_db
+def test_manifest_rejects_active_target_with_inactive_upstream():
+  """
+  Verify an inactive required upstream cannot be silently reintroduced.
+  """
+  raw_schema, _ = TargetSchema.objects.get_or_create(
+    short_name="raw",
+    schema_name="raw",
+  )
+  stage_schema, _ = TargetSchema.objects.get_or_create(
+    short_name="stage",
+    schema_name="stage",
+  )
+  inactive_upstream = TargetDataset.objects.create(
+    target_schema=raw_schema,
+    target_dataset_name="raw_retired",
+    incremental_strategy="full",
+    is_system_managed=False,
+    active=False,
+  )
+  active_downstream = TargetDataset.objects.create(
+    target_schema=stage_schema,
+    target_dataset_name="stg_active",
+    incremental_strategy="full",
+    is_system_managed=False,
+    active=True,
+  )
+  TargetDatasetInput.objects.create(
+    target_dataset=active_downstream,
+    source_dataset=None,
+    upstream_target_dataset=inactive_upstream,
+    role="primary",
+    active=True,
+  )
+
+  with pytest.raises(
+    ValueError,
+    match="stage\\.stg_active -> raw\\.raw_retired",
+  ):
+    build_manifest(
+      profile_name="dev",
+      target_system_short="dbdwh",
+      include_system_managed=True,
+      include_sources=False,
+    )
+
+
+@pytest.mark.django_db
 def test_manifest_uses_effective_materialization_type():
   """Manifest materialization exposes the effective value, not the raw override field."""
   raw_schema, _ = TargetSchema.objects.get_or_create(

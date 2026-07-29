@@ -121,6 +121,15 @@ class MigrationPlanner:
         reason=reason,
       ))
 
+    removed_dataset_keys = {
+      ch.dataset_key
+      for ch in arch_diff.dataset_changes
+      if (
+        ch.change_type == "DATASET_REMOVED"
+        and _in_scope(ch.dataset_key)
+      )
+    }
+
     # Dataset-level changes
     for ch in arch_diff.dataset_changes:
       if not _in_scope(ch.dataset_key):
@@ -142,11 +151,16 @@ class MigrationPlanner:
           reason="Architecture diff detected new dataset.",
         ))
       elif ch.change_type == "DATASET_REMOVED":
+        # Metadata removal retires the architecture contract. It does not
+        # implicitly authorize destructive warehouse DDL.
         actions.append(MigrationAction(
-          action_type="DROP_DATASET",
-          strategy="DROP_VIEW" if _is_view_dataset(ch.dataset_key) else "DROP_TABLE",
+          action_type="RETIRE_DATASET",
+          strategy="METADATA_ONLY",
           dataset_key=ch.dataset_key,
-          reason="Architecture diff detected removed dataset.",
+          reason=(
+            "Architecture diff detected retired dataset metadata; "
+            "the physical dataset is retained."
+          ),
         ))
       elif ch.change_type == "DATASET_CHANGED":
         # Conservative default: changed dataset-level semantics may require ALTER/REBUILD.
@@ -160,6 +174,12 @@ class MigrationPlanner:
     # Column-level changes
     for ch in arch_diff.column_changes:
       if not _in_scope(ch.dataset_key):
+        continue
+
+      # Dataset retirement subsumes its removed column details. Emitting
+      # DROP_COLUMN actions here would incorrectly turn metadata retirement
+      # into physical deletion intent.
+      if ch.dataset_key in removed_dataset_keys:
         continue
 
       if _is_view_dataset(ch.dataset_key):

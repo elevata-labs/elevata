@@ -118,6 +118,9 @@ services:
           --lastname User \
           --role Admin \
           --email admin@example.com" || true
+        su airflow -c "/opt/airflow/elevata_venv/bin/python /opt/elevata/core/manage.py elevata_manifest \
+          --profile \"$${ELEVATA_PROFILE:-dev}\" \
+          --target-system \"$${ELEVATA_TARGET_SYSTEM:-dwh}\""
     restart: "no"
 
   airflow-webserver:

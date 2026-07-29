@@ -289,7 +289,7 @@ Check a stored Approval Artifact:
 ```bash
 python manage.py elevata_approval_check \
   .artifacts/architecture_plan_rc_aw_customer.json \
-  .elevata/approvals/<report_fingerprint>.approval.json
+  .elevata/approvals/<profile>/<target-system>/<report_fingerprint>.approval.json
 ```
 
 ### 🧩 5.5 Use Architecture Control in the UI
@@ -308,6 +308,7 @@ From Architecture Control, you can:
 - inspect the Architecture Change Report  
 - download report JSON  
 - create and check Approval Artifacts  
+- inspect the Execution Impact Plan  
 - inspect the Execution Preview  
 - run controlled load execution  
 - inspect captured execution output  
@@ -315,11 +316,33 @@ From Architecture Control, you can:
 
 Controlled execution uses the load runner and keeps preflight validation, Architecture Guard enforcement, approval matching and dialect-owned SQL rendering in place.
 
-Architecture Execution Records are stored under:
+Architecture Execution Records use the configured base directory and are scoped by runtime context:
+
+```text
+.elevata/executions/<profile>/<target-system>/
+```
+
+### 🧩 5.6 Create an Immutable Scheduler Run Plan
+
+Create a full-scope Run Plan for the active profile and target system:
 
 ```bash
-ELEVATA_ARCH_EXECUTION_DIR=.elevata/executions
+python manage.py elevata_run_plan \
+  --all-datasets \
+  --output .artifacts/full.run_plan.json
 ```
+
+elevata stores the Run Plan together with a matching Planned Architecture State snapshot. Scheduler tasks validate their dataset metadata against this snapshot and write structured outcome artifacts.
+
+After every planned dataset has a valid outcome, finalize the run:
+
+```bash
+python manage.py elevata_finalize_run_plan \
+  .artifacts/full.run_plan.json
+```
+
+Finalization persists exactly the architecture applied by the completed run. Metadata changes after Run Plan creation require a new Run Plan and a new scheduler run.
+
 ---
 
 ## 🔧 6. Secure Connectivity (optional)
@@ -342,6 +365,8 @@ For advanced setups, see
 | Run tests | `python runtests.py` |
 | Render architecture state | `python manage.py elevata_state` |
 | Render architecture report | `python manage.py elevata_plan --all` |
+| Create immutable scheduler Run Plan | `python manage.py elevata_run_plan --all-datasets` |
+| Finalize completed scheduler Run Plan | `python manage.py elevata_finalize_run_plan <RUN_PLAN_PATH>` |
 | Execute controlled architecture scope | Use Architecture Control in the UI |
 
 ---

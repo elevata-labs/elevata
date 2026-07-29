@@ -41,6 +41,18 @@ from metadata.architecture.scope import (
   split_dataset_key,
 )
 from metadata.architecture.diff import diff_architecture_states
+from metadata.architecture.execution_impact import ExecutionImpactSelection
+from metadata.architecture.execution_run_plan import (
+  ExecutionRunPlan,
+  ExecutionRunPlanStore,
+)
+from metadata.architecture.execution_run_outcome import (
+  write_execution_run_plan_step_outcome,
+)
+from metadata.architecture.execution_run_plan_state import (
+  load_execution_run_plan_planned_state,
+  validate_execution_run_plan_dataset_state,
+)
 from metadata.architecture.migration_planner import MigrationPlanner
 from metadata.architecture.paths import resolve_architecture_artifact_context
 from metadata.architecture.physical_state import resolve_architecture_baseline
@@ -65,7 +77,7 @@ from metadata.rendering.load_sql import (
   format_load_run_summary,
   render_controlled_reference_member_sql_for_target,
 )
-from metadata.rendering.load_planner import build_load_plan
+from metadata.rendering.load_planner import LoadPlan, build_load_plan
 from metadata.rendering.placeholders import resolve_delta_cutoff_for_source_dataset
 from metadata.intent.ingestion import resolve_ingest_mode
 from metadata.ingestion.connectors import ingest_raw_for_source_dataset
@@ -413,7 +425,11 @@ def _persist_orchestration_skip_rows_best_effort(
     for r in results:
       if r.get("status") != "skipped":
         continue
-      if r.get("kind") not in ("blocked", "aborted"):
+      if r.get("kind") not in (
+        "blocked",
+        "aborted",
+        "impact_reuse",
+      ):
         continue
 
       ds = str(r.get("dataset") or "")
@@ -422,7 +438,13 @@ def _persist_orchestration_skip_rows_best_effort(
       target_schema, target_dataset = ds.split(".", 1)
 
       load_run_id = str(r.get("load_run_id") or uuid.uuid4())
-      ts = now()
+      fallback_timestamp = now()
+      started_at = (
+        r.get("started_at")
+        or r.get("finished_at")
+        or fallback_timestamp
+      )
+      finished_at = r.get("finished_at") or started_at
 
       values = build_load_run_log_row(
         batch_run_id=batch_run_id,
@@ -435,8 +457,8 @@ def _persist_orchestration_skip_rows_best_effort(
         mode="orchestration",
         handle_deletes=False,
         historize=False,
-        started_at=ts,
-        finished_at=ts,
+        started_at=started_at,
+        finished_at=finished_at,
         render_ms=0.0,
         execution_ms=0.0,
         sql_length=0,
@@ -886,6 +908,254 @@ def _dataset_key_for_target_dataset(td) -> str:
     f"{getattr(getattr(td, 'target_schema', None), 'short_name', '?')}."
     f"{getattr(td, 'target_dataset_name', '?')}"
   )
+
+
+def _resolve_execution_impact_decisions(
+  *,
+  selection: ExecutionImpactSelection | None,
+  execution_order: list[TargetDataset],
+) -> dict[str, str] | None:
+  """
+  Validate an internal Architecture Control selection against load planning.
+  """
+  if selection is None:
+    return None
+
+  if not isinstance(selection, ExecutionImpactSelection):
+    raise CommandError(
+      "Invalid internal Execution Impact Selection contract."
+    )
+
+  execution_dataset_keys = tuple(
+    _dataset_key_for_target_dataset(target_dataset)
+    for target_dataset in execution_order
+  )
+  if selection.dataset_keys != execution_dataset_keys:
+    raise CommandError(
+      "Execution Impact Selection is stale: its dataset order does not match "
+      "the resolved elevata_load execution order."
+    )
+
+  return {
+    dataset_key: decision
+    for dataset_key, decision in selection.dataset_decisions
+  }
+
+
+def _validate_execution_run_plan_options(
+  *,
+  run_plan_path: str | None,
+  execute: bool,
+  all_datasets: bool,
+  no_deps: bool,
+  no_plan_guard: bool,
+  execution_impact_selection: object | None,
+) -> None:
+  """
+  Validate the public scheduler-step command contract.
+
+  One external scheduler task executes exactly one dataset from a larger
+  immutable run plan. The task therefore uses --no-deps while the shared
+  run plan retains the complete dependency-aware execution scope.
+  """
+  if not str(run_plan_path or "").strip():
+    return
+
+  if not execute:
+    raise CommandError(
+      "Execution Run Plan mode requires --execute."
+    )
+
+  if all_datasets:
+    raise CommandError(
+      "Execution Run Plan mode executes one scheduler step at a time "
+      "and cannot be combined with --all."
+    )
+
+  if not no_deps:
+    raise CommandError(
+      "Execution Run Plan mode requires --no-deps because dependencies "
+      "are coordinated by the external scheduler."
+    )
+
+  if no_plan_guard:
+    raise CommandError(
+      "Execution Run Plan mode cannot disable the execution plan guard."
+    )
+
+  if execution_impact_selection is not None:
+    raise CommandError(
+      "Execution Run Plan mode cannot be combined with an internal "
+      "Execution Impact Selection."
+    )
+
+
+def _load_execution_run_plan(
+  path: str | Path,
+) -> ExecutionRunPlan:
+  """
+  Load and validate one public Execution Run Plan.
+  """
+  try:
+    return ExecutionRunPlanStore(
+      base_path=Path("."),
+    ).load_path(path)
+  except ValueError as exc:
+    raise CommandError(str(exc)) from exc
+
+
+def _load_execution_run_plan_planned_state(
+  *,
+  run_plan_path: str | Path,
+  plan: ExecutionRunPlan,
+):
+  """
+  Load the immutable planned Architecture State for one scheduler step.
+  """
+  try:
+    return load_execution_run_plan_planned_state(
+      run_plan_path=run_plan_path,
+      plan=plan,
+    )
+  except ValueError as exc:
+    raise CommandError(str(exc)) from exc
+
+
+def _persist_execution_run_plan_step_outcome(
+  *,
+  run_plan_path: str | Path,
+  plan: ExecutionRunPlan,
+  dataset_key: str,
+  result: dict[str, object],
+  had_error: bool,
+  recorded_at,
+) -> Path:
+  """
+  Persist one scheduler-step outcome as required execution evidence.
+
+  Unlike warehouse logging and direct-run snapshots, this artifact is not
+  best-effort. A distributed scheduler step must not finish without recording
+  the result consumed by the later batch finalizer.
+  """
+  if not isinstance(plan, ExecutionRunPlan):
+    raise CommandError(
+      "Invalid Execution Run Plan step outcome contract."
+    )
+
+  if not str(run_plan_path or "").strip():
+    raise CommandError(
+      "Execution Run Plan step outcome requires a Run Plan path."
+    )
+
+  try:
+    return write_execution_run_plan_step_outcome(
+      run_plan_path=run_plan_path,
+      plan=plan,
+      dataset_key=dataset_key,
+      result=result,
+      had_error=bool(had_error),
+      recorded_at=recorded_at,
+    )
+  except (OSError, TypeError, ValueError) as exc:
+    raise CommandError(
+      "Execution Run Plan step outcome could not be persisted: "
+      f"{exc}"
+    ) from exc
+
+
+def _resolve_execution_run_plan_step_decisions(
+  *,
+  plan: ExecutionRunPlan,
+  planned_architecture_state,
+  profile_name: str,
+  target_system_short: str,
+  execution_order: list[TargetDataset],
+) -> dict[str, str]:
+  """
+  Validate one distributed scheduler step and return its impact decision.
+  """
+  if not isinstance(plan, ExecutionRunPlan):
+    raise CommandError(
+      "Invalid Execution Run Plan contract."
+    )
+
+  runtime_mismatches: list[str] = []
+  if plan.profile_name != str(profile_name):
+    runtime_mismatches.append(
+      f"profile {plan.profile_name!r} != {str(profile_name)!r}"
+    )
+  if plan.target_system_short != str(target_system_short):
+    runtime_mismatches.append(
+      "target system "
+      f"{plan.target_system_short!r} != "
+      f"{str(target_system_short)!r}"
+    )
+
+  if runtime_mismatches:
+    raise CommandError(
+      "Execution Run Plan runtime does not match elevata_load: "
+      + "; ".join(runtime_mismatches)
+      + "."
+    )
+
+  if len(execution_order) != 1:
+    raise CommandError(
+      "Execution Run Plan scheduler steps must resolve exactly one "
+      "TargetDataset."
+    )
+
+  selected_dataset_key = _dataset_key_for_target_dataset(
+    execution_order[0]
+  )
+
+  try:
+    current_dataset_state = (
+      ArchitectureStateService()
+      .build_dataset_state(execution_order[0])
+    )
+    validate_execution_run_plan_dataset_state(
+      plan=plan,
+      planned_state=planned_architecture_state,
+      dataset_key=selected_dataset_key,
+      current_dataset_state=current_dataset_state,
+    )
+  except ValueError as exc:
+    raise CommandError(str(exc)) from exc
+  try:
+    decision = plan.decision_for_dataset(
+      selected_dataset_key
+    )
+  except KeyError as exc:
+    raise CommandError(
+      "Dataset is not part of the Execution Run Plan: "
+      f"{selected_dataset_key}"
+    ) from exc
+
+  return {
+    selected_dataset_key: decision,
+  }
+
+
+def _resolve_execution_scope_dataset_keys(
+  *,
+  execution_order: list[TargetDataset],
+  execution_run_plan: ExecutionRunPlan | None,
+) -> set[str]:
+  """
+  Return the complete controlled execution scope for materialization safety.
+
+  Direct elevata_load calls use their locally resolved execution order.
+  Distributed scheduler tasks execute only one local step, but retain the
+  complete immutable run-plan scope so managed dependent views may be dropped
+  only when a later task in the same controlled run will recreate them.
+  """
+  if execution_run_plan is not None:
+    return set(execution_run_plan.dataset_keys)
+
+  return {
+    _dataset_key_for_target_dataset(target_dataset)
+    for target_dataset in execution_order
+  }
 
 
 def _effective_materialization_for_target_dataset(td) -> str:
@@ -1450,6 +1720,66 @@ def should_truncate_before_load(td, load_plan) -> bool:
   # Only full refresh truncates
   return mode == "full" and mat in ("table", "incremental")
 
+def _execution_impact_forces_full_rebuild(
+  *,
+  td,
+  impact_decision: str | None,
+) -> bool:
+  """
+  Return whether a bound impact decision requires full-rebuild load semantics.
+
+  RAW ingestion, views and rawcore history datasets keep their dedicated
+  runtime behavior.
+  """
+  if impact_decision != "FULL_REBUILD":
+    return False
+
+  schema = getattr(td, "target_schema", None)
+  schema_short = getattr(schema, "short_name", None)
+  dataset_name = str(getattr(td, "target_dataset_name", "") or "")
+  materialization = (
+    getattr(td, "materialization_type", None)
+    or getattr(schema, "default_materialization_type", None)
+    or "table"
+  )
+
+  if schema_short == "raw":
+    return False
+  if schema_short == "rawcore" and dataset_name.endswith("_hist"):
+    return False
+
+  return materialization in {"table", "incremental"}
+
+
+def _apply_execution_impact_to_load_plan(
+  *,
+  td,
+  load_plan,
+  impact_decision: str | None,
+):
+  """
+  Bind the immutable Execution Impact decision to effective load semantics.
+  """
+  if not _execution_impact_forces_full_rebuild(
+    td=td,
+    impact_decision=impact_decision,
+  ):
+    return load_plan
+
+  try:
+    return replace(
+      load_plan,
+      mode="full",
+      handle_deletes=False,
+    )
+  except TypeError:
+    return LoadPlan(
+      mode="full",
+      handle_deletes=False,
+      historize=bool(getattr(load_plan, "historize", False)),
+    )
+
+
 def resolve_single_source_dataset_for_raw(target_dataset):
   """
   RAW datasets must have exactly one SourceDataset input.
@@ -1497,6 +1827,7 @@ def run_single_target_dataset(
   batch_run_id: str,
   load_run_id: str | None = None,
   load_plan_override=None,
+  impact_decision: str | None = None,
   chunk_size: int = 5000,
   attempt_no: int = 1,
   no_type_changes: bool = False,
@@ -1593,10 +1924,16 @@ def run_single_target_dataset(
       "message": msg,
       "rows_affected": (result or {}).get("rows_affected"),
       "load_run_id": (result or {}).get("load_run_id", load_run_id),
+      "status_reason": msg if status == "skipped" else None,
     }
 
   # --- Non-RAW: build load plan & render SQL -----------------------
   load_plan = load_plan_override or build_load_plan(td)
+  load_plan = _apply_execution_impact_to_load_plan(
+    td=td,
+    load_plan=load_plan,
+    impact_decision=impact_decision,
+  )
   is_full_refresh = should_truncate_before_load(td, load_plan)
   did_materialization_provision = False
   mat_policy = None
@@ -1619,6 +1956,7 @@ def run_single_target_dataset(
       "target_system_type": target_system.type,
       "dialect": dialect.__class__.__name__,
       "execute": execute,
+      "impact_decision": impact_decision,
       "load_mode": summary.get("mode"),
       "load_handle_deletes": summary.get("handle_deletes"),
       "load_historize": summary.get("historize"),
@@ -2018,7 +2356,17 @@ def run_single_target_dataset(
   # ------------------------------------------------------------------
   render_started_at = now()
   render_start_ts = time.perf_counter()
-  sql = render_load_sql_for_target(td, dialect)
+  if _execution_impact_forces_full_rebuild(
+    td=td,
+    impact_decision=impact_decision,
+  ):
+    sql = render_load_sql_for_target(
+      td,
+      dialect,
+      load_plan_override=load_plan,
+    )
+  else:
+    sql = render_load_sql_for_target(td, dialect)
   render_ms = (time.perf_counter() - render_start_ts) * 1000.0
   render_finished_at = now()
   sql_length = len(sql or "")
@@ -2339,6 +2687,90 @@ def run_single_target_dataset(
     "execution_ms": execution_ms,
   }
 
+def _ensure_external_raw_landing(
+  *,
+  target_dataset,
+  target_system,
+  target_system_engine=None,
+  schema_ensure_state: set[tuple[str, str]] | None = None,
+) -> bool:
+  """
+  Ensure the metadata-defined RAW landing table for external ingestion.
+
+  Elevata owns the modeled landing structure. The external ingestion process
+  owns refresh and population, so this helper never drops, truncates or clears
+  an existing RAW table.
+
+  Return True when non-destructive provisioning was attempted because the
+  table was missing or its existence could not be confirmed.
+  """
+  dialect = get_active_dialect(target_system.type)
+  engine = target_system_engine
+
+  if engine is None:
+    get_execution_engine = getattr(dialect, "get_execution_engine", None)
+    if not callable(get_execution_engine):
+      raise CommandError(
+        "External RAW landing provisioning requires a target execution engine."
+      )
+    engine = get_execution_engine(target_system)
+
+  schema = getattr(target_dataset, "target_schema", None)
+  schema_name = (
+    getattr(schema, "schema_name", None)
+    or getattr(schema, "short_name", None)
+  )
+  dataset_name = str(
+    getattr(target_dataset, "target_dataset_name", "") or ""
+  ).strip()
+  schema_short = str(getattr(schema, "short_name", "") or "").strip()
+  dataset_key = f"{schema_short or '?'}.{dataset_name or '?'}"
+
+  if not schema_name or not dataset_name:
+    raise CommandError(
+      f"External RAW landing metadata is incomplete for {dataset_key}."
+    )
+
+  _ensure_target_schema_for_batch(
+    engine=engine,
+    dialect=dialect,
+    schema_name=schema_name,
+    auto_provision=AUTO_PROVISION_SCHEMAS,
+    ensure_state=schema_ensure_state,
+  )
+
+  existed_before = _target_table_exists_for_ensure(
+    dialect=dialect,
+    td=target_dataset,
+    exec_engine=engine,
+  )
+
+  if existed_before is True:
+    return False
+
+  ensure_target_table(
+    engine=engine,
+    dialect=dialect,
+    td=target_dataset,
+    auto_provision=AUTO_PROVISION_TABLES,
+  )
+
+  exists_after = _target_table_exists_for_ensure(
+    dialect=dialect,
+    td=target_dataset,
+    exec_engine=engine,
+  )
+
+  if exists_after is False:
+    raise CommandError(
+      f"External RAW landing table {dataset_key} is still missing after "
+      "non-destructive provisioning. Enable target table auto-provisioning or "
+      "create the metadata-defined landing table before execution."
+    )
+
+  return True
+
+
 def execute_raw_via_ingestion(
   *,
   target_dataset,
@@ -2369,11 +2801,27 @@ def execute_raw_via_ingestion(
     return {"status": "skipped", "reason": "include_ingest_none"}
 
   if mode == "external":
-    # just validate existence (optional) + log
-    print(
-      f"[INFO] RAW ingestion is external for '{target_dataset.target_dataset_name}'. "
-      "Assuming RAW is populated by an external tool."
+    provisioning_attempted = _ensure_external_raw_landing(
+      target_dataset=target_dataset,
+      target_system=target_system,
+      target_system_engine=target_system_engine,
+      schema_ensure_state=schema_ensure_state,
     )
+
+    if provisioning_attempted:
+      print(
+        f"[WARNING] RAW ingestion is external for "
+        f"'{target_dataset.target_dataset_name}'. Elevata applied "
+        "non-destructive ensure-only provisioning. External ingestion is not "
+        "invoked or verified yet; continuing under the assumption that RAW is ready."
+      )
+    else:
+      print(
+        f"[INFO] RAW ingestion is external for '{target_dataset.target_dataset_name}'. "
+        "The RAW landing table exists. External ingestion is not invoked or "
+        "verified yet; assuming RAW is populated by an external tool."
+      )
+
     return {"status": "skipped", "reason": "external_ingest"}
 
   if mode != "native":
@@ -2430,6 +2878,13 @@ class Command(BaseCommand):
   # Stdout guardrails for --all plan printing
   PLAN_PRINT_HEAD = 25
   PLAN_PRINT_TAIL = 10
+
+  # Internal in-process Architecture Control contracts. They are accepted by
+  # call_command(), but intentionally not exposed as CLI arguments.
+  stealth_options = (
+    "execution_impact_selection",
+    "execution_outcome_collector",
+  )
 
   help = (
     "Render (and in future: execute) load SQL for a target dataset.\n\n"
@@ -2536,6 +2991,18 @@ class Command(BaseCommand):
       help=(
         "Execute only the specified target dataset, without resolving or executing "
         "any upstream dependencies."
+      ),
+    )
+
+    parser.add_argument(
+      "--run-plan",
+      dest="run_plan_path",
+      type=str,
+      default=None,
+      help=(
+        "Path to an immutable Execution Run Plan. Executes exactly one "
+        "scheduler-managed dataset step and therefore requires "
+        "--execute --no-deps."
       ),
     )
     
@@ -2769,14 +3236,53 @@ class Command(BaseCommand):
     diff_print: bool = bool(options.get("diff_print", False))
     diff_against_batch_run_id: str | None = options.get("diff_against_batch_run_id")
     debug_migration = bool(options.get("debug_migration", False))
+    run_plan_path = (
+      str(options.get("run_plan_path") or "").strip()
+      or None
+    )
+    execution_impact_selection = options.get(
+      "execution_impact_selection"
+    )
+    execution_outcome_collector = options.get(
+      "execution_outcome_collector"
+    )
+
+    _validate_execution_run_plan_options(
+      run_plan_path=run_plan_path,
+      execute=execute,
+      all_datasets=all_datasets,
+      no_deps=no_deps,
+      no_plan_guard=no_plan_guard,
+      execution_impact_selection=execution_impact_selection,
+    )
+
+    execution_run_plan = (
+      _load_execution_run_plan(run_plan_path)
+      if run_plan_path is not None
+      else None
+    )
+    execution_run_plan_state = (
+      _load_execution_run_plan_planned_state(
+        run_plan_path=run_plan_path,
+        plan=execution_run_plan,
+      )
+      if execution_run_plan is not None
+      and run_plan_path is not None
+      else None
+    )
 
     arch_mode = _get_arch_mode_env(default="off")
     # Keep CLI behavior: --debug-migration acts as an alias for compare-mode.
     if debug_migration and arch_mode == "off":
       arch_mode = "compare"
 
-    # One batch_run_id for the entire run (all datasets).
-    batch_run_id = str(uuid.uuid4())
+    # Run-plan steps share one scheduler batch id. Direct CLI calls retain
+    # their existing independently generated batch id.
+    batch_run_id = (
+      execution_run_plan.batch_run_id
+      if execution_run_plan is not None
+      else str(uuid.uuid4())
+    )
     created_at = now()
 
     # 0) Validate selection
@@ -2838,6 +3344,40 @@ class Command(BaseCommand):
         else:
           execution_order = resolve_execution_order(root_td)
 
+      run_plan_impact_decisions = None
+      if execution_run_plan is not None:
+        run_plan_impact_decisions = (
+          _resolve_execution_run_plan_step_decisions(
+            plan=execution_run_plan,
+            planned_architecture_state=(
+              execution_run_plan_state
+            ),
+            profile_name=profile.name,
+            target_system_short=system.short_name,
+            execution_order=execution_order,
+          )
+        )
+
+      if execution_impact_selection is not None:
+        if not execute:
+          raise CommandError(
+            "Execution Impact Selection is only valid for execute-mode runs."
+          )
+        if not isinstance(execution_outcome_collector, list):
+          raise CommandError(
+            "Controlled execution requires an outcome collector."
+          )
+
+      internal_impact_decisions = _resolve_execution_impact_decisions(
+        selection=execution_impact_selection,
+        execution_order=execution_order,
+      )
+      impact_decisions = (
+        run_plan_impact_decisions
+        if run_plan_impact_decisions is not None
+        else internal_impact_decisions
+      )
+
       # 5.1) Predictability guard baseline: compute a fingerprint for the planned set.
       # We store ids to re-check deterministically against the same planned set.
       # Predictability guard baseline:
@@ -2867,10 +3407,12 @@ class Command(BaseCommand):
       )      
 
       plan = build_execution_plan(batch_run_id=batch_run_id, execution_order=execution_order)
-      execution_dataset_keys = {
-        _dataset_key_for_target_dataset(td)
-        for td in execution_order
-      }
+      execution_dataset_keys = (
+        _resolve_execution_scope_dataset_keys(
+          execution_order=execution_order,
+          execution_run_plan=execution_run_plan,
+        )
+      )
 
       # 6) Print plan
       self._print_execution_plan(
@@ -2886,6 +3428,21 @@ class Command(BaseCommand):
           self.stdout.write(self.style.WARNING("Execution plan guard DISABLED (--no-plan-guard)."))
         else:
           self.stdout.write(self.style.NOTICE(f"Plan fingerprint: {plan_fingerprint}"))
+
+        if execution_run_plan is not None:
+          selected_dataset_key = (
+            _dataset_key_for_target_dataset(
+              execution_order[0]
+            )
+          )
+          self.stdout.write(self.style.NOTICE(
+            "Execution Run Plan: "
+            f"id={execution_run_plan.run_plan_id} "
+            "fingerprint="
+            f"{execution_run_plan.run_plan_fingerprint} "
+            f"decision={impact_decisions[selected_dataset_key]}"
+          ))
+
         self.stdout.write("")
 
       # 7) Debug plan for root only (exact formatting expected by tests)
@@ -2937,7 +3494,15 @@ class Command(BaseCommand):
       # 8) Execute datasets in order and collect summary
       runtime_state = LoadRunRuntimeState.empty()
 
-      def _run_dataset_fn(*, target_dataset, batch_run_id, load_run_id, load_plan_override, attempt_no):
+      def _run_dataset_fn(
+        *,
+        target_dataset,
+        batch_run_id,
+        load_run_id,
+        load_plan_override,
+        attempt_no,
+        impact_decision=None,
+      ):
 
         # Predictability guard: detect metadata/contract drift after plan creation.
         if not no_plan_guard:
@@ -2968,6 +3533,7 @@ class Command(BaseCommand):
           batch_run_id=batch_run_id,
           load_run_id=load_run_id,
           load_plan_override=load_plan_override,
+          impact_decision=impact_decision,
           chunk_size=5000,
           attempt_no=attempt_no,
           no_type_changes=no_type_changes,
@@ -3282,7 +3848,11 @@ class Command(BaseCommand):
 
                 comparable_dataset_keys.add(ds_key)
 
-                load_plan_shadow = build_load_plan(td_shadow)
+                load_plan_shadow = _apply_execution_impact_to_load_plan(
+                  td=td_shadow,
+                  load_plan=build_load_plan(td_shadow),
+                  impact_decision=(impact_decisions or {}).get(ds_key),
+                )
                 is_full_refresh_shadow = should_truncate_before_load(td_shadow, load_plan_shadow)
                 if is_full_refresh_shadow:
                   full_refresh_keys.add(ds_key)
@@ -3456,7 +4026,14 @@ class Command(BaseCommand):
         root_load_plan=root_load_plan,
         run_dataset_fn=_run_dataset_fn,
         logger=logger,
+        impact_decisions=impact_decisions,
       )
+
+      if isinstance(execution_outcome_collector, list):
+        execution_outcome_collector.extend(
+          dict(result)
+          for result in results
+        )
 
       # --- persist architecture state (best effort) ---
       # Default: persist only after a successful execute-run.
@@ -3469,6 +4046,7 @@ class Command(BaseCommand):
         and current_state is not None
         and not had_error
         and (execute or persist_on_dry_run)
+        and execution_run_plan is None
       ):
         try:
           if arch_state_store is not None:
@@ -3515,21 +4093,24 @@ class Command(BaseCommand):
         no_print=bool(no_print),
       )
 
-      # Persist snapshot to meta.load_run_snapshot (best-effort)
-      _persist_load_run_snapshot_best_effort(
-        engine=engine,
-        dialect=dialect,
-        runtime_state=runtime_state,
-        snapshot=snapshot,
-        batch_run_id=batch_run_id,
-        created_at=created_at,
-        root_dataset_key=root_dataset_key,
-        execute=bool(execute),
-        continue_on_error=bool(continue_on_error),
-        max_retries=int(max_retries),
-        had_error=had_error,
-        step_count=len(plan.steps),
-      )
+      # A distributed run-plan step is not a complete batch snapshot.
+      # Architecture state and batch-level snapshots are finalized only after
+      # every scheduler task has completed.
+      if execution_run_plan is None:
+        _persist_load_run_snapshot_best_effort(
+          engine=engine,
+          dialect=dialect,
+          runtime_state=runtime_state,
+          snapshot=snapshot,
+          batch_run_id=batch_run_id,
+          created_at=created_at,
+          root_dataset_key=root_dataset_key,
+          execute=bool(execute),
+          continue_on_error=bool(continue_on_error),
+          max_retries=int(max_retries),
+          had_error=had_error,
+          step_count=len(plan.steps),
+        )
 
       # Snapshot diff (best-effort): DB baseline preferred, file baseline fallback
       baseline = None
@@ -3585,7 +4166,7 @@ class Command(BaseCommand):
         except Exception:
           pass
 
-      # 8.1) Persist orchestration-only outcomes (blocked/aborted) to meta.load_run_log
+      # 8.1) Persist orchestration-only outcomes to meta.load_run_log
       _persist_orchestration_skip_rows_best_effort(
         engine=engine,
         dialect=dialect,
@@ -3621,6 +4202,36 @@ class Command(BaseCommand):
         if r.get("dataset") == root_dataset_key:
           root_result = r
           break
+
+      if execution_run_plan is not None:
+        if run_plan_path is None:
+          raise CommandError(
+            "Execution Run Plan step has no bound Run Plan path."
+          )
+
+        if root_result is None:
+          raise CommandError(
+            "Execution Run Plan step produced no outcome for "
+            f"{root_dataset_key}."
+          )
+
+        outcome_path = (
+          _persist_execution_run_plan_step_outcome(
+            run_plan_path=run_plan_path,
+            plan=execution_run_plan,
+            dataset_key=root_dataset_key,
+            result=dict(root_result),
+            had_error=bool(had_error),
+            recorded_at=now(),
+          )
+        )
+
+        if not no_print:
+          self.stdout.write(self.style.NOTICE(
+            "Execution Run Plan step outcome written: "
+            f"{outcome_path}"
+          ))
+          self.stdout.write("")
 
       sql_length = int(root_result.get("sql_length", 0)) if root_result else 0
       render_ms = float(root_result.get("render_ms", 0.0)) if root_result else 0.0

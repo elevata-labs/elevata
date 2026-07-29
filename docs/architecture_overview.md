@@ -39,7 +39,7 @@ This flow represents the central principle of elevata:
 
 > **Metadata → Logical Plan → Dialect-aware SQL → Warehouse**
 
-Architecture Control provides review, approval, controlled execution, and audit artifacts around the same architecture state:
+Architecture Control provides review, approval, immutable scheduler binding, finalization, and audit artifacts around the same architecture state:
 
 ```text 
 Architecture State
@@ -56,11 +56,15 @@ Architecture Review Briefing
   ↓
 Architecture Approval Artifact
   ↓
-Execution Preview
+Execution Impact Plan
   ↓
-Controlled Execution
+Execution Run Plan + Planned Architecture State
   ↓
-Architecture Execution Record
+Controlled or Scheduler Execution
+  ↓
+Structured Outcomes + Finalization
+  ↓
+Applied Architecture State + Architecture Execution Record
 ```
 
 ---
@@ -115,6 +119,10 @@ Readiness appears on SourceDataset detail pages and is aggregated in Architectur
 - Creates TargetDatasets in Raw, Stage, Rawcore  
 - Injects surrogate keys where required  
 - Produces column mappings based entirely on lineage  
+- Derives multi-source UNION nullability from every participating branch  
+- Reconciles generator-owned TargetDataset retirement and reactivation for complete schema scopes
+
+Generated datasets that leave the eligible source scope are retained as metadata but marked inactive and retired. They remain reviewable, are not dropped physically by generation, and are excluded from active execution. If they become eligible again, the same metadata objects are reactivated in place.
 
 Incremental scoping and ingestion behavior are derived from SourceDataset metadata and consistently applied across ingestion, merge, and delete detection.
 
@@ -247,9 +255,13 @@ It provides deterministic artifacts for:
 - Architecture Change Reports  
 - Architecture Promotion Reports  
 - Architecture Approval Artifacts  
+- Execution Impact Plans  
+- immutable Execution Run Plans  
+- Planned Architecture State snapshots  
+- scheduler-step outcomes and finalization evidence  
 - Architecture Execution Records  
 - policy decisions  
-- report fingerprints
+- artifact fingerprints
 
 Controlled execution is delegated to the load runner. Architecture Control does not bypass preflight validation, materialization policy checks, Architecture Guard enforcement, or dialect-owned SQL rendering.
 
@@ -262,7 +274,9 @@ Command responsibilities:
 | `elevata_promote` | Compare two architecture state artifacts |
 | `elevata_approve` | Create architecture approval artifacts |
 | `elevata_approval_check` | Verify approval artifacts |
+| `elevata_run_plan` | Create immutable scheduler Run Plans and Planned Architecture State |
 | `elevata_load` | Execute loads with preflight and guard checks |
+| `elevata_finalize_run_plan` | Validate outcomes and persist the planned applied state |
 
 Architecture Control uses the same semantic path as execution:
 
@@ -275,20 +289,25 @@ The Architecture Control UI adds a constrained operational layer. Architecture R
 - scope-aware report and review status  
 - compact Architecture Review Briefing  
 - approval artifact creation and verification  
+- Execution Impact Plan  
 - execution preview  
 - controlled load execution  
 - target-only execution for TargetDataset scopes  
 - captured execution output  
 - persisted Architecture Execution Records
 
+Scheduler-managed execution adds an immutable boundary around the same reviewed semantics. A Run Plan fixes the exact active dataset order and decisions, is paired with Planned Architecture State, and advances recorded state only after complete structured outcome validation.
+
 Execution scopes are explicit:
 
 | Scope | Execution behavior |
 |---|---|
 | All datasets | Executes all active target datasets with dependency ordering |
-| Schema | Executes selected schema roots with dependency ordering |
-| TargetDataset | Executes the selected TargetDataset with dependency ordering |
-| TargetDataset, target-only | Executes only the selected TargetDataset |
+| Schema | Executes selected active schema roots with dependency ordering |
+| TargetDataset | Executes the selected active TargetDataset with dependency ordering |
+| TargetDataset, target-only | Executes only the selected active TargetDataset |
+
+Schema review scope may also contain a matching previous-state dataset that has been retired, so `DATASET_REMOVED → RETIRE_DATASET → METADATA_ONLY` remains visible and approvable. Execution Impact, preview steps, manifests, and Run Plans remain active-only.
 
 The default execution path remains lineage-aware. Target-only execution is available only for TargetDataset scopes and is intended for focused iteration when upstream data is already available.
 

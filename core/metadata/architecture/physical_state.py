@@ -47,6 +47,7 @@ from metadata.rendering.dialects import get_active_dialect
 ArchitectureBaselineSource = Literal[
   "recorded_state",
   "discovered_physical_state",
+  "verified_empty_target",
   "missing_or_unsupported",
 ]
 
@@ -76,7 +77,17 @@ class ArchitectureBaselineResolution:
     """
     Return True when the baseline came from read-only physical discovery.
     """
-    return self.source == "discovered_physical_state"
+    return self.source in {
+      "discovered_physical_state",
+      "verified_empty_target",
+    }
+
+  @property
+  def is_initial_deployment(self) -> bool:
+    """
+    Return True for a full-scope, physically verified initial deployment.
+    """
+    return self.source == "verified_empty_target"
 
 
 @dataclass(frozen=True)
@@ -167,6 +178,23 @@ def resolve_architecture_baseline(
       state_file=state_file,
       warnings=(str(exc),),
       warning_count=1,
+    )
+
+  if relevant_dataset_keys is None and discovery.dataset_count == 0:
+    return ArchitectureBaselineResolution(
+      previous_state=discovery.state,
+      source="verified_empty_target",
+      can_execute=True,
+      message=(
+        "Recorded architecture baseline is missing. Read-only physical "
+        "discovery verified that none of the metadata-defined managed datasets "
+        "exist on the target platform. This is a verified initial deployment; "
+        "the first successful controlled execution will establish the recorded "
+        "Architecture State."
+      ),
+      state_file=state_file,
+      warnings=discovery.warnings,
+      warning_count=len(discovery.warnings),
     )
 
   return ArchitectureBaselineResolution(
@@ -327,10 +355,14 @@ def _discover_dataset_state(
     return None
 
   actual_cols = dict((physical or {}).get("actual_cols_by_norm_name") or {})
+  physical_object_type = str(
+    (physical or {}).get("physical_object_type") or ""
+  ).strip().lower()
   column_states = _discover_column_states(
     desired_dataset=desired_dataset,
     target_dataset=td,
     actual_cols_by_norm_name=actual_cols,
+    physical_object_type=physical_object_type,
     dialect=dialect,
   )
 
@@ -354,6 +386,7 @@ def _discover_column_states(
   target_dataset: TargetDataset,
   actual_cols_by_norm_name: dict[str, dict[str, Any]],
   dialect: Any,
+  physical_object_type: str | None = None,
 ) -> list[ColumnState]:
   """
   Build physical column states matched against desired metadata columns.
@@ -381,6 +414,7 @@ def _discover_column_states(
       desired_col=desired_col,
       target_column=target_col,
       actual_col=actual_col,
+      physical_object_type=physical_object_type,
       dialect=dialect,
     )
 
@@ -456,6 +490,7 @@ def _physical_baseline_datatype(
   target_column: Any | None,
   actual_col: dict[str, Any],
   dialect: Any,
+  physical_object_type: str | None = None,
 ) -> str | None:
   """
   Return the datatype recorded in a discovered physical baseline.
@@ -486,9 +521,43 @@ def _physical_baseline_datatype(
     if kind == "equivalent":
       return desired_col.datatype
 
+    relation_type = (
+      str(physical_object_type or "").strip().lower()
+      or str(actual_col.get("physical_object_type") or "").strip().lower()
+    )
+    if _is_view_string_width_inference(
+      physical_object_type=relation_type,
+      desired=desired_can,
+      actual=actual_can,
+    ):
+      return desired_col.datatype
+
     return f"physical:{canonical_type_str(actual_can)}"
   except Exception:
     return desired_col.datatype
+
+
+def _is_view_string_width_inference(
+  *,
+  physical_object_type: str | None,
+  desired: tuple[object, object, object, object],
+  actual: tuple[object, object, object, object],
+) -> bool:
+  """
+  Return True for a string-width difference inferred from a managed view.
+
+  View columns do not enforce a storage width. SQL engines may derive their
+  reported width from the current expression, for example NVARCHAR(3) for the
+  literal 'aw1', even when metadata declares the logical output as STRING(30).
+  The logical string family remains authoritative for physical discovery while
+  table widths and incompatible view types remain strict drift signals.
+  """
+  if str(physical_object_type or "").strip().lower() != "view":
+    return False
+
+  desired_type = str(desired[0] or "").strip().upper()
+  actual_type = str(actual[0] or "").strip().upper()
+  return desired_type == actual_type == "STRING"
 
 
 def _desired_physical_type(

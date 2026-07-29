@@ -22,6 +22,7 @@ Contact: <https://github.com/elevata-labs/elevata>.
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -60,21 +61,34 @@ def _state_store() -> SimpleNamespace:
 def _baseline_resolution(
   *,
   can_execute: bool = True,
+  source: str | None = None,
 ) -> SimpleNamespace:
   """
   Return an ArchitectureBaselineResolution-shaped object for execution preview tests.
   """
   state_file = Path(".elevata/state/dev/dwh/architecture_state.json")
+  resolved_source = (
+    source
+    or (
+      "recorded_state"
+      if can_execute
+      else "missing_or_unsupported"
+    )
+  )
   return SimpleNamespace(
     previous_state=SimpleNamespace(),
-    source="recorded_state" if can_execute else "missing_or_unsupported",
+    source=resolved_source,
     can_execute=can_execute,
     message="baseline message",
     state_file=state_file,
     warning_count=0,
     warnings=(),
-    is_recorded=can_execute,
-    is_discovered=False,
+    is_recorded=resolved_source == "recorded_state",
+    is_discovered=resolved_source in {
+      "discovered_physical_state",
+      "verified_empty_target",
+    },
+    is_initial_deployment=resolved_source == "verified_empty_target",
   )
 
 
@@ -254,6 +268,53 @@ def test_build_architecture_execution_preview_requires_approval(
   assert preview.gate.can_execute is False
 
 
+def test_build_architecture_execution_preview_allows_verified_initial_deployment(
+  monkeypatch,
+) -> None:
+  """
+  Verify full-scope initial deployment is executable without approval.
+  """
+  root = _target_dataset("raw", "Customer", 1)
+  context = replace(
+    _context(
+      status=_status("initial_deployment"),
+    ),
+    baseline_resolution=_baseline_resolution(
+      source="verified_empty_target",
+    ),
+  )
+
+  _patch_execution_scope(
+    monkeypatch,
+    roots=[root],
+    execution_order=[root],
+  )
+
+  preview = execution_preview.build_architecture_execution_preview(
+    context.scope,
+    control_context=context,
+  )
+
+  assert preview.approval_id is None
+  assert preview.review_status == "initial_deployment"
+  assert preview.gate.status == "ready_initial_deployment"
+  assert preview.gate.can_execute is True
+
+
+def test_execution_gate_rejects_unverified_initial_deployment_status() -> None:
+  """
+  Verify a status string alone cannot bypass baseline verification.
+  """
+  context = _context(
+    status=_status("initial_deployment"),
+  )
+
+  gate = execution_preview._build_execution_gate(context)
+
+  assert gate.status == "pending_approval"
+  assert gate.can_execute is False
+
+
 def test_build_architecture_execution_preview_marks_no_change_scope(
   monkeypatch,
 ) -> None:
@@ -279,6 +340,60 @@ def test_build_architecture_execution_preview_marks_no_change_scope(
 
   assert preview.gate.status == "ready_no_changes"
   assert preview.gate.can_execute is True
+
+
+def test_execution_gate_blocks_blocked_impact_decisions() -> None:
+  """
+  Verify no-change scopes cannot bypass blocked impact decisions.
+  """
+  context = replace(
+    _context(
+      report=FakeReport(has_changes=False),
+      status=_status("no_changes"),
+    ),
+    execution_impact_plan=SimpleNamespace(
+      decision_counts={
+        "REUSE": 0,
+        "REVALIDATE": 0,
+        "INCREMENTAL_EXECUTE": 0,
+        "FULL_REBUILD": 0,
+        "BLOCKED": 1,
+      },
+    ),
+  )
+
+  gate = execution_preview._build_execution_gate(context)
+
+  assert gate.status == "impact_plan_blocked"
+  assert gate.can_execute is False
+  assert "1 blocked dataset" in gate.message
+
+
+def test_execution_gate_blocks_revalidation_decisions() -> None:
+  """
+  Verify REVALIDATE remains non-executable until runtime support exists.
+  """
+  context = replace(
+    _context(
+      report=FakeReport(has_changes=False),
+      status=_status("no_changes"),
+    ),
+    execution_impact_plan=SimpleNamespace(
+      decision_counts={
+        "REUSE": 0,
+        "REVALIDATE": 1,
+        "INCREMENTAL_EXECUTE": 0,
+        "FULL_REBUILD": 0,
+        "BLOCKED": 0,
+      },
+    ),
+  )
+
+  gate = execution_preview._build_execution_gate(context)
+
+  assert gate.status == "impact_revalidation_required"
+  assert gate.can_execute is False
+  assert "requires revalidation" in gate.message
 
 
 def test_resolve_execution_order_uses_all_roots_for_schema_scope(
@@ -360,3 +475,135 @@ def test_build_architecture_execution_preview_supports_target_only_execution(
   assert preview.root_dataset_keys == ("bizcore.Customer",)
   assert preview.execution_dataset_keys == ("bizcore.Customer",)
   assert preview.step_count == 1
+
+
+def test_build_architecture_execution_preview_binds_execution_impact_plan(
+  monkeypatch,
+) -> None:
+  """
+  Verify preview fingerprints include deterministic Execution Impact evidence.
+  """
+  root = _target_dataset("serving", "Customer", 1)
+  upstream = _target_dataset("rawcore", "Customer", 2)
+
+  decision_counts = {
+    "REUSE": 1,
+    "REVALIDATE": 0,
+    "INCREMENTAL_EXECUTE": 0,
+    "FULL_REBUILD": 1,
+    "BLOCKED": 0,
+  }
+  impact_plan = SimpleNamespace(
+    scope_key="all",
+    report_fingerprint="report-1",
+    plan_fingerprint="impact-plan-1",
+    assessed_count=2,
+    decision_counts=decision_counts,
+    items=(
+      SimpleNamespace(dataset_key="rawcore.Customer"),
+      SimpleNamespace(dataset_key="serving.Customer"),
+    ),
+  )
+  context = replace(
+    _context(),
+    execution_impact_plan=impact_plan,
+  )
+
+  _patch_execution_scope(
+    monkeypatch,
+    roots=[root],
+    execution_order=[upstream, root],
+  )
+
+  preview = execution_preview.build_architecture_execution_preview(
+    context.scope,
+    control_context=context,
+  )
+
+  assert preview.impact_plan_binding is not None
+  assert preview.impact_plan_binding.plan_fingerprint == "impact-plan-1"
+  assert preview.impact_plan_binding.assessed_count == 2
+  assert dict(preview.impact_plan_binding.decision_counts) == decision_counts
+
+  changed_context = replace(
+    context,
+    execution_impact_plan=SimpleNamespace(
+      scope_key="all",
+      report_fingerprint="report-1",
+      plan_fingerprint="impact-plan-2",
+      assessed_count=2,
+      decision_counts=decision_counts,
+      items=(
+        SimpleNamespace(dataset_key="rawcore.Customer"),
+        SimpleNamespace(dataset_key="serving.Customer"),
+      ),
+    ),
+  )
+  changed_preview = execution_preview.build_architecture_execution_preview(
+    changed_context.scope,
+    control_context=changed_context,
+  )
+
+  assert changed_preview.preview_fingerprint != preview.preview_fingerprint
+
+
+def test_resolve_architecture_execution_scope_target_only_excludes_dependencies(
+  monkeypatch,
+) -> None:
+  """
+  Verify target-only execution resolves exactly the selected root dataset.
+  """
+  root = _target_dataset("rawcore", "Customer", 1)
+  upstream = _target_dataset("stage", "Customer", 2)
+
+  _patch_execution_scope(
+    monkeypatch,
+    roots=[root],
+    execution_order=[upstream, root],
+  )
+
+  resolution = (
+    execution_preview.resolve_architecture_execution_scope(
+      ArchitectureControlScope(
+        mode="target_dataset",
+        schema_short="rawcore",
+        target_name="Customer",
+        dataset_key="rawcore.Customer",
+      ),
+      no_deps=True,
+    )
+  )
+
+  assert resolution.dependency_mode == "target_only"
+  assert resolution.root_dataset_keys == ("rawcore.Customer",)
+  assert resolution.execution_dataset_keys == ("rawcore.Customer",)
+
+
+def test_build_architecture_execution_preview_blocks_impact_plan_errors(
+  monkeypatch,
+) -> None:
+  """
+  Verify controlled execution closes when impact planning failed explicitly.
+  """
+  root = _target_dataset("serving", "Customer", 1)
+  context = replace(
+    _context(),
+    execution_impact_plan=None,
+    execution_impact_plan_error="Impact evidence resolution failed.",
+  )
+
+  _patch_execution_scope(
+    monkeypatch,
+    roots=[root],
+    execution_order=[root],
+  )
+
+  preview = execution_preview.build_architecture_execution_preview(
+    context.scope,
+    control_context=context,
+  )
+
+  assert preview.impact_plan_binding is None
+  assert preview.gate.status == "impact_plan_unavailable"
+  assert preview.gate.can_execute is False
+  assert "Impact evidence resolution failed." in preview.gate.message

@@ -23,9 +23,9 @@ Execution is **not** embedded in SQL generation and **not** dialect-specific. Di
 
 ---
 
-## 🔧 2. Execution Model: Plan vs Execution
+## 🔧 2. Execution Model: Planning, Binding, and Execution
 
-Execution in elevata is split into two explicit phases:
+Execution in elevata is separated into explicit semantic stages.
 
 ### 🧩 2.1 Execution Planning
 
@@ -33,9 +33,9 @@ An **ExecutionPlan** is a deterministic, declarative description of *what should
 
 The plan contains:
 
-- A stable `batch_run_id`  
-- An ordered list of execution steps  
-- Dataset-level dependencies (upstream relationships)
+- a stable `batch_run_id`  
+- an ordered list of execution steps  
+- dataset-level dependencies
 
 The plan is derived from metadata only. No SQL is rendered and no execution happens at this stage.
 
@@ -43,17 +43,67 @@ The plan is derived from metadata only. No SQL is rendered and no execution happ
 
 Execution consumes an ExecutionPlan and applies:
 
-- Execution policies (fail-fast vs continue-on-error)  
-- Retry semantics  
-- Dependency blocking rules
+- execution policies (fail-fast vs continue-on-error)  
+- retry semantics  
+- dependency blocking rules
 
 Execution produces **results**, not SQL: status, timing, attempts, and failure reasons.
 
-### 🧩 2.3 Architecture Control Plane
+### 🧩 2.3 Execution Impact Plan
 
-The Architecture Control Plane provides controlled review, approval, execution preview, and execution audit workflows around architecture state and schema evolution intent.
+Architecture Control evaluates the active execution scope before a controlled or scheduler-managed run starts.
 
-Execution remains delegated to the load runner. The Architecture Control UI invokes the load runner through constrained scopes and does not bypass preflight validation, materialization policy checks, or Architecture Guard enforcement.
+The read-only **Execution Impact Plan** classifies every active dataset as:
+
+- `REUSE`  
+- `INCREMENTAL_EXECUTE`  
+- `FULL_REBUILD`  
+- `REVALIDATE`  
+- `BLOCKED`
+
+Impact decisions are derived from current Architecture State, baseline state, Architecture Change Report, review status, previous execution evidence, materialization semantics, and dependency propagation.
+
+`REVALIDATE` and `BLOCKED` are closed gates. They cannot become executable scheduler decisions.
+
+### 🧩 2.4 Immutable Execution Run Plan
+
+An **Execution Run Plan** is the public scheduler contract for one exact run.
+
+It binds:
+
+- profile and target system  
+- Architecture Control scope and dependency mode  
+- review status and approval identifier  
+- Architecture State and report fingerprints  
+- Execution Impact, Execution Preview, and ExecutionPlan fingerprints  
+- exact active root datasets  
+- exact ordered dataset decisions
+
+The Run Plan contains only active TargetDatasets and executable decisions. Its identifier may be reused only when the canonical fingerprint is unchanged; another payload cannot silently replace it.
+
+The internal ExecutionPlan answers how datasets are ordered. The Execution Run Plan additionally answers which reviewed architecture, impact decisions, and runtime context authorized that exact scheduler run.
+
+### 🧩 2.5 Planned Architecture State and Finalization
+
+Every newly created Run Plan is stored together with a matching **Planned Architecture State** snapshot.
+
+Before a scheduler step executes, elevata validates:
+
+- Run Plan runtime context  
+- dataset membership and decision  
+- dataset metadata against the planned snapshot
+
+Each step writes one structured outcome artifact. Finalization requires one semantically successful outcome for every planned dataset and then persists exactly the Planned Architecture State applied by that run.
+
+Metadata changes made after Run Plan creation are reported as post-plan drift. They do not redefine the active run and do not block successful finalization of the older architecture that was actually applied. The changed metadata belongs to a new Run Plan and a new scheduler run.
+
+When no recorded state exists, a first state can be established only after full-scope physical discovery verifies an empty managed target. Legacy interrupted initial deployments without a Planned Architecture State snapshot can be recovered only through an explicit, strictly validated recovery path.
+
+### 🧩 2.6 Architecture Control Plane
+
+The Architecture Control Plane provides controlled review, approval, Execution Impact, execution preview, immutable scheduler planning, finalization, and execution audit workflows around architecture state and schema evolution intent.
+
+Execution remains delegated to the load runner. The Architecture Control UI and scheduler commands do not bypass preflight validation, materialization policy checks, or Architecture Guard enforcement.
 
 The control plane commands are:
 
@@ -64,6 +114,8 @@ The control plane commands are:
 | `elevata_promote` | Compare two architecture state artifacts |
 | `elevata_approve` | Create an approval artifact |
 | `elevata_approval_check` | Verify an approval artifact |
+| `elevata_run_plan` | Create an immutable scheduler Run Plan and Planned Architecture State |
+| `elevata_finalize_run_plan` | Validate scheduler outcomes and persist the planned applied state |
 
 The load runner remains responsible for execution safety. Before executing load SQL, it performs preflight validation, derives materialization steps from the MigrationPlan, applies policy checks, and blocks unsafe execution.
 
@@ -84,11 +136,15 @@ Architecture Report
   ↓
 Approval Artifact
   ↓
-Execution Preview
+Execution Impact Plan
   ↓
-Controlled Execution
+Execution Run Plan + Planned Architecture State
   ↓
-Architecture Execution Record
+Structured Dataset Outcomes
+  ↓
+Finalization
+  ↓
+Applied Architecture State + Architecture Execution Record
 ```
 
 ---
@@ -291,15 +347,21 @@ A single invocation of `elevata_load` may execute multiple datasets.
 
 All datasets executed in one invocation share:
 
-- The same `batch_run_id`  
-- The same execution policy  
-- The same snapshot
+- the same `batch_run_id`  
+- the same execution policy  
+- the same snapshot
+
+For scheduler-managed execution, every dataset step also shares one immutable Execution Run Plan and Planned Architecture State. The scheduler writes one structured outcome per planned dataset, and finalization closes the batch only when the complete expected outcome set is valid.
+
+Execution manifests and Run Plans are active-only. Inactive generated TargetDatasets may remain visible in review history, but they are not scheduler tasks and cannot be executed implicitly.
 
 This enables:
 
-- Consistent failure semantics  
-- Cross-dataset observability  
-- Batch-level governance rules
+- consistent failure semantics  
+- cross-dataset observability  
+- batch-level governance rules  
+- exact architecture-to-run binding  
+- deterministic state advancement
 
 ---
 
@@ -333,7 +395,17 @@ The execution architecture is exposed through the CLI:
 - `--continue-on-error` controls fail-fast behavior  
 - `--max-retries` controls retry behavior  
 - `--debug-execution` prints execution snapshots  
-- `--write-execution-snapshot` persists snapshots to disk
+- `--write-execution-snapshot` persists snapshots to disk  
+- `--run-plan` binds one dataset task to an immutable scheduler Run Plan and requires `--execute --no-deps`
+
+Scheduler-facing commands:
+
+```bash
+python manage.py elevata_run_plan --all-datasets
+python manage.py elevata_finalize_run_plan <RUN_PLAN_PATH>
+```
+
+`elevata_run_plan --reuse-existing` is intended for scheduler retries and succeeds only when the existing immutable artifact matches the requested runtime and scope. Metadata corrections require a new Run Plan and a new scheduler run.
 
 The CLI is an adapter. All execution logic lives in the execution core.
 
@@ -345,6 +417,7 @@ Architecture Control execution is a constrained UI path into the same load runne
 
 It provides:
 
+- scope-aware Execution Impact  
 - scope-aware execution preview  
 - approval-aware execution gating  
 - Architecture Guard enforcement  
@@ -357,9 +430,11 @@ Architecture Control supports the following execution scopes:
 | Scope | Dependency behavior |
 |---|---|
 | All datasets | Executes all active target datasets with dependency ordering |
-| Schema | Executes selected schema roots with dependency ordering |
-| TargetDataset | Executes the selected TargetDataset with dependency ordering |
-| TargetDataset, target-only | Executes only the selected TargetDataset |
+| Schema | Executes selected active schema roots with dependency ordering |
+| TargetDataset | Executes the selected active TargetDataset with dependency ordering |
+| TargetDataset, target-only | Executes only the selected active TargetDataset |
+
+Schema review may include a previous-state dataset that has just been retired so the metadata-only removal remains visible and approvable. Execution resolution remains active-only, and inactive datasets are excluded from Execution Impact, preview steps, manifests, and Run Plans.
 
 Target-only execution is restricted to TargetDataset scopes. It supports focused iteration while keeping the default execution path lineage-aware.
 
@@ -397,7 +472,7 @@ They complement the load run log and load run snapshot:
 |---|---|---|
 | Load Run Log | Dataset / attempt | Operational event stream |
 | Load Run Snapshot | Batch run | Execution state and outcome summary |
-| Architecture Execution Record | Architecture Control execution | Review, approval, scope, command and audit eference |
+| Architecture Execution Record | Architecture Control execution | Review, approval, scope, command and audit reference |
 
 ---
 
@@ -405,14 +480,17 @@ They complement the load run log and load run snapshot:
 
 The execution architecture of elevata is:
 
-- Explicit, not implicit  
-- Deterministic, not heuristic  
-- Metadata-driven, not SQL-driven  
-- Observable by default  
-- Explicit about batch-scoped runtime state  
-- Extensible without breaking changes
+- explicit, not implicit  
+- deterministic, not heuristic  
+- metadata-driven, not SQL-driven  
+- bound to immutable scheduler contracts  
+- active-only at execution time  
+- observable by default  
+- explicit about batch-scoped runtime state  
+- exact about applied-state finalization  
+- extensible without breaking changes
 
-This provides a robust foundation for: orchestration integrations, governance rules, and execution analytics.
+This provides a robust foundation for orchestration integrations, governance rules, execution analytics, and recoverable scheduler operation.
 
 ---
 

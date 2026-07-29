@@ -20,6 +20,7 @@ along with elevata. If not, see <https://www.gnu.org/licenses/>.
 Contact: <https://github.com/elevata-labs/elevata>.
 """
 
+import datetime
 import io
 import logging
 
@@ -471,6 +472,26 @@ def test_persist_load_run_snapshot_skips_non_execute_runs(monkeypatch):
 
 def test_persist_orchestration_skip_rows_uses_runtime_state_and_filters_results(monkeypatch):
   calls = {"ensure": [], "executed": [], "values": []}
+  blocked_at = datetime.datetime(
+    2026,
+    7,
+    24,
+    4,
+    18,
+    38,
+    123456,
+    tzinfo=datetime.timezone.utc,
+  )
+  aborted_at = datetime.datetime(
+    2026,
+    7,
+    24,
+    4,
+    18,
+    39,
+    654321,
+    tzinfo=datetime.timezone.utc,
+  )
 
   class DummyEngine:
     def execute(self, sql):
@@ -510,11 +531,15 @@ def test_persist_orchestration_skip_rows_uses_runtime_state_and_filters_results(
         "status_reason": "dependency_failed",
         "blocked_by": "rawcore.parent",
         "load_run_id": "blocked-run",
+        "started_at": blocked_at,
+        "finished_at": blocked_at,
       },
       {
         "dataset": "rawcore.aborted_child",
         "status": "skipped",
         "kind": "aborted",
+        "started_at": aborted_at,
+        "finished_at": aborted_at,
       },
       {"dataset": "rawcore.other", "status": "skipped", "kind": "not_applicable"},
       {"dataset": "malformed", "status": "skipped", "kind": "blocked"},
@@ -548,10 +573,14 @@ def test_persist_orchestration_skip_rows_uses_runtime_state_and_filters_results(
   assert first["attempt_no"] == 2
   assert first["status_reason"] == "dependency_failed"
   assert first["blocked_by"] == "rawcore.parent"
+  assert first["started_at"] == blocked_at
+  assert first["finished_at"] == blocked_at
 
   assert second["target_dataset"] == "aborted_child"
   assert second["run_kind"] == "orchestration"
   assert second["status"] == "skipped"
+  assert second["started_at"] == aborted_at
+  assert second["finished_at"] == aborted_at
 
 
 def test_persist_orchestration_skip_rows_skips_non_execute_runs(monkeypatch):

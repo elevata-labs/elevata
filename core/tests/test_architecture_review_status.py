@@ -23,6 +23,7 @@ Contact: <https://github.com/elevata-labs/elevata>.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from types import SimpleNamespace
 
 from metadata.architecture.approval import (
   ArchitectureApprovalStore,
@@ -75,6 +76,32 @@ def test_review_status_reports_pending_without_approval(tmp_path):
 
   assert status.status == "pending"
   assert status.label == "Pending review"
+
+
+def test_review_status_reports_verified_initial_deployment(tmp_path):
+  report = _sample_report(
+    report_fingerprint="report-fingerprint-123",
+    has_changes=True,
+    is_blocked=False,
+  )
+
+  status = build_architecture_review_status_for_report(
+    dataset_key="all",
+    report=report,
+    approval_store=ArchitectureApprovalStore(tmp_path),
+    baseline_resolution=SimpleNamespace(
+      is_initial_deployment=True,
+    ),
+  )
+
+  assert status.status == "initial_deployment"
+  assert status.label == "Initial deployment"
+  assert status.approval_id is None
+  assert status.artifact_fingerprint is None
+  assert (
+    "does not require an Approval Artifact"
+    in status.message
+  )
 
 
 def test_review_status_reports_approved_matching_artifact(tmp_path):

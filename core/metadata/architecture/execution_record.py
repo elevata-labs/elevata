@@ -66,6 +66,10 @@ class ArchitectureExecutionRecord:
   error_line_count: int
   output_truncated: bool
   error_truncated: bool
+  impact_plan_fingerprint: str | None = None
+  impact_assessed_count: int = 0
+  impact_decision_counts: tuple[tuple[str, int], ...] = ()
+  execution_outcomes: tuple[dict[str, Any], ...] = ()
 
   @property
   def record_fingerprint(self) -> str:
@@ -106,6 +110,21 @@ class ArchitectureExecutionRecord:
       "output_truncated": self.output_truncated,
       "error_truncated": self.error_truncated,
     }
+
+    if self.impact_plan_fingerprint:
+      payload["record_version"] = 2
+      payload["execution_impact_plan"] = {
+        "plan_fingerprint": self.impact_plan_fingerprint,
+        "assessed_count": self.impact_assessed_count,
+        "decision_counts": dict(self.impact_decision_counts),
+      }
+
+    if self.execution_outcomes:
+      payload["record_version"] = 3
+      payload["execution_outcomes"] = [
+        dict(item)
+        for item in self.execution_outcomes
+      ]
 
     if include_fingerprint:
       payload["record_fingerprint"] = self.record_fingerprint
@@ -299,6 +318,17 @@ def build_architecture_execution_record(result: Any) -> ArchitectureExecutionRec
   """
   output_lines = tuple(getattr(result, "output_lines", ()) or ())
   error_lines = tuple(getattr(result, "error_lines", ()) or ())
+  impact_binding = getattr(result, "impact_plan_binding", None)
+  impact_decision_counts = tuple(
+    getattr(impact_binding, "decision_counts", ()) or ()
+  )
+  execution_outcomes = tuple(
+    dict(item)
+    for item in (
+      getattr(result, "execution_outcomes", ()) or ()
+    )
+    if isinstance(item, dict)
+  )
 
   return ArchitectureExecutionRecord(
     execution_id=getattr(result, "execution_id"),
@@ -325,6 +355,18 @@ def build_architecture_execution_record(result: Any) -> ArchitectureExecutionRec
     error_line_count=len(error_lines),
     output_truncated=bool(getattr(result, "output_truncated", False)),
     error_truncated=bool(getattr(result, "error_truncated", False)),
+    impact_plan_fingerprint=(
+      str(getattr(impact_binding, "plan_fingerprint", "") or "")
+      or None
+    ),
+    impact_assessed_count=int(
+      getattr(impact_binding, "assessed_count", 0) or 0
+    ),
+    impact_decision_counts=tuple(
+      (str(key), int(value))
+      for key, value in impact_decision_counts
+    ),
+    execution_outcomes=execution_outcomes,
   )
 
 

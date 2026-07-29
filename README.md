@@ -49,7 +49,7 @@ From these definitions, elevata derives deterministic logical plans, renders dia
 Schema evolution, incremental loads, historization, approvals, and execution evidence are planned, validated, and applied deterministically.
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/elevata-labs/elevata/main/docs/elevata_v2_15_0.png" alt="elevata UI preview" width="900"/>
+  <img src="https://raw.githubusercontent.com/elevata-labs/elevata/main/docs/elevata_v2_16_0.png" alt="elevata UI preview" width="900"/>
   <br/>
   <em>Architecture Runtime UI for discovering, controlling, modeling, and executing metadata-defined data architecture</em>
 </p>
@@ -107,9 +107,10 @@ Each layer is explicitly separated.
 3. Discover architecture from Source Systems through Target Datasets to Data Products using Catalog, Portfolio, Insights, and Map    
 4. Inspect generated SQL, lineage, contracts, health, quality review, reference integrity, and execution evidence  
 5. Review architecture changes through Architecture Review Briefing and approve them through Architecture Control  
-6. Execute approved or unchanged scopes deterministically on your target warehouse  
-7. Resolve controlled reference members during execution where modeled references explicitly allow it  
-8. Audit execution through Architecture Execution Records
+6. Bind scheduler-managed runs to an immutable Execution Run Plan and Planned Architecture State  
+7. Execute approved or unchanged active scopes deterministically on your target warehouse  
+8. Finalize structured outcomes so recorded Architecture State advances only after successful execution  
+9. Audit execution through Run Plan evidence, Architecture Execution Records, load logs, and snapshots
 
 ---
 
@@ -123,6 +124,12 @@ Behavior is deterministic and observable.
 
 Schema drift is reconciled through Architecture MigrationPlan-driven materialization:  
 renames, adds, type evolution and controlled rebuilds are derived from architecture state, while destructive changes remain explicitly policy-gated.
+
+Scheduler-managed execution is bound to an immutable **Execution Run Plan**. The plan fixes the active dataset scope, execution order, Execution Impact decisions, review context, and architecture fingerprints for one batch. It is stored together with a matching **Planned Architecture State** snapshot.
+
+Each dataset task validates its metadata against the planned snapshot and writes structured scheduler-step outcome evidence. Finalization advances the recorded Architecture State only after every required outcome succeeds, and it persists exactly the architecture applied by that run. Metadata changes made after Run Plan creation remain visible as post-plan drift and become input for a new run rather than silently redefining the active one.
+
+Execution manifests, Run Plans, and dataset tasks contain active TargetDatasets only. Inactive generated targets remain reviewable architecture history but cannot re-enter execution implicitly.
 
 Controlled Reference Members complement modeled rawcore references. Default members are maintained as artificial fallback rows, inferred members can be created during child dataset loads when a modeled TargetDatasetReference explicitly enables them, and Default Member Fallback can map still-unresolved child reference keys to the parent default member. Parent datasets remain authoritative: a later parent full load can replace inferred members with real source-backed rows. When controlled reference completion is enabled, referenced parent datasets become execution dependencies so parent readiness is enforced before child loads.
 
@@ -201,16 +208,21 @@ The Catalog does not edit metadata and does not execute loads. Architecture Qual
 
 elevata makes architecture changes reviewable before execution.
 
-Architecture State, Change Reports, Promotion Reports, Approval Artifacts and Execution Records expose deterministic fingerprints, MigrationPlan actions, policy decisions, review decisions and execution outcomes.
-
-This supports controlled review, CI checks and environment-to-environment architecture promotion while keeping execution guardrails inside the load runner.
-
-The Architecture Control UI makes approval state, scope, policy status, change summary, execution preview, dependency mode, controlled reference readiness, captured output and execution records visible for controlled scopes.
-
+Architecture State, Change Reports, Promotion Reports, Approval Artifacts, Execution Impact Plans, immutable Execution Run Plans, Planned Architecture State snapshots, structured outcomes, and Execution Records expose deterministic fingerprints, MigrationPlan actions, policy decisions, review decisions, and execution evidence.
+ 
+This supports controlled review, CI checks, scheduler integration, environment-to-environment architecture promotion, and exact state finalization while keeping execution guardrails inside the load runner.
+ 
+The Architecture Control UI makes approval state, scope, policy status, change summary, Execution Impact decisions, execution preview, dependency mode, controlled reference readiness, captured output, and execution records visible for controlled scopes.
+ 
 Architecture Review Briefing adds compact reviewer guidance directly inside Architecture Control. It summarizes the selected scope, review state, change volume, policy evaluation, destructive or blocking signals, execution readiness and suggested reviewer focus before approval or execution. Allowed and metadata-only policy decisions are shown as evaluated outcomes, while preflight and blocked decisions remain reviewer attention.
 
-Users can inspect reports, open the Review Briefing details on demand, download report JSON, create Approval Artifacts, verify approvals, execute approved or no-change scopes, inspect the resulting Architecture Execution Record, review stored execution history, download record JSON, and apply execution record retention.
+Generated TargetDataset lifecycle is controlled rather than destructive. Generator-owned targets that leave the complete eligible source scope are retained but marked inactive and retired. If they become eligible again, the same metadata objects are reactivated in place. Retirement is represented atomically as `DATASET_REMOVED → RETIRE_DATASET → METADATA_ONLY`; it does not imply an automatic physical drop.
 
+For schema reviews, Architecture Control combines active datasets from the current state with matching datasets from the previous state so a retirement remains visible and approvable. Execution Preview, Execution Impact, manifests, and Run Plans remain strictly active-only.
+
+A first recorded Architecture State can be established only by a verified full-scope initial deployment whose managed target was discovered as empty. An explicitly guarded recovery path exists for legacy interrupted initial deployments that completed physically before Planned Architecture State snapshots were introduced.
+
+Users can inspect reports, open the Review Briefing details on demand, download report JSON, create Approval Artifacts, verify approvals, inspect Execution Impact, execute approved or no-change scopes, create immutable scheduler Run Plans, inspect the resulting Architecture Execution Record, review stored execution history, download record JSON, and apply execution record retention.
 
 ---
 
@@ -246,7 +258,7 @@ elevata evolves along four strategic axes:
 Keeping executable architecture discoverable across datasets, lineage, contracts, ownership, readiness, quality review, reference integrity, health and execution evidence.
 
 **2. Controlled Runtime Operation**  
-Strengthening deterministic review, approval, execution, audit evidence, retention and controlled runtime safety without adding unnecessary control layers.
+Strengthening deterministic review, approval, immutable scheduler contracts, finalization, audit evidence, retention and controlled runtime safety without adding unnecessary control layers.
 
 **3. Source & Ingestion Readiness**  
 Keeping source onboarding, RAW landing intent, ingestion modes, file/API patterns, external ingestion and federated access explicit, inspectable and deterministic.

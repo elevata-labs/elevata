@@ -52,6 +52,17 @@ Used when multiple upstream sources require conflict resolution.
 - A `ROW_NUMBER() OVER (...)` window assigns a rank  
 - Only rows with rank = 1 are selected
 
+#### 🔎 Multi-Source UNION Nullability
+
+The generated STAGE column contract is derived from every participating UNION branch:
+
+- a column missing from any branch is nullable  
+- a column nullable in any branch is nullable  
+- only a column present and non-nullable in every branch remains non-nullable  
+- synthetic generated columns such as `source_identity_id` keep their explicit contract
+
+This prevents the representative source from incorrectly imposing a stricter physical constraint on the complete multi-source output.
+
 ### 🧩 2.3 CORE / BUSINESS layers
 - Surrogate keys are generated from BK columns  
 - Foreign keys reference parent surrogate key structure  
@@ -249,6 +260,43 @@ elevata supports safe schema evolution driven by metadata:
   Column renames are therefore expected to be reflected in the hist metadata as well, so schema evolution can rename instead of adding duplicate columns.
 
 Schema evolution never provisions missing tables. Provisioning is handled by the load runner via `ensure_target_table(...)` before executing DML.
+
+---
+
+## 🔧 9. Generated Target Lifecycle
+
+Complete schema-level target generation reconciles generator-owned TargetDatasets with the current eligible source scope.
+
+When a previously generated dataset is no longer produced:
+
+- the TargetDataset metadata is retained  
+- `active` is set to `False`  
+- `retired_at` is recorded  
+- the physical target object is not dropped automatically  
+- the inactive dataset is excluded from manifests, Execution Impact, Execution Preview, and Run Plans
+
+Only system-managed datasets with generator-owned lineage keys participate in this reconciliation. Targeted generation keeps lifecycle reconciliation disabled so a partial source selection cannot retire unrelated targets.
+
+When the source scope becomes eligible again, the existing TargetDataset is reactivated in place and `retired_at` is cleared. This preserves stable identifiers, lineage, and audit continuity.
+
+Architecture Control represents retirement atomically:
+
+```text
+DATASET_REMOVED
+  ↓
+RETIRE_DATASET
+  ↓
+METADATA_ONLY
+```
+
+The Generate Targets summary distinguishes processing volume from actual lifecycle changes. It reports processed dataset and column counts separately from retired and reactivated dataset counts:
+
+```text
+Total: 25 target datasets processed and 168 target columns processed;
+0 target datasets retired and 0 reactivated.
+```
+
+`processed` means that generation evaluated and synchronized the object. It does not claim that every existing object changed.
 
 ---
 

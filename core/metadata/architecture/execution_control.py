@@ -40,9 +40,17 @@ from metadata.architecture.control import (
   ArchitectureControlScope,
   build_architecture_control_context,
 )
+from metadata.architecture.execution_impact import (
+  ExecutionImpactSelection,
+  build_execution_impact_selection,
+)
 from metadata.architecture.execution_preview import (
+  ArchitectureExecutionImpactBinding,
   ArchitectureExecutionPreview,
+  ArchitectureExecutionPreviewError,
+  build_architecture_execution_impact_binding,
   build_architecture_execution_preview,
+  resolve_architecture_execution_scope,
 )
 from metadata.architecture.execution_record import (
   ArchitectureExecutionRecordStore,
@@ -93,6 +101,8 @@ class ArchitectureControlledExecutionResult:
   execution_record_path: str | None = None
   execution_record_fingerprint: str | None = None
   execution_record_error: str | None = None
+  impact_plan_binding: ArchitectureExecutionImpactBinding | None = None
+  execution_outcomes: tuple[dict[str, Any], ...] = ()
 
   @property
   def succeeded(self) -> bool:
@@ -118,20 +128,53 @@ def execute_architecture_control_scope(
   started_at = _utc_now_iso()
   started_perf = perf_counter()
 
-  context = build_architecture_control_context(scope)
+  try:
+    execution_scope_resolution = resolve_architecture_execution_scope(
+      scope,
+      no_deps=no_deps,
+    )
+  except ArchitectureExecutionPreviewError as exc:
+    raise ArchitectureControlledExecutionError(str(exc)) from exc
+
+  context = build_architecture_control_context(
+    scope,
+    execution_dataset_keys=(
+      execution_scope_resolution.execution_dataset_keys
+    ),
+    dependency_mode=execution_scope_resolution.dependency_mode,
+  )
   preview = build_architecture_execution_preview(
     scope,
     control_context=context,
     no_deps=no_deps,
+    execution_scope_resolution=execution_scope_resolution,
   )
 
   if not preview.gate.can_execute:
     raise ArchitectureControlledExecutionError(preview.gate.message)
 
+  _validate_execution_impact_plan_binding(
+    context=context,
+    preview=preview,
+  )
+
+  impact_selection = _build_controlled_execution_impact_selection(
+    context=context,
+    preview=preview,
+  )
+  execution_outcome_collector: list[dict[str, Any]] = []
+
   command_name, command_args, command_options = _build_elevata_load_command(
     scope,
     no_deps=no_deps,
   )
+
+  if impact_selection is not None:
+    command_options = {
+      **command_options,
+      "execution_impact_selection": impact_selection,
+      "execution_outcome_collector": execution_outcome_collector,
+    }
 
   stdout = StringIO()
   stderr = StringIO()
@@ -163,6 +206,7 @@ def execute_architecture_control_scope(
       command_options=command_options,
       stdout=stdout,
       stderr=stderr,
+      execution_outcomes=execution_outcome_collector,
     )
     return _attach_execution_record(result, record_store=record_store)
   
@@ -181,6 +225,7 @@ def execute_architecture_control_scope(
       command_options=command_options,
       stdout=stdout,
       stderr=stderr,
+      execution_outcomes=execution_outcome_collector,
     )
     return _attach_execution_record(result, record_store=record_store)
 
@@ -198,6 +243,7 @@ def execute_architecture_control_scope(
     command_options=command_options,
     stdout=stdout,
     stderr=stderr,
+    execution_outcomes=execution_outcome_collector,
   )
   return _attach_execution_record(result, record_store=record_store)
 
@@ -245,6 +291,80 @@ def _build_elevata_load_command(
   )
 
 
+def _validate_execution_impact_plan_binding(
+  *,
+  context: Any,
+  preview: ArchitectureExecutionPreview,
+) -> None:
+  """
+  Verify that controlled execution still references the previewed impact plan.
+
+  Synthetic legacy contexts without an execution_impact_plan attribute remain
+  supported by focused service tests. Real Architecture Control contexts always
+  expose either a plan or an explicit integration error.
+  """
+  if not hasattr(context, "execution_impact_plan"):
+    return
+
+  current_binding = build_architecture_execution_impact_binding(
+    context,
+    execution_dataset_keys=preview.execution_dataset_keys,
+    dependency_mode=preview.dependency_mode,
+  )
+  preview_binding = getattr(preview, "impact_plan_binding", None)
+
+  if current_binding != preview_binding:
+    raise ArchitectureControlledExecutionError(
+      "Execution Impact Plan changed between context assembly and execution "
+      "preview. Refresh Architecture Control before executing the scope."
+    )
+
+  if current_binding is None:
+    raise ArchitectureControlledExecutionError(
+      "Controlled execution requires an available Execution Impact Plan."
+    )
+
+
+def _build_controlled_execution_impact_selection(
+  *,
+  context: Any,
+  preview: ArchitectureExecutionPreview,
+) -> ExecutionImpactSelection | None:
+  """
+  Build the internal runtime selection from the bound impact plan.
+
+  Synthetic legacy test contexts without an impact-plan attribute retain the
+  pre-impact execution path. Real Architecture Control contexts fail closed.
+  """
+  if not hasattr(context, "execution_impact_plan"):
+    return None
+
+  plan = getattr(context, "execution_impact_plan", None)
+  if plan is None:
+    raise ArchitectureControlledExecutionError(
+      "Controlled execution requires an available Execution Impact Plan."
+    )
+
+  try:
+    selection = build_execution_impact_selection(
+      plan,
+      execution_dataset_keys=preview.execution_dataset_keys,
+    )
+  except ValueError as exc:
+    raise ArchitectureControlledExecutionError(str(exc)) from exc
+
+  binding = getattr(preview, "impact_plan_binding", None)
+  if (
+    binding is None
+    or binding.plan_fingerprint != selection.plan_fingerprint
+  ):
+    raise ArchitectureControlledExecutionError(
+      "Execution Impact Selection does not match the bound execution preview."
+    )
+
+  return selection
+
+
 def _execution_result(
   *,
   execution_id: str,
@@ -259,6 +379,7 @@ def _execution_result(
   command_options: dict[str, Any],
   stdout: StringIO,
   stderr: StringIO,
+  execution_outcomes: list[dict[str, Any]],
 ) -> ArchitectureControlledExecutionResult:
   """
   Build a normalized controlled execution result.
@@ -266,7 +387,12 @@ def _execution_result(
   public_options = {
     key: value
     for key, value in command_options.items()
-    if key not in {"stdout", "stderr"}
+    if key not in {
+      "stdout",
+      "stderr",
+      "execution_impact_selection",
+      "execution_outcome_collector",
+    }
   }
   output_lines, output_truncated = _captured_lines(stdout.getvalue())
   error_lines, error_truncated = _captured_lines(stderr.getvalue())
@@ -296,6 +422,11 @@ def _execution_result(
     error_lines=error_lines,
     error_tail=_tail_from_lines(error_lines),
     error_truncated=error_truncated,
+    impact_plan_binding=preview.impact_plan_binding,
+    execution_outcomes=tuple(
+      dict(item)
+      for item in execution_outcomes
+    ),
   )
 
 

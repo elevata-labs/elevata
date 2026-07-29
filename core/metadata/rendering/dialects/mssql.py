@@ -783,9 +783,13 @@ class MssqlDialect(SqlDialect):
       return f"CAST('{iso}' AS DATE)"
 
     if isinstance(value, datetime.datetime):
-      # Strip microseconds for a cleaner literal
-      dt = value.replace(microsecond=0)
-      iso = dt.isoformat(sep=" ")
+      # Meta timestamps are stored as UTC in DATETIME2. DATETIME2 has no
+      # timezone component, so normalize aware values to UTC before removing
+      # tzinfo while preserving microsecond precision.
+      dt = value
+      if dt.tzinfo is not None:
+        dt = dt.astimezone(datetime.timezone.utc).replace(tzinfo=None)
+      iso = dt.isoformat(sep=" ", timespec="microseconds")
       return f"CAST('{iso}' AS DATETIME2)"
 
     raise TypeError(f"Unsupported literal type for MssqlDialect: {type(value)}")

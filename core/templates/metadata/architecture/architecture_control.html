@@ -63,6 +63,8 @@ Contact: <https://github.com/elevata-labs/elevata>.
         </div>
         {% if state_baseline_exists %}
           <span class="badge text-bg-success">Recorded baseline available</span>
+        {% elif baseline_resolution and baseline_resolution.is_initial_deployment %}
+          <span class="badge text-bg-success">Verified initial deployment</span>
         {% elif baseline_resolution and baseline_resolution.is_discovered %}
           <span class="badge text-bg-info">Physical baseline discovered</span>
         {% else %}
@@ -94,7 +96,9 @@ Contact: <https://github.com/elevata-labs/elevata>.
             </div>
             <div class="col-lg-3 col-md-6">
               <div class="text-muted">Baseline safety</div>
-              {% if baseline_resolution.can_execute %}
+              {% if baseline_resolution.is_initial_deployment %}
+                <span class="badge text-bg-success">verified empty managed target</span>
+              {% elif baseline_resolution.can_execute %}
                 <span class="badge text-bg-success">safe comparison baseline resolved</span>
               {% else %}
                 <span class="badge text-bg-warning">blocked</span>
@@ -103,7 +107,13 @@ Contact: <https://github.com/elevata-labs/elevata>.
             <div class="col-lg-6">
               <div class="text-muted">Baseline resolution</div>
               <div>{{ baseline_resolution.message }}</div>
-              {% if baseline_resolution.is_discovered %}
+              {% if baseline_resolution.is_initial_deployment %}
+                <div class="text-muted mt-1">
+                  Initial deployment is available only for the complete managed
+                  target scope. The first successful finalizer persists the
+                  recorded Architecture State.
+                </div>
+              {% elif baseline_resolution.is_discovered %}
                 <div class="text-muted mt-1">
                   Discovery is read-only. The recorded state file is persisted only
                   after a successful controlled execution.
@@ -538,6 +548,126 @@ Contact: <https://github.com/elevata-labs/elevata>.
           <code>{{ review_status.state.current_fingerprint }}</code>
         </div>
       </div>
+    </div>
+  </div>
+  
+  <div class="card mb-4">
+    <div class="card-body">
+      <div class="d-flex align-items-start justify-content-between gap-3 mb-3">
+        <div>
+          <div class="fw-semibold mb-1">Execution Impact Plan</div>
+          <p class="text-muted small mb-0">
+            Explain and control the minimum safe execution impact derived from
+            architecture evidence and execution dependencies. The bound plan
+            governs dataset selection during controlled execution.
+          </p>
+        </div>
+        {% if execution_impact_presentation %}
+          <span class="badge text-bg-secondary">
+            {{ execution_impact_presentation.assessed_count }} dataset(s) assessed
+          </span>
+        {% endif %}
+      </div>
+
+      {% if execution_impact_plan_error %}
+        <div class="alert alert-warning small mb-0">
+          <div class="fw-semibold">Execution Impact Plan unavailable</div>
+          <div class="mt-1">{{ execution_impact_plan_error }}</div>
+        </div>
+      {% elif execution_impact_presentation %}
+        <div class="row row-cols-2 row-cols-md-3 row-cols-xl-5 g-3 mb-3">
+          {% for decision_count in execution_impact_presentation.decision_counts %}
+            <div class="col">
+              <div class="border rounded p-3 h-100 bg-light">
+                <div class="d-flex align-items-start justify-content-between gap-2">
+                  <div class="small text-muted">{{ decision_count.label }}</div>
+                  <span class="badge {{ decision_count.badge_class }}">
+                    <i class="bi {{ decision_count.icon }}"></i>
+                  </span>
+                </div>
+                <div class="fs-4 mt-2">{{ decision_count.count }}</div>
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+
+        <div class="row g-3 small mb-3">
+          <div class="col-lg-6">
+            <div class="text-muted">Plan fingerprint</div>
+            <code class="small text-break">
+              {{ execution_impact_presentation.plan_fingerprint }}
+            </code>
+          </div>
+          <div class="col-lg-6">
+            <div class="text-muted">Architecture Change Report fingerprint</div>
+            <code class="small text-break">
+              {{ execution_impact_presentation.report_fingerprint }}
+            </code>
+          </div>
+        </div>
+
+        <div class="fw-semibold small mb-2">Dataset decisions</div>
+        <div class="table-responsive">
+          <table class="table table-sm align-middle mb-0">
+            <thead>
+              <tr>
+                <th>Dataset</th>
+                <th>Decision</th>
+                <th>Reason codes</th>
+                <th>Evidence</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% include "metadata/partials/_execution_impact_rows.html" with impact_items=execution_impact_presentation.preview_items %}
+            </tbody>
+          </table>
+        </div>
+
+        {% if execution_impact_presentation.has_remaining_items %}
+          <div class="small text-muted mt-2">
+            Showing first {{ execution_impact_presentation.preview_items|length }} of
+            {{ execution_impact_presentation.assessed_count }} dataset decisions.
+          </div>
+          <details class="mt-2">
+            <summary class="small fw-semibold">
+              <span class="details-closed-label">
+                Show remaining {{ execution_impact_presentation.remaining_count }} decisions
+              </span>
+              <span class="details-open-label">
+                Hide remaining decisions
+              </span>
+            </summary>
+            <div class="table-responsive mt-2">
+              <table class="table table-sm align-middle mb-0">
+                <thead>
+                  <tr>
+                    <th>Dataset</th>
+                    <th>Decision</th>
+                    <th>Reason codes</th>
+                    <th>Evidence</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% include "metadata/partials/_execution_impact_rows.html" with impact_items=execution_impact_presentation.remaining_items %}
+                </tbody>
+              </table>
+            </div>
+          </details>
+        {% endif %}
+
+        <div class="alert alert-light border small mt-3 mb-0">
+          The bound Execution Impact Plan controls Architecture Control execution.
+          REUSE datasets are skipped while remaining available to downstream
+          steps. INCREMENTAL_EXECUTE and FULL_REBUILD datasets use their existing
+          runtime strategies. REVALIDATE and BLOCKED decisions prevent controlled
+          execution.
+        </div>
+      {% else %}
+        <div class="alert alert-secondary small mb-0">
+          Execution impact is available after a valid Architecture Control scope
+          and its evidence have been resolved.
+        </div>
+      {% endif %}
     </div>
   </div>
 
@@ -1149,7 +1279,7 @@ Contact: <https://github.com/elevata-labs/elevata>.
             rows="2"
             class="form-control form-control-sm mb-2"
             placeholder="Optional review note"
-            {% if not review_status.has_changes or review_status.is_blocked or review_status.status == "approved" %}disabled{% endif %}
+            {% if not review_status.has_changes or review_status.is_blocked or review_status.status == "approved" or review_status.status == "initial_deployment" %}disabled{% endif %}
           ></textarea>
 
           <div class="d-flex align-items-center gap-2 flex-wrap">
@@ -1157,7 +1287,7 @@ Contact: <https://github.com/elevata-labs/elevata>.
               id="architecture-control-approval-button"
               type="submit"
               class="btn btn-sm btn-primary"
-              {% if not review_status.has_changes or review_status.is_blocked or review_status.status == "approved" %}disabled{% endif %}
+              {% if not review_status.has_changes or review_status.is_blocked or review_status.status == "approved" or review_status.status == "initial_deployment" %}disabled{% endif %}
             >
               <i class="bi bi-shield-plus"></i>
               Create approval artifact
@@ -1171,6 +1301,9 @@ Contact: <https://github.com/elevata-labs/elevata>.
           <div class="small text-muted mt-2">
             {% if review_status.status == "approved" %}
               The report has a matching approval artifact.
+            {% elif review_status.status == "initial_deployment" %}
+              No Approval Artifact is required because the complete managed
+              target scope was physically verified as an initial deployment.
             {% elif review_status.is_blocked %}
               Approval is disabled because the report is blocked by policy.
               Approval does not override execution policy.

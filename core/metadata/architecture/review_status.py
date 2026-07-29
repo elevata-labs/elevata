@@ -155,6 +155,7 @@ def build_architecture_review_status_for_report(
   dataset_key: str,
   report: ArchitectureChangeReport,
   approval_store: ArchitectureApprovalStore,
+  baseline_resolution: Any | None = None,
 ) -> ArchitectureReviewStatus:
   """
   Build review status from a report and an approval artifact store.
@@ -188,6 +189,9 @@ def build_architecture_review_status_for_report(
       invalid_message = check_result.message
 
   artifact = exact_artifact or stale_artifact
+  is_initial_deployment = bool(
+    getattr(baseline_resolution, "is_initial_deployment", False)
+  )
 
   if invalid_message:
     status = "invalid"
@@ -201,6 +205,12 @@ def build_architecture_review_status_for_report(
   elif not report.has_changes:
     status = "no_changes"
     message = "No architecture changes are present for this dataset scope."
+  elif is_initial_deployment:
+    status = "initial_deployment"
+    message = (
+      "The target platform was verified empty for the complete managed "
+      "architecture scope. Initial deployment does not require an Approval Artifact."
+    )
   elif exact_artifact is not None:
     status = "approved"
     message = "Approval artifact matches the architecture change report."
@@ -215,6 +225,11 @@ def build_architecture_review_status_for_report(
     message = "Architecture changes are present and have no matching approval."
 
   label, badge_class, icon = _status_metadata(status)
+  resolved_artifact = (
+    None
+    if status == "initial_deployment"
+    else artifact
+  )
 
   return ArchitectureReviewStatus(
     status=status,
@@ -224,12 +239,16 @@ def build_architecture_review_status_for_report(
     icon=icon,
     dataset_key=dataset_key,
     report_fingerprint=report.report_fingerprint,
-    approval_id=artifact.approval_id if artifact else None,
-    artifact_fingerprint=artifact.artifact_fingerprint if artifact else None,
-    review_decision=artifact.review.decision if artifact else None,
-    decided_by=artifact.review.decided_by if artifact else None,
-    decided_at=artifact.review.decided_at if artifact else None,
-    note=artifact.review.note if artifact else None,
+    approval_id=resolved_artifact.approval_id if resolved_artifact else None,
+    artifact_fingerprint=(
+      resolved_artifact.artifact_fingerprint if resolved_artifact else None
+    ),
+    review_decision=(
+      resolved_artifact.review.decision if resolved_artifact else None
+    ),
+    decided_by=resolved_artifact.review.decided_by if resolved_artifact else None,
+    decided_at=resolved_artifact.review.decided_at if resolved_artifact else None,
+    note=resolved_artifact.review.note if resolved_artifact else None,
     approval_directory=approval_directory,
     has_changes=report.has_changes,
     is_blocked=report.is_blocked,
@@ -270,6 +289,8 @@ def _status_metadata(status: str) -> tuple[str, str, str]:
   """
   if status == "approved":
     return "Approved and matching", "badge-health-ok", "bi-shield-check"
+  if status == "initial_deployment":
+    return "Initial deployment", "badge-health-ok", "bi-database-add"
   if status == "pending":
     return "Pending review", "badge-health-warning", "bi-hourglass-split"
   if status == "drift":

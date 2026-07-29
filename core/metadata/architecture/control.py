@@ -22,7 +22,7 @@ Contact: <https://github.com/elevata-labs/elevata>.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Literal
 
@@ -34,6 +34,12 @@ from metadata.architecture.approval import (
   build_architecture_approval_artifact,
   check_architecture_approval,
 )
+from metadata.architecture.execution_impact import ExecutionImpactPlan
+from metadata.architecture.execution_impact_service import (
+  ExecutionImpactPlanError,
+  build_execution_impact_plan,
+)
+from metadata.architecture.execution_record import ArchitectureExecutionRecordStore
 from metadata.architecture.paths import (
   ArchitectureArtifactContext,
   resolve_architecture_artifact_context,
@@ -57,8 +63,10 @@ from metadata.architecture.scope import (
   resolve_dataset_keys_from_state,
 )
 from metadata.architecture.service import ArchitectureStateService
+from metadata.architecture.state import ArchitectureState
 from metadata.architecture.store import ArchitectureStateStore
 from metadata.materialization.policy import load_materialization_policy
+from metadata.models import TargetDataset
 
 
 ArchitectureControlScopeMode = Literal[
@@ -190,6 +198,11 @@ class ArchitectureControlContext:
   approval_store: ArchitectureApprovalStore
   state_store: ArchitectureStateStore
   baseline_resolution: ArchitectureBaselineResolution
+  current_state: ArchitectureState | None = None
+  execution_impact_plan: ExecutionImpactPlan | None = None
+  execution_impact_plan_error: str | None = None
+  execution_dependency_mode: str = "with_dependencies"
+  execution_dataset_keys: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -224,6 +237,7 @@ def build_architecture_control_report_with_baseline(
   *,
   artifact_context: ArchitectureArtifactContext | None = None,
   state_store: ArchitectureStateStore | None = None,
+  current_state: ArchitectureState | None = None,
 ) -> tuple[ArchitectureChangeReport, ArchitectureBaselineResolution]:
   """
   Build the Architecture Change Report and its resolved comparison baseline.
@@ -231,26 +245,36 @@ def build_architecture_control_report_with_baseline(
   runtime_context = artifact_context or resolve_architecture_artifact_context()
   store = state_store or ArchitectureStateStore(context=runtime_context)
 
+  resolved_current_state = (
+    current_state
+    if current_state is not None
+    else ArchitectureStateService().build_current_state()
+  )
+
   try:
-    current_state = ArchitectureStateService().build_current_state()
-    relevant_dataset_keys = _resolve_relevant_dataset_keys(
+    current_dataset_keys = _resolve_relevant_dataset_keys(
       scope=scope,
-      current_state=current_state,
+      current_state=resolved_current_state,
     )
     baseline_resolution = resolve_architecture_baseline(
-      current_state=current_state,
+      current_state=resolved_current_state,
       artifact_context=runtime_context,
       state_store=store,
-      relevant_dataset_keys=relevant_dataset_keys,
+      relevant_dataset_keys=current_dataset_keys,
+    )
+    review_dataset_keys = _resolve_review_dataset_keys(
+      scope=scope,
+      current_dataset_keys=current_dataset_keys,
+      previous_state=baseline_resolution.previous_state,
     )
   except ArchitectureScopeError as exc:
     raise ArchitectureControlError(str(exc)) from exc
 
   report = build_architecture_change_report(
     previous_state=baseline_resolution.previous_state,
-    current_state=current_state,
+    current_state=resolved_current_state,
     policy=load_materialization_policy(),
-    relevant_dataset_keys=relevant_dataset_keys,
+    relevant_dataset_keys=review_dataset_keys,
     schema_short=scope.schema_short,
     target_name=scope.target_name,
     scope_mode=_report_scope_mode(scope),
@@ -263,6 +287,8 @@ def build_architecture_control_context(
   *,
   approval_store: ArchitectureApprovalStore | None = None,
   artifact_context: ArchitectureArtifactContext | None = None,
+  execution_dataset_keys: tuple[str, ...] | None = None,
+  dependency_mode: str = "with_dependencies",
 ) -> ArchitectureControlContext:
   """
   Build the shared Architecture Control context for one scope.
@@ -270,16 +296,41 @@ def build_architecture_control_context(
   runtime_context = artifact_context or resolve_architecture_artifact_context()
   state_store = ArchitectureStateStore(context=runtime_context)
   store = approval_store or ArchitectureApprovalStore(context=runtime_context)
+  current_state = ArchitectureStateService().build_current_state()
   report, baseline_resolution = build_architecture_control_report_with_baseline(
     scope,
     artifact_context=runtime_context,
     state_store=state_store,
+    current_state=current_state,
   )
 
   review_status = build_architecture_review_status_for_report(
     dataset_key=scope.key,
     report=report,
     approval_store=store,
+    baseline_resolution=baseline_resolution,
+  )
+
+  execution_impact_plan, execution_impact_plan_error = (
+    _build_architecture_control_execution_impact_plan(
+      scope=scope,
+      artifact_context=runtime_context,
+      current_state=current_state,
+      baseline_resolution=baseline_resolution,
+      report=report,
+      review_status=review_status,
+      execution_dataset_keys=execution_dataset_keys,
+      dependency_mode=dependency_mode,
+    )
+  )
+
+  bound_execution_dataset_keys = (
+    tuple(execution_dataset_keys)
+    if execution_dataset_keys is not None
+    else tuple(
+      item.dataset_key
+      for item in getattr(execution_impact_plan, "items", ()) or ()
+    )
   )
 
   return ArchitectureControlContext(
@@ -290,7 +341,127 @@ def build_architecture_control_context(
     approval_store=store,
     state_store=state_store,
     baseline_resolution=baseline_resolution,
+    current_state=current_state,
+    execution_impact_plan=execution_impact_plan,
+    execution_impact_plan_error=execution_impact_plan_error,
+    execution_dependency_mode=dependency_mode,
+    execution_dataset_keys=bound_execution_dataset_keys,
   )
+
+
+def bind_architecture_control_execution_scope(
+  context: ArchitectureControlContext,
+  *,
+  execution_dataset_keys: tuple[str, ...],
+  dependency_mode: str,
+) -> ArchitectureControlContext:
+  """
+  Rebind an existing Architecture Control context to one concrete execution.
+
+  Current State, baseline, report and review status remain authoritative and
+  are not rebuilt. Only the read-only Execution Impact Plan is reassembled for
+  the exact dataset scope and dependency mode used by Execution Preview.
+  """
+  normalized_dataset_keys = tuple(
+    str(dataset_key or "").strip()
+    for dataset_key in execution_dataset_keys
+    if str(dataset_key or "").strip()
+  )
+  if not normalized_dataset_keys:
+    raise ArchitectureControlError(
+      "Controlled execution scope must contain at least one TargetDataset."
+    )
+
+  if len(normalized_dataset_keys) != len(set(normalized_dataset_keys)):
+    raise ArchitectureControlError(
+      "Controlled execution scope contains duplicate TargetDatasets."
+    )
+
+  normalized_dependency_mode = str(dependency_mode or "").strip()
+  if normalized_dependency_mode not in {
+    "with_dependencies",
+    "target_only",
+  }:
+    raise ArchitectureControlError(
+      "Unsupported controlled execution dependency mode: "
+      f"{normalized_dependency_mode}"
+    )
+
+  if context.current_state is None:
+    raise ArchitectureControlError(
+      "Architecture Control current state is unavailable for impact planning."
+    )
+
+  execution_impact_plan, execution_impact_plan_error = (
+    _build_architecture_control_execution_impact_plan(
+      scope=context.scope,
+      artifact_context=context.artifact_context,
+      current_state=context.current_state,
+      baseline_resolution=context.baseline_resolution,
+      report=context.report,
+      review_status=context.review_status,
+      execution_dataset_keys=normalized_dataset_keys,
+      dependency_mode=normalized_dependency_mode,
+    )
+  )
+
+  return replace(
+    context,
+    execution_impact_plan=execution_impact_plan,
+    execution_impact_plan_error=execution_impact_plan_error,
+    execution_dependency_mode=normalized_dependency_mode,
+    execution_dataset_keys=normalized_dataset_keys,
+  )
+
+
+def _build_architecture_control_execution_impact_plan(
+  *,
+  scope: ArchitectureControlScope,
+  artifact_context: ArchitectureArtifactContext,
+  current_state: ArchitectureState,
+  baseline_resolution: ArchitectureBaselineResolution,
+  report: ArchitectureChangeReport,
+  review_status: ArchitectureReviewStatus,
+  execution_dataset_keys: tuple[str, ...] | None = None,
+  dependency_mode: str = "with_dependencies",
+) -> tuple[ExecutionImpactPlan | None, str | None]:
+  """
+  Build the optional read-only Execution Impact Plan for the control context.
+
+  Impact planning failures remain isolated from report, review and approval
+  workflows so Architecture Control can still render its authoritative state.
+  """
+  try:
+    target_datasets = (
+      TargetDataset.objects
+      .select_related("target_schema")
+      .filter(active=True)
+      .order_by(
+        "target_schema__short_name",
+        "target_dataset_name",
+        "id",
+      )
+    )
+    execution_record_store = ArchitectureExecutionRecordStore(
+      context=artifact_context,
+    )
+    plan = build_execution_impact_plan(
+      scope_key=scope.key,
+      current_state=current_state,
+      baseline_resolution=baseline_resolution,
+      report=report,
+      review_status=review_status,
+      target_datasets=target_datasets,
+      execution_record_store=execution_record_store,
+      execution_dataset_keys=execution_dataset_keys,
+      dependency_mode=dependency_mode,
+    )
+  except ExecutionImpactPlanError as exc:
+    return None, str(exc)
+  except Exception as exc:
+    return None, f"Execution Impact Plan integration failed: {exc}"
+
+  return plan, None
 
 
 def render_architecture_control_report_json(
@@ -346,6 +517,12 @@ def create_architecture_control_approval(
   if context.report.is_blocked:
     raise ArchitectureControlError(
       "Architecture approval is disabled because the report is blocked by policy."
+    )
+
+  if context.review_status.status == "initial_deployment":
+    raise ArchitectureControlError(
+      "An Approval Artifact is not required for a verified initial deployment. "
+      "Run the complete controlled scope to establish the first Architecture State."
     )
 
   if context.review_status.status == "approved":
@@ -446,6 +623,32 @@ def _resolve_relevant_dataset_keys(
     all_datasets=False,
     include_related_hist=scope.include_related_hist,
   )
+
+
+def _resolve_review_dataset_keys(
+  *,
+  scope: ArchitectureControlScope,
+  current_dataset_keys: set[str] | None,
+  previous_state: ArchitectureState | None,
+) -> set[str] | None:
+  """
+  Resolve dataset keys for Architecture Change Report review.
+
+  Schema review includes datasets that only remain in the recorded baseline so
+  retirement is visible without exposing inactive datasets as selectable target
+  scopes. Physical discovery and controlled execution remain current-state only.
+  """
+  if scope.mode != "schema" or previous_state is None:
+    return current_dataset_keys
+
+  previous_dataset_keys = resolve_dataset_keys_from_state(
+    state=previous_state,
+    target_name=None,
+    schema_short=scope.schema_short,
+    all_datasets=True,
+    include_related_hist=scope.include_related_hist,
+  )
+  return set(current_dataset_keys or ()) | previous_dataset_keys
 
 
 def _report_scope_mode(scope: ArchitectureControlScope) -> Literal["all", "scoped"]:

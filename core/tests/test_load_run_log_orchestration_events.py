@@ -30,7 +30,19 @@ from tests._dialect_test_mixin import DialectTestMixin
 
 
 class DummyDialect(DialectTestMixin):
-  pass
+  def render_insert_load_run_log(
+    self,
+    *,
+    meta_schema,
+    values,
+  ):
+    """
+    Return deterministic SQL for one orchestration log test row.
+    """
+    return (
+      f"INSERT INTO {meta_schema}.load_run_log "
+      f"VALUES ('{values['target_dataset']}')"
+    )
 
 
 class DummyEngine:
@@ -78,6 +90,16 @@ def test_orchestration_only_events_are_persisted(monkeypatch):
         "status_reason": "fail_fast_abort",
         "load_run_id": str(uuid.uuid4()),
         "attempt_no": 1,
+      },
+      {
+        "status": "skipped",
+        "kind": "impact_reuse",
+        "dataset": "raw.reused",
+        "message": "reused_by_execution_impact_plan",
+        "status_reason": "execution_impact_reuse",
+        "load_run_id": str(uuid.uuid4()),
+        "attempt_no": 1,
+        "impact_decision": "REUSE",
       },
     ], True)
 
@@ -133,11 +155,21 @@ def test_orchestration_only_events_are_persisted(monkeypatch):
   with pytest.raises(Exception):
     c.handle(**options)
 
-  # Table ensured once; 2 skipped outcomes inserted (blocked + aborted)
+  # Table ensured once; all orchestration-only outcomes are inserted.
   assert calls["ensure"] == 1
-  assert len(calls["build_rows"]) == 2
-  assert len(engine.executed) == 2
+  assert len(calls["build_rows"]) == 3
+  orchestration_log_inserts = [
+    sql
+    for sql in engine.executed
+    if str(sql).startswith("INSERT INTO meta.load_run_log")
+  ]
 
-  # Validate that the two inserted rows are the skipped events
+  assert len(orchestration_log_inserts) == 3
+
+  # Validate blocked, aborted and impact-driven reuse evidence.
   reasons = sorted([row.get("status_reason") for row in calls["build_rows"]])
-  assert reasons == ["blocked_by_dependency", "fail_fast_abort"]
+  assert reasons == [
+    "blocked_by_dependency",
+    "execution_impact_reuse",
+    "fail_fast_abort",
+  ]

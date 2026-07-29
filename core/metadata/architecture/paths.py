@@ -192,6 +192,22 @@ def resolve_architecture_execution_dir(
   )
 
 
+def resolve_architecture_run_plan_dir(
+  *,
+  context: ArchitectureArtifactContext | None = None,
+) -> Path:
+  """
+  Resolve the immutable Execution Run Plan artifact directory.
+
+  Run plans are execution artifacts and therefore inherit the existing
+  profile- and target-system-scoped execution artifact boundary.
+  """
+  return (
+    resolve_architecture_execution_dir(context=context)
+    / "run_plans"
+  )
+
+
 def architecture_state_file(
   *,
   context: ArchitectureArtifactContext | None = None,

@@ -30,6 +30,7 @@ MigrationActionType = Literal[
   "RENAME_DATASET",
   "RENAME_COLUMN",
   "CREATE_DATASET",
+  "RETIRE_DATASET",
   "DROP_DATASET",
   "ADD_COLUMN",
   "DROP_COLUMN",
@@ -81,6 +82,8 @@ class MigrationAction:
       )
     if self.action_type == "CREATE_DATASET":
       return f"+ CREATE_DATASET ({self.strategy}): {self.dataset_key}"
+    if self.action_type == "RETIRE_DATASET":
+      return f"~ RETIRE_DATASET ({self.strategy}): {self.dataset_key}"
     if self.action_type == "DROP_DATASET":
       return f"- DROP_DATASET ({self.strategy}): {self.dataset_key}"
     if self.action_type == "ADD_COLUMN":

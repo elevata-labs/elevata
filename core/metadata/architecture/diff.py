@@ -214,14 +214,9 @@ def diff_architecture_states(
         dataset_name=ds.dataset_name,
       )
     )
-    for col in ds.column_states:
-      column_changes.append(
-        ColumnChange(
-          dataset_key=dataset_key,
-          change_type="COLUMN_REMOVED",
-          column_name=col.column_name,
-        )
-      )
+    # Dataset retirement is one atomic architecture-contract change. Former
+    # columns remain available in the previous Architecture State and must not
+    # be repeated as separate or nested removal details in the change report.
 
   for dataset_key in sorted(previous_keys & current_keys):
     prev_ds = previous_by_key[dataset_key]

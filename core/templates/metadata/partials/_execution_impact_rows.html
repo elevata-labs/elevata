@@ -1,0 +1,63 @@
+<!--
+elevata - Metadata-driven Data Platform Framework
+Copyright © 2025-2026 Ilona Tag
+
+This file is part of elevata.
+
+elevata is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of
+the License, or (at your option) any later version.
+
+elevata is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with elevata. If not, see <https://www.gnu.org/licenses/>.
+
+Contact: <https://github.com/elevata-labs/elevata>.
+-->
+
+{% for item in impact_items %}
+  <tr>
+    <td>
+      <code>{{ item.dataset_key }}</code>
+    </td>
+    <td>
+      <span class="badge {{ item.decision_badge_class }}">
+        <i class="bi {{ item.decision_icon }}"></i>
+        {{ item.decision_label }}
+      </span>
+    </td>
+    <td>
+      <div class="d-flex gap-1 flex-wrap">
+        {% for reason_code in item.reason_codes %}
+          <span class="badge text-bg-light border">
+            {{ reason_code }}
+          </span>
+        {% endfor %}
+      </div>
+    </td>
+    <td class="small">
+      <div>{{ item.evidence_count }} evidence reference(s)</div>
+      {% if item.propagation_count %}
+        <div class="text-muted">
+          {{ item.propagation_count }} propagated impact(s)
+        </div>
+      {% endif %}
+      {% if item.has_unavailable_required_evidence %}
+        <div class="text-danger fw-semibold">
+          Required evidence unavailable
+        </div>
+      {% endif %}
+    </td>
+  </tr>
+{% empty %}
+  <tr>
+    <td colspan="4" class="text-muted">
+      No TargetDatasets are present in the assessed scope.
+    </td>
+  </tr>
+{% endfor %}

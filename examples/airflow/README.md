@@ -72,16 +72,23 @@ Airflow uses this information to build a deterministic execution graph.
 
 The `elevata_load` DAG works as follows:
 
-1. The DAG checks whether a manifest already exists.  
-2. The task `generate_manifest` runs elevata to generate or update the manifest.  
-3. The DAG executes dataset loads according to the manifest.  
-4. The updated manifest is used on the next DAG parse.
+1. `airflow-init` generates the initial elevata manifest before the DAG processor and scheduler start.  
+2. Airflow parses the manifest and builds the target-task graph from its execution dependencies.  
+3. At the beginning of every DAG run, `generate_manifest` refreshes the canonical manifest.  
+4. `validate_manifest_contract` compares the refreshed effective target-task graph with the graph used when the DAG was parsed.  
+5. `create_execution_run_plan` creates a new immutable Execution Run Plan and stores the matching Planned Architecture State snapshot.  
+6. Each dataset task validates its runtime context and dataset metadata against the Run Plan before execution and writes structured scheduler-step outcome evidence.  
+7. `finalize_execution_run_plan` validates the complete outcome set and persists exactly the Planned Architecture State that the run applied.  
+8. Metadata changes detected after Run Plan creation remain visible as post-plan drift and are handled by a new DAG run.
 
 This ensures:
 
-- the DAG is always visible in the Airflow UI  
+- the complete DAG is visible immediately after startup  
 - execution order is deterministic  
-- orchestration follows elevata execution dependencies
+- orchestration follows elevata execution dependencies  
+- a DAG run never combines an old parsed Airflow graph with a changed elevata manifest  
+- dataset execution is bound to an immutable architecture snapshot  
+- the recorded Architecture State represents the architecture actually applied by the completed run
 
 ---
 
@@ -89,10 +96,125 @@ This ensures:
 
 After starting Airflow:
 
-1. Trigger the DAG `elevata_load` once.  
-2. This generates the initial manifest file.  
-3. Refresh the DAG view (or wait for scheduler reload).  
-4. The full execution graph becomes visible.
+1. `airflow-init` creates or refreshes the initial manifest.  
+2. The DAG processor parses the manifest and exposes the full execution graph.  
+3. Trigger the DAG `elevata_load`.
+
+No bootstrap DAG run is required.
+
+The first successful full-scope run establishes the recorded Architecture State for the selected profile and target system. The state is written only after all planned dataset outcomes have been validated successfully.
+
+When target datasets or their execution dependencies change, the next run refreshes the manifest and stops before dataset execution. Airflow then reparses the updated manifest. Trigger a new run after the updated graph is visible.
+
+---
+
+## Handling Metadata Changes
+
+Metadata changes are evaluated by Architecture Control before Airflow can create an immutable Execution Run Plan.
+
+The Run Plan is stored together with a Planned Architecture State snapshot. Dataset tasks and finalization remain bound to this snapshot even when metadata changes after the run has started.
+
+An Approval Artifact is bound to the exact Architecture Change Report fingerprint. Further metadata changes therefore create a new review context and may require another approval.
+
+### Required Workflow
+
+1. Complete all related metadata changes.  
+2. Open Architecture Control for the affected scope.  
+3. Review architecture changes, migration actions, execution impact and policy decisions.  
+4. Resolve blocking policy decisions by changing metadata or policy.  
+5. When the report is approvable and the change is intentional, create a matching Approval Artifact.  
+6. If active datasets or execution dependencies changed, regenerate the execution manifest outside an active DAG run.
+7. Allow Airflow to reparse the DAG.  
+8. Start a new DAG run.
+
+An Approval Artifact does not override blocking policy decisions. A report that remains blocked by policy cannot be used to create an Execution Run Plan.
+
+### Regenerating the Manifest
+
+Run the manifest command in the scheduler container:
+
+```bash
+docker compose exec airflow-scheduler bash -lc \
+  "/opt/airflow/elevata_venv/bin/python \
+  /opt/elevata/core/manage.py elevata_manifest \
+  --profile ${ELEVATA_PROFILE:-dev} \
+  --target-system ${ELEVATA_TARGET_SYSTEM:-dwh}"
+```
+
+The manifest must be regenerated when the scheduler graph changes, including:
+
+- activating or deactivating a TargetDataset  
+- adding or removing a TargetDataset  
+- adding, removing or changing execution dependencies
+
+After regeneration, wait for the normal Airflow parse cycle. A scheduler or DAG processor restart may be used when an immediate reparse is required.
+
+For the example scheduler:
+
+```bash
+docker compose restart airflow-scheduler
+```
+
+Deployments with a separate DAG processor should reparse the DAG there as well.
+
+### Start a New DAG Run
+
+Do not reuse a DAG run or Execution Run Plan that was created before the metadata change.
+
+This also applies when a metadata correction is required to rescue a failed load. Apply the correction, let Airflow reparse the manifest when the task graph changed, and start a new DAG run. Do not clear and retry dataset tasks against the superseded Run Plan.
+
+A new DAG run creates:
+
+- a new Airflow run identifier  
+- a new immutable Execution Run Plan  
+- a new Planned Architecture State snapshot  
+- a new batch identifier  
+- a dataset scope matching the reparsed execution manifest  
+- new scheduler-step outcome evidence
+
+Historical Run Plans and outcomes remain valid evidence for their original runs and do not need to be deleted.
+
+Metadata changes made after Run Plan creation never silently redefine the active run:
+
+- a dataset task rejects changed dataset metadata before execution  
+- a completed run persists its planned state rather than the newer metadata state  
+- post-plan drift is reported explicitly and becomes input for the next run
+
+### Do Not Bypass Dataset Execution
+
+Airflow's **Mark success** action changes the Airflow task state but does not execute `elevata_load` and does not create scheduler-step outcome evidence.
+
+The batch finalizer requires one valid elevata outcome for every dataset in the immutable Run Plan. It therefore rejects manually marked tasks whose execution evidence is missing.
+
+The recorded Architecture State advances only after every planned dataset has completed successfully and the batch finalizer has validated the complete outcome set.
+
+### Recovering an Interrupted Initial Deployment
+
+A controlled recovery is available for the exceptional case where:
+
+- no recorded Architecture State exists yet  
+- a legacy initial-deployment Run Plan has no Planned Architecture State snapshot  
+- all required scheduler outcomes are complete and valid  
+- the physical target architecture matches the current metadata
+
+Run the recovery from the scheduler container with the original Run Plan path:
+
+```bash
+docker compose exec airflow-scheduler bash -lc \
+  "/opt/airflow/elevata_venv/bin/python \
+  /opt/elevata/core/manage.py elevata_finalize_run_plan \
+  '<RUN_PLAN_PATH>' \
+  --recover-interrupted-initial-deployment"
+```
+
+Replace `<RUN_PLAN_PATH>` with the path of the Run Plan JSON itself, not a file inside its `.outcomes` directory.
+
+Successful recovery writes:
+
+- the recorded `architecture_state.json`  
+- a `<run-plan>.recovered.json` audit artifact
+
+Recovery does not reset or reload the target database. After recovery, keep the original Airflow run as historical evidence and start a completely new DAG run.
 
 ---
 
@@ -158,6 +280,32 @@ core/.artifacts/elevata/manifest_<profile>_<target>.json
 
 ---
 
+## Execution Run Plan Artifacts
+
+The Airflow example stores scheduler artifacts below:
+
+```text
+core/.artifacts/elevata/airflow_run_plans/
+```
+
+For each DAG run, elevata may create:
+
+- `<run-plan>.json` — immutable Execution Run Plan  
+- `<run-plan>.planned_architecture_state.json` — architecture snapshot bound to the Run Plan  
+- `<run-plan>.outcomes/` — scheduler-step outcome evidence  
+- `<run-plan>.finalized.json` — successful finalization evidence  
+- `<run-plan>.recovered.json` — exceptional initial-deployment recovery evidence
+
+The recorded Architecture State is stored separately under:
+
+```text
+core/.elevata/state/<profile>/<target-system>/architecture_state.json
+```
+
+Run Plan artifacts are audit evidence for their original runs and should not be edited manually.
+
+---
+
 ## Dependency Selection (Backend Requirements)
 
 The Airflow example image installs only:
@@ -194,7 +342,10 @@ To avoid re-installing dependencies on every container start, the entrypoint wri
 - Dataset execution is parallelized based on execution dependencies.  
 - Semantic lineage and execution scheduling are represented separately in the manifest.  
 - Datasets run as soon as all upstream execution dependencies are completed.  
-- The manifest is the single source of truth for execution ordering.
+- The manifest is the single source of truth for execution ordering.  
+- The effective target-task graph is fingerprinted at DAG parse time and revalidated before every run.  
+- The Execution Run Plan and Planned Architecture State are immutable execution inputs for one DAG run.  
+- The recorded Architecture State advances only through successful finalization or explicit interrupted-initial-deployment recovery.
 
 ---
 

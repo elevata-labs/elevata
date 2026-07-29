@@ -216,6 +216,251 @@ def test_incremental_merge_calls_ensure_target_table_when_plan_only_ensures_sche
   assert calls["ensure"] == 1
 
 
+@pytest.mark.django_db
+def test_full_rebuild_impact_creates_new_merge_target_without_add_column_ddl(monkeypatch):
+  """
+  Regression:
+  A newly added merge dataset receives FULL_REBUILD from Architecture Control.
+  Runtime must create the complete table and execute full-refresh SQL instead of
+  applying per-column ADD_COLUMN steps to a missing relation.
+  """
+  from metadata.management.commands import elevata_load as mod
+  from metadata.materialization.policy import MaterializationPolicy
+  from metadata.rendering.load_planner import LoadPlan
+
+  schema, _ = TargetSchema.objects.get_or_create(
+    short_name="rawcore",
+    defaults={
+      "display_name": "Raw Core",
+      "database_name": "dwh",
+      "schema_name": "rawcore",
+      "default_materialization_type": "table",
+    },
+  )
+  schema.schema_name = "rawcore"
+  schema.default_materialization_type = "table"
+  schema.save(update_fields=["schema_name", "default_materialization_type"])
+
+  td = TargetDataset.objects.create(
+    target_schema=schema,
+    target_dataset_name="rc_initial_merge_runtime_binding",
+    materialization_type=None,
+    incremental_strategy="merge",
+    historize=True,
+    handle_deletes=True,
+  )
+  TargetColumn.objects.create(
+    target_dataset=td,
+    target_column_name="order_id",
+    ordinal_position=1,
+    datatype="INTEGER",
+    nullable=False,
+  )
+
+  monkeypatch.setattr(
+    mod,
+    "load_materialization_policy",
+    lambda: MaterializationPolicy(
+      sync_schema_shorts={"rawcore"},
+      allow_auto_drop_columns=False,
+      allow_type_alter=False,
+    ),
+    raising=False,
+  )
+  monkeypatch.setattr(mod, "AUTO_PROVISION_TABLES", True, raising=False)
+  monkeypatch.setattr(
+    mod,
+    "engine_for_target",
+    lambda **_kw: types.SimpleNamespace(dispose=lambda: None),
+    raising=False,
+  )
+  monkeypatch.setattr(
+    mod,
+    "build_load_plan",
+    lambda _td: LoadPlan(
+      mode="merge",
+      handle_deletes=True,
+      historize=True,
+    ),
+    raising=False,
+  )
+
+  base_plan = MaterializationPlan(
+    dataset_key="rawcore.rc_initial_merge_runtime_binding",
+    steps=[
+      MaterializationStep(
+        op="ENSURE_SCHEMA",
+        sql="CREATE SCHEMA rawcore;",
+        safe=True,
+        reason="Ensure schema",
+      ),
+    ],
+    warnings=[],
+    blocking_errors=[],
+  )
+  monkeypatch.setattr(
+    mod,
+    "build_materialization_plan",
+    lambda **_kw: base_plan,
+    raising=False,
+  )
+
+  migration_calls = []
+
+  def fake_build_materialization_from_migration_plan(**kwargs):
+    migration_calls.append(bool(kwargs["is_full_refresh"]))
+    return SimpleNamespace(
+      steps=[
+        MaterializationStep(
+          op="ADD_COLUMN",
+          sql=(
+            "ALTER TABLE rawcore.rc_initial_merge_runtime_binding "
+            "ADD order_id INT;"
+          ),
+          safe=True,
+          reason="Column order_id missing",
+        ),
+      ],
+      warnings=[],
+      blocking_errors=[],
+      requires_rebuild=False,
+    )
+
+  monkeypatch.setattr(
+    mod,
+    "build_materialization_from_migration_plan",
+    fake_build_materialization_from_migration_plan,
+    raising=False,
+  )
+
+  applied_ops = []
+
+  def fake_apply_materialization_plan(*, plan, exec_engine, **_kwargs):
+    applied_ops.extend(step.op for step in plan.steps)
+
+  monkeypatch.setattr(
+    mod,
+    "apply_materialization_plan",
+    fake_apply_materialization_plan,
+    raising=False,
+  )
+  monkeypatch.setattr(
+    mod,
+    "drop_managed_dependent_views_before_full_refresh",
+    lambda **_kw: None,
+    raising=False,
+  )
+  monkeypatch.setattr(
+    mod,
+    "validate_physical_schema_before_load",
+    lambda **_kw: None,
+    raising=False,
+  )
+  monkeypatch.setattr(
+    mod,
+    "_ensure_target_schema_for_batch",
+    lambda **_kw: None,
+    raising=False,
+  )
+  monkeypatch.setattr(
+    mod,
+    "_ensure_load_run_log_table_for_batch",
+    lambda **_kw: None,
+    raising=False,
+  )
+
+  rendered_plans = []
+
+  def fake_render_load_sql_for_target(
+    _td,
+    _dialect,
+    load_plan_override=None,
+  ):
+    rendered_plans.append(load_plan_override)
+    return "INSERT FULL REFRESH;"
+
+  monkeypatch.setattr(
+    mod,
+    "render_load_sql_for_target",
+    fake_render_load_sql_for_target,
+    raising=False,
+  )
+  monkeypatch.setattr(
+    mod,
+    "render_controlled_reference_member_sql_for_target",
+    lambda _td, _dialect: [],
+    raising=False,
+  )
+  monkeypatch.setattr(
+    mod,
+    "apply_runtime_placeholders",
+    lambda sql, **_kwargs: sql,
+    raising=False,
+  )
+
+  class RecordingExecEngine(DummyExecEngine):
+    def __init__(self):
+      self.sql = []
+
+    def execute(self, sql, _params=None):
+      self.sql.append(sql)
+      return 1
+
+  class FullRebuildDialect:
+    DIALECT_NAME = "mssql"
+
+    def render_drop_table_if_exists(self, *, schema, table, cascade=False):
+      return f"DROP TABLE IF EXISTS {schema}.{table};"
+
+  def fake_ensure_target_table(engine, dialect, td, auto_provision, **_kwargs):
+    engine.execute(
+      f"CREATE TABLE {td.target_schema.schema_name}."
+      f"{td.target_dataset_name} (order_id INT);"
+    )
+
+  monkeypatch.setattr(
+    mod,
+    "ensure_target_table",
+    fake_ensure_target_table,
+    raising=False,
+  )
+
+  exec_engine = RecordingExecEngine()
+  result = mod.run_single_target_dataset(
+    stdout=DummyStdout(),
+    style=DummyStyle(),
+    target_dataset=td,
+    target_system=types.SimpleNamespace(short_name="dwh", type="mssql"),
+    target_system_engine=exec_engine,
+    profile=types.SimpleNamespace(name="test_profile"),
+    dialect=FullRebuildDialect(),
+    execute=True,
+    no_print=True,
+    debug_plan=False,
+    batch_run_id="batch",
+    load_run_id="load",
+    load_plan_override=None,
+    impact_decision="FULL_REBUILD",
+    migration_plan=SimpleNamespace(actions=[]),
+    execution_dataset_keys={"rawcore.rc_initial_merge_runtime_binding"},
+  )
+
+  assert result["status"] == "success"
+  assert result["summary"]["mode"] == "full"
+  assert result["summary"]["handle_deletes"] is False
+  assert result["summary"]["historize"] is True
+  assert migration_calls == [True]
+  assert applied_ops == ["ENSURE_SCHEMA"]
+  assert len(rendered_plans) == 1
+  assert rendered_plans[0].mode == "full"
+  assert rendered_plans[0].handle_deletes is False
+  assert exec_engine.sql == [
+    "DROP TABLE IF EXISTS rawcore.rc_initial_merge_runtime_binding;",
+    "CREATE TABLE rawcore.rc_initial_merge_runtime_binding (order_id INT);",
+    "INSERT FULL REFRESH;",
+  ]
+
+
 class DummyDialect(DialectTestMixin):
   pass
 

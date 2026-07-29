@@ -26,6 +26,9 @@ import json
 from datetime import datetime, timezone
 from types import SimpleNamespace
 
+from metadata.architecture.execution_preview import (
+  ArchitectureExecutionImpactBinding,
+)
 from metadata.architecture.execution_record import (
   ArchitectureExecutionRecordFilters,
   ArchitectureExecutionRecordStore,
@@ -102,6 +105,91 @@ def test_render_architecture_execution_record_json_is_canonical() -> None:
     "schema_short": "bizcore",
   }
   assert payload["record_fingerprint"] == record.record_fingerprint
+
+
+def test_execution_record_binds_execution_impact_plan() -> None:
+  """
+  Verify new records persist the exact impact plan evidence from the preview.
+  """
+  decision_counts = {
+    "REUSE": 1,
+    "REVALIDATE": 0,
+    "INCREMENTAL_EXECUTE": 0,
+    "FULL_REBUILD": 1,
+    "BLOCKED": 0,
+  }
+  binding = ArchitectureExecutionImpactBinding(
+    plan_fingerprint="impact-plan-1",
+    assessed_count=2,
+    decision_counts=tuple(decision_counts.items()),
+  )
+  result_values = _result().__dict__.copy()
+  result_values["impact_plan_binding"] = binding
+
+  record = build_architecture_execution_record(
+    SimpleNamespace(**result_values)
+  )
+  payload = json.loads(
+    render_architecture_execution_record_json(record)
+  )
+
+  assert payload["record_version"] == 2
+  assert payload["execution_impact_plan"] == {
+    "plan_fingerprint": "impact-plan-1",
+    "assessed_count": 2,
+    "decision_counts": decision_counts,
+  }
+  assert record.impact_plan_fingerprint == "impact-plan-1"
+  assert record.impact_assessed_count == 2
+  assert dict(record.impact_decision_counts) == decision_counts
+
+
+def test_execution_record_persists_dataset_outcomes() -> None:
+  """
+  Verify record version 3 proves executed and reused dataset outcomes.
+  """
+  decision_counts = {
+    "REUSE": 1,
+    "REVALIDATE": 0,
+    "INCREMENTAL_EXECUTE": 0,
+    "FULL_REBUILD": 1,
+    "BLOCKED": 0,
+  }
+  binding = ArchitectureExecutionImpactBinding(
+    plan_fingerprint="impact-plan-1",
+    assessed_count=2,
+    decision_counts=tuple(decision_counts.items()),
+  )
+  outcomes = (
+    {
+      "status": "skipped",
+      "kind": "impact_reuse",
+      "dataset": "raw.a",
+      "impact_decision": "REUSE",
+    },
+    {
+      "status": "success",
+      "kind": "sql",
+      "dataset": "core.b",
+      "impact_decision": "FULL_REBUILD",
+    },
+  )
+  result_values = _result().__dict__.copy()
+  result_values.update({
+    "impact_plan_binding": binding,
+    "execution_outcomes": outcomes,
+  })
+
+  record = build_architecture_execution_record(
+    SimpleNamespace(**result_values)
+  )
+  payload = json.loads(
+    render_architecture_execution_record_json(record)
+  )
+
+  assert payload["record_version"] == 3
+  assert payload["execution_outcomes"] == list(outcomes)
+  assert record.execution_outcomes == outcomes
 
 
 def test_architecture_execution_record_store_writes_json(tmp_path) -> None:

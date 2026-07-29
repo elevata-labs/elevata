@@ -84,6 +84,79 @@ def test_execute_plan_success_runs_all_in_order():
   assert [r["status"] for r in results] == ["success", "success"]
 
 
+def test_execute_plan_reuses_upstream_and_executes_downstream():
+  """
+  Verify REUSE avoids dataset execution but satisfies downstream readiness.
+  """
+  td1 = FakeTargetDataset(1, "raw", "a")
+  td2 = FakeTargetDataset(2, "core", "b")
+  plan = ExecutionPlan(
+    batch_run_id="batch-1",
+    steps=[
+      ExecutionStep(
+        dataset_id=1,
+        dataset_key="raw.a",
+        upstream_keys=(),
+      ),
+      ExecutionStep(
+        dataset_id=2,
+        dataset_key="core.b",
+        upstream_keys=("raw.a",),
+      ),
+    ],
+  )
+  calls: list[str] = []
+  impact_calls: list[str] = []
+
+  def run_dataset_fn(**kwargs):
+    td = kwargs["target_dataset"]
+    calls.append(td.target_dataset_name)
+    impact_calls.append(kwargs["impact_decision"])
+    return {
+      "status": "success",
+      "kind": "sql",
+      "dataset": "core.b",
+    }
+
+  results, had_error = execute_plan(
+    plan=plan,
+    execution_order=[td1, td2],
+    policy=ExecutionPolicy(
+      continue_on_error=False,
+      max_retries=0,
+    ),
+    execute=True,
+    root_td=td2,
+    root_load_run_id="root",
+    root_load_plan=None,
+    run_dataset_fn=run_dataset_fn,
+    logger=logging.getLogger(__name__),
+    impact_decisions={
+      "raw.a": "REUSE",
+      "core.b": "FULL_REBUILD",
+    },
+  )
+
+  assert had_error is False
+  assert calls == ["b"]
+  assert impact_calls == ["FULL_REBUILD"]
+  assert results[0] == {
+    "status": "skipped",
+    "kind": "impact_reuse",
+    "dataset": "raw.a",
+    "message": "reused_by_execution_impact_plan",
+    "status_reason": "execution_impact_reuse",
+    "load_run_id": results[0]["load_run_id"],
+    "impact_decision": "REUSE",
+    "started_at": results[0]["started_at"],
+    "finished_at": results[0]["finished_at"],
+  }
+  assert results[0]["started_at"] == results[0]["finished_at"]
+  assert results[0]["started_at"].tzinfo is not None
+  assert results[1]["status"] == "success"
+  assert results[1]["impact_decision"] == "FULL_REBUILD"
+
+
 def test_execute_plan_blocks_downstream_when_upstream_errors():
   td1 = FakeTargetDataset(1, "raw", "a")
   td2 = FakeTargetDataset(2, "core", "b")
@@ -121,6 +194,8 @@ def test_execute_plan_blocks_downstream_when_upstream_errors():
   assert results[1]["kind"] == "blocked"
   assert results[1]["dataset"] == "core.b"
   assert results[1]["blocked_by"] == "raw.a"
+  assert results[1]["started_at"] == results[1]["finished_at"]
+  assert results[1]["started_at"].tzinfo is not None
 
 
 def test_execute_plan_retries_until_success_in_execute_mode():
@@ -237,3 +312,5 @@ def test_execute_plan_fail_fast_marks_remaining_as_aborted():
   assert results[1]["kind"] == "aborted"
   assert results[1]["dataset"] == "core.b"
   assert results[1]["status_reason"] == "fail_fast_abort"
+  assert results[1]["started_at"] == results[1]["finished_at"]
+  assert results[1]["started_at"].tzinfo is not None

@@ -318,6 +318,18 @@ def _review_state_signals(
         icon="bi-file-earmark-check",
       )
     )
+  elif status == "initial_deployment":
+    signals.append(
+      _signal(
+        title="Initial deployment evidence",
+        message=(
+          "Read-only physical discovery verified an empty complete managed "
+          "target scope. No Approval Artifact is required."
+        ),
+        level="success",
+        icon="bi-database-add",
+      )
+    )
   elif has_changes:
     signals.append(
       _signal(
@@ -572,6 +584,10 @@ def _focus_details(
     details.append("Review approval drift before creating or trusting an approval artifact.")
   if status == "pending":
     details.append("Review the change summary and decide whether the report should be approved.")
+  if status == "initial_deployment":
+    details.append(
+      "Verify the complete initial execution scope before establishing the first baseline."
+    )
   if status == "approved":
     details.append("Verify the execution preview before running the approved scope.")
   if is_blocked or blocking_count > 0:
@@ -731,7 +747,7 @@ def _review_level(
     return "danger"
   if status in {"pending", "drift"}:
     return "warning"
-  if status == "approved" or not has_changes:
+  if status in {"approved", "initial_deployment"} or not has_changes:
     return "success"
   return "info"
 

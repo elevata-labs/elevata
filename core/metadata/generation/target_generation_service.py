@@ -20,11 +20,13 @@ along with elevata. If not, see <https://www.gnu.org/licenses/>.
 Contact: <https://github.com/elevata-labs/elevata>.
 """
 
+from copy import deepcopy
+from dataclasses import dataclass
+from typing import Dict, List
+
 from django.db import transaction
 from django.db.models import Max
 from django.utils import timezone
-from typing import Dict, List
-from copy import deepcopy
 
 from metadata.models import (
   SourceDataset,
@@ -46,6 +48,35 @@ from metadata.generation.mappers import (
   build_surrogate_key_column_draft,
 )
 from metadata.services.rename_common import sync_key_former_names_for_rawcore_dataset
+
+
+@dataclass(frozen=True)
+class TargetGenerationResult:
+  """
+  Structured outcome of one schema-level target generation pass.
+
+  Dataset and column counters describe metadata items processed by the
+  generator. They must not be presented as updates because an existing item
+  may already match the generated contract and therefore require no mutation.
+  """
+  processed_dataset_count: int
+  processed_column_count: int
+  retired_dataset_count: int = 0
+  reactivated_dataset_count: int = 0
+
+  @property
+  def summary_text(self) -> str:
+    """Return the compact operator-facing generation summary."""
+    return (
+      f"{self.processed_dataset_count} target datasets processed and "
+      f"{self.processed_column_count} target columns processed; "
+      f"{self.retired_dataset_count} retired and "
+      f"{self.reactivated_dataset_count} reactivated."
+    )
+
+  def __str__(self) -> str:
+    """Return the operator-facing summary for existing string consumers."""
+    return self.summary_text
 
 
 class TargetGenerationService:
@@ -1621,6 +1652,24 @@ class TargetGenerationService:
               .first()
             )
 
+      # RAWCORE is physically loaded from STAGE. Its nullable contract must
+      # therefore follow the effective STAGE output rather than the original
+      # representative SourceColumn alone.
+      if target_schema.short_name == "rawcore" and upstream_stage_ds is not None:
+        if upstream_col is None:
+          upstream_col = (
+            TargetColumn.objects
+            .filter(
+              target_dataset=upstream_stage_ds,
+              target_column_name=col_draft.target_column_name,
+              active=True,
+            )
+            .first()
+          )
+
+        if upstream_col is not None:
+          col_draft.nullable = bool(upstream_col.nullable)
+
       # Find existing TargetColumn
       existing_col = None
 
@@ -1888,60 +1937,224 @@ class TargetGenerationService:
     src_list,
   ):
     """
-    For STAGE datasets fed by multiple SourceDatasets, extend the
-    column_drafts so that they represent the UNION of all integrated
-    source columns.
+    Build the effective STAGE column contract for a multi-source UNION.
 
     The first SourceDataset in src_list is the "representative" and
     already defined the initial column_drafts (via build_dataset_bundle).
-    Here we walk the remaining source datasets and add any additional
-    columns that only exist there.
+
+    UNION nullability rules:
+    - a column missing from any branch is nullable
+    - a column nullable in any branch is nullable
+    - only columns present and non-nullable in every branch stay non-nullable
+
+    Synthetic columns without a SourceColumn lineage, such as
+    source_identity_id, keep their explicit generated contract.
     """
     # Only relevant for stage and when more than one source participates
     if target_schema.short_name != "stage" or len(src_list) <= 1:
       return column_drafts
 
-    existing_names = {c.target_column_name for c in column_drafts}
+    drafts_by_name = {
+      draft.target_column_name: draft
+      for draft in column_drafts
+    }
+    source_drafts_by_name = []
 
-    # Start from the second dataset in the bucket – the first one already
-    # drove build_dataset_bundle().
-    for src_ds in src_list[1:]:
+    for src_ds in src_list:
       if hasattr(src_ds, "source_columns"):
         src_cols_qs = src_ds.source_columns.all()
       else:
         # very defensive fallback for projects that use the Django default
         src_cols_qs = src_ds.sourcecolumn_set.all()
 
-      # Only integrated columns matter here
       src_cols_qs = src_cols_qs.filter(integrate=True).order_by("ordinal_position")
+      mapped_by_name = {}
 
       for src_col in src_cols_qs:
         tmp_draft = map_source_column_to_target_column(src_col, ordinal=0)
-        if tmp_draft.target_column_name in existing_names:
+        mapped_by_name[tmp_draft.target_column_name] = tmp_draft
+
+      source_drafts_by_name.append(mapped_by_name)
+
+    # Preserve representative ordering and append columns first encountered
+    # in later UNION branches.
+    for mapped_by_name in source_drafts_by_name[1:]:
+      for column_name, tmp_draft in mapped_by_name.items():
+        if column_name in drafts_by_name:
           continue
 
-        # New column: add to drafts; ordinals will be normalized later
         column_drafts.append(tmp_draft)
-        existing_names.add(tmp_draft.target_column_name)
+        drafts_by_name[column_name] = tmp_draft
+
+    # Derive the physical output constraint from all UNION branches.
+    for column_name, draft in drafts_by_name.items():
+      if getattr(draft, "source_column_id", None) is None:
+        continue
+
+      branch_drafts = [
+        mapped_by_name.get(column_name)
+        for mapped_by_name in source_drafts_by_name
+      ]
+      draft.nullable = (
+        any(branch_draft is None for branch_draft in branch_drafts)
+        or any(
+          bool(branch_draft.nullable)
+          for branch_draft in branch_drafts
+          if branch_draft is not None
+        )
+      )
 
     return column_drafts
+
+  def _is_generated_lineage_key_for_schema(
+    self,
+    lineage_key,
+    target_schema,
+  ):
+    """
+    Return whether a lineage key belongs to this generator and schema.
+
+    Generated lineage keys use the stable format:
+
+      <target_schema_id>:<source_dataset_id>[,<source_dataset_id>...]
+
+    The strict check prevents lifecycle reconciliation from changing
+    system-managed datasets owned by another metadata workflow.
+    """
+    value = str(lineage_key or "").strip()
+    prefix = f"{target_schema.pk}:"
+
+    if not value.startswith(prefix):
+      return False
+
+    source_part = value[len(prefix):]
+    if not source_part:
+      return False
+
+    return all(
+      item.isdigit()
+      for item in source_part.split(",")
+    )
+
+  def _reconcile_generated_target_lifecycle(
+    self,
+    *,
+    target_schema,
+    expected_dataset_ids,
+  ):
+    """
+    Align generated TargetDataset lifecycle with the current source scope.
+
+    Datasets no longer produced from active, integrated SourceDatasets are
+    retained as metadata and physical objects but marked inactive. Generated
+    datasets that become eligible again are reactivated in place.
+
+    Only system-managed datasets with a generator-owned lineage key are
+    considered.
+    """
+    expected_ids = {
+      int(dataset_id)
+      for dataset_id in expected_dataset_ids
+      if dataset_id is not None
+    }
+    retired_at = timezone.now()
+    retired_count = 0
+    reactivated_count = 0
+
+    candidates = (
+      TargetDataset.objects
+      .filter(
+        target_schema=target_schema,
+        is_system_managed=True,
+      )
+      .exclude(lineage_key__isnull=True)
+      .order_by("pk")
+    )
+
+    for target_dataset in candidates:
+      if not self._is_generated_lineage_key_for_schema(
+        target_dataset.lineage_key,
+        target_schema,
+      ):
+        continue
+
+      should_be_active = target_dataset.pk in expected_ids
+      update_fields = []
+
+      if should_be_active:
+        if not target_dataset.active:
+          target_dataset.active = True
+          update_fields.append("active")
+          reactivated_count += 1
+
+        if target_dataset.retired_at is not None:
+          target_dataset.retired_at = None
+          update_fields.append("retired_at")
+      else:
+        if target_dataset.active:
+          target_dataset.active = False
+          update_fields.append("active")
+          retired_count += 1
+
+        if target_dataset.retired_at is None:
+          target_dataset.retired_at = retired_at
+          update_fields.append("retired_at")
+
+      if update_fields:
+        self._save_instance(
+          target_dataset,
+          update_fields=update_fields,
+        )
+
+    return retired_count, reactivated_count
 
 
   # ------------------------------------------------------------
   # Main orchestration
   # ------------------------------------------------------------
-  def apply_all(self, eligible_source_datasets, target_schema):
+  def apply_all(
+    self,
+    eligible_source_datasets,
+    target_schema,
+    *,
+    reconcile_lifecycle=False,
+  ):
+    """
+    Generate target metadata and return the compact compatibility summary.
+    """
+    result = self.apply_all_result(
+      eligible_source_datasets,
+      target_schema,
+      reconcile_lifecycle=reconcile_lifecycle,
+    )
+    return result.summary_text
+
+
+  def apply_all_result(
+    self,
+    eligible_source_datasets,
+    target_schema,
+    *,
+    reconcile_lifecycle=False,
+  ) -> TargetGenerationResult:
     """
     Generate or update TargetDatasets and TargetColumns for the given target_schema.
 
     Uses group-aware naming (via build_physical_dataset_name) to bucket
     SourceDatasets that share the same physical target name (e.g. stg_sap_kna1).
+
+    Lifecycle reconciliation must only be enabled for a complete schema-level
+    source scope. It is disabled by default so targeted callers cannot
+    accidentally retire unrelated generated datasets.
+
+    Returns structured processed-item and lifecycle counters. Processed items
+    are not necessarily changed database rows.
     """
 
     buckets = self._bucket_source_datasets(eligible_source_datasets, target_schema)
 
-    created_datasets = 0
     total_columns = 0
+    expected_dataset_ids = set()
 
     for physical_name, src_list in buckets.items():
       representative = src_list[0]
@@ -1956,13 +2169,13 @@ class TargetGenerationService:
       combination_mode = self._determine_combination_mode(target_schema, src_list)
 
       # 1) Dataset itself
-      target_dataset_obj, ds_created = self._get_or_create_target_dataset(
+      target_dataset_obj, _ = self._get_or_create_target_dataset(
         target_schema=target_schema,
         dataset_draft=dataset_draft,
         src_list=src_list,
         combination_mode=combination_mode,
       )
-      created_datasets += 1 if ds_created else 0
+      expected_dataset_ids.add(target_dataset_obj.pk)
 
       # 2) Surrogate key draft names must be based on the *current* dataset name
       self._ensure_surrogate_key_draft_names(target_dataset_obj, column_drafts)
@@ -2013,8 +2226,24 @@ class TargetGenerationService:
             },
           )
 
+          expected_dataset_ids.add(hist_td.pk)
           self._backfill_bundle_audit(hist_td)
 
-    return (
-      f"{len(buckets)} target datasets and {total_columns} target columns generated/updated."
+    retired_datasets = 0
+    reactivated_datasets = 0
+
+    if reconcile_lifecycle:
+      (
+        retired_datasets,
+        reactivated_datasets,
+      ) = self._reconcile_generated_target_lifecycle(
+        target_schema=target_schema,
+        expected_dataset_ids=expected_dataset_ids,
+      )
+
+    return TargetGenerationResult(
+      processed_dataset_count=len(buckets),
+      processed_column_count=total_columns,
+      retired_dataset_count=retired_datasets,
+      reactivated_dataset_count=reactivated_datasets,
     )

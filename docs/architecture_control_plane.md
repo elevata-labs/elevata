@@ -8,10 +8,14 @@ It turns architecture state into explicit artifacts:
 - Architecture Change Report  
 - Architecture Promotion Report  
 - Architecture Approval Artifact  
+- Execution Impact Plan  
+- immutable Execution Run Plan  
+- Planned Architecture State  
+- scheduler-step outcomes and finalization evidence  
 - Architecture Execution Record  
-- deterministic report fingerprints
+- deterministic artifact fingerprints
 
-These artifacts make structural architecture changes reviewable, policy-aware, approvable, verifiable, executable through controlled scopes, visible in the UI, and suitable for CI pipelines.
+These artifacts make structural architecture changes reviewable, policy-aware, approvable, verifiable, executable through controlled scopes or schedulers, visible in the UI, and suitable for CI pipelines.
 
 Architecture Catalog complements the control plane as a read-only discovery surface. It shows how datasets are defined, connected, controlled and linked to execution evidence without creating approvals or executing loads.
 
@@ -38,12 +42,18 @@ Architecture Review Briefing
   ↓
 Architecture Approval Artifact
   ↓
-Controlled Execution
+Execution Impact Plan
   ↓
-Architecture Execution Record
+Execution Run Plan + Planned Architecture State
+  ↓
+Controlled or Scheduler Execution
+  ↓
+Structured Outcomes + Finalization
+  ↓
+Applied Architecture State + Architecture Execution Record
 ```
 
-This makes schema evolution intent explicit before load execution applies any DDL or DML.
+This makes schema evolution and execution intent explicit before load execution applies any DDL or DML, and keeps state persistence bound to the architecture that was actually executed.
 
 ---
 
@@ -87,9 +97,13 @@ The persisted runtime baseline directory is configured via:
 ELEVATA_ARCH_STATE_DIR=.elevata/state
 ```
 
-The load runner builds the current Architecture State during execution planning and uses it for architecture diffing, MigrationPlan derivation, and guard checks.
+The load runner builds the current Architecture State during execution planning and uses it for architecture diffing, MigrationPlan derivation, impact planning, and guard checks. The current state represents the active metadata contract; inactive TargetDatasets are excluded from executable state.
 
-The persisted runtime baseline represents the applied architecture state. It is written after successful load execution. Dry-run persistence is controlled via:
+The persisted runtime baseline represents the architecture that was successfully applied to one profile and target system. Scheduler-managed runs do not persist whatever metadata happens to be current at finalization time. They persist the immutable Planned Architecture State that was bound to the Execution Run Plan.
+ 
+When no recorded baseline exists, a first state can be established only through a full-scope initial deployment whose managed target was verified as empty through read-only physical discovery. A guarded recovery path exists for legacy interrupted initial deployments that completed before Planned Architecture State snapshots were introduced.
+
+Dry-run persistence is controlled via:
 
 ```bash 
 ELEVATA_PERSIST_ARCH_STATE_ON_DRY_RUN=false 
@@ -120,6 +134,20 @@ Report scope is part of the report contract.
 | `elevata_plan rc_aw_customer` | `scoped` | the selected dataset and related architecture scope |
 
 For scoped reports, the report payload contains only changes, migration actions, policy decisions and summary counts that belong to the selected scope. The report fingerprint therefore represents the selected architecture scope.
+
+Architecture Control UI schema reviews use a broader review-key resolution than execution. They combine current active datasets in the schema with datasets from the previous Architecture State that belonged to the same schema. This keeps generated dataset retirement visible as an approvable architecture change even though the retired dataset is no longer selectable or executable.
+
+Dataset retirement is represented atomically:
+
+```text
+DATASET_REMOVED
+  ↓
+RETIRE_DATASET
+  ↓
+METADATA_ONLY
+```
+
+A removed dataset does not emit one top-level `COLUMN_REMOVED` change per former column, and metadata-only retirement does not imply automatic physical deletion.
 
 When a target dataset name is unique, `--schema` can be omitted. Use `--schema` when the same dataset name exists in multiple schemas or when CI scripts should declare the intended schema explicitly.
 
@@ -209,7 +237,7 @@ To verify that an approval artifact matches an Architecture Change Report:
 ```bash
 python manage.py elevata_approval_check \
   .artifacts/architecture_plan_rc_aw_customer.json \
-  .elevata/approvals/<report_fingerprint>.approval.json
+  .elevata/approvals/<profile>/<target-system>/<report_fingerprint>.approval.json
 ```
 
 The approval check fails when:
@@ -269,6 +297,56 @@ The briefing is derived from existing Architecture Control signals: the current 
 
 The UI keeps the briefing compact by showing the main reviewer signals first. Detailed sections are available on demand through an expandable detail area.
 
+### 🧩 6.2 Review Scope and Execution Scope
+
+Architecture review and execution intentionally resolve different dataset sets:
+
+```text
+Schema review scope
+= current active schema datasets
+  ∪ previous-state datasets from the same schema
+
+Execution scope
+= active TargetDatasets only
+```
+
+The TargetDataset selector continues to show active datasets only. An inactive generated dataset therefore cannot be selected as an execution root. Its retirement remains visible through the schema or full review scope, can require an Approval Artifact, and is excluded from Execution Preview, Execution Impact, manifests, and Run Plans.
+
+This separation prevents a retired metadata object from silently re-entering execution while preserving explicit review of the architecture contract change.
+
+### 🧩 6.3 Execution Impact Plan and Immutable Run Plan
+
+Execution Impact evaluates the exact active execution scope and classifies each dataset as:
+
+- `REUSE`  
+- `INCREMENTAL_EXECUTE`  
+- `FULL_REBUILD`  
+- `REVALIDATE`  
+- `BLOCKED`
+
+Only executable decisions can become an immutable Execution Run Plan. `REVALIDATE` and `BLOCKED` prevent Run Plan creation.
+
+Create and store a full-scope scheduler plan:
+
+```bash
+python manage.py elevata_run_plan \
+  --all-datasets \
+  --output .artifacts/full.run_plan.json
+```
+
+The Run Plan binds the exact dataset order, dependency mode, review status, approval identifier, Architecture State fingerprint, report fingerprint, Execution Impact fingerprint, Execution Preview fingerprint, and ExecutionPlan fingerprint. It is stored together with a matching Planned Architecture State snapshot.
+
+Each scheduler step validates its dataset metadata against that snapshot before execution and writes one structured outcome artifact. Finalization requires one semantically valid outcome for every planned dataset:
+
+```bash
+python manage.py elevata_finalize_run_plan \
+  .artifacts/full.run_plan.json
+```
+
+Successful finalization persists exactly the Planned Architecture State applied by that run. Metadata changes detected after Run Plan creation are reported as post-plan drift and belong to a new run. They do not invalidate a successfully completed older plan and do not redefine it silently.
+
+For a legacy interrupted initial deployment without a Planned Architecture State snapshot, recovery is available only through the explicit `--recover-interrupted-initial-deployment` option. Recovery validates complete outcomes, absence of another recorded state, current metadata scope, and the physical target architecture before writing state and recovery evidence.
+
 The Architecture Control UI provides controlled actions for architecture artifacts and execution:
 
 - show the scoped Architecture Change Report  
@@ -277,6 +355,7 @@ The Architecture Control UI provides controlled actions for architecture artifac
 - check the stored Approval Artifact against the report  
 - refresh the Architecture Review Status  
 - inspect the Architecture Review Briefing  
+- inspect the Execution Impact Plan  
 - inspect the Execution Preview  
 - inspect controlled reference readiness signals in the Execution Preview  
 - run controlled load execution  
@@ -316,17 +395,30 @@ When modeled rawcore references explicitly enable controlled member behavior, co
 
 Architecture Control Plane artifacts are stored on the server-side filesystem.
 
-The Architecture State Store uses `ELEVATA_ARCH_STATE_DIR` and stores the persisted architecture state as JSON. The Approval Artifact Store uses `ELEVATA_ARCH_APPROVAL_DIR` and stores deterministic approval artifacts as JSON files. The Architecture Execution Record Store uses `ELEVATA_ARCH_EXECUTION_DIR` and stores controlled execution records as JSON files.
+`ELEVATA_ARCH_STATE_DIR`, `ELEVATA_ARCH_APPROVAL_DIR`, and `ELEVATA_ARCH_EXECUTION_DIR` configure base directories. Normal runtime paths are scoped by profile and target system so one metadata repository can safely serve multiple execution contexts.
 
-Default artifact directories:
+Default artifact layout:
 
-```bash
-ELEVATA_ARCH_STATE_DIR=.elevata/state
-ELEVATA_ARCH_APPROVAL_DIR=.elevata/approvals
-ELEVATA_ARCH_EXECUTION_DIR=.elevata/executions
+```text
+.elevata/state/<profile>/<target-system>/architecture_state.json
+.elevata/approvals/<profile>/<target-system>/
+.elevata/executions/<profile>/<target-system>/
+.elevata/executions/<profile>/<target-system>/run_plans/
 ```
 
-For single-instance environments, the default `.elevata` paths provide a compact artifact layout inside the elevata runtime directory. For shared deployments, these directories must point to persistent server-side storage that is available to every application instance serving the same metadata database.
+The Run Plan directory may contain:
+
+```text
+<run-plan>.run_plan.json
+<run-plan>.run_plan.planned_architecture_state.json
+<run-plan>.run_plan.outcomes/
+<run-plan>.run_plan.finalized.json
+<run-plan>.run_plan.recovered.json
+```
+
+Exact names depend on the selected Run Plan path, but the planned-state, outcomes, finalization, and recovery artifacts are always derived deterministically from it.
+
+For single-instance environments, the default `.elevata` paths provide a compact artifact layout inside the elevata runtime directory. For shared deployments, these base directories must point to persistent server-side storage that is available to every application instance and scheduler worker using the same metadata database.
 
 Recommended deployment pattern:
 
@@ -336,7 +428,7 @@ ELEVATA_ARCH_APPROVAL_DIR=/var/lib/elevata/approvals
 ELEVATA_ARCH_EXECUTION_DIR=/var/lib/elevata/executions
 ```
 
-In containerized or multi-instance deployments, these paths are backed by a shared persistent volume. This ensures that Architecture State, Approval Artifacts, Review Status, Approval Checks, and Architecture Execution Records are resolved consistently for all users of the shared metadata application.
+In containerized or multi-instance deployments, these paths are backed by a shared persistent volume. This ensures that Architecture State, Approval Artifacts, Review Status, Approval Checks, Execution Run Plans, Planned Architecture State snapshots, scheduler outcomes, finalization evidence, and Architecture Execution Records are resolved consistently across application and scheduler processes.
 
 The metadata database stores metadata definitions. Architecture Control Plane artifacts are stored in the configured artifact directories.
 
@@ -444,9 +536,13 @@ This preserves a strict separation:
 | `elevata_promote` | Compare architecture state artifacts |
 | `elevata_approve` | Create architecture approval artifact |
 | `elevata_approval_check` | Verify approval artifact against a change report |
+| `elevata_run_plan` | Create an immutable scheduler-facing Execution Run Plan and Planned Architecture State |
 | `elevata_load` | Execute loads with preflight and guard checks |
+| `elevata_finalize_run_plan` | Validate scheduler outcomes and persist the planned applied state |
 
-The Architecture Control UI invokes the same load runner through a constrained execution path. The UI does not expose arbitrary load runner flags. It exposes controlled scope selection, approval status, execution preview, controlled reference readiness, target-only execution for TargetDataset scopes, captured output, and execution records.
+The Architecture Control UI invokes the same load runner through a constrained execution path. The UI does not expose arbitrary load runner flags. It exposes controlled scope selection, approval status, Execution Impact, execution preview, controlled reference readiness, target-only execution for TargetDataset scopes, captured output, and execution records.
+
+Scheduler-managed execution adds a stricter immutable boundary. A dataset task must match the Run Plan runtime context and Planned Architecture State before it can execute. Clearing or retrying dataset tasks after changing metadata is not a supported rescue workflow; create a new Run Plan and start a new scheduler run.
 
 ---
 
@@ -496,9 +592,9 @@ Architecture Execution Records are audit artifacts. They complement load-run log
 
 ## 🔧 12. Deterministic Fingerprints
 
-Architecture State, Architecture Change Report, Architecture Promotion Report, Architecture Approval Artifact, and Architecture Execution Record each expose deterministic fingerprints.
-
-Fingerprints are derived from canonical JSON representations and allow CI, review processes, approval decisions, promotion workflows, and audit processes to reference exact architecture artifacts.
+Architecture State, Architecture Change Report, Architecture Promotion Report, Architecture Approval Artifact, Execution Impact Plan, Execution Preview, Execution Run Plan, finalization evidence, and Architecture Execution Record expose deterministic fingerprints or bind directly to fingerprinted artifacts.
+ 
+Fingerprints are derived from canonical JSON representations and allow CI, review processes, approval decisions, scheduler runs, finalization, promotion workflows, and audit processes to reference exact architecture artifacts.
 
 ---
 
@@ -561,7 +657,7 @@ Verify the stored approval artifact:
 ```bash
 python manage.py elevata_approval_check \
   .artifacts/architecture_plan_rc_aw_customer.json \
-  .elevata/approvals/<report_fingerprint>.approval.json
+  .elevata/approvals/<profile>/<target-system>/<report_fingerprint>.approval.json
 ```
 
 Validate no-change exit behavior against an explicit baseline:
@@ -571,6 +667,21 @@ python manage.py elevata_plan --all \
   --previous-state .artifacts/current_architecture_state.json \
   --format json \
   --fail-on-changes
+```
+
+Create an immutable full-scope scheduler Run Plan:
+
+```bash
+python manage.py elevata_run_plan \
+  --all-datasets \
+  --output .artifacts/full.run_plan.json
+```
+
+After every scheduler step has written a valid outcome, finalize the plan:
+
+```bash
+python manage.py elevata_finalize_run_plan \
+  .artifacts/full.run_plan.json
 ```
 
 ---

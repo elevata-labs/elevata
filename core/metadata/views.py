@@ -48,8 +48,10 @@ from sqlalchemy.exc import SQLAlchemyError
 from generic import GenericCRUDView
 
 from metadata.architecture.control import (
+  ArchitectureControlContext,
   ArchitectureControlError,
   ArchitectureControlScope,
+  bind_architecture_control_execution_scope,
   build_architecture_control_context,
   check_architecture_control_approval,
   create_architecture_control_approval,
@@ -59,6 +61,11 @@ from metadata.architecture.control import (
 from metadata.architecture.execution_preview import (
   ArchitectureExecutionPreviewError,
   build_architecture_execution_preview,
+  resolve_architecture_execution_scope,
+)
+from metadata.architecture.execution_impact_presentation import (
+  ExecutionImpactPresentationError,
+  build_execution_impact_plan_presentation,
 )
 from metadata.architecture.execution_control import (
   ArchitectureControlledExecutionError,
@@ -739,25 +746,17 @@ def generate_targets(request):
     ansi_escape = re.compile(r"\x1b\[[0-9;]*m")
     output = ansi_escape.sub("", raw_output)
 
-    total_datasets = None
+    summary_line = None
 
     # Try to find the "Done. Total: X target datasets ..." line from the command
     if output:
       for line in output.splitlines():
         line = line.strip()
         if line.startswith("Done. Total:"):
-          # Expected format:
-          # "Done. Total: X target datasets and Y target columns generated/updated."
-          parts = line.split()
-          # parts[2] should be X (number of datasets)
-          if len(parts) >= 3:
-            try:
-              total_datasets = int(parts[2])
-            except ValueError:
-              pass
+          summary_line = line
 
-    if total_datasets is not None:
-      msg = f"Generated {total_datasets} target datasets."
+    if summary_line is not None:
+      msg = summary_line.removeprefix("Done. ").strip()
     else:
       # Fallback: show last (clean) line of command output or a generic message
       if output:
@@ -995,7 +994,10 @@ def architecture_control(request):
   control_context = None
   review_status = None
   execution_preview = None
+  execution_scope_resolution = None
   execution_preview_error = None
+  execution_impact_presentation = None
+  execution_impact_plan_error = None
   review_briefing = None
   last_execution_result = None
   execution_history = ()
@@ -1020,9 +1022,72 @@ def architecture_control(request):
     scope = _architecture_control_scope_from_params(scope_params)
     if scope.schema_short and not selected_schema_short:
       selected_schema_short = scope.schema_short
+
     control_context = build_architecture_control_context(scope)
+
+    # Lightweight view-test doubles intentionally do not need to reproduce the
+    # complete execution-scope assembly. Production contexts are rebound using
+    # the already resolved authoritative State, report, baseline and review.
+    if (
+      isinstance(control_context, ArchitectureControlContext)
+      and getattr(control_context, "current_state", None) is not None
+      and getattr(control_context, "artifact_context", None) is not None
+      and getattr(control_context, "baseline_resolution", None) is not None
+    ):
+      execution_scope_resolution = resolve_architecture_execution_scope(
+        scope,
+        no_deps=execution_no_deps,
+      )
+      control_context = bind_architecture_control_execution_scope(
+        control_context,
+        execution_dataset_keys=(
+          execution_scope_resolution.execution_dataset_keys
+        ),
+        dependency_mode=execution_scope_resolution.dependency_mode,
+      )
+
     review_status = control_context.review_status
     baseline_resolution = getattr(control_context, "baseline_resolution", None)
+    execution_impact_plan_error = getattr(
+      control_context,
+      "execution_impact_plan_error",
+      None,
+    )
+    execution_impact_plan = getattr(
+      control_context,
+      "execution_impact_plan",
+      None,
+    )
+    execution_dataset_keys = tuple(
+      getattr(
+        control_context,
+        "execution_dataset_keys",
+        (),
+      )
+      or ()
+    )
+    if execution_impact_plan is not None:
+      try:
+        execution_impact_presentation = (
+          build_execution_impact_plan_presentation(
+            execution_impact_plan,
+            execution_dataset_keys=(
+              execution_dataset_keys
+              or None
+            ),
+          )
+        )
+      except ExecutionImpactPresentationError as exc:
+        execution_impact_plan_error = str(exc)
+      except Exception as exc:
+        logger.exception(
+          "Architecture Control impact presentation failed: %s",
+          exc,
+        )
+        execution_impact_plan_error = (
+          f"Execution Impact Plan presentation failed: {exc}"
+        )
+
     report_fingerprint = getattr(
       getattr(control_context, "report", None),
       "report_fingerprint",
@@ -1045,10 +1110,18 @@ def architecture_control(request):
       logger.exception("Architecture Control execution history failed: %s", exc)
       execution_history_error = str(exc)
     try:
+      preview_kwargs = {
+        "control_context": control_context,
+        "no_deps": execution_no_deps,
+      }
+      if execution_scope_resolution is not None:
+        preview_kwargs["execution_scope_resolution"] = (
+          execution_scope_resolution
+        )
+
       execution_preview = build_architecture_execution_preview(
         scope,
-        control_context=control_context,
-        no_deps=execution_no_deps,
+        **preview_kwargs,
       )
     except ArchitectureExecutionPreviewError as exc:
       execution_preview_error = str(exc)
@@ -1059,7 +1132,7 @@ def architecture_control(request):
       execution_preview=execution_preview,
       execution_preview_error=execution_preview_error,
     )
-  except ArchitectureControlError as exc:
+  except (ArchitectureControlError, ArchitectureExecutionPreviewError) as exc:
     scope = None
     error_message = str(exc)
   except Exception as exc:
@@ -1094,6 +1167,8 @@ def architecture_control(request):
     "review_status": review_status,
     "execution_preview": execution_preview,
     "execution_preview_error": execution_preview_error,
+    "execution_impact_presentation": execution_impact_presentation,
+    "execution_impact_plan_error": execution_impact_plan_error,
     "review_briefing": review_briefing,
     "last_execution_result": last_execution_result,
     "execution_history": execution_history,

@@ -1800,11 +1800,16 @@ def format_load_run_summary(summary: Dict[str, Any]) -> str:
   )
 
 
-def render_load_sql_for_target(td: TargetDataset, dialect) -> str:
+def render_load_sql_for_target(
+  td: TargetDataset,
+  dialect,
+  load_plan_override=None,
+) -> str:
   """
   High-level entry point for load SQL generation.
 
-  Uses the LoadPlan to decide which concrete renderer to call.
+  Uses the effective LoadPlan to decide which concrete renderer to call.
+  A controlled runtime may bind an immutable load-plan override.
   """
 
   # Materialization handling
@@ -1828,7 +1833,7 @@ def render_load_sql_for_target(td: TargetDataset, dialect) -> str:
   if td.is_hist:
     return render_hist_incremental_sql(td, dialect)
 
-  plan = build_load_plan(td)
+  plan = load_plan_override or build_load_plan(td)
 
   if plan.mode == "full":
     return render_full_refresh_sql(td, dialect)

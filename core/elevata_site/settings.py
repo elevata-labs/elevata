@@ -43,7 +43,7 @@ from utils.db import build_metadata_database_url
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(find_dotenv(filename=".env", raise_error_if_not_found=False))
 
-ELEVATA_VERSION = "2.15.0"
+ELEVATA_VERSION = "2.16.0"
 
 
 def _resolve_runtime_path_env(var_name: str, default: str) -> str:

@@ -23,7 +23,7 @@ This index gives you an overview of all major topics and how they fit together.
 ### 🧩 Metadata Model & Generation
 
 - [Generation Logic](generation_logic.md)  
-  How metadata is transformed into Logical Plans and final SQL. Includes dataset types (RAW, STAGE, CORE, …), dependencies and generation rules.
+  How metadata is transformed into Logical Plans and final SQL. Includes dataset types, multi-source contracts, generated TargetDataset lifecycle, dependencies and generation rules.
 
 - [Metadata Naming Guidance](metadata_naming_guidance.md)  
   Deterministic, project-specific naming assistance for TargetColumn modeling based on existing mappings.
@@ -58,7 +58,7 @@ This index gives you an overview of all major topics and how they fit together.
 ### ▶️ Execution & Observability
 
 - [Load Execution & Orchestration Architecture](load_execution_architecture.md)  
-  How elevata executes load plans: dependency graphs, retries, failure semantics, load run logging and execution snapshots.
+  How elevata executes load plans through dependency graphs, Execution Impact, immutable Run Plans, Planned Architecture State, structured outcomes, finalization, retries and observability.
 
 - [Architecture Catalog](architecture_catalog.md)  
   End-to-end read-only discovery layer from Source Systems through Target Datasets to Data Products, including Source Readiness, Portfolio, Maps, Insights, lineage, contracts and execution evidence references.
@@ -76,7 +76,7 @@ This index gives you an overview of all major topics and how they fit together.
   Read-only, on-demand review of modeled outgoing references against loaded target data, plus controlled default member, inferred member, Default Member Fallback and reference-parent execution readiness behavior during load execution.
 
 - [Architecture Control Plane](architecture_control_plane.md)  
-  Deterministic architecture state, change reports, review briefing, promotion reports, approval artifacts, policy decisions and fingerprints for review, CI, controlled approval, and architecture promotion workflows.
+  Deterministic architecture state, change reports, review briefing, approval artifacts, Execution Impact, immutable Run Plans, finalization, policy decisions and fingerprints for review, CI, scheduler execution and promotion workflows.
 
 ---
 

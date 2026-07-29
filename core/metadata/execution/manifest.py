@@ -195,7 +195,11 @@ def build_manifest(
   """
   TargetDataset = apps.get_model("metadata", "TargetDataset")
 
-  qs = TargetDataset.objects.select_related("target_schema")
+  qs = (
+    TargetDataset.objects
+    .select_related("target_schema")
+    .filter(active=True)
+  )
 
   if not include_system_managed:
     qs = qs.filter(is_system_managed=False)
@@ -281,6 +285,19 @@ def build_manifest(
 
     for dep in resolve_execution_dependencies(td):
       up = dep.upstream
+      if not bool(getattr(up, "active", True)):
+        upstream_id = _target_id(
+          up.target_schema.short_name,
+          up.target_dataset_name,
+        )
+        raise ValueError(
+          "Active TargetDataset execution dependency references an inactive "
+          "upstream TargetDataset: "
+          f"{tid} -> {upstream_id}. "
+          "Reactivate the upstream dataset or retire the downstream "
+          "dependency before generating the execution manifest."
+        )
+
       up_id = ensure_target_node(up)
       add_dependency(
         node_id=tid,
