@@ -101,6 +101,21 @@ from metadata.generation.policies import (
   query_tree_mutations_allowed_for_dataset,
   query_tree_mutation_block_reason,
 )
+from metadata.generation.target_generation_control import (
+  render_target_generation_review_json,
+)
+from metadata.generation.target_generation_operations import (
+  CONTROLLED_GENERATION_SCHEMA_SHORT_NAMES,
+  TargetGenerationOperationsError,
+  apply_target_generation_operations_plan,
+  build_target_generation_operations_context,
+  build_target_generation_sequence_context,
+  check_target_generation_operations_approval,
+  create_target_generation_operations_approval,
+)
+from metadata.generation.target_generation_plan import (
+  render_target_generation_plan_json,
+)
 from metadata.generation.query_contract import infer_query_node_contract
 from metadata.generation.query_contract_diff import compute_contract_diff
 from metadata.generation.query_governance import analyze_query_governance
@@ -412,6 +427,138 @@ def _architecture_control_redirect(
     target_url = f"{target_url}#{fragment_value}"
 
   return redirect(target_url)
+
+
+def _target_generation_schema_from_scope_params(
+  params: dict[str, str],
+) -> str:
+  """Return the generated schema selected by an explicit schema scope."""
+  if params.get("scope_mode") != "schema":
+    raise TargetGenerationOperationsError(
+      "Controlled Target Generation is available for an explicit schema scope."
+    )
+
+  schema_short_name = (params.get("schema_short") or "").strip()
+  if schema_short_name not in CONTROLLED_GENERATION_SCHEMA_SHORT_NAMES:
+    supported = ", ".join(CONTROLLED_GENERATION_SCHEMA_SHORT_NAMES)
+    raise TargetGenerationOperationsError(
+      "Controlled Target Generation is available for generated schemas only "
+      f"({supported})."
+    )
+  return schema_short_name
+
+
+def _target_generation_expected_review(request) -> str:
+  """Return the review fingerprint submitted by a generation UI action."""
+  values = request.POST if request.method == "POST" else request.GET
+  return (values.get("generation_review_fingerprint") or "").strip()
+
+
+def _build_target_generation_request_context(request):
+  """Build and validate the exact generation preview submitted by the UI."""
+  scope_params = _architecture_control_scope_params(request)
+  schema_short_name = _target_generation_schema_from_scope_params(scope_params)
+  context = build_target_generation_operations_context(
+    schema_short_name,
+    actor=request.user,
+  )
+  expected_review = _target_generation_expected_review(request)
+  if not expected_review:
+    raise TargetGenerationOperationsError(
+      "Target Generation review fingerprint is required. Refresh the preview."
+    )
+  if expected_review != context.review.review_fingerprint:
+    raise TargetGenerationOperationsError(
+      "Target Generation preview changed. Review the refreshed plan before "
+      "continuing."
+    )
+  return scope_params, schema_short_name, context
+
+
+def _target_generation_querystring(
+  scope_params: dict[str, str],
+  review_fingerprint: str,
+) -> str:
+  """Return scope parameters bound to one exact generation review."""
+  params = dict(scope_params)
+  params["generation_review_fingerprint"] = review_fingerprint
+  return urlencode(params)
+
+
+def _store_target_generation_result(request, operation_result) -> str | None:
+  """Store compact guarded-generation evidence for post-redirect rendering."""
+  session = getattr(request, "session", None)
+  if session is None:
+    return None
+
+  apply_result = operation_result.apply_result
+  residual_context = operation_result.residual_context
+  result_id = uuid.uuid4().hex
+  payload = {
+    "result_id": result_id,
+    "schema_short_name": operation_result.context.schema_short_name,
+    "summary_text": apply_result.summary_text,
+    "plan_fingerprint": apply_result.plan_fingerprint,
+    "review_fingerprint": apply_result.generation_review_fingerprint,
+    "approval_id": apply_result.generation_approval_id,
+    "planned_action_count": apply_result.planned_action_count,
+    "consumed_action_count": apply_result.consumed_action_count,
+    "residual_action_count": apply_result.residual_action_count,
+    "residual_plan_fingerprint": apply_result.residual_plan_fingerprint,
+    "processed_dataset_count": apply_result.processed_dataset_count,
+    "processed_column_count": apply_result.processed_column_count,
+    "retired_dataset_count": apply_result.retired_dataset_count,
+    "reactivated_dataset_count": apply_result.reactivated_dataset_count,
+    "target_metadata_fingerprint_before": (
+      apply_result.target_metadata_fingerprint_before
+    ),
+    "target_metadata_fingerprint_after": (
+      apply_result.target_metadata_fingerprint_after
+    ),
+    "converged": apply_result.converged,
+    "residual_review_fingerprint": (
+      residual_context.review.review_fingerprint
+    ),
+  }
+
+  stored_results = session.get("architecture_control_generation_results")
+  if not isinstance(stored_results, dict):
+    stored_results = {}
+
+  stored_results[result_id] = payload
+  recent_ids = list(stored_results.keys())[-5:]
+  session["architecture_control_generation_results"] = {
+    key: stored_results[key]
+    for key in recent_ids
+  }
+  if hasattr(session, "modified"):
+    session.modified = True
+  return result_id
+
+
+def _target_generation_result_for_schema(
+  request,
+  schema_short_name: str,
+):
+  """Return one stored generation result for the selected schema."""
+  session = getattr(request, "session", None)
+  if session is None:
+    return None
+
+  result_id = (request.GET.get("generation_result_id") or "").strip()
+  if not result_id:
+    return None
+
+  stored_results = session.get("architecture_control_generation_results")
+  if not isinstance(stored_results, dict):
+    return None
+
+  result = stored_results.get(result_id)
+  if not isinstance(result, dict):
+    return None
+  if result.get("schema_short_name") != schema_short_name:
+    return None
+  return result
 
 
 def _store_architecture_control_execution_result(request, result) -> str | None:
@@ -991,6 +1138,12 @@ def architecture_control(request):
   selected_schema_short = scope_params.get("schema_short") or ""
   selected_target_dataset_pk = _safe_int(scope_params.get("target_dataset_id"))
 
+  generation_context = None
+  generation_error = None
+  generation_sequence = None
+  generation_sequence_error = None
+  generation_querystring = ""
+  last_generation_result = None
   control_context = None
   review_status = None
   execution_preview = None
@@ -1140,6 +1293,50 @@ def architecture_control(request):
     logger.exception("Architecture Control failed: %s", exc)
     error_message = str(exc)
 
+  if (
+    scope_mode == "schema"
+    and selected_schema_short in CONTROLLED_GENERATION_SCHEMA_SHORT_NAMES
+  ):
+    try:
+      generation_context = build_target_generation_operations_context(
+        selected_schema_short,
+        actor=request.user,
+      )
+      generation_querystring = _target_generation_querystring(
+        scope_params,
+        generation_context.review.review_fingerprint,
+      )
+      last_generation_result = _target_generation_result_for_schema(
+        request,
+        selected_schema_short,
+      )
+    except TargetGenerationOperationsError as exc:
+      generation_error = str(exc)
+    except Exception as exc:
+      logger.exception("Controlled Target Generation preview failed: %s", exc)
+      generation_error = str(exc)
+
+  if (
+    scope_mode == "all"
+    or (
+      scope_mode == "schema"
+      and selected_schema_short in CONTROLLED_GENERATION_SCHEMA_SHORT_NAMES
+    )
+  ):
+    try:
+      generation_sequence = build_target_generation_sequence_context(
+        selected_schema_short_name=(
+          selected_schema_short if scope_mode == "schema" else ""
+        ),
+        actor=request.user,
+        selected_context=generation_context,
+      )
+    except TargetGenerationOperationsError as exc:
+      generation_sequence_error = str(exc)
+    except Exception as exc:
+      logger.exception("Target Generation sequence preview failed: %s", exc)
+      generation_sequence_error = str(exc)
+
   target_schemas = (
     TargetSchema.objects
     .order_by("short_name")
@@ -1161,6 +1358,13 @@ def architecture_control(request):
     "selected_schema_short": selected_schema_short,
     "selected_target_dataset_pk": selected_target_dataset_pk,
     "execution_no_deps": execution_no_deps,
+    "generation_context": generation_context,
+    "generation_error": generation_error,
+    "generation_sequence": generation_sequence,
+    "generation_sequence_error": generation_sequence_error,
+    "generation_querystring": generation_querystring,
+    "last_generation_result": last_generation_result,
+    "controlled_generation_schemas": CONTROLLED_GENERATION_SCHEMA_SHORT_NAMES,
     "target_schemas": target_schemas,
     "target_datasets": target_datasets,
     "control_context": control_context,
@@ -1181,6 +1385,179 @@ def architecture_control(request):
     "error_message": error_message,
   }
   return render(request, "metadata/architecture/architecture_control.html", ctx)
+
+
+@login_required
+@permission_required("metadata.view_targetdataset", raise_exception=True)
+def architecture_control_generation_plan_download(request):
+  """Download the exact Target Generation Plan shown in Architecture Control."""
+  try:
+    _scope_params, schema_short_name, context = (
+      _build_target_generation_request_context(request)
+    )
+    rendered = render_target_generation_plan_json(context.plan)
+  except TargetGenerationOperationsError as exc:
+    return HttpResponse(
+      str(exc),
+      status=409,
+      content_type="text/plain; charset=utf-8",
+    )
+  except Exception as exc:
+    logger.exception("Target Generation Plan download failed: %s", exc)
+    return HttpResponse(
+      str(exc),
+      status=500,
+      content_type="text/plain; charset=utf-8",
+    )
+
+  response = HttpResponse(rendered, content_type="application/json; charset=utf-8")
+  response["Content-Disposition"] = (
+    'attachment; filename="'
+    f'target_generation_{_safe_download_token(schema_short_name, "schema")}_'
+    f'{context.plan.plan_fingerprint[:12]}.plan.json"'
+  )
+  return response
+
+
+@login_required
+@permission_required("metadata.view_targetdataset", raise_exception=True)
+def architecture_control_generation_review_download(request):
+  """Download the exact Source-to-Target Generation Review shown in the UI."""
+  try:
+    _scope_params, schema_short_name, context = (
+      _build_target_generation_request_context(request)
+    )
+    rendered = render_target_generation_review_json(context.review)
+  except TargetGenerationOperationsError as exc:
+    return HttpResponse(
+      str(exc),
+      status=409,
+      content_type="text/plain; charset=utf-8",
+    )
+  except Exception as exc:
+    logger.exception("Target Generation Review download failed: %s", exc)
+    return HttpResponse(
+      str(exc),
+      status=500,
+      content_type="text/plain; charset=utf-8",
+    )
+
+  response = HttpResponse(rendered, content_type="application/json; charset=utf-8")
+  response["Content-Disposition"] = (
+    'attachment; filename="'
+    f'target_generation_{_safe_download_token(schema_short_name, "schema")}_'
+    f'{context.review.review_fingerprint[:12]}.review.json"'
+  )
+  return response
+
+
+@login_required
+@permission_required("metadata.change_targetdataset", raise_exception=True)
+@require_POST
+def architecture_control_generation_approve(request):
+  """Create a Generation Approval for the exact preview shown in the UI."""
+  scope_params = _architecture_control_scope_params(request)
+  note = request.POST.get("note") or ""
+
+  try:
+    schema_short_name = _target_generation_schema_from_scope_params(scope_params)
+    result = create_target_generation_operations_approval(
+      schema_short_name,
+      expected_review_fingerprint=_target_generation_expected_review(request),
+      approved_by=_approval_actor_name(request.user),
+      note=note,
+      actor=request.user,
+    )
+    messages.success(
+      request,
+      (
+        "Generation Approval created: "
+        f"{result.artifact.approval_id} for review "
+        f"{result.context.review.review_fingerprint[:12]}."
+      ),
+    )
+  except TargetGenerationOperationsError as exc:
+    messages.error(request, str(exc))
+  except Exception as exc:
+    logger.exception("Target Generation approval failed: %s", exc)
+    messages.error(request, str(exc))
+
+  return _architecture_control_redirect(
+    scope_params,
+    fragment="target-generation",
+  )
+
+
+@login_required
+@permission_required("metadata.view_targetdataset", raise_exception=True)
+@require_POST
+def architecture_control_generation_approval_check(request):
+  """Check the stored Generation Approval against the current exact review."""
+  scope_params = _architecture_control_scope_params(request)
+
+  try:
+    schema_short_name = _target_generation_schema_from_scope_params(scope_params)
+    result = check_target_generation_operations_approval(
+      schema_short_name,
+      expected_review_fingerprint=_target_generation_expected_review(request),
+      actor=request.user,
+    )
+    if result.is_valid:
+      messages.success(request, result.message)
+    else:
+      messages.warning(request, result.message)
+  except TargetGenerationOperationsError as exc:
+    messages.error(request, str(exc))
+  except Exception as exc:
+    logger.exception("Target Generation approval check failed: %s", exc)
+    messages.error(request, str(exc))
+
+  return _architecture_control_redirect(
+    scope_params,
+    fragment="target-generation",
+  )
+
+
+@login_required
+@permission_required("metadata.change_targetdataset", raise_exception=True)
+@require_POST
+def architecture_control_generation_apply(request):
+  """Apply the exact reviewed Target Generation Plan through guarded apply."""
+  scope_params = _architecture_control_scope_params(request)
+  generation_result_id = None
+
+  try:
+    schema_short_name = _target_generation_schema_from_scope_params(scope_params)
+    result = apply_target_generation_operations_plan(
+      schema_short_name,
+      expected_review_fingerprint=_target_generation_expected_review(request),
+      actor=request.user,
+    )
+    generation_result_id = _store_target_generation_result(request, result)
+    if result.apply_result.converged:
+      messages.success(request, result.apply_result.summary_text)
+    else:
+      messages.warning(
+        request,
+        (
+          f"{result.apply_result.summary_text} Review and approve the "
+          "residual plan before the next guarded apply."
+        ),
+      )
+  except TargetGenerationOperationsError as exc:
+    messages.error(request, str(exc))
+  except Exception as exc:
+    logger.exception("Guarded Target Generation apply failed: %s", exc)
+    messages.error(request, str(exc))
+
+  extra_params = {}
+  if generation_result_id:
+    extra_params["generation_result_id"] = generation_result_id
+  return _architecture_control_redirect(
+    scope_params,
+    extra_params=extra_params,
+    fragment="target-generation",
+  )
 
 
 @login_required

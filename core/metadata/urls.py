@@ -204,6 +204,31 @@ urlpatterns += [
     name="architecture_catalog_detail",
   ),
   path("architecture-control/", views.architecture_control, name="architecture_control"),
+  path(
+    "architecture-control/generation/plan/download/",
+    views.architecture_control_generation_plan_download,
+    name="architecture_control_generation_plan_download",
+  ),
+  path(
+    "architecture-control/generation/review/download/",
+    views.architecture_control_generation_review_download,
+    name="architecture_control_generation_review_download",
+  ),
+  path(
+    "architecture-control/generation/approve/",
+    views.architecture_control_generation_approve,
+    name="architecture_control_generation_approve",
+  ),
+  path(
+    "architecture-control/generation/check/",
+    views.architecture_control_generation_approval_check,
+    name="architecture_control_generation_approval_check",
+  ),
+  path(
+    "architecture-control/generation/apply/",
+    views.architecture_control_generation_apply,
+    name="architecture_control_generation_apply",
+  ),
   path("architecture-control/report/", views.architecture_control_report, name="architecture_control_report"),
   path("architecture-control/report/download/", views.architecture_control_report_download, name="architecture_control_report_download"),
   path("architecture-control/approve/", views.architecture_control_approve, name="architecture_control_approve"),

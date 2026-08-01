@@ -1,0 +1,202 @@
+<!--
+elevata - Metadata-driven Data Platform Framework
+Copyright © 2025-2026 Ilona Tag
+
+This file is part of elevata.
+
+elevata is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of
+the License, or (at your option) any later version.
+
+elevata is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with elevata. If not, see <https://www.gnu.org/licenses/>.
+
+Contact: <https://github.com/elevata-labs/elevata>.
+-->
+
+{% if generation_sequence %}
+  <div class="border rounded p-3 mb-3">
+    <div class="d-flex align-items-start justify-content-between gap-3 mb-2">
+      <div>
+        <div class="fw-semibold">Generated layer sequence</div>
+        <div class="small text-muted mt-1">
+          Target generation proceeds in dependency order. Only the first pending
+          layer is reviewable; later layers are recalculated after it converges.
+        </div>
+      </div>
+      {% if generation_sequence.all_up_to_date %}
+        <span class="badge text-bg-success">All layers up to date</span>
+      {% elif generation_sequence.next_actionable_item %}
+        <span class="badge text-bg-info">Next: {{ generation_sequence.next_actionable_item.display_name }}</span>
+      {% endif %}
+    </div>
+
+    <div class="row g-2">
+      {% for layer in generation_sequence.items %}
+        <div class="col-lg-4">
+          <div class="border rounded p-3 h-100 {% if layer.is_selected %}bg-light{% endif %}">
+            <div class="d-flex align-items-center justify-content-between gap-2">
+              <div class="fw-semibold">{{ layer.display_name }}</div>
+              <span class="badge {{ layer.badge_class }}">{{ layer.status_label }}</span>
+            </div>
+
+            <div class="small text-muted mt-2">
+              {% if layer.status == "up_to_date" %}
+                No pending metadata actions.
+              {% elif layer.status == "review" %}
+                {{ layer.action_count }} planned action{{ layer.action_count|pluralize }}.
+                {% if layer.breaking_action_count %}
+                  {{ layer.breaking_action_count }} breaking.
+                {% endif %}
+              {% elif layer.status == "recalculate" %}
+                This downstream preview is intentionally deferred until
+                {{ layer.blocked_by_schema_short_name|upper }} converges.
+              {% elif layer.error_message %}
+                {{ layer.error_message }}
+              {% else %}
+                This generated layer is not available in the current configuration.
+              {% endif %}
+            </div>
+
+            <div class="mt-3">
+              {% if layer.is_actionable %}
+                <a
+                  href="{% url 'architecture_control' %}?scope_mode=schema&schema_short={{ layer.schema_short_name }}#target-generation"
+                  class="btn btn-sm btn-primary"
+                  data-generation-navigation
+                >
+                  <i class="bi bi-shield-check"></i>
+                  Review {{ layer.display_name }} generation
+                </a>
+              {% elif layer.status == "up_to_date" and not layer.is_selected %}
+                <a
+                  href="{% url 'architecture_control' %}?scope_mode=schema&schema_short={{ layer.schema_short_name }}#target-generation"
+                  class="btn btn-sm btn-outline-secondary"
+                  data-generation-navigation
+                >
+                  Open {{ layer.display_name }}
+                </a>
+              {% elif layer.is_selected %}
+                <span class="small text-muted">Current layer</span>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+
+    {% if generation_sequence.continuation_required and generation_sequence.next_actionable_item %}
+      <div class="alert alert-warning small mt-3 mb-0">
+        <div class="fw-semibold">Controlled generation is not complete</div>
+        <div class="mt-1">
+          The currently selected layer does not represent the end of the generation
+          sequence. Continue with
+          <strong>{{ generation_sequence.next_actionable_item.display_name }}</strong>,
+          which has {{ generation_sequence.next_actionable_item.action_count }} pending
+          action{{ generation_sequence.next_actionable_item.action_count|pluralize }}.
+        </div>
+        <a
+          href="{% url 'architecture_control' %}?scope_mode=schema&schema_short={{ generation_sequence.next_actionable_item.schema_short_name }}#target-generation"
+          class="btn btn-sm btn-warning mt-2"
+          data-generation-navigation
+        >
+          Continue with {{ generation_sequence.next_actionable_item.display_name }} review
+        </a>
+      </div>
+    {% elif generation_sequence.all_up_to_date %}
+      <div class="alert alert-success small mt-3 mb-0">
+        RAW, STAGE and RAWCORE are currently converged. No controlled generation
+        action remains.
+      </div>
+    {% elif not generation_sequence.selected_schema_short_name and generation_sequence.next_actionable_item %}
+      <div class="alert alert-info small mt-3 mb-0">
+        <div class="fw-semibold">Next controlled generation step</div>
+        <div class="mt-1">
+          Start with {{ generation_sequence.next_actionable_item.display_name }}.
+          Downstream layers will be recalculated after this layer converges.
+        </div>
+      </div>
+    {% endif %}
+  </div>
+
+  <div
+    id="target-generation-navigation-overlay"
+    class="position-fixed top-0 start-0 w-100 h-100 d-none align-items-center justify-content-center bg-body bg-opacity-75"
+    style="z-index: 2000;"
+    role="status"
+    aria-live="polite"
+  >
+    <div class="card border-0 shadow-sm">
+      <div class="card-body d-flex align-items-center gap-3 px-4 py-3">
+        <div class="spinner-border" aria-hidden="true"></div>
+        <div>
+          <div class="fw-semibold">Loading controlled generation review...</div>
+          <div class="small text-muted mt-1">
+            Recalculating generated-layer plans. Please wait…
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    (function() {
+      const overlay = document.getElementById(
+        "target-generation-navigation-overlay"
+      );
+
+      if (!overlay) {
+        return;
+      }
+
+      function generationNavigationLinks() {
+        return document.querySelectorAll("[data-generation-navigation]");
+      }
+
+      function showGenerationNavigationOverlay(event) {
+        const link = event.target.closest("[data-generation-navigation]");
+        if (!link) {
+          return;
+        }
+        if (
+          event.button !== 0
+          || event.ctrlKey
+          || event.metaKey
+          || event.shiftKey
+          || event.altKey
+        ) {
+          return;
+        }
+
+        overlay.classList.remove("d-none");
+        overlay.classList.add("d-flex");
+        document.body.setAttribute("aria-busy", "true");
+
+        generationNavigationLinks().forEach(function(navigationLink) {
+          navigationLink.classList.add("disabled");
+          navigationLink.setAttribute("aria-disabled", "true");
+        });
+      }
+
+      function resetGenerationNavigationOverlay() {
+        overlay.classList.add("d-none");
+        overlay.classList.remove("d-flex");
+        document.body.removeAttribute("aria-busy");
+
+        generationNavigationLinks().forEach(function(navigationLink) {
+          navigationLink.classList.remove("disabled");
+          navigationLink.removeAttribute("aria-disabled");
+        });
+      }
+
+      document.addEventListener("click", showGenerationNavigationOverlay);
+      window.addEventListener("pageshow", resetGenerationNavigationOverlay);
+    })();
+  </script>
+{% endif %}

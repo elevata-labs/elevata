@@ -47,7 +47,7 @@ Contact: <https://github.com/elevata-labs/elevata>.
 </h1>
 
 <div class="small text-muted mb-4">
-  Review, approve and prepare architecture execution across controlled scopes.
+  Preview and apply controlled target generation, then review, approve and prepare architecture execution.
 </div>
 
 {% if runtime_context %}
@@ -146,8 +146,8 @@ Contact: <https://github.com/elevata-labs/elevata>.
       <div>
         <div class="fw-semibold mb-1">Scope</div>
         <p class="text-muted small mb-0">
-          Select the architecture scope used for report generation, approval checks
-          and execution readiness.
+          Select the scope used for controlled generation, architecture review,
+          approval checks and execution readiness.
         </p>
       </div>
       <span class="badge text-bg-secondary">
@@ -252,6 +252,8 @@ Contact: <https://github.com/elevata-labs/elevata>.
     </form>
   </div>
 </div>
+
+{% include "metadata/partials/_target_generation_control.html" %}
 
 {% if error_message %}
   <div class="alert alert-danger">

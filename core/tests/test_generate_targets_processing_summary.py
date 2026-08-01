@@ -23,6 +23,11 @@ Contact: <https://github.com/elevata-labs/elevata>.
 from io import StringIO
 from types import SimpleNamespace
 
+from metadata.generation.target_generation_plan import (
+  TargetGenerationAction,
+  build_target_generation_plan,
+  render_target_generation_plan_json,
+)
 from metadata.generation.target_generation_service import (
   TargetGenerationResult,
   TargetGenerationService,
@@ -211,3 +216,235 @@ def test_generate_targets_command_aggregates_structured_results(
     in output
   )
   assert "generated/updated" not in output
+
+
+def test_generate_targets_command_dry_run_renders_complete_lifecycle_plan(
+  monkeypatch,
+) -> None:
+  """Verify dry-run renders the plan and never invokes the apply path."""
+  schema = SimpleNamespace(short_name="stage", physical_prefix="stg")
+  dataset_key = "target_dataset:stage:lineage:source_dataset:1"
+  plan = build_target_generation_plan(
+    scope_mode="schema",
+    target_schema_short_names=("stage",),
+    source_dataset_keys=(),
+    reconcile_lifecycle=True,
+    source_metadata_fingerprint="1" * 64,
+    target_metadata_fingerprint="2" * 64,
+    actions=(
+      TargetGenerationAction(
+        action_type="RETIRE_TARGET_DATASET",
+        dataset_key=dataset_key,
+        object_key=dataset_key,
+        effect_origin="GENERATED_LIFECYCLE",
+        change_classification="BREAKING",
+        before={
+          "active": True,
+          "retired_at_state": "clear",
+        },
+        after={
+          "active": False,
+          "retired_at_state": "set",
+        },
+        reason="Generated dataset is no longer part of the selected scope.",
+      ),
+    ),
+  )
+  build_calls = []
+
+  class FakeTargetGenerationService:
+    """Read-only dry-run service test double."""
+
+    def __init__(self, *, pepper, actor):
+      assert pepper == "test-pepper"
+      assert actor is None
+
+    def get_target_schemas_in_scope(self):
+      return [schema]
+
+    def get_eligible_source_datasets_for_schema(self, selected_schema):
+      assert selected_schema is schema
+      return []
+
+    def build_plan(
+      self,
+      eligible,
+      selected_schema,
+      *,
+      reconcile_lifecycle,
+    ):
+      build_calls.append(
+        (tuple(eligible), selected_schema.short_name, reconcile_lifecycle)
+      )
+      return plan
+
+    def apply_all_result(self, *args, **kwargs):
+      raise AssertionError("Dry-run must not invoke target generation apply.")
+
+  monkeypatch.setattr(
+    command_module,
+    "TargetGenerationService",
+    FakeTargetGenerationService,
+  )
+  monkeypatch.setattr(
+    command_module,
+    "get_runtime_pepper",
+    lambda: "test-pepper",
+  )
+
+  stdout = StringIO()
+  command = command_module.Command(stdout=stdout, no_color=True)
+  command.handle(
+    actor_id=None,
+    schema_short_name=None,
+    dry_run=True,
+  )
+
+  output = stdout.getvalue()
+  assert build_calls == [((), "stage", True)]
+  assert render_target_generation_plan_json(plan) in output
+  assert "[DRY-RUN] stage: 1 planned metadata actions" in output
+  assert '"action_type": "RETIRE_TARGET_DATASET"' in output
+  assert '"plan_fingerprint":' in output
+  assert (
+    "Dry-run completed. Plans: 1; planned metadata actions: 1. "
+    "No changes were written."
+    in output
+  )
+
+
+def test_generate_targets_command_applies_canonical_plan_file(
+  monkeypatch,
+  tmp_path,
+) -> None:
+  """Verify the command delegates one canonical plan to guarded apply."""
+  plan = build_target_generation_plan(
+    scope_mode="schema",
+    target_schema_short_names=("raw",),
+    source_dataset_keys=(),
+    reconcile_lifecycle=True,
+    source_metadata_fingerprint="1" * 64,
+    target_metadata_fingerprint="2" * 64,
+    actions=(),
+  )
+  plan_path = tmp_path / "target_generation_plan.json"
+  plan_path.write_text(
+    render_target_generation_plan_json(plan),
+    encoding="utf-8",
+  )
+  applied = []
+
+  class FakeTargetGenerationService:
+    """Guarded apply service test double."""
+
+    def __init__(self, *, pepper, actor):
+      assert pepper == "test-pepper"
+      assert actor is None
+
+    def apply_plan(
+      self,
+      supplied_plan,
+      *,
+      approval=None,
+      require_approval=False,
+    ):
+      assert approval is None
+      assert require_approval is False
+      applied.append(supplied_plan.plan_fingerprint)
+      return SimpleNamespace(
+        summary_text=(
+          "Applied Target Generation Plan test: 0 planned actions "
+          "consumed; converged."
+        )
+      )
+
+  monkeypatch.setattr(
+    command_module,
+    "TargetGenerationService",
+    FakeTargetGenerationService,
+  )
+  monkeypatch.setattr(
+    command_module,
+    "get_runtime_pepper",
+    lambda: "test-pepper",
+  )
+
+  stdout = StringIO()
+  command = command_module.Command(stdout=stdout, no_color=True)
+  command.handle(
+    actor_id=None,
+    schema_short_name=None,
+    dry_run=False,
+    plan_file=str(plan_path),
+    plan_output=None,
+  )
+
+  assert applied == [plan.plan_fingerprint]
+  assert "Applied Target Generation Plan test" in stdout.getvalue()
+
+
+def test_generate_targets_command_writes_single_schema_plan_file(
+  monkeypatch,
+  tmp_path,
+) -> None:
+  """Verify dry-run can persist the canonical reviewed plan artifact."""
+  schema = SimpleNamespace(short_name="raw", physical_prefix="raw")
+  plan = build_target_generation_plan(
+    scope_mode="schema",
+    target_schema_short_names=("raw",),
+    source_dataset_keys=(),
+    reconcile_lifecycle=True,
+    source_metadata_fingerprint="1" * 64,
+    target_metadata_fingerprint="2" * 64,
+    actions=(),
+  )
+  plan_path = tmp_path / "target_generation_plan.json"
+
+  class FakeTargetGenerationService:
+    """Read-only plan output service test double."""
+
+    def __init__(self, *, pepper, actor):
+      assert pepper == "test-pepper"
+      assert actor is None
+
+    def get_target_schemas_in_scope(self):
+      return [schema]
+
+    def get_eligible_source_datasets_for_schema(self, selected_schema):
+      assert selected_schema is schema
+      return []
+
+    def build_plan(self, eligible, selected_schema, *, reconcile_lifecycle):
+      assert list(eligible) == []
+      assert selected_schema is schema
+      assert reconcile_lifecycle is True
+      return plan
+
+    def apply_all_result(self, *args, **kwargs):
+      raise AssertionError("Dry-run must not apply generation.")
+
+  monkeypatch.setattr(
+    command_module,
+    "TargetGenerationService",
+    FakeTargetGenerationService,
+  )
+  monkeypatch.setattr(
+    command_module,
+    "get_runtime_pepper",
+    lambda: "test-pepper",
+  )
+
+  stdout = StringIO()
+  command = command_module.Command(stdout=stdout, no_color=True)
+  command.handle(
+    actor_id=None,
+    schema_short_name="raw",
+    dry_run=True,
+    plan_file=None,
+    plan_output=str(plan_path),
+  )
+
+  assert plan_path.read_text(encoding="utf-8") == (
+    render_target_generation_plan_json(plan)
+  )
+  assert "Target Generation Plan written to" in stdout.getvalue()

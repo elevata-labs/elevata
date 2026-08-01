@@ -86,22 +86,25 @@ Contact: <https://github.com/elevata-labs/elevata>.
         </a>
       {% endif %}
 
-      <!-- Only show global Generate Targets action on SourceDataset list -->
+      <!-- SourceDataset changes enter the controlled generation workflow. -->
       {% if model_name == "sourcedataset" %}
-        <button
-          type="button"
+        <a
+          id="target-generation-review-link"
+          href="{% url 'architecture_control' %}?scope_mode=all#target-generation"
           class="btn btn-primary btn-sm d-flex align-items-center gap-1"
-          hx-post="{% url 'generate_targets' %}"
-          hx-target="#grid-feedback"
-          hx-swap="innerHTML"
-          hx-confirm="Generate Targets for all eligible source datasets and layers?"
-          hx-indicator="#generation-loading"
-          hx-on::before-request="this.setAttribute('disabled','disabled')"
-          hx-on::after-request="this.removeAttribute('disabled')"
+          title="Review the complete controlled target generation sequence in Architecture Control"
         >
-          <i class="bi bi-lightning-charge"></i>
-          Generate Targets
-        </button>
+          <span
+            id="target-generation-review-spinner"
+            class="spinner-border spinner-border-sm d-none"
+            role="status"
+            aria-hidden="true"
+          ></span>
+          <span id="target-generation-review-label">
+            <i class="bi bi-shield-check"></i>
+            Review target generation
+          </span>
+        </a>
       {% endif %}
 
       <button
@@ -125,13 +128,6 @@ Contact: <https://github.com/elevata-labs/elevata>.
   {% endif %}
 
   <div class="d-flex align-items-center justify-content-end gap-2 mb-2">
-    <div id="generation-loading"
-        class="htmx-indicator d-flex align-items-center gap-2"
-        style="display:none;">
-      <div class="spinner-border spinner-border-sm text-info" role="status"></div>
-      <span class="text-muted small">Generating targets…</span>
-    </div>
-
     <div id="grid-feedback" class="small text-muted text-end"></div>
   </div>
 
@@ -289,6 +285,43 @@ Contact: <https://github.com/elevata-labs/elevata>.
       }
     }
   }
+
+  (function() {
+    const link = document.getElementById("target-generation-review-link");
+    if (!link) return;
+
+    const spinner = document.getElementById("target-generation-review-spinner");
+    const label = document.getElementById("target-generation-review-label");
+
+    function resetTargetGenerationReviewLink() {
+      link.classList.remove("disabled");
+      link.removeAttribute("aria-disabled");
+      link.removeAttribute("aria-busy");
+      if (spinner) spinner.classList.add("d-none");
+      if (label) {
+        label.innerHTML = '<i class="bi bi-shield-check"></i> Review target generation';
+      }
+    }
+
+    link.addEventListener("click", function(event) {
+      const opensElsewhere = (
+        event.button !== 0
+        || event.ctrlKey
+        || event.metaKey
+        || event.shiftKey
+        || event.altKey
+      );
+      if (opensElsewhere) return;
+
+      link.classList.add("disabled");
+      link.setAttribute("aria-disabled", "true");
+      link.setAttribute("aria-busy", "true");
+      if (spinner) spinner.classList.remove("d-none");
+      if (label) label.textContent = "Opening generation review…";
+    });
+
+    window.addEventListener("pageshow", resetTargetGenerationReviewLink);
+  })();
 </script>
 
 {% endblock %}

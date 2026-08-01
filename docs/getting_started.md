@@ -196,7 +196,7 @@ You can now:
 - Trigger **auto-import of source system metadata**  
 - Inspect **source datasets and columns**  
 - Define **integration rules** (`integrate = True`)  
-- Trigger **target auto-generation**  
+- Open **Review target generation** and apply Source-to-Target metadata changes through Architecture Control  
 - Preview **auto-generated** SQL renderings (starting with DuckDB dialect)  
 - Open **Architecture Catalog** to discover datasets, Data Products, maps, insights, lineage entry points, query contracts and execution evidence references  
 - Open **Architecture Control** to review, approve, preview and execute controlled architecture scopes
@@ -205,9 +205,37 @@ You can now:
 
 ## 🔧 5. Architecture Control
 
-elevata provides deterministic commands and UI workflows for architecture state, review, approval, controlled execution and audit records.
+elevata provides deterministic UI workflows and command adapters for target metadata generation, architecture state, review, approval, controlled execution and audit records.
 
-### 🧩 5.1 Render Architecture State
+### 🧩 5.1 Review and Apply Target Generation
+
+After importing or editing SourceDataset and SourceColumn metadata, open the SourceDataset list and choose **Review target generation**. The action opens Architecture Control at the all-dataset generated-layer overview.
+
+Follow the sequence shown by the UI:
+
+```text
+RAW
+  ↓
+STAGE
+  ↓
+RAWCORE
+```
+
+For each pending layer:
+
+1. Open the layer review.  
+2. Inspect Source-to-Target impact, action classifications, and before/after state.  
+3. Create a Generation Approval when the plan contains breaking changes or when an optional review decision should be recorded.  
+4. Select **Guarded apply**.  
+5. Continue until all three generated layers are up to date.
+
+Later-layer previews remain provisional until the previous layer converges. Architecture Control recalculates Stage after RAW and Rawcore after Stage.
+
+Generation Approval authorizes target metadata mutation only. The resulting physical architecture change is reviewed separately through the Architecture Change Report and Architecture Approval workflow.
+
+The equivalent CLI commands are intended primarily for debugging, CI and explicit automation. See [Controlled Target Generation](controlled_target_generation.md).
+
+### 🧩 5.2 Render Architecture State
 
 Render the metadata-defined architecture state:
 
@@ -227,7 +255,7 @@ Print only the architecture state fingerprint:
 python manage.py elevata_state --fingerprint-only
 ```
 
-### 🧩 5.2 Render Architecture Change Report
+### 🧩 5.3 Render Architecture Change Report
 
 Render a report for one dataset:
 
@@ -249,7 +277,7 @@ python manage.py elevata_plan rc_aw_customer \
 --previous-state .artifacts/prod_architecture_state.json
 ```
 
-### 🧩 5.3 Compare Architecture State Artifacts
+### 🧩 5.4 Compare Architecture State Artifacts
 
 Compare two architecture state files:
 
@@ -268,7 +296,7 @@ CI exit policies are available via:
 --fail-on-destructive 
 ```
 
-### 🧩 5.4 Create and Check Approval Artifacts
+### 🧩 5.5 Create and Check Approval Artifacts
 
 Create an Approval Artifact from an Architecture Change Report:
 
@@ -292,7 +320,7 @@ python manage.py elevata_approval_check \
   .elevata/approvals/<profile>/<target-system>/<report_fingerprint>.approval.json
 ```
 
-### 🧩 5.5 Use Architecture Control in the UI
+### 🧩 5.6 Use Architecture Control in the UI
 
 The Architecture Control UI provides a guided workflow for controlled architecture scopes.
 
@@ -305,6 +333,9 @@ It supports:
 
 From Architecture Control, you can:
 
+- inspect the generated-layer sequence  
+- review and apply Target Generation Plans  
+- create and check Generation Approval Artifacts  
 - inspect the Architecture Change Report  
 - download report JSON  
 - create and check Approval Artifacts  
@@ -322,7 +353,7 @@ Architecture Execution Records use the configured base directory and are scoped 
 .elevata/executions/<profile>/<target-system>/
 ```
 
-### 🧩 5.6 Create an Immutable Scheduler Run Plan
+### 🧩 5.7 Create an Immutable Scheduler Run Plan
 
 Create a full-scope Run Plan for the active profile and target system:
 
@@ -361,7 +392,7 @@ For advanced setups, see
 | Run development server | `python manage.py runserver` |
 | Open Django shell | `python manage.py shell` |
 | Import source metadata | Trigger via UI (⚡ Import Datasets) |
-| Generate target structures | Trigger via UI (⚡ Generate Targets) |
+| Review and apply target structures | Source Datasets → **Review target generation** → Architecture Control |
 | Run tests | `python runtests.py` |
 | Render architecture state | `python manage.py elevata_state` |
 | Render architecture report | `python manage.py elevata_plan --all` |
@@ -376,6 +407,7 @@ For advanced setups, see
 Once your metadata environment is ready, continue with:
 
 - [Automatic Target Generation Logic](generation_logic.md)  
+- [Controlled Target Generation](controlled_target_generation.md)  
 - [Architecture Control Plane](architecture_control_plane.md)  
 - [SQL Rendering & Alias Conventions](sql_rendering_conventions.md)  
 - [Lineage Model & Logical Plan](logical_plan.md)

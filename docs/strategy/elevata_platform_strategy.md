@@ -2,7 +2,7 @@
 ## From SQL-Centric Pipelines to Architecture Runtime and Business Semantics
 
 > **Document type:** Strategy  
-> **Last updated:** 2026-05  
+> **Last updated:** 2026-08  
 > **Applies since:** elevata ≥ 2.0  
 
 ---
@@ -20,7 +20,7 @@ This tight coupling leads to:
 
 elevata addresses these limitations by treating **metadata - not SQL - as the primary control plane** for data platforms.
 
-This control plane covers structure, lineage, execution semantics, review decisions, controlled execution, and audit evidence.
+This control plane covers source-to-target metadata generation, structure, lineage, execution semantics, review decisions, controlled execution, and audit evidence.
 
 ---
 
@@ -50,6 +50,8 @@ It is an **Architecture Runtime** that turns metadata-defined architecture into 
 
 Key characteristics:
 
+- deterministic Target Generation Plans and Source-to-Target Reviews  
+- separate Generation and Architecture Approval boundaries  
 - deterministic execution planning  
 - explicit dependency graphs  
 - structured failure semantics (blocked vs aborted)  
@@ -75,6 +77,14 @@ SQL is an output artifact - not the orchestration mechanism.
 Architecture Control closes the loop between architecture intent and runtime execution:
 
 ```text
+Source Metadata
+  ↓
+Target Generation Plan + Review
+  ↓
+Generation Approval Artifact, when required
+  ↓
+Guarded Target Metadata Apply
+  ↓
 Architecture State
   ↓
 Architecture Change Report
@@ -166,6 +176,8 @@ By combining:
 
 - metadata-native execution  
 - explicit business semantics  
+- controlled target metadata generation  
+- separate metadata-mutation and physical-execution approval boundaries  
 - architecture review and approval  
 - controlled execution  
 - auditable execution records  
@@ -189,7 +201,8 @@ Architecture Runtime is the central category:
 
 ```text
 Metadata defines architecture.
-Architecture Control governs execution.
+Architecture Control governs generation and execution.
+Generation and Architecture Approvals protect separate control boundaries.
 Execution Records preserve audit evidence.
 SQL remains an artifact.
 ```

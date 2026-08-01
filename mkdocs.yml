@@ -61,6 +61,7 @@ nav:
 
   - Metadata Model & Generation:
       - ⚙️ Generation Logic: generation_logic.md
+      - ⚙️ Controlled Target Generation: controlled_target_generation.md
       - ⚙️ Metadata Naming Guidance: metadata_naming_guidance.md
       - ⚙️ Incremental Load Architecture: incremental_load.md
       - ⚙️ Load SQL Architecture: load_sql_architecture.md

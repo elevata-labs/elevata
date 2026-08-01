@@ -16,7 +16,13 @@ Metadata Model (Datasets, Columns, Lineage)
   ↓
 Source Ingestion Readiness (Landing, Ingestion, RAW Handoff)
   ↓
-Generation Logic (TargetDataset & Columns)
+Target Generation Plan + Source-to-Target Review
+  ↓
+Generation Approval, when required
+  ↓
+Guarded Target Metadata Apply
+  ↓
+Target Metadata (TargetDataset, TargetColumn, Inputs)
   ↓
 Lineage Model (Dataset + Column Lineage)
   ↓
@@ -37,11 +43,17 @@ DDL Applier (safe DDL only)
 
 This flow represents the central principle of elevata:
 
-> **Metadata → Logical Plan → Dialect-aware SQL → Warehouse**
+> **Source Metadata → Controlled Target Metadata → Logical Plan → Dialect-aware SQL → Warehouse**
 
 Architecture Control provides review, approval, immutable scheduler binding, finalization, and audit artifacts around the same architecture state:
 
 ```text 
+Target Generation Plan + Review
+  ↓
+Generation Approval Artifact, when required
+  ↓
+Guarded Target Metadata Apply
+  ↓
 Architecture State
   ↓
 Architecture Diff
@@ -116,11 +128,15 @@ The result is deterministic and read-only. It does not connect to sources, resol
 Readiness appears on SourceDataset detail pages and is aggregated in Architecture Catalog Source Systems, Portfolio and Map.
  
 ### 🧩 2.2 Generation Layer
+- Projects existing generator semantics into immutable Target Generation Plans  
+- Reviews and applies generated metadata in dependency order: Raw → Stage → Rawcore  
 - Creates TargetDatasets in Raw, Stage, Rawcore  
 - Injects surrogate keys where required  
 - Produces column mappings based entirely on lineage  
 - Derives multi-source UNION nullability from every participating branch  
 - Reconciles generator-owned TargetDataset retirement and reactivation for complete schema scopes
+
+Planning is read-only. Guarded apply consumes one exact reviewed schema plan and rejects source, target or generation-decision drift. The all-dataset UI guides users through the generated-layer sequence and recalculates downstream plans after each upstream layer converges.
 
 Generated datasets that leave the eligible source scope are retained as metadata but marked inactive and retired. They remain reviewable, are not dropped physically by generation, and are excluded from active execution. If they become eligible again, the same metadata objects are reactivated in place.
 
@@ -251,6 +267,8 @@ Architecture Control makes metadata-defined architecture reviewable, approvable,
 
 It provides deterministic artifacts for:
 
+- Target Generation Plans and Reviews  
+- Generation Approval Artifacts  
 - Architecture State  
 - Architecture Change Reports  
 - Architecture Promotion Reports  
@@ -269,6 +287,9 @@ Command responsibilities:
 
 | Command | Responsibility |
 |---|---|
+| `generate_targets --dry-run` | Render a Target Generation Plan and Review |
+| `elevata_generation_approve` | Approve one exact Target Generation Review |
+| `generate_targets --plan-file` | Apply one exact generation plan with drift guards |
 | `elevata_state` | Render the metadata-defined architecture state |
 | `elevata_plan` | Render architecture change intent and policy decisions |
 | `elevata_promote` | Compare two architecture state artifacts |
@@ -286,7 +307,9 @@ Architecture State → Architecture Diff → MigrationPlan → Policy Decisions
 
 The Architecture Control UI adds a constrained operational layer. Architecture Review Briefing summarizes the current scoped report, review status and execution preview before approval or execution. Allowed and metadata-only policy decisions remain confirmation signals, while preflight and blocked decisions are surfaced as reviewer attention:
 
-- scope-aware report and review status  
+- generated-layer sequence and Source-to-Target review  
+- separate Generation Approval and guarded target metadata apply  
+- scope-aware architecture report and review status  
 - compact Architecture Review Briefing  
 - approval artifact creation and verification  
 - Execution Impact Plan  
@@ -437,6 +460,7 @@ Metadata Model
 - [Architecture Catalog Portfolio](architecture_catalog_portfolio.md)  
 - [Source Backends](source_backends.md)  
 - [Generation Logic](generation_logic.md)  
+- [Controlled Target Generation](controlled_target_generation.md)  
 - [Incremental Load Architecture](incremental_load.md)  
 - [Load SQL Architecture](load_sql_architecture.md)  
 - [Lineage Model & Logical Plan](logical_plan.md)  

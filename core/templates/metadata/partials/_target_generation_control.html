@@ -1,0 +1,584 @@
+<!--
+elevata - Metadata-driven Data Platform Framework
+Copyright © 2025-2026 Ilona Tag
+
+This file is part of elevata.
+
+elevata is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of
+the License, or (at your option) any later version.
+
+elevata is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with elevata. If not, see <https://www.gnu.org/licenses/>.
+
+Contact: <https://github.com/elevata-labs/elevata>.
+-->
+
+{% if scope_mode == "all" %}
+  <div id="target-generation" class="card mb-4">
+    <div class="card-body">
+      <div class="d-flex align-items-start justify-content-between gap-3 mb-3">
+        <div>
+          <div class="fw-semibold mb-1">Controlled Target Generation</div>
+          <p class="text-muted small mb-0">
+            Review the complete generated-layer sequence before controlled
+            Source-to-Target metadata mutation.
+          </p>
+        </div>
+        {% if generation_sequence and generation_sequence.all_up_to_date %}
+          <span class="badge text-bg-success">All generated layers up to date</span>
+        {% elif generation_sequence and generation_sequence.next_actionable_item %}
+          <span class="badge text-bg-info">Generation review available</span>
+        {% else %}
+          <span class="badge text-bg-secondary">Generation sequence</span>
+        {% endif %}
+      </div>
+
+      {% if generation_sequence_error %}
+        <div class="alert alert-danger mb-0">
+          <div class="fw-semibold">Target Generation sequence failed</div>
+          <div class="small mt-1">{{ generation_sequence_error }}</div>
+        </div>
+      {% else %}
+        {% include "metadata/partials/_target_generation_sequence.html" %}
+      {% endif %}
+    </div>
+  </div>
+{% elif scope_mode == "schema" and selected_schema_short in controlled_generation_schemas %}
+  <div id="target-generation" class="card mb-4">
+    <div class="card-body">
+      <div class="d-flex align-items-start justify-content-between gap-3 mb-3">
+        <div>
+          <div class="fw-semibold mb-1">Controlled Target Generation</div>
+          <p class="text-muted small mb-0">
+            Preview and apply deterministic Source-to-Target metadata changes for
+            the complete <code>{{ selected_schema_short }}</code> generation scope.
+          </p>
+        </div>
+        {% if generation_context %}
+          {% if generation_context.upstream_pending_schema_short_name %}
+            <span class="badge text-bg-secondary">
+              Recalculate after {{ generation_context.upstream_pending_schema_short_name|upper }}
+            </span>
+          {% elif not generation_context.has_actions %}
+            <span class="badge text-bg-success">No generation changes</span>
+          {% elif generation_context.approval_valid %}
+            <span class="badge text-bg-success">Generation approved</span>
+          {% elif generation_context.approval_invalid %}
+            <span class="badge text-bg-danger">Invalid Generation Approval</span>
+          {% elif generation_context.approval_required %}
+            <span class="badge text-bg-warning">Generation approval required</span>
+          {% else %}
+            <span class="badge text-bg-info">Guarded apply available</span>
+          {% endif %}
+        {% else %}
+          <span class="badge text-bg-secondary">Generation preview</span>
+        {% endif %}
+      </div>
+
+      <div class="alert alert-light border small">
+        <div class="fw-semibold">Separate control decisions</div>
+        <div class="mt-1">
+          Generation Approval authorizes metadata mutation for one exact
+          Target Generation Review. Architecture Approval remains a separate
+          decision for later physical execution of the resulting Architecture
+          Change Report.
+        </div>
+      </div>
+
+      {% if generation_sequence_error %}
+        <div class="alert alert-danger small">
+          <div class="fw-semibold">Generated layer sequence failed</div>
+          <div class="mt-1">{{ generation_sequence_error }}</div>
+        </div>
+      {% else %}
+        {% include "metadata/partials/_target_generation_sequence.html" %}
+      {% endif %}
+
+      {% if generation_error %}
+        <div class="alert alert-danger mb-0">
+          <div class="fw-semibold">Target Generation preview failed</div>
+          <div class="small mt-1">{{ generation_error }}</div>
+        </div>
+      {% elif generation_context %}
+        {% if generation_context.upstream_pending_schema_short_name %}
+          <div class="alert alert-warning small">
+            <div class="fw-semibold">Downstream preview is provisional</div>
+            <div class="mt-1">
+              {{ generation_context.upstream_pending_schema_short_name|upper }} has
+              pending generation actions. This {{ selected_schema_short|upper }} plan
+              must be recalculated after the upstream layer converges. Approval and
+              guarded apply are disabled for this provisional preview.
+            </div>
+          </div>
+        {% endif %}
+        {% if last_generation_result %}
+          <div class="alert {% if last_generation_result.converged %}alert-success{% else %}alert-warning{% endif %} small">
+            <div class="fw-semibold">Last guarded generation result</div>
+            <div class="mt-1">{{ last_generation_result.summary_text }}</div>
+            <div class="row g-2 mt-1">
+              <div class="col-lg-3 col-md-6">
+                <span class="text-muted">Consumed actions:</span>
+                {{ last_generation_result.consumed_action_count }}
+              </div>
+              <div class="col-lg-3 col-md-6">
+                <span class="text-muted">Residual actions:</span>
+                {{ last_generation_result.residual_action_count }}
+              </div>
+              <div class="col-lg-3 col-md-6">
+                <span class="text-muted">Datasets processed:</span>
+                {{ last_generation_result.processed_dataset_count }}
+              </div>
+              <div class="col-lg-3 col-md-6">
+                <span class="text-muted">Columns processed:</span>
+                {{ last_generation_result.processed_column_count }}
+              </div>
+            </div>
+            <div class="row g-2 mt-1">
+              <div class="col-lg-4">
+                <span class="text-muted">Applied plan:</span>
+                <code>{{ last_generation_result.plan_fingerprint|slice:":12" }}</code>
+              </div>
+              <div class="col-lg-4">
+                <span class="text-muted">Generation review:</span>
+                <code>{{ last_generation_result.review_fingerprint|slice:":12" }}</code>
+              </div>
+              <div class="col-lg-4">
+                <span class="text-muted">Generation Approval:</span>
+                {% if last_generation_result.approval_id %}
+                  <code>{{ last_generation_result.approval_id }}</code>
+                {% else %}
+                  <span class="text-muted">not required</span>
+                {% endif %}
+              </div>
+            </div>
+            {% if not last_generation_result.converged %}
+              <div class="mt-2">
+                The current preview below is the residual plan
+                <code>{{ last_generation_result.residual_plan_fingerprint|slice:":12" }}</code>.
+                It requires a separate review and, where applicable, a new
+                Generation Approval.
+              </div>
+            {% endif %}
+          </div>
+        {% endif %}
+
+        <div class="row g-3 small mb-3">
+          <div class="col-lg-2 col-md-4 col-6">
+            <div class="border rounded p-3 h-100 bg-light">
+              <div class="text-muted">Actions</div>
+              <div class="fs-5">{{ generation_context.review.action_count }}</div>
+            </div>
+          </div>
+          <div class="col-lg-2 col-md-4 col-6">
+            <div class="border rounded p-3 h-100 bg-light">
+              <div class="text-muted">Breaking</div>
+              <div class="fs-5">{{ generation_context.classification_counts.BREAKING }}</div>
+            </div>
+          </div>
+          <div class="col-lg-2 col-md-4 col-6">
+            <div class="border rounded p-3 h-100 bg-light">
+              <div class="text-muted">Additive</div>
+              <div class="fs-5">{{ generation_context.classification_counts.ADDITIVE }}</div>
+            </div>
+          </div>
+          <div class="col-lg-2 col-md-4 col-6">
+            <div class="border rounded p-3 h-100 bg-light">
+              <div class="text-muted">Neutral</div>
+              <div class="fs-5">{{ generation_context.classification_counts.NEUTRAL }}</div>
+            </div>
+          </div>
+          <div class="col-lg-2 col-md-4 col-6">
+            <div class="border rounded p-3 h-100 bg-light">
+              <div class="text-muted">Sources</div>
+              <div class="fs-5">{{ generation_context.source_count }}</div>
+            </div>
+          </div>
+          <div class="col-lg-2 col-md-4 col-6">
+            <div class="border rounded p-3 h-100 bg-light">
+              <div class="text-muted">Targets</div>
+              <div class="fs-5">{{ generation_context.target_dataset_count }}</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="row g-3 small mb-3">
+          <div class="col-lg-4">
+            <div class="text-muted">Plan fingerprint</div>
+            <code class="small text-break">{{ generation_context.plan.plan_fingerprint }}</code>
+          </div>
+          <div class="col-lg-4">
+            <div class="text-muted">Review fingerprint</div>
+            <code class="small text-break">{{ generation_context.review.review_fingerprint }}</code>
+          </div>
+          <div class="col-lg-4">
+            <div class="text-muted">Generation Approval</div>
+            {% if not generation_context.has_actions %}
+              <span class="text-muted">not required</span>
+            {% elif generation_context.approval_valid %}
+              <code>{{ generation_context.approval.approval_id }}</code>
+            {% else %}
+              <span class="text-muted">{{ generation_context.approval_check.status }}</span>
+            {% endif %}
+            {% if generation_context.has_actions %}
+              <div class="text-muted text-break mt-1">
+                {{ generation_context.approval_directory }}
+              </div>
+            {% endif %}
+          </div>
+        </div>
+
+        <div class="d-flex flex-wrap gap-2 mb-3">
+          <a
+            href="{% url 'architecture_control_generation_plan_download' %}?{{ generation_querystring }}"
+            class="btn btn-sm btn-outline-secondary"
+          >
+            <i class="bi bi-download"></i> Download plan JSON
+          </a>
+          <a
+            href="{% url 'architecture_control_generation_review_download' %}?{{ generation_querystring }}"
+            class="btn btn-sm btn-outline-secondary"
+          >
+            <i class="bi bi-download"></i> Download review JSON
+          </a>
+          {% if generation_context.has_actions %}
+            <form
+              method="post"
+              action="{% url 'architecture_control_generation_approval_check' %}"
+              class="d-inline"
+            >
+              {% csrf_token %}
+              <input type="hidden" name="scope_mode" value="schema">
+              <input type="hidden" name="schema_short" value="{{ selected_schema_short }}">
+              <input
+                type="hidden"
+                name="generation_review_fingerprint"
+                value="{{ generation_context.review.review_fingerprint }}"
+              >
+              <button type="submit" class="btn btn-sm btn-outline-secondary">
+                <i class="bi bi-shield-check"></i> Check Generation Approval
+              </button>
+            </form>
+          {% endif %}
+          <a
+            href="{% url 'architecture_control' %}?{{ scope_querystring }}#target-generation"
+            class="btn btn-sm btn-outline-primary"
+            data-generation-navigation
+          >
+            <i class="bi bi-arrow-repeat"></i> Refresh generation preview
+          </a>
+        </div>
+
+        {% if generation_context.dataset_impact_preview %}
+          <div class="table-responsive mb-3">
+            <table class="table table-sm align-middle mb-0">
+              <thead>
+                <tr>
+                  <th>Target dataset</th>
+                  <th>Sources</th>
+                  <th class="text-end">Actions</th>
+                  <th>Classification</th>
+                  <th>Effects</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for impact in generation_context.dataset_impact_preview %}
+                  <tr>
+                    <td class="fw-semibold">
+                      {{ impact.target_dataset_label }}
+                    </td>
+                    <td class="small">
+                      {% if impact.sources %}
+                        {% for source in impact.sources %}
+                          <div{% if not forloop.last %} class="mb-1"{% endif %}>
+                            {{ source.label }}
+                          </div>
+                        {% endfor %}
+                      {% else %}
+                        –
+                      {% endif %}
+                    </td>
+                    <td class="text-end">{{ impact.action_count }}</td>
+                    <td>
+                      {% if impact.change_classification == "BREAKING" %}
+                        <span class="badge text-bg-danger">BREAKING</span>
+                      {% elif impact.change_classification == "ADDITIVE" %}
+                        <span class="badge text-bg-success">ADDITIVE</span>
+                      {% else %}
+                        <span class="badge text-bg-secondary">NEUTRAL</span>
+                      {% endif %}
+                    </td>
+                    <td class="small">{{ impact.effect_origins|join:", " }}</td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        {% endif %}
+
+        {% if generation_context.action_preview %}
+          <details class="border rounded p-3 mb-3">
+            <summary class="fw-semibold small">
+              Inspect planned actions
+              {% if generation_context.remaining_action_count %}
+                (first {{ generation_context.action_preview_limit }} of
+                {{ generation_context.review.action_count }})
+              {% else %}
+                ({{ generation_context.review.action_count }})
+              {% endif %}
+            </summary>
+            <div class="mt-3">
+              {% for action in generation_context.action_preview %}
+                <div class="border rounded p-3 mb-2 small bg-light">
+                  <div class="d-flex align-items-start justify-content-between gap-2">
+                    <div>
+                      <div class="fw-semibold">{{ action.action_type_label }}</div>
+                      <div>{{ action.object_label }}</div>
+                    </div>
+                    <div class="d-flex gap-1">
+                      <span class="badge text-bg-secondary">{{ action.effect_origin }}</span>
+                      {% if action.change_classification == "BREAKING" %}
+                        <span class="badge text-bg-danger">BREAKING</span>
+                      {% elif action.change_classification == "ADDITIVE" %}
+                        <span class="badge text-bg-success">ADDITIVE</span>
+                      {% else %}
+                        <span class="badge text-bg-secondary">NEUTRAL</span>
+                      {% endif %}
+                    </div>
+                  </div>
+                  <div class="text-muted mt-2">{{ action.reason }}</div>
+                  <div class="row g-3 mt-1">
+                    <div class="col-lg-6">
+                      <div class="fw-semibold mb-1">Before</div>
+                      <pre class="small border rounded p-2 mb-0 bg-white">{{ action.before_json }}</pre>
+                    </div>
+                    <div class="col-lg-6">
+                      <div class="fw-semibold mb-1">After</div>
+                      <pre class="small border rounded p-2 mb-0 bg-white">{{ action.after_json }}</pre>
+                    </div>
+                  </div>
+                </div>
+              {% endfor %}
+              {% if generation_context.remaining_action_count %}
+                <div class="text-muted small">
+                  {{ generation_context.remaining_action_count }} additional action(s)
+                  are available in the downloadable plan JSON.
+                </div>
+              {% endif %}
+            </div>
+          </details>
+        {% endif %}
+
+        {% if generation_context.has_actions %}
+          <div class="row g-3 border-top pt-3">
+            <div class="col-lg-7">
+              {% if perms.metadata.change_targetdataset %}
+                {% if generation_context.approval_valid %}
+                  <div class="alert alert-success small mb-0">
+                    Exact Generation Approval
+                    <code>{{ generation_context.approval.approval_id }}</code>
+                    matches this review.
+                  </div>
+                {% elif generation_context.upstream_pending_schema_short_name %}
+                  <div class="alert alert-warning small mb-0">
+                    Generation Approval is unavailable until
+                    {{ generation_context.upstream_pending_schema_short_name|upper }}
+                    generation has converged and this preview has been recalculated.
+                  </div>
+                {% elif generation_context.can_approve %}
+                  <form
+                    method="post"
+                    id="target-generation-approval-form"
+                  >
+                    {% csrf_token %}
+                    <input type="hidden" name="scope_mode" value="schema">
+                    <input type="hidden" name="schema_short" value="{{ selected_schema_short }}">
+                    <input
+                      type="hidden"
+                      name="generation_review_fingerprint"
+                      value="{{ generation_context.review.review_fingerprint }}"
+                    >
+                    <label for="generation-approval-note" class="form-label small fw-semibold">
+                      Generation Approval note
+                    </label>
+                    <textarea
+                      id="generation-approval-note"
+                      name="note"
+                      rows="2"
+                      class="form-control form-control-sm mb-2"
+                      placeholder="Optional review note"
+                    ></textarea>
+                    <button
+                      type="submit"
+                      class="btn btn-sm btn-outline-primary"
+                      id="target-generation-approval-button"
+                    >
+                      <span
+                        class="spinner-border spinner-border-sm me-2 d-none"
+                        id="target-generation-approval-spinner"
+                        role="status"
+                        aria-hidden="true"
+                      ></span>
+                      <span id="target-generation-approval-idle-text">
+                        <i class="bi bi-shield-plus"></i> Create Generation Approval
+                      </span>
+                      <span class="d-none" id="target-generation-approval-running-text">
+                        Creating Generation Approval...
+                      </span>
+                    </button>
+                    <div
+                      class="form-text d-none"
+                      id="target-generation-approval-status"
+                    >
+                      Generation Approval is being created. Please wait…
+                    </div>
+                  </form>
+                {% endif %}
+              {% endif %}
+            </div>
+            <div class="col-lg-5">
+              {% if perms.metadata.change_targetdataset %}
+                <form
+                  method="post"
+                  action="{% url 'architecture_control_generation_apply' %}"
+                  id="target-generation-apply-form"
+                >
+                  {% csrf_token %}
+                  <input type="hidden" name="scope_mode" value="schema">
+                  <input type="hidden" name="schema_short" value="{{ selected_schema_short }}">
+                  <input
+                    type="hidden"
+                    name="generation_review_fingerprint"
+                    value="{{ generation_context.review.review_fingerprint }}"
+                  >
+                  <button
+                    type="submit"
+                    class="btn btn-sm btn-primary w-100"
+                    id="target-generation-apply-button"
+                    {% if not generation_context.can_apply %}disabled{% endif %}
+                  >
+                    <span
+                      class="spinner-border spinner-border-sm me-2 d-none"
+                      id="target-generation-apply-spinner"
+                      role="status"
+                      aria-hidden="true"
+                    ></span>
+                    <span id="target-generation-apply-idle-text">
+                      <i class="bi bi-diagram-3"></i> Guarded apply
+                    </span>
+                    <span class="d-none" id="target-generation-apply-running-text">
+                      Applying guarded generation...
+                    </span>
+                  </button>
+                  <div
+                    class="form-text d-none"
+                    id="target-generation-apply-status"
+                  >
+                    Target generation is running. Please wait…
+                  </div>
+                </form>
+                <div class="small text-muted mt-2">
+                  {% if generation_context.upstream_pending_schema_short_name %}
+                    Apply is disabled until
+                    {{ generation_context.upstream_pending_schema_short_name|upper }}
+                    generation converges and this plan is recalculated.
+                  {% elif generation_context.approval_invalid %}
+                    The stored Generation Approval is invalid. Create a new exact
+                    approval before guarded apply.
+                  {% elif generation_context.approval_required and not generation_context.approval_valid %}
+                    Breaking generation changes require an exact Generation Approval.
+                  {% elif generation_context.approval_valid %}
+                    Apply will verify <code>{{ generation_context.approval.approval_id }}</code>
+                    and all plan fingerprints again before mutation.
+                  {% else %}
+                    No breaking change is present. Apply remains drift-guarded;
+                    Generation Approval is optional.
+                  {% endif %}
+                </div>
+              {% endif %}
+            </div>
+          </div>
+        {% else %}
+          <div class="alert alert-success small mb-0">
+            The schema-scoped Target Generation Plan is empty. No metadata mutation
+            or Generation Approval is required.
+          </div>
+        {% endif %}
+      {% endif %}
+    </div>
+  </div>
+{% elif scope_mode == "schema" and selected_schema_short %}
+  <div class="alert alert-light border small mb-4">
+    Controlled Target Generation is available for
+    <code>raw</code>, <code>stage</code> and <code>rawcore</code> schema scopes.
+  </div>
+{% endif %}
+
+<script>
+  (function() {
+    function bindBusyForm(config) {
+      const form = document.getElementById(config.formId);
+      if (!form) {
+        return;
+      }
+
+      const button = document.getElementById(config.buttonId);
+      const spinner = document.getElementById(config.spinnerId);
+      const idleText = document.getElementById(config.idleTextId);
+      const runningText = document.getElementById(config.runningTextId);
+      const status = document.getElementById(config.statusId);
+
+      form.addEventListener('submit', function(event) {
+        if (config.confirmMessage && !window.confirm(config.confirmMessage)) {
+          event.preventDefault();
+          return;
+        }
+
+        if (!button || button.disabled) {
+          return;
+        }
+
+        button.disabled = true;
+        button.setAttribute('aria-busy', 'true');
+
+        if (spinner) {
+          spinner.classList.remove('d-none');
+        }
+        if (idleText) {
+          idleText.classList.add('d-none');
+        }
+        if (runningText) {
+          runningText.classList.remove('d-none');
+        }
+        if (status) {
+          status.classList.remove('d-none');
+        }
+      });
+    }
+
+    bindBusyForm({
+      formId: 'target-generation-approval-form',
+      buttonId: 'target-generation-approval-button',
+      spinnerId: 'target-generation-approval-spinner',
+      idleTextId: 'target-generation-approval-idle-text',
+      runningTextId: 'target-generation-approval-running-text',
+      statusId: 'target-generation-approval-status',
+    });
+
+    bindBusyForm({
+      formId: 'target-generation-apply-form',
+      buttonId: 'target-generation-apply-button',
+      spinnerId: 'target-generation-apply-spinner',
+      idleTextId: 'target-generation-apply-idle-text',
+      runningTextId: 'target-generation-apply-running-text',
+      statusId: 'target-generation-apply-status',
+      confirmMessage: 'Apply this exact Target Generation Plan to metadata?',
+    });
+  })();
+</script>

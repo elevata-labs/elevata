@@ -99,9 +99,17 @@ Metadata changes made after Run Plan creation are reported as post-plan drift. T
 
 When no recorded state exists, a first state can be established only after full-scope physical discovery verifies an empty managed target. Legacy interrupted initial deployments without a Planned Architecture State snapshot can be recovered only through an explicit, strictly validated recovery path.
 
-### 🧩 2.6 Architecture Control Plane
+### 🧩 2.6 Controlled Target Generation Boundary
 
-The Architecture Control Plane provides controlled review, approval, Execution Impact, execution preview, immutable scheduler planning, finalization, and execution audit workflows around architecture state and schema evolution intent.
+Controlled Target Generation occurs before execution planning. It creates and applies TargetDataset and TargetColumn metadata through immutable schema-scoped plans, Source-to-Target reviews, optional or required Generation Approval, and drift-guarded apply.
+
+Target Generation Plans do not contain load steps and do not authorize physical execution. The generated-layer sequence must converge before the resulting Architecture State and Architecture Change Report are treated as the current execution-review basis.
+
+Generation Approval is not carried into an Execution Run Plan. Only the later Architecture Approval associated with the resulting Architecture Change Report can become part of execution review context.
+
+### 🧩 2.7 Architecture Control Plane
+
+The Architecture Control Plane provides controlled target generation, architecture review, approval, Execution Impact, execution preview, immutable scheduler planning, finalization, and execution audit workflows around architecture state and schema evolution intent.
 
 Execution remains delegated to the load runner. The Architecture Control UI and scheduler commands do not bypass preflight validation, materialization policy checks, or Architecture Guard enforcement.
 
@@ -109,6 +117,9 @@ The control plane commands are:
 
 | Command | Purpose |
 |---|---|
+| `generate_targets --dry-run` | Render a Target Generation Plan and Review before metadata mutation |
+| `elevata_generation_approve` | Approve one exact Target Generation Review |
+| `generate_targets --plan-file` | Apply one exact Target Generation Plan with drift guards |
 | `elevata_state` | Render the metadata-defined architecture state |
 | `elevata_plan` | Render an architecture change report |
 | `elevata_promote` | Compare two architecture state artifacts |
@@ -413,7 +424,7 @@ The CLI is an adapter. All execution logic lives in the execution core.
 
 ## 🔧 13. Architecture Control Execution
 
-Architecture Control execution is a constrained UI path into the same load runner.
+Architecture Control execution is a constrained UI path into the same load runner. Controlled Target Generation is the preceding metadata-control phase and must converge separately before physical execution review.
 
 It provides:
 

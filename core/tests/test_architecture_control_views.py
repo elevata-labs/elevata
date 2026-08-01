@@ -139,6 +139,15 @@ def _patch_scope_lists(monkeypatch) -> None:
     "TargetDataset",
     SimpleNamespace(objects=FakeQuerySet()),
   )
+  monkeypatch.setattr(
+    views,
+    "build_target_generation_sequence_context",
+    lambda **kwargs: SimpleNamespace(
+      items=(),
+      all_up_to_date=True,
+      next_actionable_item=None,
+    ),
+  )
 
 
 def _review_status() -> SimpleNamespace:

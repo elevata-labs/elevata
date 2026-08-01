@@ -1,9 +1,12 @@
 # ⚙️ Architecture Control Plane
 
-The Architecture Control Plane provides deterministic review, comparison, and promotion workflows for metadata-defined architecture.
+The Architecture Control Plane provides deterministic target generation, review, comparison, approval, execution-control, and promotion workflows for metadata-defined architecture.
 
 It turns architecture state into explicit artifacts:
 
+- Target Generation Plan  
+- Target Generation Review  
+- Generation Approval Artifact  
 - Architecture State  
 - Architecture Change Report  
 - Architecture Promotion Report  
@@ -28,6 +31,16 @@ elevata treats architecture as executable metadata.
 The Architecture Control Plane defines the review and comparison layer around that metadata:
 
 ```text
+Source Metadata
+  ↓
+Target Generation Plan
+  ↓
+Target Generation Review
+  ↓
+Generation Approval Artifact, when required
+  ↓
+Guarded Target Metadata Apply
+  ↓
 Architecture State
   ↓
 Architecture Diff
@@ -57,7 +70,65 @@ This makes schema evolution and execution intent explicit before load execution 
 
 ---
 
-## 🔧 2. Architecture State
+## 🔧 2. Controlled Target Generation
+
+Controlled Target Generation governs mutation of generated TargetDataset, TargetColumn and input metadata before that metadata becomes Architecture State and physical execution intent.
+
+It reuses the existing generator semantics and adds an explicit control contract around them:
+
+```text
+Plan
+  ↓
+Review
+  ↓
+Approve, when required
+  ↓
+Guarded Apply
+  ↓
+Residual Plan or Converged State
+```
+
+The immutable Target Generation Plan contains:
+
+- schema scope and lifecycle reconciliation mode  
+- SourceDataset keys  
+- source and target metadata fingerprints  
+- ordered dataset, column and input actions  
+- canonical before and after state  
+- direct, history companion, generated lifecycle and model-side-effect origins  
+- additive, breaking and neutral classifications  
+- deterministic plan fingerprint
+
+Planning is read-only. Dry-run, JSON output, Architecture Control preview and guarded apply all use the same plan contract.
+
+A Target Generation Review summarizes SourceDataset-to-TargetDataset impact and receives its own deterministic review fingerprint. Breaking changes require a matching Generation Approval in the UI; additive and neutral changes remain approval-optional but are still drift-guarded.
+
+Generation Approval and Architecture Approval are separate decisions:
+
+| Approval | Authorizes | Bound to | Identifier |
+|---|---|---|---|
+| Generation Approval | Target metadata mutation | Target Generation Review and Plan | `gpa_...` |
+| Architecture Approval | Physical architecture change and execution readiness | Architecture Change Report | `apr_...` |
+
+A Generation Approval cannot authorize DDL, DML or load execution. After guarded target metadata apply, the resulting Architecture State and Architecture Change Report enter the existing Architecture Approval and execution workflow.
+
+Architecture Control guides complete generated-layer convergence in dependency order:
+
+```text
+RAW review and apply
+  ↓
+STAGE recalculation, review and apply
+  ↓
+RAWCORE recalculation, review and apply
+```
+
+Only the first pending layer is actionable. A downstream preview is provisional and cannot be approved or applied until its upstream generated layer has converged.
+
+For the complete contract and UI workflow, see [Controlled Target Generation](controlled_target_generation.md).
+
+---
+
+## 🔧 3. Architecture State
 
 Architecture State is a deterministic snapshot of the metadata-defined platform architecture.
 
@@ -111,7 +182,7 @@ ELEVATA_PERSIST_ARCH_STATE_ON_DRY_RUN=false
 
 ---
 
-## 🔧 3. Architecture Change Report
+## 🔧 4. Architecture Change Report
 
 An Architecture Change Report describes the difference between a baseline state and the metadata-defined architecture state.
 
@@ -184,7 +255,7 @@ python manage.py elevata_plan rc_aw_customer \
 
 ---
 
-## 🔧 4. Architecture Approval Artifact
+## 🔧 5. Architecture Approval Artifact
 
 An Architecture Approval Artifact records a review decision for one exact Architecture Change Report fingerprint.
 
@@ -249,7 +320,7 @@ The approval check fails when:
 
 ---
 
-## 🔧 5. Architecture Review Status UI
+## 🔧 6. Architecture Review Status UI
 
 The Architecture Review Status UI shows the review state for a selected TargetDataset architecture scope.
 
@@ -268,18 +339,20 @@ Review states include approved, pending review, approval drift, blocked by polic
 
 ---
 
-## 🔧 6. Architecture Control UI
+## 🔧 7. Architecture Control UI
 
 The Architecture Control UI makes Architecture Control Plane workflows operable across controlled architecture scopes.
 
 It supports:
 
-- all-dataset scopes  
-- schema scopes  
+- all-dataset generated-layer overview  
+- RAW, STAGE and RAWCORE generation review scopes  
+- all-dataset architecture review and execution scopes  
+- schema architecture review and execution scopes  
 - TargetDataset scopes  
 - TargetDataset scopes with target-only execution
 
-### 🧩 6.1 Architecture Review Briefing
+### 🧩 7.1 Architecture Review Briefing
 
 Architecture Review Briefing is a compact, deterministic decision aid inside Architecture Control.
 
@@ -297,7 +370,7 @@ The briefing is derived from existing Architecture Control signals: the current 
 
 The UI keeps the briefing compact by showing the main reviewer signals first. Detailed sections are available on demand through an expandable detail area.
 
-### 🧩 6.2 Review Scope and Execution Scope
+### 🧩 7.2 Review Scope and Execution Scope
 
 Architecture review and execution intentionally resolve different dataset sets:
 
@@ -314,7 +387,7 @@ The TargetDataset selector continues to show active datasets only. An inactive g
 
 This separation prevents a retired metadata object from silently re-entering execution while preserving explicit review of the architecture contract change.
 
-### 🧩 6.3 Execution Impact Plan and Immutable Run Plan
+### 🧩 7.3 Execution Impact Plan and Immutable Run Plan
 
 Execution Impact evaluates the exact active execution scope and classifies each dataset as:
 
@@ -347,7 +420,17 @@ Successful finalization persists exactly the Planned Architecture State applied 
 
 For a legacy interrupted initial deployment without a Planned Architecture State snapshot, recovery is available only through the explicit `--recover-interrupted-initial-deployment` option. Recovery validates complete outcomes, absence of another recorded state, current metadata scope, and the physical target architecture before writing state and recovery evidence.
 
-The Architecture Control UI provides controlled actions for architecture artifacts and execution:
+The Architecture Control UI first provides controlled actions for target metadata generation:
+
+- inspect the complete RAW, STAGE and RAWCORE sequence  
+- inspect Source-to-Target impact and action classifications  
+- inspect canonical before and after state  
+- download Target Generation Plan and Review JSON  
+- create and check Generation Approval Artifacts  
+- apply the exact reviewed plan with drift guards  
+- inspect apply evidence, convergence and residual plans
+
+It then provides controlled actions for architecture artifacts and execution:
 
 - show the scoped Architecture Change Report  
 - download the scoped Architecture Change Report as JSON  
@@ -391,7 +474,7 @@ When modeled rawcore references explicitly enable controlled member behavior, co
 
 ---
 
-## 🔧 7. Artifact Storage for Shared Deployments
+## 🔧 8. Artifact Storage for Shared Deployments
 
 Architecture Control Plane artifacts are stored on the server-side filesystem.
 
@@ -402,6 +485,7 @@ Default artifact layout:
 ```text
 .elevata/state/<profile>/<target-system>/architecture_state.json
 .elevata/approvals/<profile>/<target-system>/
+.elevata/approvals/<profile>/<target-system>/generation/
 .elevata/executions/<profile>/<target-system>/
 .elevata/executions/<profile>/<target-system>/run_plans/
 ```
@@ -428,7 +512,9 @@ ELEVATA_ARCH_APPROVAL_DIR=/var/lib/elevata/approvals
 ELEVATA_ARCH_EXECUTION_DIR=/var/lib/elevata/executions
 ```
 
-In containerized or multi-instance deployments, these paths are backed by a shared persistent volume. This ensures that Architecture State, Approval Artifacts, Review Status, Approval Checks, Execution Run Plans, Planned Architecture State snapshots, scheduler outcomes, finalization evidence, and Architecture Execution Records are resolved consistently across application and scheduler processes.
+In containerized or multi-instance deployments, these paths are backed by a shared persistent volume. This ensures that Architecture State, Generation and Architecture Approval Artifacts, Review Status, Approval Checks, Execution Run Plans, Planned Architecture State snapshots, scheduler outcomes, finalization evidence, and Architecture Execution Records are resolved consistently across application and scheduler processes.
+
+Architecture Approval files remain directly below the profile and target-system approval directory for compatibility. Generation Approval files use the dedicated `generation/` subdirectory and are named from the Target Generation Review fingerprint.
 
 The metadata database stores metadata definitions. Architecture Control Plane artifacts are stored in the configured artifact directories.
 
@@ -438,7 +524,7 @@ Architecture Execution Record history is resolved from the configured execution 
 
 ---
 
-## 🔧 8. Architecture Promotion Report
+## 🔧 9. Architecture Promotion Report
 
 An Architecture Promotion Report compares two Architecture State artifacts.
 
@@ -490,7 +576,7 @@ Promotion reports use the same scope semantics as change reports. The embedded A
 
 ---
 
-## 🔧 9. CI Exit Policies
+## 🔧 10. CI Exit Policies
 
 Architecture reports and promotion reports support explicit exit policies:
 
@@ -521,7 +607,7 @@ python manage.py elevata_promote \
 
 ---
 
-## 🔧 10. Execution Guardrails
+## 🔧 11. Execution Guardrails
 
 The Architecture Control Plane separates architecture review, approval, execution control, and load-run enforcement.
 
@@ -531,6 +617,9 @@ This preserves a strict separation:
 
 | Command | Responsibility |
 |---|---|
+| `generate_targets --dry-run` | Render Target Generation Plans and optional Review artifacts |
+| `elevata_generation_approve` | Create a Generation Approval for one exact Target Generation Plan |
+| `generate_targets --plan-file` | Apply one exact plan with source, target and decision drift guards |
 | `elevata_state` | Render architecture state |
 | `elevata_plan` | Render architecture change report |
 | `elevata_promote` | Compare architecture state artifacts |
@@ -546,7 +635,7 @@ Scheduler-managed execution adds a stricter immutable boundary. A dataset task m
 
 ---
 
-## 🔧 11. Architecture Execution Record
+## 🔧 12. Architecture Execution Record
 
 An Architecture Execution Record describes one controlled Architecture Control execution.
 
@@ -590,17 +679,45 @@ Architecture Execution Records are audit artifacts. They complement load-run log
 
 ---
 
-## 🔧 12. Deterministic Fingerprints
+## 🔧 13. Deterministic Fingerprints
 
-Architecture State, Architecture Change Report, Architecture Promotion Report, Architecture Approval Artifact, Execution Impact Plan, Execution Preview, Execution Run Plan, finalization evidence, and Architecture Execution Record expose deterministic fingerprints or bind directly to fingerprinted artifacts.
+Target Generation Plan, Target Generation Review, Generation Approval Artifact, Architecture State, Architecture Change Report, Architecture Promotion Report, Architecture Approval Artifact, Execution Impact Plan, Execution Preview, Execution Run Plan, finalization evidence, and Architecture Execution Record expose deterministic fingerprints or bind directly to fingerprinted artifacts.
  
 Fingerprints are derived from canonical JSON representations and allow CI, review processes, approval decisions, scheduler runs, finalization, promotion workflows, and audit processes to reference exact architecture artifacts.
 
 ---
 
-## 🔧 13. Operational Smoke Checks
-
+## 🔧 14. Operational Smoke Checks
+ 
 The following commands provide a compact validation set for architecture artifacts.
+ 
+Render one schema-scoped Target Generation Plan and Review:
+
+```bash
+python manage.py generate_targets \
+  --schema raw \
+  --dry-run \
+  --plan-output .artifacts/target_generation_plan_raw.json \
+  --review-output .artifacts/target_generation_review_raw.json
+```
+
+Create and store a Generation Approval when the reviewed plan requires or warrants one:
+
+```bash
+python manage.py elevata_generation_approve \
+  .artifacts/target_generation_plan_raw.json \
+  --approved-by "Reviewer Name" \
+  --note "Source-to-Target impact reviewed." \
+  --store
+```
+
+Apply the exact reviewed plan:
+
+```bash
+python manage.py generate_targets \
+  --plan-file .artifacts/target_generation_plan_raw.json \
+  --require-generation-approval
+```
 
 Export the current architecture state:
 

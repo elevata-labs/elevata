@@ -2109,6 +2109,50 @@ class TargetGenerationService:
     return retired_count, reactivated_count
 
 
+  def build_plan(
+    self,
+    eligible_source_datasets,
+    target_schema,
+    *,
+    reconcile_lifecycle=False,
+  ):
+    """
+    Derive a schema-scoped Target Generation Plan without persistence.
+
+    The planner reuses this service's existing pure generation helpers while
+    deliberately avoiding ORM save/delete operations and signal execution.
+    """
+    from metadata.generation.target_generation_planner import (
+      TargetGenerationPlanner,
+    )
+
+    return TargetGenerationPlanner(self).build_schema_plan(
+      eligible_source_datasets,
+      target_schema,
+      reconcile_lifecycle=reconcile_lifecycle,
+    )
+
+
+  def apply_plan(
+    self,
+    plan,
+    *,
+    approval=None,
+    require_approval=False,
+  ):
+    """Apply one validated Target Generation Plan with drift and approval guards."""
+    from metadata.generation.target_generation_guarded_apply import (
+      apply_target_generation_plan,
+    )
+
+    return apply_target_generation_plan(
+      self,
+      plan,
+      approval=approval,
+      require_approval=require_approval,
+    )
+
+
   # ------------------------------------------------------------
   # Main orchestration
   # ------------------------------------------------------------

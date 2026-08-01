@@ -44,12 +44,12 @@ elevata is an **Architecture Runtime** for metadata-defined data platforms.
 
 It models datasets, lineage, contracts, governance, and execution semantics as explicit metadata.
 
-From these definitions, elevata derives deterministic logical plans, renders dialect-owned SQL, reviews architecture changes, and executes warehouse-native pipelines through controlled runtime scopes.
+From these definitions, elevata derives deterministic Target Generation Plans and SQL Logical Plans, renders dialect-owned SQL, reviews architecture changes, and executes warehouse-native pipelines through controlled runtime scopes.
 
-Schema evolution, incremental loads, historization, approvals, and execution evidence are planned, validated, and applied deterministically.
+Target metadata generation, schema evolution, incremental loads, historization, approvals, and execution evidence are planned, validated, and applied deterministically.
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/elevata-labs/elevata/main/docs/elevata_v2_16_0.png" alt="elevata UI preview" width="900"/>
+  <img src="https://raw.githubusercontent.com/elevata-labs/elevata/main/docs/elevata_v2_17_0.png" alt="elevata UI preview" width="900"/>
   <br/>
   <em>Architecture Runtime UI for discovering, controlling, modeling, and executing metadata-defined data architecture</em>
 </p>
@@ -89,14 +89,15 @@ These publications explain why modern data platforms need metadata-defined, dete
 
 ## 🧩 Architecture Overview
 
-The core elevata execution pipeline consists of four explicitly separated layers:
+The core elevata architecture pipeline consists of five explicitly separated layers:
 
 1. **Metadata Model**  
-2. **Deterministic Logical Plan**  
-3. **Dialect Rendering**  
-4. **Warehouse-Native Execution**
+2. **Controlled Target Metadata Generation**  
+3. **Deterministic SQL Logical Plan**  
+4. **Dialect Rendering**  
+5. **Warehouse-Native Execution**
 
-Each layer is explicitly separated.
+Each layer has its own contract. A Target Generation Plan describes metadata mutation; a SQL Logical Plan describes the query that is rendered and executed.
 
 ---
 
@@ -104,13 +105,15 @@ Each layer is explicitly separated.
 
 1. Import or define source metadata, lineage, contracts, and execution semantics  
 2. Review source metadata import outcomes before generation  
-3. Discover architecture from Source Systems through Target Datasets to Data Products using Catalog, Portfolio, Insights, and Map    
-4. Inspect generated SQL, lineage, contracts, health, quality review, reference integrity, and execution evidence  
-5. Review architecture changes through Architecture Review Briefing and approve them through Architecture Control  
-6. Bind scheduler-managed runs to an immutable Execution Run Plan and Planned Architecture State  
-7. Execute approved or unchanged active scopes deterministically on your target warehouse  
-8. Finalize structured outcomes so recorded Architecture State advances only after successful execution  
-9. Audit execution through Run Plan evidence, Architecture Execution Records, load logs, and snapshots
+3. Open **Review target generation** and inspect the dependency-ordered RAW, STAGE, and RAWCORE sequence  
+4. Review the exact Source-to-Target plan, create a Generation Approval where required, and apply the plan through guarded metadata mutation  
+5. Discover the resulting architecture from Source Systems through Target Datasets to Data Products using Catalog, Portfolio, Insights, and Map  
+6. Inspect generated SQL, lineage, contracts, health, quality review, reference integrity, and execution evidence  
+7. Review the resulting physical architecture changes through Architecture Review Briefing and approve them through Architecture Control  
+8. Bind scheduler-managed runs to an immutable Execution Run Plan and Planned Architecture State  
+9. Execute approved or unchanged active scopes deterministically on your target warehouse  
+10. Finalize structured outcomes so recorded Architecture State advances only after successful execution  
+11. Audit execution through Run Plan evidence, Architecture Execution Records, load logs, and snapshots
 
 ---
 
@@ -206,7 +209,29 @@ The Catalog does not edit metadata and does not execute loads. Architecture Qual
 
 ## 🧭 Architecture Control
 
-elevata makes architecture changes reviewable before execution.
+elevata makes target metadata generation and physical architecture changes reviewable before mutation or execution.
+
+**Controlled Target Generation** turns the existing source-to-target generator semantics into an immutable, inspectable contract:
+
+```text
+Source Metadata
+  ↓
+Target Generation Plan + Review
+  ↓
+Generation Approval, when required
+  ↓
+Guarded Target Metadata Apply
+  ↓
+Architecture Change Report
+  ↓
+Architecture Approval
+  ↓
+Controlled or Scheduler Execution
+```
+
+The all-dataset view guides users through `RAW → STAGE → RAWCORE`. Only the first pending layer is actionable; later layers are recalculated after the preceding layer converges. The SourceDataset action **Review target generation** opens this controlled workflow instead of mutating target metadata directly.
+
+Generation Approval and Architecture Approval are intentionally separate. Generation Approval authorizes the exact reviewed metadata mutation. Architecture Approval authorizes the resulting physical architecture change reported afterwards.
 
 Architecture State, Change Reports, Promotion Reports, Approval Artifacts, Execution Impact Plans, immutable Execution Run Plans, Planned Architecture State snapshots, structured outcomes, and Execution Records expose deterministic fingerprints, MigrationPlan actions, policy decisions, review decisions, and execution evidence.
  
@@ -258,7 +283,7 @@ elevata evolves along four strategic axes:
 Keeping executable architecture discoverable across datasets, lineage, contracts, ownership, readiness, quality review, reference integrity, health and execution evidence.
 
 **2. Controlled Runtime Operation**  
-Strengthening deterministic review, approval, immutable scheduler contracts, finalization, audit evidence, retention and controlled runtime safety without adding unnecessary control layers.
+Strengthening controlled target metadata generation, deterministic review, separate approval boundaries, immutable scheduler contracts, finalization, audit evidence, retention and runtime safety without adding unnecessary control layers.
 
 **3. Source & Ingestion Readiness**  
 Keeping source onboarding, RAW landing intent, ingestion modes, file/API patterns, external ingestion and federated access explicit, inspectable and deterministic.

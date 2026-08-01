@@ -138,6 +138,35 @@ Type equivalence is used for drift classification and noise reduction. Physical 
 
 ---
 
+## 🔧 Controlled Target Metadata before Schema Evolution
+
+Source metadata does not directly become physical DDL. Generated target metadata first passes through Controlled Target Generation:
+
+```text
+Source Metadata
+  ↓
+Target Generation Plan + Review
+  ↓
+Generation Approval, when required
+  ↓
+Guarded Target Metadata Apply
+  ↓
+Architecture Change Report
+  ↓
+Architecture Approval
+  ↓
+Schema Evolution Preflight and Execution
+```
+
+The two approval types protect different boundaries:
+
+- **Generation Approval** authorizes one exact TargetDataset and TargetColumn metadata mutation.  
+- **Architecture Approval** authorizes the resulting physical architecture change represented by an Architecture Change Report.
+
+Target generation never applies physical DDL. It can create, update, retire or reactivate metadata and synchronize input lineage. Schema evolution remains responsible for comparing the resulting metadata-defined Architecture State with the physical warehouse and applying allowed MigrationPlan actions during controlled execution.
+
+---
+
 ## 🔧 Architecture Change Reports
 
 Architecture Change Reports describe schema evolution intent before execution.
@@ -335,12 +364,13 @@ Without the hist flag, removed business columns in `_hist` are preserved as reti
 
 ## 🔧 Example Workflow
 
-1. Rename column in metadata UI or API  
-2. Previous name is added to `former_names`  
-3. Schema evolution detects rename  
-4. Physical schema is updated safely  
-5. `_hist` table is kept in sync automatically  
-6. Architecture Control records the controlled execution result
+1. Rename a TargetColumn in metadata, or apply a source-derived rename through Controlled Target Generation  
+2. Previous names are preserved in `former_names`, including history companion metadata  
+3. Review the resulting Architecture Change Report  
+4. Schema evolution detects the rename  
+5. Physical schema is updated safely  
+6. `_hist` table is kept in sync automatically  
+7. Architecture Control records the controlled execution result
 
 No SQL changes required.
 

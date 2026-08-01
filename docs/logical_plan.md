@@ -21,6 +21,9 @@ Metadata → Logical Plan → Dialect Renderer → SQL
 
 It describes *what* needs to be executed, not *how* a specific SQL dialect expresses it.
 
+> **Terminology boundary**  
+> A SQL Logical Plan is not a Target Generation Plan. A Target Generation Plan describes deterministic metadata mutation for TargetDatasets, TargetColumns and inputs. The SQL Logical Plan is built afterwards from the resulting target metadata and describes the query rendered by a dialect.
+
 The Logical Plan:
 
 - is fully structured (tree-based)  

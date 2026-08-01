@@ -10,13 +10,43 @@ elevata follows a simple principle:
 
 > **Metadata-in → SQL-out**
 
-The generator inspects datasets, columns, lineage, relationships, and configuration to produce a stable, deterministic Logical Plan. From this plan, SQL is rendered through dialect adapters.
+The generator inspects datasets, columns, lineage, relationships, and configuration to derive target metadata and produce a stable, deterministic SQL Logical Plan. Target metadata mutation is controlled separately through an immutable Target Generation Plan before SQL planning and rendering.
 
 Pipeline:
 
 ```
 Metadata → Logical Plan → Expression AST → Dialect Rendering → SQL
 ```
+
+
+### 🧩 1.1 Controlled Target Metadata Generation
+
+The existing generator semantics are projected into a read-only **Target Generation Plan** before metadata is changed. The plan records exact dataset, column and input actions together with source and target fingerprints.
+
+```text
+Source Metadata
+  ↓
+Target Generation Plan
+  ↓
+Source-to-Target Generation Review
+  ↓
+Generation Approval, when required
+  ↓
+Guarded Target Metadata Apply
+  ↓
+Target Metadata
+  ↓
+SQL Logical Plan and Dialect Rendering
+```
+
+A Target Generation Plan is not a SQL Logical Plan:
+
+- **Target Generation Plan** - describes how TargetDataset and TargetColumn metadata will change  
+- **SQL Logical Plan** - describes the vendor-neutral query structure rendered after target metadata exists
+
+Planning is read-only. Guarded apply validates the current source metadata, target metadata and generation decisions against the reviewed plan before consuming it.
+
+The primary user workflow lives in Architecture Control. The CLI remains available for debugging, CI and explicit automation. See [Controlled Target Generation](controlled_target_generation.md).
 
 ---
 
@@ -289,7 +319,7 @@ RETIRE_DATASET
 METADATA_ONLY
 ```
 
-The Generate Targets summary distinguishes processing volume from actual lifecycle changes. It reports processed dataset and column counts separately from retired and reactivated dataset counts:
+The structured generation apply result distinguishes processing volume from actual lifecycle changes. CLI summaries report processed dataset and column counts separately from retired and reactivated dataset counts:
 
 ```text
 Total: 25 target datasets processed and 168 target columns processed;
@@ -341,7 +371,7 @@ Bizcore is therefore a **semantic layer by metadata**, not by execution logic.
 
 ---
 
-## 🔧 11. Summary
+## 🔧 12. Summary
 
 The generation logic is the heart of elevata:
 
@@ -355,7 +385,7 @@ This architecture supports multiple SQL backends without changing metadata or Lo
 
 ---
 
-## 🔧 12. Default Generation vs Custom Query Logic
+## 🔧 13. Default Generation vs Custom Query Logic
 
 elevata distinguishes between two generation modes:
 

@@ -1,6 +1,6 @@
 # ⚙️ Determinism & Execution Semantics
 
-This document defines elevata’s rules for **deterministic SQL generation and execution**. It applies to both standard generation and custom query logic (Query Trees).
+This document defines elevata’s rules for **deterministic target metadata generation, SQL generation, and execution**. It applies to controlled Target Generation Plans, standard SQL generation, and custom query logic (Query Trees).
 
 ---
 
@@ -11,6 +11,7 @@ elevata is built for reproducibility:
 - SQL previews must match executed SQL  
 - CI checks must be stable  
 - the same metadata must produce the same output across runs  
+- Target Generation Plans and Reviews must produce stable fingerprints  
 - architecture reports must produce stable fingerprints  
 - architecture execution records must preserve stable audit references  
 - multi-dialect rendering must not introduce semantic drift
@@ -78,12 +79,15 @@ Type drift warnings may still be emitted for visibility.
 
 ## 🔧 4. Architecture Report Determinism
 
-Architecture reports and approval artifacts are deterministic artifacts.
+Generation reviews, architecture reports, and their approval artifacts are deterministic artifacts.
 
 The same architecture state, scope, migration intent, and policy configuration produce the same report fingerprint.
 
 Deterministic report artifacts include:
 
+- Target Generation Plan fingerprint  
+- Target Generation Review fingerprint  
+- Generation Approval Artifact fingerprint  
 - Architecture State fingerprint  
 - Architecture Change Report fingerprint  
 - Architecture Promotion Report fingerprint  
@@ -111,6 +115,33 @@ engines.
 Approval artifacts do not alter execution policy. A matching approval confirms that an Architecture Change Report was reviewed, while load execution remains protected by preflight checks, policy decisions and materialization guardrails.
 
 Architecture Control displays the resulting review state, execution readiness, dependency mode, controlled execution output, and Architecture Execution Record.
+
+---
+
+## 🔧 4.1 Controlled Target Generation Determinism
+
+Target metadata generation is governed by immutable, canonical artifacts.
+
+The same source metadata, target metadata, schema scope, lifecycle mode and generator contract produce the same:
+
+- ordered generation actions  
+- canonical before and after state  
+- effect origins and change classifications  
+- source and target metadata fingerprints  
+- Target Generation Plan fingerprint  
+- Target Generation Review fingerprint
+
+Planning and review are read-only. Dry-run uses the same plan contract as guarded apply.
+
+Immediately before mutation, guarded apply rebuilds the current plan and rejects:
+
+- source metadata drift  
+- target metadata drift  
+- changed generation decisions
+
+After apply, elevata builds a residual plan. A zero-action residual plan means the metadata state converged. Existing multi-pass semantics remain visible rather than being hidden: a non-empty residual plan requires another review and guarded apply.
+
+Generation Approval binds to one exact Review and Plan fingerprint. It cannot authorize another plan and cannot be reused as an Architecture Approval.
 
 ---
 

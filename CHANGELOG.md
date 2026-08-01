@@ -12,6 +12,149 @@ This project adheres to [Semantic Versioning](https://semver.org/) and [Keep a C
 
 ---
 
+## [2.17.0] - 2026-08-01
+
+This release adds **Controlled Architecture Generation**.
+
+Source-to-target metadata changes are now expressed as immutable Target Generation Plans, reviewed before mutation, approved independently where required, and applied with exact-plan drift guards. Architecture Control guides users through dependency-ordered RAW, STAGE, and RAWCORE convergence while preserving the existing deterministic generation semantics.
+
+No metadata model changes or migrations are required.
+
+---
+
+### ✨ Added
+
+#### Immutable Target Generation Plans
+
+- Added a public, immutable `TargetGenerationPlan` contract for metadata generation  
+- Added deterministic source and target metadata fingerprints, generation scope, lifecycle mode, action counts and plan fingerprint  
+- Added canonical before and after state for every planned metadata action  
+- Added explicit action types for dataset and column creation, update, retirement, reactivation and input synchronization  
+- Added effect origins for direct changes, history companions, generated lifecycle and model side effects  
+- Added additive, breaking and neutral change classifications
+
+#### Source-to-Target Generation Review
+
+- Added deterministic Target Generation Reviews with SourceDataset-to-TargetDataset impact summaries  
+- Added exact plan and review fingerprints  
+- Added readable dataset, source and column labels in Architecture Control while retaining technical identifiers in JSON artifacts  
+- Added compact action inspection with canonical before and after state  
+- Added plan and review JSON downloads from the UI
+
+#### Generation Approval
+
+- Added a distinct Generation Approval artifact for one exact Target Generation Review  
+- Kept Generation Approval separate from Architecture Approval in purpose, artifact type, identifier and storage path  
+- Added optional Generation Approval for additive and neutral changes  
+- Added required Generation Approval for breaking generation changes  
+- Added exact approval validation before metadata mutation  
+- Added Generation Approval creation and verification through Architecture Control and CLI adapters
+
+#### Guarded Target Metadata Apply
+
+- Added exact-plan application with source metadata, target metadata and generation-decision drift detection  
+- Added structured `TargetGenerationApplyResult` evidence with consumed actions, residual actions, processed datasets and columns, review fingerprint and approval identifier  
+- Added residual-plan reporting for existing two-pass convergence cases  
+- Added explicit convergence status instead of assuming one-pass completion  
+- Kept planning and review read-only
+
+#### Controlled Generated-Layer Sequence
+
+- Added a guided `RAW → STAGE → RAWCORE` workflow in Architecture Control  
+- Added all-dataset generation overview with the next safe review step  
+- Added upstream convergence guards that keep downstream previews provisional  
+- Recalculate downstream plans only after the preceding generated layer has converged  
+- Added clear all-layers-up-to-date state when no controlled generation action remains
+
+#### Architecture Control UI
+
+- Added Controlled Target Generation to all-dataset and generated schema scopes  
+- Added plan summary cards, impact tables, action inspection, approval state and guarded apply results  
+- Added navigation, approval and apply progress indicators  
+- Added direct SourceDataset entry into the controlled generation review  
+- Replaced the regular SourceDataset `Generate Targets` mutation path with `Review target generation`
+
+---
+
+### 🔄 Improved
+
+#### Dry-Run and Apply Parity
+
+- Made dry-run render the same immutable plan consumed by guarded apply  
+- Included lifecycle-only plans even when no currently eligible source dataset exists  
+- Added canonical plan JSON output for review, CI and automation  
+- Kept the existing generator service semantics authoritative instead of redesigning generation behavior
+
+#### Lifecycle, History and Rename Coverage
+
+- Covered metadata-only retirement and in-place reactivation in controlled plans  
+- Covered rawcore history companion datasets and columns explicitly  
+- Covered rename propagation and `former_names` preservation for base and history columns  
+- Covered multi-source input withdrawal and existing two-pass `union → single` convergence  
+- Kept generator signals and model side effects intact and inspectable
+
+#### Workflow Consistency
+
+- Established Architecture Control as the primary UI workflow for target generation  
+- Kept CLI commands available for debugging, CI and explicit automation  
+- Prevented users from bypassing generation review through the SourceDataset list  
+- Clarified no-op plans so they do not suggest that an approval is missing or required
+
+---
+
+### 🔒 Governance & Determinism
+
+- Planning never writes metadata  
+- The same source metadata, target metadata, scope and generator contract produce the same canonical plan fingerprint  
+- Guarded apply rejects stale source metadata, stale target metadata or changed generation decisions  
+- A Generation Approval authorizes only the exact reviewed Target Generation Plan  
+- A Generation Approval cannot authorize physical schema evolution or load execution  
+- An Architecture Approval remains bound to the resulting Architecture Change Report  
+- Downstream generated-layer plans cannot be approved or applied while an upstream layer is pending  
+- Target generation mutates metadata only; it does not apply physical DDL or load data  
+- Existing lifecycle, history, lineage, signal and two-pass convergence semantics remain authoritative
+
+---
+
+### 🧪 Quality & Stability
+
+- Added contract tests for canonical plans, action ordering, serialization and fingerprints  
+- Added planning parity tests for RAW, STAGE, RAWCORE, history companions, lifecycle and multi-source behavior  
+- Added guarded-apply tests for drift rejection, result validation, residual plans and convergence  
+- Added Generation Review and Generation Approval artifact tests  
+- Added Architecture Control view, operation, workflow and server-side sequence-guard tests  
+- Added UI tests for readable impact labels, action labels and empty-plan approval behavior  
+- Verified exact-plan apply, source drift rejection and target drift rejection live  
+- Verified rename propagation and `former_names` preservation for rawcore and history columns live  
+- Verified Generation Approval storage, lookup and stale-approval rejection live  
+- Verified the complete UI-driven RAW, STAGE and RAWCORE convergence workflow live  
+- Verified the full test suite successfully
+
+---
+
+### 🛠️ Fixed
+
+- Fixed direct SourceDataset target generation bypassing Architecture Control review  
+- Fixed empty generation plans exposing an irrelevant approval check  
+- Fixed internal dataset, source and column identifiers dominating the user-facing generation review  
+- Fixed downstream generated-layer previews appearing actionable before upstream convergence  
+- Fixed long Architecture Control recalculation requests providing no immediate progress feedback
+
+---
+
+### ⬆️ Upgrade Notes
+
+- No metadata database migration is required.  
+- Existing metadata, Architecture State, Architecture Approval Artifacts, Execution Run Plans and Architecture Execution Records remain compatible.  
+- The SourceDataset UI action is now `Review target generation` and opens the all-dataset Architecture Control generation sequence.  
+- Controlled UI generation proceeds through separate RAW, STAGE and RAWCORE reviews; downstream plans are recalculated after each preceding layer converges.  
+- Generation Approval artifacts are stored below `.elevata/approvals/<profile>/<target-system>/generation/`.  
+- Existing Architecture Approval artifacts remain directly below the profile and target-system approval directory.  
+- CLI target generation remains available for debugging, CI and explicit automation.  
+- Target generation still performs metadata mutation only; physical schema evolution remains part of controlled load execution.
+
+---
+
 ## [2.16.0] - 2026-07-29
 
 This release adds **Immutable Execution Run Plans** and **Controlled Generated Dataset Lifecycle**.
