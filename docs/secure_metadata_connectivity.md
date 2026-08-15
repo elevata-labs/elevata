@@ -74,7 +74,7 @@ This ensures that even if `.env` or OS variables change, the runtime always pull
 
 ## 🔧 4. Pepper and Surrogate Keys
 
-The pepper is a random secret string used to salt deterministic hash keys. It makes surrogate key generation both non-reversible and dataset-consistent. pepper must be stable per environment
+The pepper is a random secret string used to salt deterministic hash keys. It makes surrogate key generation both non-reversible and dataset-consistent. The pepper must remain stable within an environment.
 
 Each environment should have its own distinct pepper value.
 
@@ -86,7 +86,8 @@ SEC_DEV_PEPPER=devpepper_ABC123
 # .env (production)
 SEC_PROD_PEPPER=prodpepper_XYZ789
 ```
-The pepper is injected during surrogate key generation in TargetGenerationService → build_surrogate_key_column_draft(), ensuring that all hash-based surrogate keys are stable within one environment but cannot be reversed or matched across environments.
+
+Generated SK/FK metadata stores the symbolic token `{runtime:pepper}`. The concrete pepper is resolved through `get_runtime_pepper()` when the generated DSL is parsed for runtime SQL rendering. This keeps the portable metadata contract identical across environments while each runtime retains its own secret pepper value.
 
 --- 
 
@@ -128,7 +129,39 @@ The function will:
 
 ---
 
-## 🔧 8. Related Docs
+## 🔧 8. Environment Promotion Connectivity
+
+Environment Promotion deliberately avoids direct authoring-to-target metadata DB connectivity.
+
+Authoring runtime:
+
+```env
+ELEVATA_RUNTIME_MODE=authoring
+ELEVATA_ENVIRONMENT=dev
+ELEVATA_PROMOTION_TARGETS=test
+ELEVATA_PROMOTION_TARGET_TEST_URL=https://elevata-test.example.com/metadata
+ELEVATA_PROMOTION_TARGET_TEST_TOKEN=<target runner token>
+```
+
+Target runtime:
+
+```env
+ELEVATA_RUNTIME_MODE=promotion_target
+ELEVATA_ENVIRONMENT=test
+ELEVATA_PROMOTION_RUNNER_TOKEN=<same target-local runner token>
+```
+
+The authoring-side target token is used only by the server-side runner client. It is not exposed to the browser.
+
+Target metadata DB credentials, runtime profiles, providers, concrete connection strings and peppers stay on the target runtime and are never written into Architecture Releases or Deployment Packages.
+
+Use a different runner token for every target environment.
+
+See [Environment Promotion](environment_promotion.md) for the full topology and runtime contract.
+
+---
+
+## 🔧 9. Related Docs
 
 - [Getting Started Guide](getting_started.md)  
 - [Automatic Target Generation Logic](generation_logic.md)

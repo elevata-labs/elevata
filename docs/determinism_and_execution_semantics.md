@@ -90,7 +90,7 @@ Deterministic report artifacts include:
 - Generation Approval Artifact fingerprint  
 - Architecture State fingerprint  
 - Architecture Change Report fingerprint  
-- Architecture Promotion Report fingerprint  
+- Architecture State Comparison (`Architecture Promotion Report`) fingerprint  
 - Architecture Approval Artifact fingerprint  
 - Architecture Execution Record fingerprint
 
@@ -142,6 +142,39 @@ Immediately before mutation, guarded apply rebuilds the current plan and rejects
 After apply, elevata builds a residual plan. A zero-action residual plan means the metadata state converged. Existing multi-pass semantics remain visible rather than being hidden: a non-empty residual plan requires another review and guarded apply.
 
 Generation Approval binds to one exact Review and Plan fingerprint. It cannot authorize another plan and cannot be reused as an Architecture Approval.
+
+---
+
+## 🔧 4.2 Environment Promotion Determinism
+
+Environment Promotion applies the same deterministic/fingerprint discipline across separate metadata environments.
+
+Deterministic artifacts include:
+
+- `EnvironmentMetadataSnapshot` metadata + snapshot fingerprints  
+- `ArchitectureReleaseBundle` metadata + bundle fingerprints  
+- `EnvironmentPromotionPlan` plan fingerprint  
+- `EnvironmentPromotionApprovalArtifact` approval fingerprint  
+- `EnvironmentPromotionDeploymentPackage` package fingerprint  
+- `EnvironmentPromotionRecord` record fingerprint
+
+Core rule:
+
+```text
+same Architecture Release
++ same target Environment Metadata Snapshot
+= same Environment Promotion Plan
+```
+
+Approval binds to one exact plan. The Deployment Package binds the exact Release + Plan + Approval + target environment.
+
+Apply does not trust the earlier review indefinitely. The target state is checked again before mutation. Successful apply must produce a post-apply metadata fingerprint equal to the approved Release metadata fingerprint, and post-apply planning must converge to a plan with no mutating actions.
+
+A later independent plan against the same Release should therefore return `no_changes` unless the target metadata has changed again.
+
+Environment Promotion reconstruction suppresses normal modeling/generation derivation callbacks while the approved artifact is being reconstructed. This prevents transport from silently reinterpreting the immutable release through model-side generation behavior.
+
+See [Environment Promotion](environment_promotion.md).
 
 ---
 

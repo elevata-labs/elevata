@@ -45,6 +45,28 @@ This flow represents the central principle of elevata:
 
 > **Source Metadata → Controlled Target Metadata → Logical Plan → Dialect-aware SQL → Warehouse**
 
+Environment Promotion adds a separate cross-environment control boundary around the metadata model:
+
+```text
+Authoring Metadata
+  ↓
+Architecture Release
+  ↓
+Environment Promotion Plan
+  ↓
+Environment Promotion Approval
+  ↓
+Deployment Package
+  ↓
+Guarded Metadata Deploy
+  ↓
+Target Metadata
+  ↓
+Target-local Architecture Control
+```
+
+Environment Promotion does not become another SQL-generation layer. It transports portable metadata between separately controlled metadata environments.
+
 Architecture Control provides review, approval, immutable scheduler binding, finalization, and audit artifacts around the same architecture state:
 
 ```text 
@@ -271,7 +293,7 @@ It provides deterministic artifacts for:
 - Generation Approval Artifacts  
 - Architecture State  
 - Architecture Change Reports  
-- Architecture Promotion Reports  
+- Architecture State Comparisons (`Architecture Promotion Report`)  
 - Architecture Approval Artifacts  
 - Execution Impact Plans  
 - immutable Execution Run Plans  
@@ -292,7 +314,7 @@ Command responsibilities:
 | `generate_targets --plan-file` | Apply one exact generation plan with drift guards |
 | `elevata_state` | Render the metadata-defined architecture state |
 | `elevata_plan` | Render architecture change intent and policy decisions |
-| `elevata_promote` | Compare two architecture state artifacts |
+| `elevata_promote` | Compare two Architecture State artifacts (read-only; not Environment Promotion) |
 | `elevata_approve` | Create architecture approval artifacts |
 | `elevata_approval_check` | Verify approval artifacts |
 | `elevata_run_plan` | Create immutable scheduler Run Plans and Planned Architecture State |
@@ -455,6 +477,7 @@ Metadata Model
 ---
 
 ## 🔧 8. Related Documents
+- [Environment Promotion](environment_promotion.md)  
 - [Architecture Catalog](architecture_catalog.md)  
 - [Architecture Catalog Source Systems](architecture_catalog_source_systems.md)  
 - [Architecture Catalog Portfolio](architecture_catalog_portfolio.md)  

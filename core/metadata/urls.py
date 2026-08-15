@@ -30,6 +30,8 @@ from generic import GenericCRUDView
 from . import views
 from . import views_catalog
 from . import views_inline_api
+from . import views_promotion
+from . import views_promotion_runner
 from metadata.models import SourceDataset, System
 
 from .views_scoped import (
@@ -202,6 +204,86 @@ urlpatterns += [
   path("architecture-catalog/<int:pk>/",
     views_catalog.architecture_catalog_detail,
     name="architecture_catalog_detail",
+  ),
+  path(
+    "environment-promotion/",
+    views_promotion.environment_promotion,
+    name="environment_promotion",
+  ),
+  path(
+    "environment-promotion/release/create/",
+    views_promotion.environment_promotion_release_create,
+    name="environment_promotion_release_create",
+  ),
+  path(
+    "environment-promotion/release/<str:release_id>/download/",
+    views_promotion.environment_promotion_release_download,
+    name="environment_promotion_release_download",
+  ),
+  path(
+    "environment-promotion/target/check/",
+    views_promotion.environment_promotion_target_check,
+    name="environment_promotion_target_check",
+  ),
+  path(
+    "environment-promotion/history/refresh/",
+    views_promotion.environment_promotion_history_refresh,
+    name="environment_promotion_history_refresh",
+  ),
+  path(
+    "environment-promotion/plan/",
+    views_promotion.environment_promotion_plan,
+    name="environment_promotion_plan",
+  ),
+  path(
+    "environment-promotion/approve-package/",
+    views_promotion.environment_promotion_approve_package,
+    name="environment_promotion_approve_package",
+  ),
+  path(
+    "environment-promotion/package/check/",
+    views_promotion.environment_promotion_package_check,
+    name="environment_promotion_package_check",
+  ),
+  path(
+    "environment-promotion/package/apply/",
+    views_promotion.environment_promotion_package_apply,
+    name="environment_promotion_package_apply",
+  ),
+  path(
+    "environment-promotion/package/<str:target_environment>/<str:approval_id>/download/",
+    views_promotion.environment_promotion_package_download,
+    name="environment_promotion_package_download",
+  ),
+  path(
+    "promotion-runner/health/",
+    views_promotion_runner.promotion_runner_health,
+    name="promotion_runner_health",
+  ),
+  path(
+    "promotion-runner/snapshot/",
+    views_promotion_runner.promotion_runner_snapshot,
+    name="promotion_runner_snapshot",
+  ),
+  path(
+    "promotion-runner/check/",
+    views_promotion_runner.promotion_runner_check,
+    name="promotion_runner_check",
+  ),
+  path(
+    "promotion-runner/apply/",
+    views_promotion_runner.promotion_runner_apply,
+    name="promotion_runner_apply",
+  ),
+  path(
+    "promotion-runner/history/",
+    views_promotion_runner.promotion_runner_history,
+    name="promotion_runner_history",
+  ),
+  path(
+    "promotion-runner/history/<str:record_id>/",
+    views_promotion_runner.promotion_runner_history_detail,
+    name="promotion_runner_history_detail",
   ),
   path("architecture-control/", views.architecture_control, name="architecture_control"),
   path(

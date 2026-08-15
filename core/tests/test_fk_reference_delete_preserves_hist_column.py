@@ -95,7 +95,7 @@ def test_fk_reference_delete_preserves_hist_column_as_inactive_orphan():
   )
 
   fk_col_name = f"{referenced.target_dataset_name}_key"
-  fk_lineage_key = f"fk:{ref.id}"
+  fk_lineage_key = ref.child_fk_lineage_key
 
   # FK column on rawcore child (the one that must be dropped)
   fk_col = TargetColumn.objects.create(
@@ -209,6 +209,12 @@ def test_fk_delete_preserves_hist_orphan(db):
     referencing_dataset=child,
     referenced_dataset=raw,
   )
+
+  # Align the pre-created FK fixture with the deterministic reference identity.
+  # The migration only rewrites rows that already exist when it runs; this row is
+  # created afterwards inside the test.
+  fk_col.lineage_key = ref.child_fk_lineage_key
+  fk_col.save(update_fields=["lineage_key"])
 
   # Now delete reference
   ref.delete()

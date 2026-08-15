@@ -82,15 +82,18 @@ class ColumnState:
 
   def fingerprint_payload(self) -> dict[str, Any]:
     """
-    Return the normalized payload used for hashing and state comparison.
+    Return the normalized physical/semantic payload used for hashing.
+
+    lineage_key is technical identity metadata used for matching and rename
+    detection. It intentionally remains part of ColumnState, but must not by
+    itself change the runtime architecture fingerprint.
     """
     return {
       "column_name": self.column_name,
       "datatype": self.datatype,
       "nullable": self.nullable,
       "active": self.active,
-      "lineage_key": self.lineage_key,
-      "former_names": list(sorted(_as_str_tuple(self.former_names))),      
+      "former_names": list(sorted(_as_str_tuple(self.former_names))),
       "is_system_managed": self.is_system_managed,
       "system_role": "" if self.system_role is None else self.system_role,
     }

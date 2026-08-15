@@ -481,15 +481,17 @@ class _ScopedChildView(GenericCRUDView):
 
   def _apply_scoped_nav_context(self, ctx):
     """
-    Ensure scoped list/edit/detail pages can always navigate back to the owning Query Builder
-    (instead of unrelated/unscoped pages).
+    Build scoped parent navigation and expose Query Builder as a separate action.
+
+    Normal scoped metadata pages return to their direct parent. Query-scoped
+    editor pages return to the owning dataset's Query Builder.
     """
     parent_obj = self.get_parent_object()
 
     ctx["parent_pk"] = self.get_parent_pk()
     ctx["parent"] = parent_obj if parent_obj is not None else None
 
-    # Defaults: show breadcrumb to *parent* unless we can point higher (Query Builder)
+    # Default breadcrumb/back-link: direct scoped parent.
     ctx["scoped_parent_label"] = str(parent_obj) if parent_obj is not None else ""
     ctx["scoped_parent_url"] = None
     ctx["scoped_parent_is_query_builder"] = False
@@ -497,7 +499,7 @@ class _ScopedChildView(GenericCRUDView):
 
     if parent_obj is not None:
       if isinstance(parent_obj, TargetDatasetReference):
-        # References are scoped under the referencing dataset
+        # References are scoped under the referencing dataset.
         try:
           ctx["scoped_parent_url"] = reverse(
             "targetdatasetreference_list",
@@ -507,7 +509,7 @@ class _ScopedChildView(GenericCRUDView):
           pass
 
       elif isinstance(parent_obj, TargetDatasetJoin):
-        # Joins are scoped under the target dataset
+        # Joins are scoped under the target dataset.
         try:
           ctx["scoped_parent_url"] = reverse(
             "targetdatasetjoin_list",
@@ -516,7 +518,7 @@ class _ScopedChildView(GenericCRUDView):
         except Exception:
           pass
 
-      # Fallback: parent's detail route (only if still unresolved)
+      # Fallback: parent's detail route (only if still unresolved).
       if ctx["scoped_parent_url"] is None:
         parent_model_name = parent_obj.__class__.__name__.lower()
         for route in (f"{parent_model_name}_detail", f"{parent_model_name}_detail_scoped"):
@@ -524,16 +526,21 @@ class _ScopedChildView(GenericCRUDView):
             ctx["scoped_parent_url"] = reverse(route, args=[parent_obj.pk])
             break
           except Exception:
-            # IMPORTANT: don't overwrite a previously valid URL
+            # IMPORTANT: don't overwrite a previously valid URL.
             continue
 
-    # Query-scoped navigation: prefer owning dataset's Query Builder.
+    # Expose the owning dataset for the dedicated Query Builder button. Only
+    # query-scoped editor pages use Query Builder as their breadcrumb/back-link.
     query_ds = _get_query_builder_dataset(parent_obj)
     if query_ds is not None:
-      ctx["scoped_parent_label"] = str(query_ds)
-      ctx["scoped_parent_url"] = reverse("targetdataset_query_builder", args=[query_ds.pk])
-      ctx["scoped_parent_is_query_builder"] = True
       ctx["scoped_query_dataset_pk"] = query_ds.pk
+      if _is_query_scoped_model(self.model):
+        ctx["scoped_parent_label"] = str(query_ds)
+        ctx["scoped_parent_url"] = reverse(
+          "targetdataset_query_builder",
+          args=[query_ds.pk],
+        )
+        ctx["scoped_parent_is_query_builder"] = True
 
     return ctx
 
@@ -553,12 +560,22 @@ class _ScopedChildView(GenericCRUDView):
       return None
     return self.parent_model.objects.get(pk=pk)
 
+  def build_scoped_auto_filter_config(self):
+    """Return list filters that cannot contradict the URL-defined parent scope."""
+    parent_field = self._get_parent_relation_field_name()
+    return [
+      config
+      for config in self.build_auto_filter_config()
+      if config.get("field_path") != parent_field
+    ]
+
+
   def get_context_base(self, request):
     """
     Build the same base context as GenericCRUDView.list(),
     but include parent_pk and parent for scoped templates.
     """
-    auto_filter_cfgs = self.build_auto_filter_config()
+    auto_filter_cfgs = self.build_scoped_auto_filter_config()
     qs = self.get_queryset()
     qs, active_filters = self.apply_auto_filters(request, qs, auto_filter_cfgs)
     if not qs.query.order_by:

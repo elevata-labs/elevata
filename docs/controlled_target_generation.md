@@ -197,16 +197,21 @@ Generation Approval artifacts are stored under:
 
 ### 🧩 6.1 Separate Approval Boundaries
 
-Generation Approval is not Architecture Approval.
+Generation Approval is not Environment Promotion Approval and is not Architecture Approval.
 
 ```text
 Generation Approval
-  = authorizes exact Target metadata mutation
+  = authorizes exact Target metadata mutation inside one environment
+
+Environment Promotion Approval
+  = authorizes one exact release-to-target metadata deployment
 
 Architecture Approval
   = authorizes the resulting Architecture Change Report
     for physical schema evolution and execution readiness
 ```
+
+These approval boundaries cannot substitute for one another. See [Environment Promotion](environment_promotion.md) for the cross-environment deployment boundary.
 
 The artifact types, identifiers, fingerprints, and storage lookups are intentionally separate.
 

@@ -20,7 +20,7 @@ This tight coupling leads to:
 
 elevata addresses these limitations by treating **metadata - not SQL - as the primary control plane** for data platforms.
 
-This control plane covers source-to-target metadata generation, structure, lineage, execution semantics, review decisions, controlled execution, and audit evidence.
+This control plane covers source-to-target metadata generation, cross-environment metadata promotion, structure, lineage, execution semantics, review decisions, controlled execution, and audit evidence.
 
 ---
 
@@ -51,7 +51,7 @@ It is an **Architecture Runtime** that turns metadata-defined architecture into 
 Key characteristics:
 
 - deterministic Target Generation Plans and Source-to-Target Reviews  
-- separate Generation and Architecture Approval boundaries  
+- separate Generation, Environment Promotion and Architecture Approval boundaries  
 - deterministic execution planning  
 - explicit dependency graphs  
 - structured failure semantics (blocked vs aborted)  
@@ -61,6 +61,8 @@ Key characteristics:
 - Architecture Change Reports  
 - Architecture Approval Artifacts  
 - Architecture Catalog  
+- immutable Architecture Releases and Environment Promotion  
+- authenticated Promotion Target Runners and target-authoritative promotion evidence  
 - scope-aware Architecture Control  
 - Architecture Execution Records
 
@@ -74,7 +76,7 @@ Execution is:
 
 SQL is an output artifact - not the orchestration mechanism.
 
-Architecture Control closes the loop between architecture intent and runtime execution:
+Architecture Control closes the loop between architecture intent and runtime execution inside one environment. Environment Promotion extends the same explicit-control principle between metadata environments:
 
 ```text
 Source Metadata
@@ -85,15 +87,19 @@ Generation Approval Artifact, when required
   ↓
 Guarded Target Metadata Apply
   ↓
-Architecture State
+Architecture Release
+  ↓
+Environment Promotion Plan + Approval
+  ↓
+Deployment Package + Guarded Target Apply
+  ↓
+Target Architecture State
   ↓
 Architecture Change Report
   ↓
 Architecture Approval Artifact
   ↓
-Execution Preview
-  ↓
-Controlled Execution
+Controlled / Scheduler Execution
   ↓
 Architecture Execution Record
 ```
@@ -177,7 +183,7 @@ By combining:
 - metadata-native execution  
 - explicit business semantics  
 - controlled target metadata generation  
-- separate metadata-mutation and physical-execution approval boundaries  
+- separate generation, environment-promotion and physical-execution approval boundaries  
 - architecture review and approval  
 - controlled execution  
 - auditable execution records  
@@ -201,8 +207,9 @@ Architecture Runtime is the central category:
 
 ```text
 Metadata defines architecture.
-Architecture Control governs generation and execution.
-Generation and Architecture Approvals protect separate control boundaries.
-Execution Records preserve audit evidence.
+Environment Promotion moves immutable metadata across controlled environments.
+Architecture Control governs generation and physical execution inside each environment.
+Generation, Environment Promotion and Architecture Approvals protect separate control boundaries.
+Promotion and Execution Records preserve audit evidence.
 SQL remains an artifact.
 ```

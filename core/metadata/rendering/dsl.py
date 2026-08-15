@@ -25,6 +25,9 @@ from __future__ import annotations
 from typing import Iterable, Optional, List
 import re
 
+from metadata.generation.hashing import RUNTIME_PEPPER_TOKEN
+from metadata.generation.security import get_runtime_pepper
+
 from .expr import (
   Expr,
   ColumnRef,
@@ -138,10 +141,15 @@ def parse_surrogate_dsl(dsl: str, table_alias: str | None = None) -> Expr:
     COL(columnname)
     'literal' / "literal"
     {expr:columnname}
+    {runtime:pepper}
   """
   dsl = str(dsl or "").strip()
   if not dsl:
     raise ValueError("Empty surrogate-key DSL expression.")
+
+  # ----- runtime binding "{runtime:pepper}" -------------------------------
+  if dsl == RUNTIME_PEPPER_TOKEN:
+    return Literal(get_runtime_pepper())
 
   # ----- placeholder "{expr:col}" ----------------------------------------
   m = re.fullmatch(r"\{expr:([A-Za-z0-9_]+)\}", dsl)

@@ -12,6 +12,195 @@ This project adheres to [Semantic Versioning](https://semver.org/) and [Keep a C
 
 ---
 
+## [3.0.0] - 2026-08-15
+
+This release adds **Controlled Environment Promotion** and extends the elevata Architecture Runtime across separately governed metadata environments.
+
+Architecture no longer stops being controlled when metadata leaves DEV. Authoring metadata can now be captured as an immutable Architecture Release, reviewed deterministically against TEST or PROD, approved as one exact Environment Promotion Plan, bound into an immutable Deployment Package, checked for live target drift, applied through an authenticated headless Promotion Target Runner, and verified through exact post-apply convergence and target-authoritative Promotion History.
+
+This is a major release because it introduces a new operating model, metadata portability contract and runtime boundary. Metadata model migrations are required.
+
+---
+
+### ✨ Added
+
+#### Portable Environment Promotion Contract Foundation
+
+- Added the metadata-model foundation required for deterministic transport between separate authoritative metadata databases  
+- Added stable portable identities that do not depend on local database PKs  
+- Removed environment-local `TargetSchema.database_name` from the portable model contract  
+- Established/strengthened stable `System.short_name`, `QueryNode.logical_key`, SourceDatasetGroup identity and environment-aware increment-policy constraints  
+- Migrated reference-derived FK lineage to deterministic logical identity
+
+#### Environment Metadata Snapshots
+
+- Added immutable `EnvironmentMetadataSnapshot` artifacts for portable target-state inspection  
+- Added canonical object and relationship serialization  
+- Added deterministic metadata and snapshot fingerprints  
+- Added read-only snapshot creation for promotion planning and drift checks
+
+#### Immutable Architecture Releases
+
+- Added immutable `ArchitectureReleaseBundle` artifacts containing the complete portable metadata definition  
+- Added release name, version, note, source environment, creator, object counts and deterministic fingerprints  
+- Added immutable release-coordinate enforcement: an existing release coordinate cannot be overwritten with different content  
+- Added release creation, listing, download and validation through services, CLI and the Environment Promotion UI  
+- Added validation that excludes secrets, local runtime paths and other non-portable values
+
+#### Deterministic Environment Promotion Plans
+
+- Added `EnvironmentPromotionPlan` as a deterministic comparison between an Architecture Release and the current target metadata snapshot  
+- Added canonical CREATE, UPDATE, RETIRE, REACTIVATE, relationship and VERIFY actions  
+- Added before/after state, action/change classifications, dependency phases, readiness, blockers, lifecycle/destructive summaries and plan fingerprints  
+- Added no-change plans that require no approval or package
+
+#### Environment Promotion Approval & Deployment Packages
+
+- Added a separate `EnvironmentPromotionApprovalArtifact` bound to one exact Promotion Plan  
+- Added immutable approval storage  
+- Added `EnvironmentPromotionDeploymentPackage` binding the exact Release, Plan, Approval and target environment  
+- Added immutable package storage and package download  
+- Added exact-plan revalidation before approval/package creation
+
+#### Promotion Target Runner
+
+- Added runtime modes `authoring` and `promotion_target`  
+- Added explicit `ELEVATA_ENVIRONMENT` metadata-environment identity  
+- Added an authenticated headless Promotion Target Runner for TEST / PROD  
+- Added bearer-token protected health, snapshot, check, apply and history endpoints  
+- Added target-local package target validation, live drift validation and exact package-ID confirmation  
+- Kept target metadata DB credentials local to the target runtime  
+- Prevented promotion-target runtimes from exposing the regular modeling UI
+
+#### Environment Promotion UI
+
+- Added the dedicated **Environment Promotion** workspace  
+- Added the operator flow **Release → Review → Approve → Deploy → Audit**  
+- Added Architecture Release authoring and bundle downloads  
+- Added remote target connectivity/current-state checks  
+- Added read-only remote Promotion Plan review with summary-first grouped details  
+- Added exact Approval and Deployment Package creation  
+- Added live target drift checks  
+- Added guarded remote apply with explicit exact package-ID confirmation  
+- Added post-apply convergence evidence  
+- Added remote-authoritative Promotion History with explicit target refresh  
+- Added progress spinners, action disabling and scroll-position restoration for long-running UI actions
+
+#### Promotion CLI
+
+- Added `elevata_promotion` actions for snapshot, plan, approve, package, check and apply  
+- Added CI-oriented exit codes for changes, blocked plans, destructive changes, drift, invalid packages and operational errors  
+- Added exact confirmation and live-target validation options
+
+---
+
+### 🔄 Improved
+
+#### Portable Generated Identity
+
+- Migrated generated TargetDataset lineage away from local schema/source database IDs  
+- Added deterministic generated lineage in the form `generated:<schema-short-name>:<sha256>`  
+- Kept generated identity stable across rename, lifecycle retire/reactivate and separate metadata databases  
+- Aligned reference-derived FK lineage with deterministic TargetDatasetReference transport identity
+
+#### Portable Generated Hash Expressions
+
+- Replaced persisted concrete generated SK/FK pepper values with symbolic `{runtime:pepper}` bindings  
+- Resolve the concrete pepper through the environment-local runtime only when generated DSL is parsed for SQL rendering  
+- Included active and inactive generated metadata so later reactivation preserves the portable contract  
+- Reconciled generated FK DSL with current builder semantics
+
+#### Environment and Artifact Isolation
+
+- Normalized Promotion Release, Approval, Package and History paths relative to the elevata runtime base directory  
+- Kept one running process bound to exactly one authoritative metadata database  
+- Kept Environment Promotion target labels independent from Django DB switching  
+- Added authoring-side target registry configuration without exposing bearer credentials to browser-side code  
+- Made target Promotion History authoritative on the remote runner rather than assuming a shared authoring/target filesystem
+
+#### UI Consistency
+
+- Removed URL-bound parent fields from scoped list filters while retaining other useful filters  
+- Fixed scoped back navigation so normal metadata pages return to their direct parent while Query Builder remains a separate action  
+- Added an actual editable next-release suggestion instead of a misleading placeholder  
+- Clarified final Deployment Package confirmation with explicit instruction text
+
+---
+
+### 🔒 Governance & Determinism
+
+- Promotion source is always an immutable Architecture Release, never a live source metadata DB  
+- DEV, TEST and PROD keep separate authoritative metadata databases  
+- The authoring runtime never switches its local Django DB connection to a target environment  
+- Target database credentials, profiles, providers, connection strings, secrets, concrete runtime paths and pepper values are not promoted  
+- Local database PKs do not define portable identity  
+- The same Release + target metadata state produces the same Promotion Plan  
+- Environment Promotion Approval authorizes only the exact reviewed Promotion Plan  
+- Deployment Packages bind the exact Release, Plan, Approval and target environment  
+- Approval creation re-fetches target state and requires the reviewed plan to remain identical  
+- Guarded apply repeats authoritative target/package/drift checks inside the target runtime  
+- Apply is transactional and must consume the exact approved actions  
+- Post-apply planning must converge to the approved release state  
+- Post-apply target metadata fingerprint must equal the Architecture Release metadata fingerprint  
+- Promotion History is immutable convergence evidence stored and served by the target runner  
+- Environment Promotion Approval remains distinct from Generation Approval and Architecture Approval  
+- Environment Promotion deploys metadata only; physical architecture changes remain controlled by target-local Architecture Control
+
+---
+
+### 🧪 Quality & Stability
+
+- Added contract tests covering every portable metadata model and local field classification  
+- Added snapshot roundtrip, canonicalization and fingerprint stability tests  
+- Added release validation tests for portable and non-portable values  
+- Added plan/action/readiness/serialization tests  
+- Added approval, deployment-package, drift and guarded-apply tests  
+- Added Promotion Target Runner authentication, target binding, package-size and endpoint tests  
+- Added remote target registry/client tests  
+- Added Environment Promotion UI workflow, history and fail-closed validation tests  
+- Added portable lineage lifecycle, rename and reference/FK regression coverage  
+- Added symbolic runtime-pepper parser/rendering and migration coverage  
+- Verified a full DEV → TEST bootstrap from a fresh metadata DB  
+- Verified controlled runtime execution and Reference Integrity after generated hash migration  
+- Verified live UI-only DEV → TEST promotion from Release through remote Audit evidence  
+- Verified the independent post-apply no-change re-plan after successful UI deployment  
+- Verified the full unit test suite successfully throughout the release implementation
+
+---
+
+### 🛠️ Fixed
+
+- Fixed generated TargetDataset lineage that previously depended on local database IDs  
+- Fixed reference-derived FK identity so portable child FK lineage does not depend on local PKs  
+- Fixed Architecture Control false positives caused by generated lineage participating in semantic/physical column fingerprints  
+- Fixed generated SK/FK metadata persisting concrete runtime peppers  
+- Fixed generated hash runtime portability while preserving environment-local pepper resolution  
+- Fixed Environment Promotion reconstruction triggering normal modeling/query-contract derivation callbacks after metadata transport  
+- Fixed a post-commit promotion failure caused by Query Contract TargetColumn synchronization running after an otherwise successful metadata commit  
+- Fixed scoped-list filters allowing a contradictory parent selection inside URL-scoped views  
+- Fixed scoped back-links unexpectedly opening Query Builder  
+- Fixed release-version suggestion appearing filled while remaining an empty HTML value  
+- Fixed Environment Promotion actions returning users to the top of the page after every full reload  
+- Fixed authoring Promotion History implicitly relying on a locally shared target history filesystem
+
+---
+
+### ⬆️ Upgrade Notes
+
+- **Run `python manage.py migrate` after installing elevata 3.0.0.**  
+- Migration `0011_environment_promotion_contract_foundation` establishes the portable metadata model/identity foundation required for cross-environment deployment.  
+- Migration `0012_portable_generated_lineage_keys` converts generated TargetDataset and reference-derived lineage from local-ID-based identity to portable logical identity.  
+- Migration `0013_portable_generated_hash_expressions` converts generated SK/FK expressions from concrete persisted pepper values to symbolic `{runtime:pepper}` bindings.  
+- Before applying migration 0013 to an existing installation, ensure the configured runtime pepper matches the pepper used by legacy persisted generated hash expressions. The migration intentionally fails closed when the legacy binding cannot be proven safely.  
+- Back up the metadata database before production upgrades.  
+- Configure `ELEVATA_RUNTIME_MODE=authoring` for the normal modeling/control-plane runtime.  
+- Configure each TEST / PROD promotion runtime with `ELEVATA_RUNTIME_MODE=promotion_target`, its own `ELEVATA_ENVIRONMENT`, target-local metadata DB connection and a bearer token of at least 32 characters.  
+- Configure remote targets on the authoring runtime through `ELEVATA_PROMOTION_TARGETS` and `ELEVATA_PROMOTION_TARGET_<ENV>_URL` / `_TOKEN`.  
+- `ELEVATA_PROFILE` and `ELEVATA_ENVIRONMENT` are separate concepts even when they use the same label.  
+- Existing Architecture Control approvals remain environment-local and must not be reused as Environment Promotion or target-environment Architecture Approvals.
+
+---
+
 ## [2.17.0] - 2026-08-01
 
 This release adds **Controlled Architecture Generation**.

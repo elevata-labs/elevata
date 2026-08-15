@@ -57,7 +57,6 @@ def test_fk_hash_matches_parent_surrogate_key():
     short_name="stage",
     defaults={
       "display_name": "Stage",
-      "database_name": "dw",
       "schema_name": "stage",
     },
   )
@@ -66,7 +65,6 @@ def test_fk_hash_matches_parent_surrogate_key():
     short_name="rawcore",
     defaults={
       "display_name": "Raw Core",
-      "database_name": "dw",
       "schema_name": "rawcore",
     },
   )
@@ -265,3 +263,18 @@ def test_rewrite_parent_sk_expr_rewrites_expr_refs():
   assert "'aw1'" in out
   assert "{expr:businessentityid}" not in out
   assert "{expr:source_identity_id}" not in out
+
+
+def test_rewrite_parent_sk_expr_preserves_runtime_pepper_binding():
+  parent = (
+    "HASH256(CONCAT_WS('|', "
+    "CONCAT('customerid', '~', COALESCE({expr:customerid}, 'null_replaced')), "
+    "{runtime:pepper}))"
+  )
+  mapping = {"customerid": 'col("customerid")'}
+
+  out = _rewrite_parent_sk_expr(parent, mapping)
+
+  assert 'col("customerid")' in out
+  assert "{expr:customerid}" not in out
+  assert out.count("{runtime:pepper}") == 1

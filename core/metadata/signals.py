@@ -44,6 +44,9 @@ from metadata.models import (
 
 from metadata.generation.target_generation_service import TargetGenerationService
 from metadata.services.query_contract_sync_trigger import trigger_query_contract_column_sync
+from metadata.transport_context import (
+  metadata_artifact_reconstruction_active,
+)
 
 
 def _merge_former_names(a, b):
@@ -77,7 +80,9 @@ def _update_fields_intersect(update_fields: Iterable[str] | None, interesting: s
 
 @receiver(pre_save, sender=TargetColumn)
 def track_target_column_rename(sender, instance: TargetColumn, **kwargs) -> None:
-  # English comments per your preference.
+  if metadata_artifact_reconstruction_active():
+    return
+
   if not instance.pk:
     return
 
@@ -108,6 +113,9 @@ def sync_hist_on_rawcore_column_change(sender, instance: TargetColumn, **kwargs)
   rawcore is generator-managed, but some fields (like name and datatype)
   may be unlocked and edited and must be reflected in *_hist.
   """
+  if metadata_artifact_reconstruction_active():
+    return
+
   # PERF: If caller specified update_fields and none of the relevant fields changed,
   # skip the expensive hist sync.
   interesting_fields = {
@@ -337,6 +345,9 @@ def _trigger_query_sync(sender, instance, **kwargs):  # type: ignore
   Central QB->TargetColumn sync hook.
   Registered for multiple models via signal.connect() to avoid decorator-in-loop pitfalls.
   """
+  if metadata_artifact_reconstruction_active():
+    return
+
   td = _td_from_instance(instance)
   if td is None:
     return

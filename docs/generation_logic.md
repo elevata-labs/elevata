@@ -140,7 +140,7 @@ Example DSL:
 HASH256(
   CONCAT_WS('|',
     CONCAT('productid', '~', COALESCE({expr:productid}, 'null_replaced')),
-    'pepper'
+    {runtime:pepper}
   )
 )
 ```
@@ -161,10 +161,24 @@ Surrogate keys use a fully dialect-agnostic hashing pattern:
 
 - Each BK yields a *pair expression*: `CONCAT(name, '~', COALESCE(value, 'null_replaced'))`  
 - All pairs joined via `CONCAT_WS('|', ...)`  
-- Pepper appended as last component  
+- Symbolic `{runtime:pepper}` appended as the last portable component and resolved when parsed for runtime SQL rendering  
 - Entire structure wrapped in `HASH256()`  
 
 The resulting Expression AST is rendered differently depending on the dialect.
+
+---
+
+### 🧩 4.3 Portable Generated Identity
+
+Generated TargetDataset identity must remain stable when metadata is moved to another metadata database.
+
+Generated dataset lineage therefore uses deterministic logical inputs rather than local database PKs:
+
+```text
+generated:<schema-short-name>:<sha256>
+```
+
+Reference-derived FK lineage is likewise derived from portable TargetDatasetReference identity. This keeps generated dataset/FK metadata comparable across DEV, TEST and PROD.
 
 ---
 

@@ -51,3 +51,15 @@ def test_hash256_contains_expected_primitives(dialect_name: str, must_contain_an
   lower = sql.lower()
   for needle in must_contain_any:
     assert needle in lower, f"{dialect_name}: expected '{needle}' in SQL:\n{sql}"
+
+
+def test_runtime_pepper_token_resolves_only_during_dsl_parsing(monkeypatch):
+  monkeypatch.setenv("ELEVATA_PEPPER", "runtime-secret")
+  expr = parse_surrogate_dsl(
+    "HASH256(CONCAT_WS('|', COALESCE({expr:a}, '<NULL>'), {runtime:pepper}))",
+    table_alias="t",
+  )
+  sql = get_active_dialect("duckdb").render_expr(expr)
+
+  assert "runtime-secret" in sql
+  assert "{runtime:pepper}" not in sql

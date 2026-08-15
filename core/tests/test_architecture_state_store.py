@@ -97,6 +97,7 @@ def test_architecture_state_store_serializes_state():
   assert list(data.keys()) == ["datasets"]
   assert data["datasets"][0]["dataset_key"] == "rawcore.customer"
   assert data["datasets"][0]["columns"][0]["column_name"] == "customer_id"
+  assert data["datasets"][0]["columns"][0]["lineage_key"] == "lk_customer_id"
 
 
 def test_architecture_state_store_deserializes_state():
@@ -134,6 +135,7 @@ def test_architecture_state_store_deserializes_state():
   assert state.datasets[0].former_names == ("customer_old",)
   assert state.datasets[0].column_states[0].column_name == "customer_id"
   assert state.datasets[0].column_states[0].nullable is False
+  assert state.datasets[0].column_states[0].lineage_key == "lk_customer_id"
 
 
 def test_architecture_state_store_file_roundtrip_preserves_fingerprint(tmp_path):
@@ -205,3 +207,32 @@ def test_architecture_state_store_uses_environment_state_dir(tmp_path, monkeypat
   assert loaded is not None
   assert loaded.fingerprint == state.fingerprint
   assert (state_dir / "architecture_state.json").exists()
+
+
+def test_architecture_state_fingerprint_ignores_lineage_only_identity_change():
+  previous = _state(_dataset(
+    "customer",
+    columns=(
+      _column("customer_id", lineage_key="legacy:1:6"),
+    ),
+  ))
+  current = _state(_dataset(
+    "customer",
+    columns=(
+      _column(
+        "customer_id",
+        lineage_key="generated:rawcore:" + ("a" * 64),
+      ),
+    ),
+  ))
+
+  assert previous.datasets[0].column_states[0].lineage_key != (
+    current.datasets[0].column_states[0].lineage_key
+  )
+  assert previous.datasets[0].column_states[0].fingerprint == (
+    current.datasets[0].column_states[0].fingerprint
+  )
+  assert previous.datasets[0].columns_fingerprint == (
+    current.datasets[0].columns_fingerprint
+  )
+  assert previous.fingerprint == current.fingerprint

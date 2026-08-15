@@ -61,7 +61,7 @@ Lineage defines:
 This eliminates the need for a separate incremental field map.
 
 ### 🧩 Stable surrogate keys
-Rawcore surrogate keys are deterministic hash keys derived from the natural key and environment-specific pepper.
+Rawcore surrogate keys are deterministic hash keys derived from the natural key and the environment-local runtime pepper. Portable metadata stores `{runtime:pepper}`; the concrete secret is resolved when parsed for runtime SQL rendering.  
 They are **never** used for merging.
 
 ---

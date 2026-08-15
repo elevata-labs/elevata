@@ -41,18 +41,20 @@ def test_build_surrogate_expression_deterministic():
   )
   expr2 = hashing.build_surrogate_expression(
     natural_key_cols=["a", "b"],
-    pepper="xyz",
+    pepper="different-runtime-secret",
     null_token="<NULL>",
     pair_sep="~",
     comp_sep="|"
   )
 
-  # Both expressions should be identical because columns are sorted internally
+  # Portable metadata is stable across both key order and environment peppers.
   assert expr1 == expr2
   assert "HASH256(" in expr1
   assert "{expr:a}" in expr1
   assert "{expr:b}" in expr1
-  assert "xyz" in expr1  # pepper included
+  assert hashing.RUNTIME_PEPPER_TOKEN in expr1
+  assert "xyz" not in expr1
+  assert "different-runtime-secret" not in expr1
 
 
 def test_demo_python_hash_consistency():

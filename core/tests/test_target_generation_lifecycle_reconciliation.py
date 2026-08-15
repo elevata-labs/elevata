@@ -57,12 +57,10 @@ def _target_schema(
     short_name=short_name,
     defaults={
       "display_name": short_name.title(),
-      "database_name": "dw",
       "schema_name": short_name,
     },
   )
   schema.display_name = short_name.title()
-  schema.database_name = "dw"
   schema.schema_name = short_name
   schema.physical_prefix = prefix_by_schema[short_name]
   schema.generate_layer = True

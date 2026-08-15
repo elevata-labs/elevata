@@ -113,13 +113,17 @@ class FakeReport:
     return self._payload
 
 
-def _column(name: str) -> ColumnState:
+def _column(
+  name: str,
+  *,
+  lineage_key: str | None = None,
+) -> ColumnState:
   return ColumnState(
     column_name=name,
     datatype="string",
     nullable=True,
     active=True,
-    lineage_key=f"lk_{name}",
+    lineage_key=lineage_key or f"lk_{name}",
   )
 
 
@@ -894,3 +898,53 @@ def test_service_with_dependencies_can_assess_upstreams_outside_review_scope() -
     for item in plan.items
   }
   assert all(item.decision != "BLOCKED" for item in plan.items)
+
+
+def test_service_reuses_view_for_lineage_only_identity_migration() -> None:
+  previous = _state(_dataset(
+    "serving.customer",
+    materialization_type="view",
+    incremental_strategy="full",
+    columns=(
+      _column("customer_id", lineage_key="legacy:1:6"),
+    ),
+  ))
+  current = _state(_dataset(
+    "serving.customer",
+    materialization_type="view",
+    incremental_strategy="full",
+    columns=(
+      _column(
+        "customer_id",
+        lineage_key="generated:serving:" + ("a" * 64),
+      ),
+    ),
+  ))
+
+  assert previous.fingerprint == current.fingerprint
+
+  plan = build_execution_impact_plan(
+    scope_key="all",
+    current_state=current,
+    baseline_resolution=_baseline(previous),
+    report=FakeReport(
+      current_state=current,
+      previous_state=previous,
+      dataset_keys=("serving.customer",),
+    ),
+    review_status=_review_status(),
+    target_datasets=(
+      _target(
+        "serving.customer",
+        incremental_strategy="full",
+        materialization_type="view",
+      ),
+    ),
+    dependency_resolver=_resolver({}),
+  )
+
+  assert plan.items[0].decision == "REUSE"
+  assert plan.items[0].reason_codes == (
+    "NO_RELEVANT_CHANGE",
+    "VIRTUAL_MATERIALIZATION_REUSED",
+  )

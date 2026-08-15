@@ -107,7 +107,24 @@ Target Generation Plans do not contain load steps and do not authorize physical 
 
 Generation Approval is not carried into an Execution Run Plan. Only the later Architecture Approval associated with the resulting Architecture Change Report can become part of execution review context.
 
-### 🧩 2.7 Architecture Control Plane
+### 🧩 2.7 Environment Promotion Boundary
+
+Environment Promotion occurs outside the load-execution path.
+
+It deploys portable metadata between separately controlled metadata databases through immutable Architecture Releases, Promotion Plans, exact Promotion Approval, Deployment Packages and guarded target apply.
+
+Environment Promotion does **not**:
+
+- render or execute load SQL  
+- apply warehouse DDL/DML  
+- advance Architecture State  
+- reuse a DEV Architecture Approval in TEST / PROD
+
+After target metadata converges, the target environment independently evaluates Architecture State, Architecture Change Report, Architecture Approval and Execution Impact before physical execution.
+
+See [Environment Promotion](environment_promotion.md).
+
+### 🧩 2.8 Architecture Control Plane
 
 The Architecture Control Plane provides controlled target generation, architecture review, approval, Execution Impact, execution preview, immutable scheduler planning, finalization, and execution audit workflows around architecture state and schema evolution intent.
 

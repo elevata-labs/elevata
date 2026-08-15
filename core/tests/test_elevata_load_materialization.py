@@ -73,7 +73,6 @@ def test_incremental_merge_calls_ensure_target_table_when_plan_only_ensures_sche
     short_name="rawcore",
     defaults={
       "display_name": "Raw Core",
-      "database_name": "dwh",
       "schema_name": "rawcore",
     },
   )
@@ -232,7 +231,6 @@ def test_full_rebuild_impact_creates_new_merge_target_without_add_column_ddl(mon
     short_name="rawcore",
     defaults={
       "display_name": "Raw Core",
-      "database_name": "dwh",
       "schema_name": "rawcore",
       "default_materialization_type": "table",
     },
@@ -504,7 +502,6 @@ def test_physical_schema_drift_blocks_before_load_sql_execution(monkeypatch):
     short_name="rawcore",
     defaults={
       "display_name": "Raw Core",
-      "database_name": "dwh",
       "schema_name": "rawcore",
     },
   )
@@ -646,7 +643,6 @@ def test_migration_materialization_skips_add_column_when_physical_column_already
     short_name="rawcore",
     defaults={
       "display_name": "Raw Core",
-      "database_name": "dwh",
       "schema_name": "rawcore",
     },
   )
@@ -735,7 +731,6 @@ def test_migration_materialization_skips_rename_column_when_physical_column_alre
     short_name="rawcore",
     defaults={
       "display_name": "Raw Core",
-      "database_name": "dwh",
       "schema_name": "rawcore",
     },
   )
@@ -817,7 +812,6 @@ def test_migration_materialization_rebuild_uses_current_column_when_rename_alrea
     short_name="rawcore",
     defaults={
       "display_name": "Raw Core",
-      "database_name": "dwh",
       "schema_name": "rawcore",
     },
   )
@@ -928,7 +922,6 @@ def test_full_refresh_drops_managed_dependent_view_before_table_recreate(monkeyp
     short_name="bizcore",
     defaults={
       "display_name": "Biz Core",
-      "database_name": "dwh",
       "schema_name": "bizcore",
       "default_materialization_type": "table",
     },
@@ -941,7 +934,6 @@ def test_full_refresh_drops_managed_dependent_view_before_table_recreate(monkeyp
     short_name="serving",
     defaults={
       "display_name": "Serving",
-      "database_name": "dwh",
       "schema_name": "serving",
       "default_materialization_type": "view",
     },
@@ -1085,7 +1077,6 @@ def test_full_refresh_blocks_unmanaged_dependent_view(monkeypatch):
     short_name="bizcore",
     defaults={
       "display_name": "Biz Core",
-      "database_name": "dwh",
       "schema_name": "bizcore",
       "default_materialization_type": "table",
     },
@@ -1187,7 +1178,6 @@ def test_managed_dependent_view_resolves_former_physical_name():
     short_name="serving",
     defaults={
       "display_name": "Serving",
-      "database_name": "dwh",
       "schema_name": "serving",
       "default_materialization_type": "view",
     },
@@ -1231,7 +1221,6 @@ def test_managed_dependent_view_resolves_unique_lineage_fallback():
     short_name="bizcore",
     defaults={
       "display_name": "Biz Core",
-      "database_name": "dwh",
       "schema_name": "bizcore",
       "default_materialization_type": "table",
     },
@@ -1240,7 +1229,6 @@ def test_managed_dependent_view_resolves_unique_lineage_fallback():
     short_name="serving",
     defaults={
       "display_name": "Serving",
-      "database_name": "dwh",
       "schema_name": "serving",
       "default_materialization_type": "view",
     },

@@ -38,12 +38,12 @@ Hashing is standardized as **hex-encoded, 64-character, lowercase SHA-256** acro
     - `~` between field name & value  
     - `|` between BK pairs  
 - null replacement literal: `'null_replaced'`  
-- system-wide pepper: e.g. `'pepper'`  ^
+- symbolic runtime pepper binding: `{runtime:pepper}`
 
 ### 🧩 2.3 History Surrogate Keys
 - History SK reuses the parent rawcore SK structure:  
     - natural key columns: [rawcore_sk_column, "version_started_at"].  
-    - same hashing DSL & AST (CONCAT_WS, COALESCE, HASH256, pepper).
+    - same hashing DSL & AST (CONCAT_WS, COALESCE, HASH256, `{runtime:pepper}`).  
 - This ensures:  
     - BK for history = rawcore SK + version_started_at.  
     - joinability between rawcore and history later (if needed).  
@@ -55,7 +55,7 @@ Hashing is standardized as **hex-encoded, 64-character, lowercase SHA-256** acro
 - follow *parent’s* SK structure **exactly**  
 - replace parent column references with child references  
 - maintain ordering  
-- use the same pepper  
+- use the same runtime-resolved pepper within one environment  
 - remain cross-dialect consistent  
 
 FK structure for two BK columns looks like:
@@ -63,7 +63,7 @@ FK structure for two BK columns looks like:
 CONCAT_WS('|',
   CONCAT('bk1', '~', COALESCE(parent_child_bk1, 'null_replaced')),
   CONCAT('bk2', '~', COALESCE(parent_child_bk2, 'null_replaced')),
-  'pepper'
+  {runtime:pepper}
 )
 ```
 
@@ -77,7 +77,7 @@ Surrogate keys and foreign keys are generated via a safe declarative DSL:
 HASH256(
   CONCAT_WS('|',
     CONCAT('productid', '~', COALESCE({expr:productid}, 'null_replaced')),
-    'pepper'
+    {runtime:pepper}
   )
 )
 ```
@@ -111,10 +111,12 @@ Hash256Expr(
       Literal('~'),
       CoalesceExpr(ColumnRef('productid'), Literal('null_replaced'))
     ]),
-    Literal('pepper')
+    Literal(<runtime pepper>)
   ])
 )
 ```
+
+`{runtime:pepper}` is persisted in the DSL. During DSL parsing, elevata resolves that token through `get_runtime_pepper()` and represents the resolved value as a normal `Literal` in the runtime AST. The concrete secret is therefore never persisted in portable metadata.
 
 ---
 
@@ -149,7 +151,7 @@ Example:
 CONCAT_WS('|',
   CONCAT('bk1', '~', COALESCE(child.bk1, 'null_replaced')),
   CONCAT('bk2', '~', COALESCE(child.bk2, 'null_replaced')),
-  'pepper'
+  {runtime:pepper}
 )
 ```
 
@@ -230,7 +232,7 @@ This avoids platform-specific differences:
 
 ## 🔧 9. Pepper Semantics
 
-A global pepper (e.g. `'pepper'`) is appended as the last argument of the `CONCAT_WS` call.
+The symbolic token `{runtime:pepper}` is appended as the last argument of the portable `CONCAT_WS` expression. The concrete secret is resolved from the current runtime when the DSL is parsed for SQL rendering.
 
 Purpose:
 
@@ -238,7 +240,7 @@ Purpose:
 - add stability across dialects  
 - disable hash attacks on BKs  
 
-Pepper is **constant** and not column-dependent.
+Pepper is **constant within one runtime context** and not column-dependent. Different environments may use different concrete pepper values; the persisted portable DSL remains identical because it stores `{runtime:pepper}` rather than the secret.
 
 ---
 

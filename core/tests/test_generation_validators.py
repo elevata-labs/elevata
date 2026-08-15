@@ -28,7 +28,6 @@ def _get_or_create_target_schema(
   short_name: str,
   *,
   display_name: str,
-  database_name: str = "dw",
   schema_name: str | None = None,
   surrogate_keys_enabled: bool = True,
   default_materialization_type: str = "table",
@@ -45,7 +44,6 @@ def _get_or_create_target_schema(
     short_name=short_name,
     defaults={
       "display_name": display_name,
-      "database_name": database_name,
       "schema_name": schema_name or short_name,
       "surrogate_keys_enabled": surrogate_keys_enabled,
       "default_materialization_type": default_materialization_type,
@@ -57,10 +55,6 @@ def _get_or_create_target_schema(
   if schema.display_name != display_name:
     schema.display_name = display_name
     update_fields.append("display_name")
-
-  if schema.database_name != database_name:
-    schema.database_name = database_name
-    update_fields.append("database_name")
 
   expected_schema_name = schema_name or short_name
   if schema.schema_name != expected_schema_name:
@@ -175,7 +169,6 @@ def test_summarize_targetdataset_health_blocks_missing_business_key():
   schema = _get_or_create_target_schema(
     short_name="rawcore",
     display_name="Rawcore",
-    database_name="dw",
     schema_name="rawcore",
     surrogate_keys_enabled=True,
   )
@@ -211,7 +204,6 @@ def test_summarize_targetdataset_health_blocks_empty_surrogate_expression_with_b
   schema = _get_or_create_target_schema(
     short_name="rawcore",
     display_name="Rawcore",
-    database_name="dw",
     schema_name="rawcore",
     surrogate_keys_enabled=True,
   )
@@ -255,7 +247,6 @@ def test_validate_surrogate_key_integrity_accepts_valid_business_key_and_express
   schema = _get_or_create_target_schema(
     short_name="rawcore",
     display_name="Rawcore",
-    database_name="dw",
     schema_name="rawcore",
     surrogate_keys_enabled=True,
   )

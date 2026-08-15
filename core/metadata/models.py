@@ -22,7 +22,9 @@ Contact: <https://github.com/elevata-labs/elevata>.
 
 import os
 import hashlib
+import json
 import logging
+import uuid
 from django.db import transaction
 from django.db.models import Max, Q
 from django.core.exceptions import ValidationError
@@ -41,7 +43,7 @@ from metadata.constants import (
   TARGET_COMBINATION_MODE_CHOICES, BIZ_ENTITY_ROLE_CHOICES, INCREMENTAL_STRATEGY_CHOICES, JOIN_TYPE_CHOICES, 
   OPERATOR_CHOICES, AGGREGATE_MODE_CHOICES, ORDER_BY_DIR_CHOICES, NULLS_PLACEMENT_CHOICES, WINDOW_FUNCTION_CHOICES, 
   WINDOW_ARG_TYPE_CHOICES)
-from metadata.generation.validators import SHORT_NAME_VALIDATOR, TARGET_IDENTIFIER_VALIDATOR
+from metadata.generation.validators import SHORT_NAME_VALIDATOR
 
 
 class QueryNodeType(models.TextChoices):
@@ -155,8 +157,8 @@ class Person(AuditFields):
 class System(AuditFields):
   short_name = models.CharField(max_length=10, validators=[SHORT_NAME_VALIDATOR], unique=True,
     help_text=(
-      "Physical / concrete system identifier. eg. 'sap', 'nav', 'crm', 'ga4', "
-      "'dwhdev', 'dwh'."
+      "Stable modeled system identifier used for metadata relationships and "
+      "runtime profile binding. eg. 'sap', 'nav', 'crm', 'ga4', 'dwhdev', 'dwhprod'."
     ),
   )
   name = models.CharField(max_length=50,
@@ -388,7 +390,8 @@ class SourceDatasetIncrementPolicy(AuditFields):
     db_table = "source_dataset_increment_policy"
     constraints = [
       models.UniqueConstraint(
-        fields=["source_dataset", "environment", "active"],
+        fields=["source_dataset", "environment"],
+        condition=Q(active=True),
         name="unique_active_increment_policy_per_env",
       )
     ]
@@ -419,6 +422,12 @@ class SourceDatasetGroup(AuditFields):
 
   class Meta:
     db_table = "source_dataset_group"
+    constraints = [
+      models.UniqueConstraint(
+        fields=["target_short_name", "unified_source_dataset_name"],
+        name="unique_source_dataset_group",
+      )
+    ]
     ordering = ["target_short_name", "unified_source_dataset_name"]
     verbose_name_plural = "Source Dataset Groups"
 
@@ -584,9 +593,6 @@ class TargetSchema(AuditFields):
   description = models.CharField(max_length=255, blank=True, null=True,
     help_text="Purpose of this layer and what transformations are allowed here."
   )
-  database_name = models.CharField(max_length=100, validators=[TARGET_IDENTIFIER_VALIDATOR],
-    help_text="Physical target database / catalog on the destination platform."
-  )
   schema_name = models.CharField(max_length=10, validators=[SHORT_NAME_VALIDATOR],
     help_text= (
       "Physical schema / namespace on the destination platform. "
@@ -667,7 +673,7 @@ class TargetSchema(AuditFields):
     verbose_name_plural = "Target Schemas"
 
   def __str__(self):
-    return f"{self.short_name} ({self.database_name}.{self.schema_name})"
+    return f"{self.short_name} ({self.schema_name})"
 
 # -------------------------------------------------------------------
 # TargetDataset
@@ -675,8 +681,8 @@ class TargetSchema(AuditFields):
 class TargetDataset(AuditFields):
   target_schema = models.ForeignKey(TargetSchema, on_delete=models.PROTECT, related_name="target_datasets",
     help_text=(
-      "Which layer / schema this dataset belongs to. "
-      "Defines physical DB/schema, default materialization and governance expectations."
+      "Which architecture layer / physical schema this dataset belongs to. "
+      "Defines schema-level defaults, materialization and governance expectations."
     )
   )
   # Logical / business-facing name of the dataset in the target platform
@@ -1083,6 +1089,12 @@ class QueryNode(AuditFields):
   )
   node_type = models.CharField(max_length=16, choices=QueryNodeType.choices,
     help_text="Type of query operator represented by this node.",
+  )
+  logical_key = models.UUIDField(default=uuid.uuid4, unique=True, editable=False,
+    help_text=(
+      "Stable transport identity for this query node. "
+      "The value is independent of local database IDs."
+    ),
   )
   name = models.CharField(max_length=128, blank=True, default="",
     help_text="Optional label for UI (e.g. 'Base Select', 'Agg: Daily', 'Union: Sources').",
@@ -2298,7 +2310,65 @@ class TargetDatasetReference(AuditFields):
     verbose_name_plural = "Target Dataset References"
 
   def __str__(self):
-    return f"{self.referencing_dataset} -> {self.referenced_dataset} ({self.reference_prefix or ''})"
+    parts = [
+      f"{self.referencing_dataset} -> {self.referenced_dataset}",
+      self.relationship_type,
+    ]
+    prefix = str(self.reference_prefix or "").strip()
+    if prefix:
+      parts.append(f"prefix: {prefix}")
+    return " · ".join(parts)
+
+  @staticmethod
+  def _dataset_transport_key(dataset: TargetDataset) -> str:
+    """
+    Return the stable transport key for a target dataset.
+
+    Generated datasets normally provide lineage_key. Manually modeled datasets
+    fall back to their schema and physical dataset name. Local database IDs are
+    intentionally excluded.
+    """
+    lineage_key = str(getattr(dataset, "lineage_key", "") or "").strip()
+    if lineage_key:
+      return lineage_key
+
+    target_schema = getattr(dataset, "target_schema", None)
+    schema_short_name = str(
+      getattr(target_schema, "short_name", "") or ""
+    ).strip()
+    dataset_name = str(
+      getattr(dataset, "target_dataset_name", "") or ""
+    ).strip()
+    return f"{schema_short_name}.{dataset_name}"
+
+  @property
+  def transport_key(self) -> str:
+    """
+    Return the canonical logical identity of this reference.
+    """
+    child_key = self._dataset_transport_key(self.referencing_dataset)
+    parent_key = self._dataset_transport_key(self.referenced_dataset)
+    prefix = str(self.reference_prefix or "").strip()
+    return json.dumps(
+      {
+        "referencing_dataset": child_key,
+        "reference_prefix": prefix,
+        "referenced_dataset": parent_key,
+      },
+      sort_keys=True,
+      ensure_ascii=False,
+      separators=(",", ":"),
+    )
+
+  @property
+  def child_fk_lineage_key(self) -> str:
+    """
+    Return the deterministic lineage key of the generated child FK column.
+    """
+    digest = hashlib.sha256(
+      self.transport_key.encode("utf-8")
+    ).hexdigest()
+    return f"fk:{digest}"
   
   @property
   def missing_bk_components(self) -> list[str]:
@@ -2413,7 +2483,7 @@ class TargetDatasetReference(AuditFields):
     fk_name = reference.get_child_fk_name()
 
     # Stable identity for the FK column, independent of renames.
-    fk_lineage_key = f"fk:{reference.id}"
+    fk_lineage_key = reference.child_fk_lineage_key
 
     # Prefer lookup by lineage_key to avoid ambiguity when a child has multiple references.
     fk_col = TargetColumn.objects.filter(
@@ -2561,7 +2631,7 @@ class TargetDatasetReference(AuditFields):
       except Exception:
         do_hist_cleanup = False
 
-      fk_lineage_key = f"fk:{self.id}"
+      fk_lineage_key = self.child_fk_lineage_key
       fk_col = None
       if child is not None:
         fk_col = TargetColumn.objects.filter(

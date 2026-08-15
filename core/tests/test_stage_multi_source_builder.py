@@ -59,7 +59,6 @@ def test_stage_multi_source_via_raw_identity_mode_produces_union():
     short_name="raw",
     defaults={
       "display_name": "Raw",
-      "database_name": "dw",
       "schema_name": "raw",
     },
   )
@@ -67,7 +66,6 @@ def test_stage_multi_source_via_raw_identity_mode_produces_union():
     short_name="stage",
     defaults={
       "display_name": "Stage",
-      "database_name": "dw",
       "schema_name": "stage",
     },
   )
@@ -259,7 +257,6 @@ def test_stage_multi_source_via_sources_identity_mode_produces_union():
     short_name="stage",
     defaults={
       "display_name": "Stage",
-      "database_name": "dw",
       "schema_name": "stage",
     },
   )
@@ -402,7 +399,6 @@ def test_stage_single_source_returns_logical_select():
     short_name="raw",
     defaults={
       "display_name": "Raw",
-      "database_name": "dw",
       "schema_name": "raw",
     },
   )
@@ -410,7 +406,6 @@ def test_stage_single_source_returns_logical_select():
     short_name="stage",
     defaults={
       "display_name": "Stage",
-      "database_name": "dw",
       "schema_name": "stage",
     },
   )

@@ -48,6 +48,36 @@ from metadata.models import (
 )
 
 
+def test_target_dataset_reference_string_omits_empty_prefix_parentheses() -> None:
+  child = TargetDataset(target_dataset_name="rc_aw_sales_order")
+  parent = TargetDataset(target_dataset_name="rc_aw_customer")
+  reference = TargetDatasetReference(
+    referencing_dataset=child,
+    referenced_dataset=parent,
+    relationship_type="n_to_1",
+    reference_prefix="",
+  )
+
+  assert str(reference) == (
+    "rc_aw_sales_order -> rc_aw_customer · n_to_1"
+  )
+
+
+def test_target_dataset_reference_string_shows_optional_prefix() -> None:
+  child = TargetDataset(target_dataset_name="rc_aw_sales_order")
+  parent = TargetDataset(target_dataset_name="rc_aw_customer")
+  reference = TargetDatasetReference(
+    referencing_dataset=child,
+    referenced_dataset=parent,
+    relationship_type="n_to_1",
+    reference_prefix="billing",
+  )
+
+  assert str(reference) == (
+    "rc_aw_sales_order -> rc_aw_customer · n_to_1 · prefix: billing"
+  )
+
+
 def test_architecture_catalog_portfolio_metric_action_requires_gap() -> None:
   """
   Verify Portfolio metric actions only appear for non-empty worklists.
@@ -136,7 +166,6 @@ def _get_or_create_target_schema(
   short_name: str,
   *,
   display_name: str,
-  database_name: str = "dw",
   schema_name: str | None = None,
   default_materialization_type: str = "table",
 ) -> TargetSchema:
@@ -147,7 +176,6 @@ def _get_or_create_target_schema(
     short_name=short_name,
     defaults={
       "display_name": display_name,
-      "database_name": database_name,
       "schema_name": schema_name or short_name,
       "default_materialization_type": default_materialization_type,
       "surrogate_keys_enabled": True,

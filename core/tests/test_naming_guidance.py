@@ -45,7 +45,6 @@ def _schema(short_name: str) -> TargetSchema:
     short_name=short_name,
     defaults={
       "display_name": short_name.title(),
-      "database_name": "dw",
       "schema_name": short_name,
       "default_materialization_type": "table",
       "surrogate_keys_enabled": True,

@@ -51,6 +51,7 @@ def _column(
   nullable: bool = True,
   active: bool = True,
   lineage_key: str | None = None,
+  former_names: tuple[str, ...] = (),
 ) -> ColumnState:
   """
   Build a column state for architecture report tests.
@@ -61,7 +62,7 @@ def _column(
     nullable=nullable,
     active=active,
     lineage_key=lineage_key or f"lk_{name}",
-    former_names=(),
+    former_names=former_names,
     is_system_managed=False,
     system_role=None,
   )
@@ -417,3 +418,140 @@ def test_architecture_change_report_all_scope_keeps_all_changes():
     "rawcore.product",
   ]
   assert report.summary.column_change_count == 2
+
+
+def test_architecture_change_report_ignores_lineage_only_column_identity_migration():
+  previous_state = _state(_dataset(
+    "customer",
+    columns=(
+      _column(
+        "customer_id",
+        datatype="integer",
+        nullable=False,
+        lineage_key="legacy:1:6",
+      ),
+    ),
+  ))
+  current_state = _state(_dataset(
+    "customer",
+    columns=(
+      _column(
+        "customer_id",
+        datatype="integer",
+        nullable=False,
+        lineage_key="generated:rawcore:" + ("a" * 64),
+      ),
+    ),
+  ))
+
+  report = build_architecture_change_report(
+    previous_state=previous_state,
+    current_state=current_state,
+    policy=_policy(),
+    relevant_dataset_keys={"rawcore.customer"},
+    schema_short="rawcore",
+    target_name="customer",
+  )
+
+  assert previous_state.fingerprint == current_state.fingerprint
+  assert report.has_changes is False
+  assert report.column_changes == ()
+  assert report.migration_actions == ()
+  assert report.policy_decisions == ()
+  assert report.summary.column_change_count == 0
+  assert report.summary.migration_action_count == 0
+
+
+def test_architecture_change_report_still_detects_datatype_change():
+  previous_state = _state(_dataset(
+    "customer",
+    columns=(
+      _column("customer_id", datatype="integer", nullable=False),
+    ),
+  ))
+  current_state = _state(_dataset(
+    "customer",
+    columns=(
+      _column("customer_id", datatype="bigint", nullable=False),
+    ),
+  ))
+
+  report = build_architecture_change_report(
+    previous_state=previous_state,
+    current_state=current_state,
+    policy=_policy(),
+    relevant_dataset_keys={"rawcore.customer"},
+    schema_short="rawcore",
+    target_name="customer",
+  )
+
+  assert [c.change_type for c in report.column_changes] == ["COLUMN_CHANGED"]
+  assert report.column_changes[0].details["changed_fields"] == ["datatype"]
+  assert [a.action_type for a in report.migration_actions] == ["ALTER_COLUMN"]
+
+
+def test_architecture_change_report_still_detects_nullable_change():
+  previous_state = _state(_dataset(
+    "customer",
+    columns=(
+      _column("customer_id", datatype="integer", nullable=True),
+    ),
+  ))
+  current_state = _state(_dataset(
+    "customer",
+    columns=(
+      _column("customer_id", datatype="integer", nullable=False),
+    ),
+  ))
+
+  report = build_architecture_change_report(
+    previous_state=previous_state,
+    current_state=current_state,
+    policy=_policy(),
+    relevant_dataset_keys={"rawcore.customer"},
+    schema_short="rawcore",
+    target_name="customer",
+  )
+
+  assert [c.change_type for c in report.column_changes] == ["COLUMN_CHANGED"]
+  assert report.column_changes[0].details["changed_fields"] == ["nullable"]
+  assert [a.action_type for a in report.migration_actions] == ["ALTER_COLUMN"]
+
+
+def test_architecture_change_report_still_detects_rename_by_stable_lineage():
+  lineage_key = "source:customer:customer_number"
+  previous_state = _state(_dataset(
+    "customer",
+    columns=(
+      _column(
+        "customer_no",
+        datatype="string",
+        lineage_key=lineage_key,
+      ),
+    ),
+  ))
+  current_state = _state(_dataset(
+    "customer",
+    columns=(
+      _column(
+        "customer_number",
+        datatype="string",
+        lineage_key=lineage_key,
+        former_names=("customer_no",),
+      ),
+    ),
+  ))
+
+  report = build_architecture_change_report(
+    previous_state=previous_state,
+    current_state=current_state,
+    policy=_policy(),
+    relevant_dataset_keys={"rawcore.customer"},
+    schema_short="rawcore",
+    target_name="customer",
+  )
+
+  assert [c.change_type for c in report.column_changes] == ["COLUMN_RENAMED"]
+  assert report.column_changes[0].previous_column_name == "customer_no"
+  assert report.column_changes[0].column_name == "customer_number"
+  assert [a.action_type for a in report.migration_actions] == ["RENAME_COLUMN"]

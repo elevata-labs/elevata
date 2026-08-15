@@ -61,7 +61,6 @@ def test_stage_union_sets_source_identity_id_literal_per_branch():
     short_name="raw",
     defaults={
       "display_name": "Raw",
-      "database_name": "dw",
       "schema_name": "raw",
     },
   )
@@ -70,7 +69,6 @@ def test_stage_union_sets_source_identity_id_literal_per_branch():
     short_name="stage",
     defaults={
       "display_name": "Stage",
-      "database_name": "dw",
       "schema_name": "stage",
     },
   )

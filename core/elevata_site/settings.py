@@ -34,8 +34,10 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 
 from pathlib import Path
 import os
+import re
 from dotenv import load_dotenv, find_dotenv 
 import dj_database_url
+from django.core.exceptions import ImproperlyConfigured
 from utils.env import env_bool, env_list, env_str, env_int
 from utils.db import build_metadata_database_url
 
@@ -43,7 +45,39 @@ from utils.db import build_metadata_database_url
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(find_dotenv(filename=".env", raise_error_if_not_found=False))
 
-ELEVATA_VERSION = "2.17.0"
+ELEVATA_VERSION = "3.0.0"
+
+ELEVATA_RUNTIME_MODE = env_str("ELEVATA_RUNTIME_MODE", "authoring").strip().lower()
+if ELEVATA_RUNTIME_MODE not in {"authoring", "promotion_target"}:
+  raise ImproperlyConfigured(
+    "ELEVATA_RUNTIME_MODE must be 'authoring' or 'promotion_target'."
+  )
+
+ELEVATA_ENVIRONMENT = env_str("ELEVATA_ENVIRONMENT", "").strip()
+ELEVATA_PROMOTION_RUNNER_TOKEN = env_str(
+  "ELEVATA_PROMOTION_RUNNER_TOKEN",
+  "",
+).strip()
+ELEVATA_PROMOTION_RUNNER_MAX_PACKAGE_BYTES = env_int(
+  "ELEVATA_PROMOTION_RUNNER_MAX_PACKAGE_BYTES",
+  64 * 1024 * 1024,
+)
+
+if ELEVATA_RUNTIME_MODE == "promotion_target":
+  if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]*", ELEVATA_ENVIRONMENT):
+    raise ImproperlyConfigured(
+      "ELEVATA_ENVIRONMENT is required in promotion_target mode and may "
+      "contain letters, numbers, dots, dashes and underscores only."
+    )
+  if len(ELEVATA_PROMOTION_RUNNER_TOKEN) < 32:
+    raise ImproperlyConfigured(
+      "ELEVATA_PROMOTION_RUNNER_TOKEN must contain at least 32 characters "
+      "in promotion_target mode."
+    )
+  if ELEVATA_PROMOTION_RUNNER_MAX_PACKAGE_BYTES < 1024 * 1024:
+    raise ImproperlyConfigured(
+      "ELEVATA_PROMOTION_RUNNER_MAX_PACKAGE_BYTES must be at least 1 MiB."
+    )
 
 
 def _resolve_runtime_path_env(var_name: str, default: str) -> str:
@@ -77,6 +111,23 @@ ELEVATA_ARCH_APPROVAL_DIR = _resolve_runtime_path_env(
 ELEVATA_ARCH_EXECUTION_DIR = _resolve_runtime_path_env(
   "ELEVATA_ARCH_EXECUTION_DIR",
   ".elevata/executions",
+)
+
+ELEVATA_PROMOTION_RELEASE_DIR = _resolve_runtime_path_env(
+  "ELEVATA_PROMOTION_RELEASE_DIR",
+  ".elevata/promotion/releases",
+)
+ELEVATA_PROMOTION_APPROVAL_DIR = _resolve_runtime_path_env(
+  "ELEVATA_PROMOTION_APPROVAL_DIR",
+  ".elevata/promotion/approvals",
+)
+ELEVATA_PROMOTION_PACKAGE_DIR = _resolve_runtime_path_env(
+  "ELEVATA_PROMOTION_PACKAGE_DIR",
+  ".elevata/promotion/packages",
+)
+ELEVATA_PROMOTION_HISTORY_DIR = _resolve_runtime_path_env(
+  "ELEVATA_PROMOTION_HISTORY_DIR",
+  ".elevata/promotion/history",
 )
 
 ELEVATA_PROFILES_PATH = os.getenv("ELEVATA_PROFILES_PATH", str((BASE_DIR.parent / "config" / "elevata_profiles.yaml")))
@@ -125,6 +176,20 @@ MIDDLEWARE = [
   "django.middleware.clickjacking.XFrameOptionsMiddleware",
   "elevata_site.middleware.LoginRequiredAllMiddleware",
 ]
+
+if ELEVATA_RUNTIME_MODE == "promotion_target":
+  # A promotion target is a headless deployment runtime, not a modeling UI.
+  MIDDLEWARE = [
+    item
+    for item in MIDDLEWARE
+    if item != "elevata_site.middleware.LoginRequiredAllMiddleware"
+  ]
+  MIDDLEWARE.insert(
+    1,
+    "elevata_site.promotion_target_middleware.PromotionTargetOnlyMiddleware",
+  )
+  # Deployment packages can exceed Django's default request-body limit.
+  DATA_UPLOAD_MAX_MEMORY_SIZE = ELEVATA_PROMOTION_RUNNER_MAX_PACKAGE_BYTES
 
 APPEND_SLASH = True
 
@@ -263,6 +328,13 @@ ELEVATA_CRUD = {
         "icon": "shield-check",
         "position": "end",
       },
+      {
+        "label": "Environment Promotion",
+        "url_name": "environment_promotion",
+        "card_text": "Promote immutable architecture releases across controlled environments.",
+        "icon": "send",
+        "position": "after:architecture_control",
+      },
     ],
     "exclude": [
       "SourceDatasetOwnership", 
@@ -297,7 +369,6 @@ ELEVATA_CRUD = {
     "system_managed": {
       "TargetSchema": [
         "short_name",
-        "database_name",
         "schema_name",
         "physical_prefix",
         "generate_layer",

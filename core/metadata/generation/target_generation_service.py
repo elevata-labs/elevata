@@ -48,6 +48,7 @@ from metadata.generation.mappers import (
   build_surrogate_key_column_draft,
 )
 from metadata.services.rename_common import sync_key_former_names_for_rawcore_dataset
+from metadata.portable_keys import build_target_dataset_lineage_key
 
 
 @dataclass(frozen=True)
@@ -840,15 +841,12 @@ class TargetGenerationService:
   # ------------------------------------------------------------
   def build_lineage_key_for_bucket(self, target_schema, src_list):
     """
-    Build a stable technical lineage key for a (schema, source-dataset-bucket) combination.
+    Build an environment-independent lineage key for a generation bucket.
 
-    We use the target_schema.pk and the sorted list of source_dataset.pk values.
-    This survives renames of target_dataset_name and keeps the grouping stable.
+    The key is derived from TargetSchema.short_name plus the sorted natural
+    identities of the source datasets. Local database IDs never participate.
     """
-    schema_part = str(target_schema.pk)
-    src_ids = sorted(ds.pk for ds in src_list)
-    src_part = ",".join(str(pk) for pk in src_ids)
-    return f"{schema_part}:{src_part}"
+    return build_target_dataset_lineage_key(target_schema, src_list)
 
   def _bucket_source_datasets(self, eligible_source_datasets, target_schema):
     """
@@ -897,8 +895,8 @@ class TargetGenerationService:
 
   def _get_or_create_target_dataset(self, target_schema, dataset_draft, src_list, combination_mode):
     """
-    Find or create the TargetDataset for this bucket, based on lineage_key
-    (schema + source_dataset IDs), with a fallback to name-based matching.
+    Find or create the TargetDataset for this bucket, based on the portable
+    generated lineage identity, with a fallback to name-based matching.
 
     Robust against legacy rows (without lineage_key) and duplicate calls.
     """
@@ -2014,20 +2012,32 @@ class TargetGenerationService:
     """
     Return whether a lineage key belongs to this generator and schema.
 
-    Generated lineage keys use the stable format:
+    New generated lineage keys use the portable format:
 
-      <target_schema_id>:<source_dataset_id>[,<source_dataset_id>...]
+      generated:<target_schema.short_name>:<sha256>
 
-    The strict check prevents lifecycle reconciliation from changing
+    The legacy ID-based format is still recognized during the migration
+    window so existing generated metadata remains lifecycle-managed until
+    migration 0012 rewrites it. New generation never emits the legacy form.
+
+    The strict checks prevent lifecycle reconciliation from changing
     system-managed datasets owned by another metadata workflow.
     """
     value = str(lineage_key or "").strip()
-    prefix = f"{target_schema.pk}:"
 
-    if not value.startswith(prefix):
+    portable_prefix = f"generated:{target_schema.short_name}:"
+    if value.startswith(portable_prefix):
+      digest = value[len(portable_prefix):]
+      return (
+        len(digest) == 64
+        and all(character in "0123456789abcdef" for character in digest)
+      )
+
+    legacy_prefix = f"{target_schema.pk}:"
+    if not value.startswith(legacy_prefix):
       return False
 
-    source_part = value[len(prefix):]
+    source_part = value[len(legacy_prefix):]
     if not source_part:
       return False
 

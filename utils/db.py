@@ -1,6 +1,6 @@
 """
 elevata - Metadata-driven Data Platform Framework
-Copyright © 2025 Ilona Tag
+Copyright © 2025-2026 Ilona Tag
 
 This file is part of elevata.
 
@@ -27,7 +27,16 @@ def build_metadata_database_url(base_dir: Path) -> str:
   """Build DATABASE_URL from DB_* env vars with sane defaults."""
   engine = os.getenv("DB_ENGINE", "sqlite").strip().lower()
   if engine == "sqlite":
-    return f"sqlite:///{(base_dir / 'db.sqlite3').as_posix()}"
+    name = os.getenv("DB_NAME", "").strip()
+    if name == ":memory:":
+      return "sqlite:///:memory:"
+
+    database_path = Path(name).expanduser() if name else base_dir / "db.sqlite3"
+    if not database_path.is_absolute():
+      database_path = base_dir / database_path
+
+    return f"sqlite:///{database_path.as_posix()}"
+
   user = os.getenv("DB_USER", "")
   password = os.getenv("DB_PASSWORD", "")
   host = os.getenv("DB_HOST", "localhost")

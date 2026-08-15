@@ -1,6 +1,6 @@
 """
 elevata - Metadata-driven Data Platform Framework
-Copyright © 2025 Ilona Tag
+Copyright © 2025-2026 Ilona Tag
 
 This file is part of elevata.
 
@@ -34,10 +34,10 @@ from metadata.models import (
 def test_missing_bk_components_detected():
   # Schemas
   stage_schema, _ = TargetSchema.objects.get_or_create(
-    short_name="stage", defaults={"display_name": "Stage", "database_name": "dw", "schema_name": "stage"}
+    short_name="stage", defaults={"display_name": "Stage", "schema_name": "stage"}
   )
   raw_schema, _ = TargetSchema.objects.get_or_create(
-    short_name="rawcore", defaults={"display_name": "Raw Core", "database_name": "dw", "schema_name": "rawcore"}
+    short_name="rawcore", defaults={"display_name": "Raw Core", "schema_name": "rawcore"}
   )
 
   # Parent Stage → RawCore
@@ -73,10 +73,10 @@ def test_missing_bk_components_detected():
 @pytest.mark.django_db
 def test_no_missing_bk_components():
   stage_schema, _ = TargetSchema.objects.get_or_create(
-    short_name="stage", defaults={"display_name": "Stage", "database_name": "dw", "schema_name": "stage"}
+    short_name="stage", defaults={"display_name": "Stage", "schema_name": "stage"}
   )
   raw_schema, _ = TargetSchema.objects.get_or_create(
-    short_name="rawcore", defaults={"display_name": "Raw Core", "database_name": "dw", "schema_name": "rawcore"}
+    short_name="rawcore", defaults={"display_name": "Raw Core", "schema_name": "rawcore"}
   )
 
   parent_raw = TargetDataset.objects.create(target_schema=raw_schema, target_dataset_name="raw_p")

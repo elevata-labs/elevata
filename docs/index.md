@@ -13,7 +13,7 @@ This index gives you an overview of all major topics and how they fit together.
 ### 🚀 Getting Started
 
 - [Getting Started](getting_started.md)  
-  Install elevata, run the first migration, and open the UI.
+  Install elevata, apply the metadata migrations, and open the UI.
 
 - [Secure Metadata Connectivity](secure_metadata_connectivity.md)  
   Configure profiles, environment variables, secrets, peppers and secure access to source/target systems.
@@ -24,9 +24,6 @@ This index gives you an overview of all major topics and how they fit together.
 
 - [Generation Logic](generation_logic.md)  
   How metadata is transformed into TargetDataset structures, SQL Logical Plans and final SQL. Includes dataset types, multi-source contracts, generated TargetDataset lifecycle, dependencies and generation rules.
-
-- [Controlled Target Generation](controlled_target_generation.md)  
-  How Source-to-Target metadata changes are planned, reviewed, approved where required, drift-guarded and applied through the RAW, STAGE and RAWCORE sequence.
 
 - [Metadata Naming Guidance](metadata_naming_guidance.md)  
   Deterministic, project-specific naming assistance for TargetColumn modeling based on existing mappings.
@@ -58,6 +55,19 @@ This index gives you an overview of all major topics and how they fit together.
 
 ---
 
+### 🛡️ Control & Promotion
+
+- [Environment Promotion](environment_promotion.md)  
+  Controlled cross-environment metadata deployment through immutable Releases, deterministic Promotion Plans, exact Promotion Approval, Deployment Packages, authenticated target runners, live drift guards and remote convergence history.
+
+- [Controlled Target Generation](controlled_target_generation.md)  
+  How Source-to-Target metadata changes are planned, reviewed, approved where required, drift-guarded and applied inside one metadata environment.
+
+- [Architecture Control Plane](architecture_control_plane.md)  
+  How generated metadata becomes reviewable physical architecture intent, approvals, immutable execution contracts and audit evidence inside one environment.
+
+---
+
 ### ▶️ Execution & Observability
 
 - [Load Execution & Orchestration Architecture](load_execution_architecture.md)  
@@ -77,9 +87,6 @@ This index gives you an overview of all major topics and how they fit together.
 
 - [Reference Integrity](reference_integrity.md)  
   Read-only, on-demand review of modeled outgoing references against loaded target data, plus controlled default member, inferred member, Default Member Fallback and reference-parent execution readiness behavior during load execution.
-
-- [Architecture Control Plane](architecture_control_plane.md)  
-  Controlled target generation, deterministic architecture state, change reports, separate approval boundaries, review briefing, Execution Impact, immutable Run Plans, finalization, policy decisions and fingerprints for UI, CI, scheduler execution and promotion workflows.
 
 ---
 
@@ -159,9 +166,10 @@ If you are new to elevata, a good reading path is:
 2. [Architecture Overview](architecture_overview.md)  
 3. [Generation Logic](generation_logic.md)  
 4. [Controlled Target Generation](controlled_target_generation.md)  
-5. [Architecture Control Plane](architecture_control_plane.md)  
-6. [Dialect System](dialect_system.md)  
-7. [Hashing Architecture](hashing_architecture.md)  
+5. [Environment Promotion](environment_promotion.md)  
+6. [Architecture Control Plane](architecture_control_plane.md)  
+7. [Dialect System](dialect_system.md)  
+8. [Hashing Architecture](hashing_architecture.md)  
 
 This will give you a mental model for how metadata flows through the platform and becomes executable SQL.
 
@@ -194,7 +202,7 @@ A personal open-source initiative exploring how data architecture can be defined
 
 ---
 
-_Last updated: 2026-08-01_
+_Last updated: 2026-08-15_
 
 © 2025-2026 elevata - Technical Documentation  
 Built with purpose. Rendered with precision. 🪶

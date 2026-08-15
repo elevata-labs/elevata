@@ -1,6 +1,6 @@
 """
 elevata - Metadata-driven Data Platform Framework
-Copyright © 2025 Ilona Tag
+Copyright © 2025-2026 Ilona Tag
 
 This file is part of elevata.
 
@@ -24,7 +24,9 @@ from __future__ import annotations
 from typing import List
 import hashlib
 
-import hashlib
+
+RUNTIME_PEPPER_TOKEN = "{runtime:pepper}"
+
 
 def build_surrogate_expression(
   natural_key_cols: list[str],
@@ -37,9 +39,13 @@ def build_surrogate_expression(
   Build a generic, dialect-agnostic expression describing how
   the surrogate key should be computed later by the SQL renderer.
 
-  The returned string is a *template* that uses {expr:<col>} placeholders.
-  The SQL renderer will bind those to the final value expressions of the
-  corresponding business/natural key columns.
+  The returned string is a portable template that uses {expr:<col>}
+  placeholders plus {runtime:pepper}. The concrete pepper is deliberately not
+  serialized into metadata; it is resolved only when the DSL is parsed for
+  runtime SQL rendering.
+
+  ``pepper`` remains an accepted argument for backwards compatibility with
+  existing callers. Its concrete value must never influence the persisted DSL.
   """
 
   # 1. Ensure deterministic ordering
@@ -57,14 +63,17 @@ def build_surrogate_expression(
     )
     inner_parts.append(part)  
 
-  # 3. Join components with comp_sep and append the pepper
-  # We pass each concat(...) as separate argument to concat_ws
-  # and add the pepper as the last argument.
+  # 3. Join components with comp_sep and append a symbolic runtime binding.
+  # The concrete pepper must remain environment-local and must never be stored
+  # in portable metadata or Architecture Release Bundles.
+  # Keep the call signature stable; the runtime value is intentionally
+  # ignored here.
+  _ = pepper
   inner_expression = ", ".join(inner_parts)
 
   expression = (
     "HASH256("
-    f"CONCAT_WS('{comp_sep}', {inner_expression}, '{pepper}')"
+    f"CONCAT_WS('{comp_sep}', {inner_expression}, {RUNTIME_PEPPER_TOKEN})"
     ")"
   )
 

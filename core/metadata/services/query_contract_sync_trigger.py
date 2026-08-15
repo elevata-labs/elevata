@@ -28,6 +28,9 @@ from django.db import transaction
 
 from metadata.models import TargetDataset
 from metadata.services.query_contract_column_sync import QueryContractColumnSyncService
+from metadata.transport_context import (
+  metadata_artifact_reconstruction_active,
+)
 
 # Simple per-transaction debounce to avoid N syncs for N row saves.
 _pending_td_ids: set[int] = set()
@@ -36,6 +39,9 @@ _running: bool = False
 
 def trigger_query_contract_column_sync(td: Optional[TargetDataset], actor=None) -> None:
   global _running
+
+  if metadata_artifact_reconstruction_active():
+    return
 
   if td is None or not getattr(td, "pk", None):
     return

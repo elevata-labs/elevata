@@ -30,7 +30,7 @@ Tests for surrogate key hashing with multi-source scenarios:
 
 import re
 
-from metadata.generation.hashing import build_surrogate_expression
+from metadata.generation.hashing import RUNTIME_PEPPER_TOKEN, build_surrogate_expression
 from metadata.generation.mappers import build_surrogate_key_column_draft
 
 
@@ -73,6 +73,9 @@ def test_build_surrogate_expression_sorts_natural_keys_alphabetically():
     comp_sep="|",
   )
 
+  assert RUNTIME_PEPPER_TOKEN in expr
+  assert "test_pepper" not in expr
+
   # Determine the relative order of components in the expression
   positions = _order_of_components(expr, expected_sorted)
 
@@ -108,6 +111,8 @@ def test_surrogate_key_column_draft_includes_identity_and_respects_sorting():
 
   expr = sk_draft.surrogate_expression
   assert isinstance(expr, str) and expr, "surrogate_expression must be a non-empty string"
+  assert RUNTIME_PEPPER_TOKEN in expr
+  assert "test_pepper" not in expr
 
   # 1) identity must be present
   assert "source_identity_id" in expr, (

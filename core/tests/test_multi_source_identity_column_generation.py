@@ -1,6 +1,6 @@
 """
 elevata - Metadata-driven Data Platform Framework
-Copyright © 2025 Ilona Tag
+Copyright © 2025-2026 Ilona Tag
 
 This file is part of elevata.
 
@@ -61,7 +61,6 @@ def test_auto_identity_column_in_stage_and_rawcore_bundles():
     short_name="stage",
     defaults={
       "display_name": "Stage",
-      "database_name": "dw",
       "schema_name": "stage",
       # surrogate keys are usually enabled here; adjust if needed in your model
       "surrogate_keys_enabled": True,
@@ -72,7 +71,6 @@ def test_auto_identity_column_in_stage_and_rawcore_bundles():
     short_name="rawcore",
     defaults={
       "display_name": "Rawcore",
-      "database_name": "dw",
       "schema_name": "rawcore",
       "surrogate_keys_enabled": True,
     },
@@ -209,7 +207,6 @@ def test_rawcore_sk_expression_contains_identity_and_sorts_bks_alphabetically():
     short_name="rawcore",
     defaults={
       "display_name": "Rawcore",
-      "database_name": "dw",
       "schema_name": "rawcore",
       "surrogate_keys_enabled": True,
     },

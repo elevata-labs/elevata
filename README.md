@@ -44,14 +44,14 @@ elevata is an **Architecture Runtime** for metadata-defined data platforms.
 
 It models datasets, lineage, contracts, governance, and execution semantics as explicit metadata.
 
-From these definitions, elevata derives deterministic Target Generation Plans and SQL Logical Plans, renders dialect-owned SQL, reviews architecture changes, and executes warehouse-native pipelines through controlled runtime scopes.
+From these definitions, elevata derives deterministic Target Generation Plans and SQL Logical Plans, creates immutable architecture releases for controlled Environment Promotion, renders dialect-owned SQL, reviews architecture changes, and executes warehouse-native pipelines through controlled runtime scopes.
 
 Target metadata generation, schema evolution, incremental loads, historization, approvals, and execution evidence are planned, validated, and applied deterministically.
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/elevata-labs/elevata/main/docs/elevata_v2_17_0.png" alt="elevata UI preview" width="900"/>
+  <img src="https://raw.githubusercontent.com/elevata-labs/elevata/main/docs/elevata_v3_0_0.png" alt="elevata UI preview" width="900"/>
   <br/>
-  <em>Architecture Runtime UI for discovering, controlling, modeling, and executing metadata-defined data architecture</em>
+  <em>elevata user interface spanning metadata management, Architecture Control, and controlled Environment Promotion.</em>
 </p>
 
 
@@ -97,7 +97,7 @@ The core elevata architecture pipeline consists of five explicitly separated lay
 4. **Dialect Rendering**  
 5. **Warehouse-Native Execution**
 
-Each layer has its own contract. A Target Generation Plan describes metadata mutation; a SQL Logical Plan describes the query that is rendered and executed.
+Each layer has its own contract. A Target Generation Plan describes metadata mutation; a SQL Logical Plan describes the query that is rendered and executed. Environment Promotion is a separate cross-environment control boundary that moves immutable portable metadata releases between authoritative metadata environments.
 
 ---
 
@@ -107,13 +107,15 @@ Each layer has its own contract. A Target Generation Plan describes metadata mut
 2. Review source metadata import outcomes before generation  
 3. Open **Review target generation** and inspect the dependency-ordered RAW, STAGE, and RAWCORE sequence  
 4. Review the exact Source-to-Target plan, create a Generation Approval where required, and apply the plan through guarded metadata mutation  
-5. Discover the resulting architecture from Source Systems through Target Datasets to Data Products using Catalog, Portfolio, Insights, and Map  
-6. Inspect generated SQL, lineage, contracts, health, quality review, reference integrity, and execution evidence  
-7. Review the resulting physical architecture changes through Architecture Review Briefing and approve them through Architecture Control  
-8. Bind scheduler-managed runs to an immutable Execution Run Plan and Planned Architecture State  
-9. Execute approved or unchanged active scopes deterministically on your target warehouse  
-10. Finalize structured outcomes so recorded Architecture State advances only after successful execution  
-11. Audit execution through Run Plan evidence, Architecture Execution Records, load logs, and snapshots
+5. Create an immutable **Architecture Release** from the converged authoring metadata  
+6. Use **Environment Promotion** to review the release against TEST / PROD, approve the exact Promotion Plan, build an immutable Deployment Package, check live target drift, deploy metadata, and audit convergence evidence  
+7. Discover the resulting architecture from Source Systems through Target Datasets to Data Products using Catalog, Portfolio, Insights, and Map  
+8. Inspect generated SQL, lineage, contracts, health, quality review, reference integrity, and execution evidence  
+9. Review the target environment's resulting physical architecture changes through Architecture Review Briefing and approve them through Architecture Control  
+10. Bind scheduler-managed runs to an immutable Execution Run Plan and Planned Architecture State  
+11. Execute approved or unchanged active scopes deterministically on your target warehouse  
+12. Finalize structured outcomes so recorded Architecture State advances only after successful execution  
+13. Audit execution through Run Plan evidence, Architecture Execution Records, load logs, snapshots, and target-side Promotion History
 
 ---
 
@@ -233,9 +235,9 @@ The all-dataset view guides users through `RAW → STAGE → RAWCORE`. Only the 
 
 Generation Approval and Architecture Approval are intentionally separate. Generation Approval authorizes the exact reviewed metadata mutation. Architecture Approval authorizes the resulting physical architecture change reported afterwards.
 
-Architecture State, Change Reports, Promotion Reports, Approval Artifacts, Execution Impact Plans, immutable Execution Run Plans, Planned Architecture State snapshots, structured outcomes, and Execution Records expose deterministic fingerprints, MigrationPlan actions, policy decisions, review decisions, and execution evidence.
+Architecture State, Change Reports, Architecture State Comparisons (legacy `Architecture Promotion Report` artifacts), Approval Artifacts, Execution Impact Plans, immutable Execution Run Plans, Planned Architecture State snapshots, structured outcomes, and Execution Records expose deterministic fingerprints, MigrationPlan actions, policy decisions, review decisions, and execution evidence.
  
-This supports controlled review, CI checks, scheduler integration, environment-to-environment architecture promotion, and exact state finalization while keeping execution guardrails inside the load runner.
+This supports controlled review, CI checks, scheduler integration, explicit architecture-state comparison, and exact state finalization while keeping execution guardrails inside the load runner.
  
 The Architecture Control UI makes approval state, scope, policy status, change summary, Execution Impact decisions, execution preview, dependency mode, controlled reference readiness, captured output, and execution records visible for controlled scopes.
  
@@ -248,6 +250,30 @@ For schema reviews, Architecture Control combines active datasets from the curre
 A first recorded Architecture State can be established only by a verified full-scope initial deployment whose managed target was discovered as empty. An explicitly guarded recovery path exists for legacy interrupted initial deployments that completed physically before Planned Architecture State snapshots were introduced.
 
 Users can inspect reports, open the Review Briefing details on demand, download report JSON, create Approval Artifacts, verify approvals, inspect Execution Impact, execute approved or no-change scopes, create immutable scheduler Run Plans, inspect the resulting Architecture Execution Record, review stored execution history, download record JSON, and apply execution record retention.
+
+---
+
+## 🚀 Environment Promotion
+
+elevata extends deterministic control across separate metadata environments through **Controlled Environment Promotion**.
+
+```text
+Release → Review → Approve → Deploy → Audit
+```
+
+The authoring runtime captures one immutable portable Architecture Release, compares it with the current TEST / PROD metadata state through an authenticated headless Promotion Target Runner, approves one exact deterministic Promotion Plan, binds Release + Plan + Approval into an immutable Deployment Package, rejects live target drift, applies metadata transactionally, and records exact convergence evidence on the target.
+
+DEV does not switch its metadata database connection to TEST or PROD and does not need target metadata DB credentials. Runtime profiles, providers, secrets, concrete connection strings, paths and pepper values remain environment-local.
+
+Environment Promotion deploys **metadata only**. The resulting physical architecture is reviewed independently through Architecture Control in the target environment.
+
+Three approval boundaries remain distinct:
+
+- **Generation Approval** - authorizes one exact Source-to-Target metadata mutation inside an environment  
+- **Environment Promotion Approval** - authorizes one exact release-to-environment metadata deployment  
+- **Architecture Approval** - authorizes one exact resulting physical architecture change
+
+See [Environment Promotion](https://github.com/elevata-labs/elevata/blob/main/docs/environment_promotion.md) for runtime topology, portable identity, artifacts, UI/CLI workflow, target runner security, drift/convergence semantics and the TEST / PROD operating model.
 
 ---
 
@@ -283,7 +309,7 @@ elevata evolves along four strategic axes:
 Keeping executable architecture discoverable across datasets, lineage, contracts, ownership, readiness, quality review, reference integrity, health and execution evidence.
 
 **2. Controlled Runtime Operation**  
-Strengthening controlled target metadata generation, deterministic review, separate approval boundaries, immutable scheduler contracts, finalization, audit evidence, retention and runtime safety without adding unnecessary control layers.
+Strengthening controlled target metadata generation, cross-environment metadata promotion, deterministic review, separate approval boundaries, immutable deployment and scheduler contracts, finalization, audit evidence, retention and runtime safety without adding unnecessary control layers.
 
 **3. Source & Ingestion Readiness**  
 Keeping source onboarding, RAW landing intent, ingestion modes, file/API patterns, external ingestion and federated access explicit, inspectable and deterministic.

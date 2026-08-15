@@ -42,7 +42,7 @@ Example DSL:
 HASH256(
   CONCAT_WS('|',
     CONCAT('productid', '~', COALESCE({expr:productid}, 'null_replaced')),
-    'pepper'
+    {runtime:pepper}
   )
 )
 ```
@@ -56,10 +56,12 @@ Hash256(
       Literal('~'),
       Coalesce(ColumnRef('productid'), Literal('null_replaced'))
     ]),
-    Literal('pepper')
+    Literal(<runtime pepper>)
   ])
 )
 ```
+
+`{runtime:pepper}` remains symbolic in persisted metadata. During DSL parsing, elevata resolves the token through `get_runtime_pepper()` and places the concrete runtime value into a normal `Literal` AST node. The secret is never stored in the portable DSL.
 
 Dialect renderings:
 
@@ -87,6 +89,8 @@ Dialect renderings:
 | `{expr:column}` | Reference to upstream expression column |  
 
 The DSL is intentionally minimal and safe.
+
+`{runtime:pepper}` is a symbolic runtime binding used by generated SK/FK expressions. It is persisted in portable metadata and resolved to the environment-local secret when the DSL is parsed for runtime rendering. Concrete pepper secrets must not be embedded in portable DSL.
 
 ### 🧩 3.2 Identifiers
 - `COL(bk1)` and `COL("bk1")` behave equivalently.  

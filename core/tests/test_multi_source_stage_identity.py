@@ -1,6 +1,6 @@
 """
 elevata - Metadata-driven Data Platform Framework
-Copyright © 2025 Ilona Tag
+Copyright © 2025-2026 Ilona Tag
 
 This file is part of elevata.
 
@@ -55,7 +55,6 @@ def test_stage_union_injects_source_identity_id_per_upstream():
     short_name="raw",
     defaults={
       "display_name": "Raw",
-      "database_name": "dw",
       "schema_name": "raw",
     },
   )
@@ -63,7 +62,6 @@ def test_stage_union_injects_source_identity_id_per_upstream():
     short_name="stage",
     defaults={
       "display_name": "Stage",
-      "database_name": "dw",
       "schema_name": "stage",
     },
   )

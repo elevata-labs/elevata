@@ -75,6 +75,16 @@ ELEVATA_ARCH_APPROVAL_DIR=.elevata/approvals
 
 # Architecture execution record directory
 ELEVATA_ARCH_EXECUTION_DIR=.elevata/executions
+
+# Runtime role and metadata environment
+ELEVATA_RUNTIME_MODE=authoring
+ELEVATA_ENVIRONMENT=dev
+
+# Environment Promotion artifact stores
+ELEVATA_PROMOTION_RELEASE_DIR=.elevata/promotion/releases
+ELEVATA_PROMOTION_APPROVAL_DIR=.elevata/promotion/approvals
+ELEVATA_PROMOTION_PACKAGE_DIR=.elevata/promotion/packages
+ELEVATA_PROMOTION_HISTORY_DIR=.elevata/promotion/history
 ```
 
 Install the target backend you want to execute against:
@@ -199,7 +209,8 @@ You can now:
 - Open **Review target generation** and apply Source-to-Target metadata changes through Architecture Control  
 - Preview **auto-generated** SQL renderings (starting with DuckDB dialect)  
 - Open **Architecture Catalog** to discover datasets, Data Products, maps, insights, lineage entry points, query contracts and execution evidence references  
-- Open **Architecture Control** to review, approve, preview and execute controlled architecture scopes
+- Open **Architecture Control** to review, approve, preview and execute controlled architecture scopes  
+- Open **Environment Promotion** to create immutable Architecture Releases and deploy reviewed metadata to separately controlled TEST / PROD runtimes
 
 ---
 
@@ -376,7 +387,52 @@ Finalization persists exactly the architecture applied by the completed run. Met
 
 ---
 
-## 🔧 6. Secure Connectivity (optional)
+## 🔧 6. Environment Promotion (optional multi-environment setup)
+
+For a single local metadata environment, no Promotion Target Runner is required.
+
+To operate separate TEST / PROD metadata environments, keep the authoring runtime and every target runtime bound to their own metadata database.
+
+Authoring example:
+
+```env
+ELEVATA_RUNTIME_MODE=authoring
+ELEVATA_ENVIRONMENT=dev
+ELEVATA_PROMOTION_TARGETS=test
+ELEVATA_PROMOTION_TARGET_TEST_URL=http://127.0.0.1:8001/metadata
+ELEVATA_PROMOTION_TARGET_TEST_TOKEN=<TEST runner token>
+```
+
+TEST target example:
+
+```env
+ELEVATA_RUNTIME_MODE=promotion_target
+ELEVATA_ENVIRONMENT=test
+ELEVATA_PROMOTION_RUNNER_TOKEN=<same TEST runner token>
+DB_NAME=db_test.sqlite3
+```
+
+Run the TEST target separately, for example:
+
+```bash
+python manage.py runserver 127.0.0.1:8001
+```
+
+The authoring UI then guides the operator through:
+
+```text
+Release → Review → Approve → Deploy → Audit
+```
+
+Creating a Release, building a plan and approving a package do not mutate target metadata. Target metadata is changed only during guarded **Deploy** after the exact package has passed a live drift check.
+
+The target runtime exposes runner endpoints only. It does not expose the regular modeling UI.
+
+See [Environment Promotion](environment_promotion.md) for the complete topology, security model, artifact chain, migrations and production operating guidance.
+
+---
+
+## 🔧 7. Secure Connectivity (optional)
 
 If you’re connecting to production metadata systems, use environment variables instead of plain-text passwords.
 
@@ -385,7 +441,7 @@ For advanced setups, see
 
 ---
 
-## 🔧 7. Useful Commands
+## 🔧 8. Useful Commands
 
 | Purpose | Command |
 |----------|---------|
@@ -399,6 +455,7 @@ For advanced setups, see
 | Create immutable scheduler Run Plan | `python manage.py elevata_run_plan --all-datasets` |
 | Finalize completed scheduler Run Plan | `python manage.py elevata_finalize_run_plan <RUN_PLAN_PATH>` |
 | Execute controlled architecture scope | Use Architecture Control in the UI |
+| Promote metadata between environments | Use Environment Promotion in the authoring UI |
 
 ---
 
@@ -408,6 +465,7 @@ Once your metadata environment is ready, continue with:
 
 - [Automatic Target Generation Logic](generation_logic.md)  
 - [Controlled Target Generation](controlled_target_generation.md)  
+- [Environment Promotion](environment_promotion.md)  
 - [Architecture Control Plane](architecture_control_plane.md)  
 - [SQL Rendering & Alias Conventions](sql_rendering_conventions.md)  
 - [Lineage Model & Logical Plan](logical_plan.md)

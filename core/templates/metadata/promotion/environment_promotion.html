@@ -1,0 +1,1131 @@
+<!--
+elevata - Metadata-driven Data Platform Framework
+Copyright © 2025-2026 Ilona Tag
+
+This file is part of elevata.
+
+elevata is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of
+the License, or (at your option) any later version.
+
+elevata is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with elevata. If not, see <https://www.gnu.org/licenses/>.
+
+Contact: <https://github.com/elevata-labs/elevata>.
+-->
+
+{% extends "base.html" %}
+
+{% block title %}Environment Promotion · elevata{% endblock %}
+
+{% block content %}
+<h1 class="h4 mb-3">Environment Promotion</h1>
+
+<div class="small text-muted mb-4">
+  Promote immutable architecture releases into a separately controlled metadata
+  environment. Environment Promotion is independent from Architecture Control:
+  it deploys metadata; Architecture Control reviews and executes the resulting
+  physical architecture.
+</div>
+
+<div class="border rounded bg-light p-3 mb-4">
+  <div class="fw-semibold small mb-2">Promotion flow</div>
+  <div class="row g-2 small">
+    <div class="col-md">
+      <div class="fw-semibold"><span class="badge text-bg-secondary me-1">1</span> Release</div>
+      <div class="text-muted mt-1">Capture an immutable DEV metadata release.</div>
+    </div>
+    <div class="col-md">
+      <div class="fw-semibold"><span class="badge text-bg-secondary me-1">2</span> Review</div>
+      <div class="text-muted mt-1">Compare the release with current TEST or PROD metadata.</div>
+    </div>
+    <div class="col-md">
+      <div class="fw-semibold"><span class="badge text-bg-secondary me-1">3</span> Approve</div>
+      <div class="text-muted mt-1">Approve the exact plan and bind it into an immutable package.</div>
+    </div>
+    <div class="col-md">
+      <div class="fw-semibold"><span class="badge text-bg-secondary me-1">4</span> Deploy</div>
+      <div class="text-muted mt-1">Check live drift, confirm the package ID and apply through the target runner.</div>
+    </div>
+    <div class="col-md">
+      <div class="fw-semibold"><span class="badge text-bg-secondary me-1">5</span> Audit</div>
+      <div class="text-muted mt-1">Read immutable convergence evidence from the target runner.</div>
+    </div>
+  </div>
+  <div class="small text-muted border-top mt-3 pt-2">
+    Target metadata is mutated only during <strong>Deploy</strong>, after exact approval and a live drift check.
+    Environment Promotion deploys metadata only. Physical architecture changes remain a separate
+    Architecture Control workflow.
+  </div>
+</div>
+
+<div class="d-flex flex-wrap gap-2 mb-4">
+  <a class="btn btn-sm btn-outline-secondary" href="#architecture-releases">
+    <i class="bi bi-box-seam"></i> Architecture Releases
+  </a>
+  <a class="btn btn-sm btn-outline-secondary" href="#promotion-review">
+    <i class="bi bi-arrow-left-right"></i> Promotion Review
+  </a>
+  <a class="btn btn-sm btn-outline-secondary" href="#promotion-history">
+    <i class="bi bi-clock-history"></i> Promotion History
+  </a>
+</div>
+
+<section id="architecture-releases" class="card mb-4">
+  <div class="card-body">
+    <div class="d-flex align-items-start justify-content-between gap-3 mb-3">
+      <div>
+        <div class="fw-semibold mb-1">Architecture Releases</div>
+        <p class="text-muted small mb-0">
+          Immutable, portable metadata definitions created and stored by the
+          authoring/control-plane runtime.
+        </p>
+      </div>
+      <span class="badge text-bg-secondary">{{ release_count }}</span>
+    </div>
+
+    {% if runtime_mode == 'authoring' and control_plane_environment %}
+      <form
+        id="architecture-release-create-form"
+        method="post"
+        action="{% url 'environment_promotion_release_create' %}"
+        class="border rounded p-3 mb-3"
+      >
+        {% csrf_token %}
+        <div class="d-flex flex-wrap align-items-start justify-content-between gap-2 mb-3">
+          <div>
+            <div class="fw-semibold">Create Architecture Release</div>
+            <div class="small text-muted">
+              Capture the current bound authoring metadata as a validated immutable
+              release. No Promotion Target is contacted by this action.
+            </div>
+          </div>
+          <span class="badge text-bg-secondary">{{ control_plane_environment }}</span>
+        </div>
+        <div class="row g-2">
+          <div class="col-md-4">
+            <label class="form-label small text-muted" for="release-name">Release name</label>
+            <input
+              class="form-control form-control-sm"
+              id="release-name"
+              name="release_name"
+              value="{{ release_form.release_name|default:release_name_suggestion }}"
+              required
+            >
+          </div>
+          <div class="col-md-3">
+            <label class="form-label small text-muted" for="release-version">Release version</label>
+            <input
+              class="form-control form-control-sm"
+              id="release-version"
+              name="release_version"
+              value="{{ release_form.release_version|default:release_version_suggestion }}"
+              placeholder="Enter release version"
+              required
+            >
+            {% if release_version_suggestion %}
+              <div class="form-text">Suggested from the latest stored release; editable.</div>
+            {% endif %}
+          </div>
+          <div class="col-md-5">
+            <label class="form-label small text-muted" for="release-description">Release note</label>
+            <input
+              class="form-control form-control-sm"
+              id="release-description"
+              name="release_description"
+              value="{{ release_form.release_description|default:'' }}"
+              placeholder="Optional description of this metadata release"
+            >
+          </div>
+        </div>
+        <button
+          class="btn btn-sm btn-primary mt-3"
+          type="submit"
+          data-loading-label="Creating release..."
+        >
+          Create immutable release
+        </button>
+      </form>
+    {% else %}
+      <div class="alert alert-warning small mb-3">
+        Architecture Release creation requires an authoring runtime with an explicit
+        <code>ELEVATA_ENVIRONMENT</code>.
+      </div>
+    {% endif %}
+
+    {% if release_creation_error %}
+      <div class="alert alert-danger small mb-3">
+        <div class="fw-semibold">Architecture Release creation failed</div>
+        <div class="mt-1">{{ release_creation_error }}</div>
+      </div>
+    {% endif %}
+
+    {% if created_release %}
+      <div class="alert alert-success small mb-3">
+        <div class="fw-semibold">Architecture Release created</div>
+        <div class="mt-1">
+          {{ created_release.release_name }} {{ created_release.release_version }} ·
+          <code>{{ created_release.release_id }}</code>
+        </div>
+        <div class="mt-1 text-muted">
+          Metadata <code>{{ created_release.metadata_fingerprint }}</code>
+        </div>
+      </div>
+    {% endif %}
+
+    {% if release_error %}
+      <div class="alert alert-danger small mb-0">
+        <div class="fw-semibold">Release store validation failed</div>
+        <div class="mt-1">{{ release_error }}</div>
+      </div>
+    {% elif releases %}
+      <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0">
+          <thead>
+            <tr>
+              <th>Release</th>
+              <th>Source</th>
+              <th>Portable content</th>
+              <th>Created</th>
+              <th>Fingerprint</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for release in releases %}
+              <tr>
+                <td>
+                  <div class="fw-semibold">
+                    {{ release.release_name }}
+                    <span class="badge text-bg-light border ms-1">
+                      {{ release.release_version }}
+                    </span>
+                  </div>
+                  <code class="small">{{ release.release_id }}</code>
+                  <div class="mt-1">
+                    <a
+                      class="btn btn-sm btn-outline-secondary py-0 px-1"
+                      href="{% url 'environment_promotion_release_download' release.release_id %}"
+                    >
+                      <i class="bi bi-download"></i> Download bundle
+                    </a>
+                  </div>
+                  {% if release.description %}
+                    <div class="small text-muted mt-1">{{ release.description }}</div>
+                  {% endif %}
+                </td>
+                <td>
+                  <span class="badge text-bg-secondary">
+                    {{ release.source_environment_label }}
+                  </span>
+                </td>
+                <td class="small">
+                  <div>{{ release.object_count }} objects</div>
+                  <div class="text-muted">
+                    {{ release.relationship_count }} relationships
+                  </div>
+                </td>
+                <td class="small">
+                  <div>{{ release.created_at|date:"Y-m-d H:i:s" }}</div>
+                  <div class="text-muted">{{ release.created_by }}</div>
+                </td>
+                <td style="min-width: 18rem;">
+                  <div class="small text-muted">Metadata</div>
+                  <code class="small text-break">{{ release.metadata_fingerprint }}</code>
+                  <div class="small text-muted mt-1">Bundle</div>
+                  <code class="small text-break">{{ release.bundle_fingerprint }}</code>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <div class="small text-muted mt-3">
+        Store: <code>{{ release_store_path }}</code>
+      </div>
+    {% else %}
+      <div class="alert alert-light border small mb-0">
+        No Architecture Release Bundles are stored for this runtime.
+      </div>
+    {% endif %}
+  </div>
+</section>
+
+<section id="promotion-review" class="card mb-4">
+  <div class="card-body">
+    <div class="d-flex align-items-start justify-content-between gap-3 mb-3">
+      <div>
+        <div class="fw-semibold mb-1">Promotion Review</div>
+        <p class="text-muted small mb-0">
+          Review an immutable release against the current metadata state of a
+          separately running Promotion Target Runner. Target database credentials
+          remain local to the target runtime.
+        </p>
+      </div>
+      <span class="badge text-bg-info">Remote targets</span>
+    </div>
+
+    <div class="alert alert-light border small mb-3">
+      <div class="fw-semibold">Control-plane runtime</div>
+      <div class="row g-3 mt-0">
+        <div class="col-lg-2">
+          <div class="text-muted">Environment</div>
+          <code>{{ control_plane_environment|default:"not set" }}</code>
+        </div>
+        <div class="col-lg-4">
+          <div class="text-muted">Metadata database engine</div>
+          <code>{{ metadata_database.engine }}</code>
+        </div>
+        <div class="col-lg-6">
+          <div class="text-muted">Authoring metadata database</div>
+          <code class="text-break">{{ metadata_database.name }}</code>
+        </div>
+      </div>
+      <div class="mt-2 text-muted">
+        This database is the authoring/control-plane store. Promotion targets are
+        reached only through their headless runner APIs; the UI does not switch
+        Django's local database binding.
+      </div>
+    </div>
+
+    {% if target_config_error %}
+      <div class="alert alert-danger small">
+        <div class="fw-semibold">Promotion Target configuration failed</div>
+        <div class="mt-1">{{ target_config_error }}</div>
+      </div>
+    {% elif promotion_targets %}
+      <div class="table-responsive mb-3">
+        <table class="table table-sm align-middle mb-0">
+          <thead>
+            <tr>
+              <th>Target</th>
+              <th>Runner</th>
+              <th>Credential</th>
+              <th>Timeout</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for target in promotion_targets %}
+              <tr>
+                <td>
+                  <span class="badge text-bg-secondary">
+                    {{ target.environment_label }}
+                  </span>
+                </td>
+                <td><code class="small text-break">{{ target.base_url }}</code></td>
+                <td><span class="badge text-bg-success">Configured</span></td>
+                <td class="small">{{ target.timeout_seconds }} s</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      <div class="row g-3">
+        <div class="col-lg-5">
+          <form method="post" action="{% url 'environment_promotion_target_check' %}" class="border rounded p-3 h-100">
+            {% csrf_token %}
+            <div class="fw-semibold mb-2">Check target</div>
+            <label class="form-label small text-muted" for="promotion-target-check">
+              Promotion target
+            </label>
+            <select class="form-select form-select-sm mb-3" id="promotion-target-check" name="target_environment" required>
+              {% for target in promotion_targets %}
+                <option value="{{ target.environment_label }}" {% if target.environment_label == selected_target_environment %}selected{% endif %}>
+                  {{ target.environment_label }}
+                </option>
+              {% endfor %}
+            </select>
+            <button
+              class="btn btn-sm btn-outline-primary js-promotion-submit"
+              type="submit"
+              data-loading-label="Checking target..."
+            >
+              Check connectivity &amp; current state
+            </button>
+            <div class="small text-muted mt-2">
+              Explicit read-only check: health, current portable snapshot and
+              latest promotion-history summary.
+            </div>
+          </form>
+        </div>
+
+        <div class="col-lg-7">
+          <form method="post" action="{% url 'environment_promotion_plan' %}" class="border rounded p-3 h-100">
+            {% csrf_token %}
+            <div class="fw-semibold mb-2">Build promotion plan</div>
+            <div class="row g-2">
+              <div class="col-md-5">
+                <label class="form-label small text-muted" for="promotion-plan-target">
+                  Target
+                </label>
+                <select class="form-select form-select-sm" id="promotion-plan-target" name="target_environment" required>
+                  {% for target in promotion_targets %}
+                    <option value="{{ target.environment_label }}" {% if target.environment_label == selected_target_environment %}selected{% endif %}>
+                      {{ target.environment_label }}
+                    </option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div class="col-md-7">
+                <label class="form-label small text-muted" for="promotion-plan-release">
+                  Architecture release
+                </label>
+                <select class="form-select form-select-sm" id="promotion-plan-release" name="release_id" required>
+                  {% for release in releases %}
+                    <option value="{{ release.release_id }}" {% if release.release_id == selected_release_id %}selected{% endif %}>
+                      {{ release.release_name }} {{ release.release_version }} · {{ release.release_id }}
+                    </option>
+                  {% endfor %}
+                </select>
+              </div>
+            </div>
+            <button
+              class="btn btn-sm btn-primary mt-3 js-promotion-submit"
+              type="submit"
+              data-loading-label="Building plan..."
+              {% if not releases %}disabled{% endif %}
+            >
+              Build read-only plan
+            </button>
+            <div class="small text-muted mt-2">
+              Fetches the target snapshot and builds the deterministic plan in the
+              authoring process. No target metadata is modified.
+            </div>
+          </form>
+        </div>
+      </div>
+    {% else %}
+      <div class="alert alert-light border small">
+        No Promotion Targets are configured for this authoring runtime.
+      </div>
+    {% endif %}
+
+    {% if promotion_error %}
+      <div class="alert alert-danger small mt-3 mb-0">
+        <div class="fw-semibold">Promotion Review failed</div>
+        <div class="mt-1">{{ promotion_error }}</div>
+      </div>
+    {% endif %}
+
+    {% if target_status %}
+      <div class="border rounded p-3 mt-3">
+        <div class="d-flex flex-wrap align-items-start justify-content-between gap-2 mb-3">
+          <div>
+            <div class="fw-semibold">Target state · {{ target_status.environment_label }}</div>
+            <code class="small">{{ target_status.base_url }}</code>
+          </div>
+          <span class="badge text-bg-success">Reachable</span>
+        </div>
+        <div class="row g-3 small">
+          <div class="{% if target_status.history_loaded %}col-md-3{% else %}col-md-4{% endif %}">
+            <div class="text-muted">Runtime</div>
+            <div>{{ target_status.runtime_mode }}</div>
+          </div>
+          <div class="{% if target_status.history_loaded %}col-md-3{% else %}col-md-4{% endif %}">
+            <div class="text-muted">elevata version</div>
+            <div>{{ target_status.elevata_version }}</div>
+          </div>
+          <div class="{% if target_status.history_loaded %}col-md-3{% else %}col-md-4{% endif %}">
+            <div class="text-muted">Metadata database</div>
+            <div>{{ target_status.metadata_database }}</div>
+          </div>
+          {% if target_status.history_loaded %}
+            <div class="col-md-3">
+              <div class="text-muted">Recorded promotions</div>
+              <div>{{ target_status.history_count }}</div>
+            </div>
+          {% endif %}
+        </div>
+        <div class="row g-3 small mt-0">
+          <div class="col-lg-6">
+            <div class="text-muted">Current metadata fingerprint</div>
+            <code class="small text-break">{{ target_status.metadata_fingerprint }}</code>
+          </div>
+          <div class="col-lg-6">
+            <div class="text-muted">Current snapshot fingerprint</div>
+            <code class="small text-break">{{ target_status.snapshot_fingerprint }}</code>
+          </div>
+        </div>
+        {% if target_status.last_promotion %}
+          <div class="small mt-3">
+            <span class="text-muted">Last promotion:</span>
+            <code>{{ target_status.last_promotion.record_id }}</code>
+            · release <code>{{ target_status.last_promotion.release_id }}</code>
+            · {{ target_status.last_promotion.applied_at }}
+          </div>
+        {% endif %}
+      </div>
+    {% endif %}
+
+    {% if promotion_plan %}
+      <div class="border rounded p-3 mt-3">
+        <div class="d-flex flex-wrap align-items-start justify-content-between gap-3 mb-3">
+          <div>
+            <div class="fw-semibold">Promotion Plan</div>
+            <div class="small text-muted">
+              {{ promotion_plan.release_coordinate }} → {{ promotion_plan.target_environment_label }}
+            </div>
+            <code class="small">{{ promotion_plan.plan_id }}</code>
+          </div>
+          <div class="text-end">
+            {% if promotion_plan.applied %}
+              <span class="badge text-bg-success">Applied plan</span>
+            {% elif promotion_plan.readiness_status == 'ready' %}
+              <span class="badge text-bg-success">Ready</span>
+            {% elif promotion_plan.readiness_status == 'no_changes' %}
+              <span class="badge text-bg-secondary">No changes</span>
+            {% else %}
+              <span class="badge text-bg-danger">Blocked</span>
+            {% endif %}
+          </div>
+        </div>
+
+        <div class="row g-3 mb-3">
+          <div class="col-6 col-md-3">
+            <div class="small text-muted">Actions</div>
+            <div class="fs-5 fw-semibold">{{ promotion_plan.action_count }}</div>
+          </div>
+          <div class="col-6 col-md-3">
+            <div class="small text-muted">Mutating</div>
+            <div class="fs-5 fw-semibold">{{ promotion_plan.mutating_action_count }}</div>
+          </div>
+          <div class="col-6 col-md-3">
+            <div class="small text-muted">Blocked</div>
+            <div class="fs-5 fw-semibold">{{ promotion_plan.blocked_action_count }}</div>
+          </div>
+          <div class="col-6 col-md-3">
+            <div class="small text-muted">Lifecycle / destructive</div>
+            <div class="fs-5 fw-semibold">{{ promotion_plan.attention_action_count }}</div>
+          </div>
+        </div>
+
+        <div class="row g-3 small">
+          <div class="col-lg-6">
+            <div class="text-muted">Plan fingerprint</div>
+            <code class="small text-break">{{ promotion_plan.plan_fingerprint }}</code>
+            <div class="text-muted mt-2">Bundle fingerprint</div>
+            <code class="small text-break">{{ promotion_plan.bundle_fingerprint }}</code>
+          </div>
+          <div class="col-lg-6">
+            <div class="text-muted">Target snapshot fingerprint</div>
+            <code class="small text-break">{{ promotion_plan.target_snapshot_fingerprint }}</code>
+            <div class="text-muted mt-2">Target metadata fingerprint</div>
+            <code class="small text-break">{{ promotion_plan.target_metadata_fingerprint }}</code>
+          </div>
+        </div>
+
+        {% if promotion_plan.issues %}
+          <div class="mt-3">
+            <div class="fw-semibold small mb-2">
+              Readiness findings · {{ promotion_plan.error_count }} errors · {{ promotion_plan.warning_count }} warnings
+            </div>
+            {% for issue in promotion_plan.issues %}
+              <div class="alert {% if issue.severity == 'error' %}alert-danger{% else %}alert-warning{% endif %} small py-2 mb-2">
+                <code>{{ issue.code }}</code> · {{ issue.message }}
+                {% if issue.subject_name %}<span class="text-muted"> · {{ issue.subject_name }}</span>{% endif %}
+              </div>
+            {% endfor %}
+          </div>
+        {% endif %}
+
+        <details class="mt-3">
+          <summary class="small fw-semibold">Grouped plan details</summary>
+          <div class="row g-3 mt-1 small">
+            <div class="col-lg-4">
+              <div class="text-muted mb-1">By action type</div>
+              {% for name, count in promotion_plan.by_action_type %}
+                <div class="d-flex justify-content-between border-bottom py-1">
+                  <code>{{ name }}</code><span>{{ count }}</span>
+                </div>
+              {% endfor %}
+            </div>
+            <div class="col-lg-4">
+              <div class="text-muted mb-1">By change class</div>
+              {% for name, count in promotion_plan.by_change_class %}
+                <div class="d-flex justify-content-between border-bottom py-1">
+                  <code>{{ name }}</code><span>{{ count }}</span>
+                </div>
+              {% endfor %}
+            </div>
+            <div class="col-lg-4">
+              <div class="text-muted mb-1">By dependency phase</div>
+              {% for phase, count in promotion_plan.by_dependency_phase %}
+                <div class="d-flex justify-content-between border-bottom py-1">
+                  <code>{{ phase }}</code><span>{{ count }}</span>
+                </div>
+              {% endfor %}
+            </div>
+          </div>
+          <div class="table-responsive mt-3">
+            <table class="table table-sm mb-0">
+              <thead><tr><th>Model / relationship</th><th class="text-end">Actions</th></tr></thead>
+              <tbody>
+                {% for model_name, count in promotion_plan.by_model %}
+                  <tr><td><code>{{ model_name }}</code></td><td class="text-end">{{ count }}</td></tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </details>
+
+        {% if promotion_plan.readiness_status == 'ready' and not promotion_approval %}
+          <div class="border rounded p-3 mt-3">
+            <div class="fw-semibold mb-1">Approval &amp; deployment package</div>
+            <p class="small text-muted mb-3">
+              Approval is bound to this exact plan. Before creating the approval,
+              elevata re-fetches the target state and requires the rebuilt plan ID
+              to remain identical to the plan reviewed above.
+            </p>
+            <form method="post" action="{% url 'environment_promotion_approve_package' %}">
+              {% csrf_token %}
+              <input type="hidden" name="target_environment" value="{{ promotion_plan.target_environment_label }}">
+              <input type="hidden" name="release_id" value="{{ promotion_plan.release_id }}">
+              <input type="hidden" name="reviewed_plan_id" value="{{ promotion_plan.plan_id }}">
+              <label class="form-label small text-muted" for="promotion-approval-note">
+                Approval note <span class="text-muted">(optional)</span>
+              </label>
+              <textarea
+                class="form-control form-control-sm"
+                id="promotion-approval-note"
+                name="approval_note"
+                rows="2"
+                maxlength="2000"
+                placeholder="Reason or deployment context for this approval"
+              ></textarea>
+              <button
+                class="btn btn-sm btn-success mt-3"
+                type="submit"
+                data-loading-label="Approving exact plan..."
+              >
+                Approve exact plan &amp; build package
+              </button>
+            </form>
+          </div>
+        {% elif promotion_plan.readiness_status == 'no_changes' %}
+          <div class="alert alert-light border small mt-3 mb-0">
+            The target already matches this release. No Environment Promotion
+            Approval or deployment package is required.
+          </div>
+        {% elif promotion_plan.readiness_status != 'ready' %}
+          <div class="alert alert-danger small mt-3 mb-0">
+            This plan is blocked and cannot be approved or packaged.
+          </div>
+        {% endif %}
+      </div>
+    {% endif %}
+
+    {% if promotion_approval and deployment_package %}
+      <div class="border rounded p-3 mt-3">
+        <div class="d-flex flex-wrap align-items-start justify-content-between gap-3 mb-3">
+          <div>
+            <div class="fw-semibold">Approved deployment package</div>
+            <div class="small text-muted">
+              Exact approval and package artifacts are immutable and bound to the
+              reviewed plan.
+            </div>
+          </div>
+          <span class="badge text-bg-success">Approved</span>
+        </div>
+
+        <div class="row g-3 small">
+          <div class="col-lg-6">
+            <div class="text-muted">Approval ID</div>
+            <code class="small text-break">{{ promotion_approval.approval_id }}</code>
+            <div class="text-muted mt-2">Approval fingerprint</div>
+            <code class="small text-break">{{ promotion_approval.artifact_fingerprint }}</code>
+          </div>
+          <div class="col-lg-6">
+            <div class="text-muted">Deployment package ID</div>
+            <code class="small text-break">{{ deployment_package.package_id }}</code>
+            <div class="text-muted mt-2">Package fingerprint</div>
+            <code class="small text-break">{{ deployment_package.package_fingerprint }}</code>
+          </div>
+        </div>
+        <div class="small mt-3">
+          <span class="text-muted">Approved by:</span> {{ promotion_approval.decided_by }}
+          · {{ promotion_approval.decided_at|date:"Y-m-d H:i:s" }}
+          {% if promotion_approval.note %}
+            <div class="mt-1"><span class="text-muted">Note:</span> {{ promotion_approval.note }}</div>
+          {% endif %}
+        </div>
+
+        <div class="d-flex flex-wrap gap-2 mt-3">
+          <a
+            class="btn btn-sm btn-outline-secondary"
+            href="{% url 'environment_promotion_package_download' deployment_package.target_environment_label promotion_approval.approval_id %}"
+          >
+            <i class="bi bi-download"></i> Download deployment package
+          </a>
+          {% if not promotion_apply_result %}
+            <form method="post" action="{% url 'environment_promotion_package_check' %}" class="d-inline">
+              {% csrf_token %}
+              <input type="hidden" name="target_environment" value="{{ deployment_package.target_environment_label }}">
+              <input type="hidden" name="approval_id" value="{{ promotion_approval.approval_id }}">
+              <input type="hidden" name="package_id" value="{{ deployment_package.package_id }}">
+              <button
+                class="btn btn-sm btn-primary"
+                type="submit"
+                data-loading-label="Checking live target..."
+              >
+                Check live target drift
+              </button>
+            </form>
+          {% endif %}
+        </div>
+      </div>
+    {% endif %}
+
+    {% if promotion_drift_check %}
+      <div class="border rounded p-3 mt-3">
+        <div class="d-flex flex-wrap align-items-start justify-content-between gap-3 mb-3">
+          <div>
+            <div class="fw-semibold">Live target drift check</div>
+            <code class="small">{{ promotion_drift_check.package_id }}</code>
+          </div>
+          {% if promotion_drift_check.is_unchanged %}
+            <span class="badge text-bg-success">Target unchanged</span>
+          {% else %}
+            <span class="badge text-bg-danger">Drift detected</span>
+          {% endif %}
+        </div>
+        <div class="row g-3 small">
+          <div class="col-lg-6">
+            <div class="text-muted">Expected metadata fingerprint</div>
+            <code class="small text-break">{{ promotion_drift_check.expected_metadata_fingerprint }}</code>
+            <div class="text-muted mt-2">Live metadata fingerprint</div>
+            <code class="small text-break">{{ promotion_drift_check.live_metadata_fingerprint }}</code>
+          </div>
+          <div class="col-lg-6">
+            <div class="text-muted">Expected snapshot fingerprint</div>
+            <code class="small text-break">{{ promotion_drift_check.expected_snapshot_fingerprint }}</code>
+            <div class="text-muted mt-2">Live snapshot fingerprint</div>
+            <code class="small text-break">{{ promotion_drift_check.live_snapshot_fingerprint }}</code>
+          </div>
+        </div>
+        {% if promotion_drift_check.is_unchanged %}
+          <div class="alert alert-success small mt-3 mb-0">
+            The target still matches the state approved in this deployment package.
+            The target runner will repeat its authoritative drift and convergence guards
+            during apply.
+          </div>
+          <div class="border rounded p-3 mt-3">
+            <div class="fw-semibold">Guarded apply</div>
+            <div class="small text-muted mt-1">
+              This operation mutates the metadata database of
+              <strong>{{ deployment_package.target_environment_label }}</strong> through
+              its headless Promotion Target Runner. Type the exact deployment package ID
+              to confirm the final apply.
+            </div>
+            <form method="post" action="{% url 'environment_promotion_package_apply' %}" class="mt-3">
+              {% csrf_token %}
+              <input type="hidden" name="target_environment" value="{{ deployment_package.target_environment_label }}">
+              <input type="hidden" name="approval_id" value="{{ promotion_approval.approval_id }}">
+              <input type="hidden" name="package_id" value="{{ deployment_package.package_id }}">
+              <div class="row g-2 align-items-end">
+                <div class="col-lg-8">
+                  <label for="promotion-confirm-package-id" class="form-label small">
+                    Confirm deployment package ID
+                  </label>
+                  <input
+                    id="promotion-confirm-package-id"
+                    class="form-control form-control-sm font-monospace"
+                    type="text"
+                    name="confirm_package_id"
+                    placeholder="Enter the exact package ID shown above"
+                    pattern="{{ deployment_package.package_id }}"
+                    title="Enter the exact deployment package ID shown above."
+                    autocomplete="off"
+                    spellcheck="false"
+                    required
+                  >
+                </div>
+                <div class="col-lg-4">
+                  <button
+                    class="btn btn-sm btn-danger"
+                    type="submit"
+                    data-loading-label="Applying approved package..."
+                  >
+                    Apply approved package
+                  </button>
+                </div>
+              </div>
+            </form>
+          </div>
+        {% else %}
+          <div class="alert alert-danger small mt-3 mb-0">
+            The target changed after planning. This package must not be applied;
+            rebuild and review a new promotion plan.
+          </div>
+        {% endif %}
+      </div>
+    {% endif %}
+
+    {% if promotion_apply_result %}
+      <div class="border border-success rounded p-3 mt-3">
+        <div class="d-flex flex-wrap align-items-start justify-content-between gap-3 mb-3">
+          <div>
+            <div class="fw-semibold">Environment Promotion applied</div>
+            <div class="small text-muted">
+              {{ promotion_apply_result.release_coordinate }} →
+              {{ promotion_apply_result.target_environment_label }}
+            </div>
+            <code class="small">{{ promotion_apply_result.record_id }}</code>
+          </div>
+          {% if promotion_apply_result.release_metadata_match %}
+            <span class="badge text-bg-success">Applied &amp; converged</span>
+          {% else %}
+            <span class="badge text-bg-danger">Convergence mismatch</span>
+          {% endif %}
+        </div>
+
+        <div class="row g-3 small">
+          <div class="col-lg-6">
+            <div class="text-muted">Promotion record fingerprint</div>
+            <code class="small text-break">{{ promotion_apply_result.record_fingerprint }}</code>
+            <div class="text-muted mt-2">Applied by</div>
+            <div>
+              {{ promotion_apply_result.applied_by }} ·
+              {{ promotion_apply_result.applied_at|date:"Y-m-d H:i:s" }}
+            </div>
+          </div>
+          <div class="col-lg-6">
+            <div class="text-muted">Actions</div>
+            <div>
+              {{ promotion_apply_result.action_count }} total ·
+              {{ promotion_apply_result.applied_action_count }} applied ·
+              {{ promotion_apply_result.verified_action_count }} verified
+            </div>
+            <div class="text-muted mt-2">Post-validation plan</div>
+            <code class="small text-break">{{ promotion_apply_result.post_validation_plan_id }}</code>
+          </div>
+        </div>
+
+        <div class="row g-3 small mt-0">
+          <div class="col-lg-6">
+            <div class="text-muted">Pre-apply metadata fingerprint</div>
+            <code class="small text-break">{{ promotion_apply_result.pre_target_metadata_fingerprint }}</code>
+            <div class="text-muted mt-2">Post-apply metadata fingerprint</div>
+            <code class="small text-break">{{ promotion_apply_result.post_target_metadata_fingerprint }}</code>
+          </div>
+          <div class="col-lg-6">
+            <div class="text-muted">Post-apply snapshot fingerprint</div>
+            <code class="small text-break">{{ promotion_apply_result.post_target_snapshot_fingerprint }}</code>
+            <div class="text-muted mt-2">Post-validation plan fingerprint</div>
+            <code class="small text-break">{{ promotion_apply_result.post_validation_plan_fingerprint }}</code>
+          </div>
+        </div>
+
+        {% if promotion_apply_result.remote_history_confirmed %}
+          <div class="alert alert-success small mt-3 mb-0">
+            Exact post-apply convergence is recorded on the target runner.
+            {% if promotion_apply_result.remote_history_count != None %}
+              Target history now contains {{ promotion_apply_result.remote_history_count }} promotion record{{ promotion_apply_result.remote_history_count|pluralize }}.
+            {% endif %}
+          </div>
+        {% elif promotion_apply_result.remote_history_error %}
+          <div class="alert alert-warning small mt-3 mb-0">
+            The apply succeeded and returned a valid convergence record, but target
+            history could not be refreshed: {{ promotion_apply_result.remote_history_error }}
+          </div>
+        {% else %}
+          <div class="alert alert-warning small mt-3 mb-0">
+            The apply returned a valid convergence record, but the exact record was not
+            confirmed in the subsequent target-history refresh.
+          </div>
+        {% endif %}
+      </div>
+    {% endif %}
+  </div>
+</section>
+
+<section id="promotion-history" class="card mb-4">
+  <div class="card-body">
+    <div class="d-flex align-items-start justify-content-between gap-3 mb-3">
+      <div>
+        <div class="fw-semibold mb-1">Promotion History</div>
+        <p class="text-muted small mb-0">
+          Authoritative audit evidence is read from the selected Promotion Target
+          Runner. The authoring runtime does not assume a shared history filesystem
+          with TEST or PROD.
+        </p>
+      </div>
+      {% if remote_history %}
+        <span class="badge text-bg-secondary">{{ remote_history.record_count }}</span>
+      {% else %}
+        <span class="badge text-bg-info">Remote</span>
+      {% endif %}
+    </div>
+
+    {% if promotion_targets %}
+      <form
+        id="promotion-history-refresh-form"
+        method="post"
+        action="{% url 'environment_promotion_history_refresh' %}"
+        class="border rounded p-3 bg-light mb-3"
+      >
+        {% csrf_token %}
+        <div class="row g-2 align-items-end">
+          <div class="col-md-4">
+            <label class="form-label small text-muted" for="promotion-history-target">
+              Promotion target
+            </label>
+            <select
+              id="promotion-history-target"
+              name="target_environment"
+              class="form-select form-select-sm"
+              required
+            >
+              <option value="">-- select target --</option>
+              {% for target in promotion_targets %}
+                <option
+                  value="{{ target.environment_label }}"
+                  {% if selected_history_target_environment == target.environment_label %}selected{% endif %}
+                >
+                  {{ target.environment_label }}
+                </option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-md-auto">
+            <button
+              type="submit"
+              class="btn btn-sm btn-outline-primary"
+              data-loading-label="Refreshing history..."
+            >
+              <i class="bi bi-arrow-clockwise"></i> Refresh target history
+            </button>
+          </div>
+          <div class="col small text-muted">
+            No Promotion Target is contacted on page load. History is fetched only
+            for the target selected here.
+          </div>
+        </div>
+      </form>
+    {% elif target_config_error %}
+      <div class="alert alert-danger small mb-3">
+        Promotion Target configuration is invalid: {{ target_config_error }}
+      </div>
+    {% else %}
+      <div class="alert alert-light border small mb-3">
+        No remote Promotion Targets are configured for this authoring runtime.
+      </div>
+    {% endif %}
+
+    {% if remote_history_error %}
+      <div class="alert alert-danger small mb-0">
+        <div class="fw-semibold">Remote Promotion History could not be loaded</div>
+        <div class="mt-1">{{ remote_history_error }}</div>
+      </div>
+    {% elif remote_history %}
+      <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+        <div class="small">
+          <span class="fw-semibold">Target history · {{ remote_history.environment_label }}</span>
+          <span class="text-muted ms-2">{{ remote_history.base_url }}</span>
+        </div>
+        <span class="badge text-bg-success">Runner authoritative</span>
+      </div>
+
+      {% if remote_history.records %}
+        <div class="table-responsive">
+          <table class="table table-sm align-middle mb-0">
+            <thead>
+              <tr>
+                <th>Promotion</th>
+                <th>Path</th>
+                <th>Release</th>
+                <th>Exact bindings</th>
+                <th>Actions</th>
+                <th>Applied</th>
+                <th>Convergence evidence</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for item in remote_history.records %}
+                <tr>
+                  <td style="min-width: 13rem;">
+                    <code class="small">{{ item.record_id }}</code>
+                    <div class="small text-muted mt-1">Record fingerprint</div>
+                    <code class="small text-break">{{ item.record_fingerprint }}</code>
+                  </td>
+                  <td class="small">
+                    <span class="badge text-bg-secondary">{{ item.source_environment_label }}</span>
+                    <span class="mx-1">→</span>
+                    <span class="badge text-bg-secondary">{{ item.target_environment_label }}</span>
+                  </td>
+                  <td>
+                    {% if item.release_coordinate %}
+                      <div class="fw-semibold">{{ item.release_coordinate }}</div>
+                    {% endif %}
+                    <code class="small">{{ item.release_id }}</code>
+                  </td>
+                  <td class="small" style="min-width: 13rem;">
+                    <div class="text-muted">Plan</div>
+                    <code>{{ item.plan_id }}</code>
+                    <div class="text-muted mt-1">Approval</div>
+                    <code>{{ item.approval_id }}</code>
+                  </td>
+                  <td class="small">
+                    <div>{{ item.action_count }} total</div>
+                    <div class="text-muted">
+                      {{ item.applied_action_count }} applied ·
+                      {{ item.verified_action_count }} verified
+                    </div>
+                  </td>
+                  <td class="small">
+                    <div>{{ item.applied_at|date:"Y-m-d H:i:s" }}</div>
+                    <div class="text-muted">{{ item.applied_by }}</div>
+                  </td>
+                  <td style="min-width: 18rem;">
+                    {% if item.release_metadata_match == True %}
+                      <span class="badge text-bg-success mb-1">Release converged</span>
+                    {% elif item.release_metadata_match == False %}
+                      <span class="badge text-bg-danger mb-1">Release mismatch</span>
+                    {% else %}
+                      <span class="badge text-bg-secondary mb-1">Target record</span>
+                    {% endif %}
+                    <div class="small text-muted">Post-apply metadata</div>
+                    <code class="small text-break">
+                      {{ item.post_target_metadata_fingerprint }}
+                    </code>
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <div class="alert alert-light border small mb-0">
+          No successful Environment Promotion Records are stored on
+          {{ remote_history.environment_label }}.
+        </div>
+      {% endif %}
+      <div class="small text-muted mt-3">
+        Source of truth: authenticated Promotion Target Runner
+        <code>{{ remote_history.base_url }}</code>.
+      </div>
+    {% else %}
+      <div class="alert alert-light border small mb-0">
+        Select a Promotion Target and refresh its history to inspect immutable
+        deployment and convergence evidence.
+      </div>
+    {% endif %}
+  </div>
+</section>
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+  const scrollStorageKey = "elevata:environment-promotion:scroll-y";
+
+  const rememberScrollPosition = () => {
+    try {
+      window.sessionStorage.setItem(scrollStorageKey, String(window.scrollY));
+    } catch (_error) {
+      // Scroll preservation is convenience-only; never block a promotion action.
+    }
+  };
+
+  const restoreScrollPosition = () => {
+    try {
+      const storedValue = window.sessionStorage.getItem(scrollStorageKey);
+      if (storedValue === null) {
+        return;
+      }
+      window.sessionStorage.removeItem(scrollStorageKey);
+
+      const storedY = Number(storedValue);
+      if (!Number.isFinite(storedY) || storedY < 0) {
+        return;
+      }
+
+      if ("scrollRestoration" in window.history) {
+        window.history.scrollRestoration = "manual";
+      }
+
+      window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(() => {
+          const maxY = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+          window.scrollTo({
+            top: Math.min(storedY, maxY),
+            left: 0,
+            behavior: "auto",
+          });
+        });
+      });
+    } catch (_error) {
+      // Session storage may be unavailable in hardened browser configurations.
+    }
+  };
+
+  restoreScrollPosition();
+
+  const releaseForm = document.getElementById("architecture-release-create-form");
+  if (releaseForm) {
+    releaseForm.addEventListener("submit", (event) => {
+      rememberScrollPosition();
+      const submitter = event.submitter || releaseForm.querySelector('button[type="submit"]');
+      if (!submitter) {
+        return;
+      }
+      submitter.disabled = true;
+      submitter.setAttribute("aria-busy", "true");
+      const loadingLabel = submitter.dataset.loadingLabel || "Creating release...";
+      submitter.innerHTML = `
+        <span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>
+        ${loadingLabel}
+      `;
+    });
+  }
+
+  const historyForm = document.getElementById("promotion-history-refresh-form");
+  if (historyForm) {
+    historyForm.addEventListener("submit", (event) => {
+      rememberScrollPosition();
+      const submitter = event.submitter || historyForm.querySelector('button[type="submit"]');
+      if (!submitter) {
+        return;
+      }
+      submitter.disabled = true;
+      submitter.setAttribute("aria-busy", "true");
+      const loadingLabel = submitter.dataset.loadingLabel || "Refreshing history...";
+      submitter.innerHTML = `
+        <span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>
+        ${loadingLabel}
+      `;
+    });
+  }
+
+  const promotionReview = document.getElementById("promotion-review");
+  if (!promotionReview) {
+    return;
+  }
+
+  promotionReview.querySelectorAll("form").forEach((form) => {
+    form.addEventListener("submit", (event) => {
+      rememberScrollPosition();
+      const submitter = event.submitter || form.querySelector('button[type="submit"]');
+
+      promotionReview.querySelectorAll('button[type="submit"]').forEach((button) => {
+        button.disabled = true;
+      });
+
+      if (!submitter) {
+        return;
+      }
+
+      const loadingLabel = submitter.dataset.loadingLabel || "Working...";
+      submitter.setAttribute("aria-busy", "true");
+      submitter.innerHTML = `
+        <span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>
+        ${loadingLabel}
+      `;
+    });
+  });
+});
+</script>
+
+{% endblock %}

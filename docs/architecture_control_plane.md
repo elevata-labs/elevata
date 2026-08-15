@@ -1,6 +1,6 @@
 # ⚙️ Architecture Control Plane
 
-The Architecture Control Plane provides deterministic target generation, review, comparison, approval, execution-control, and promotion workflows for metadata-defined architecture.
+The Architecture Control Plane governs deterministic target generation and physical architecture review/execution inside one metadata environment. Cross-environment metadata deployment is handled by the separate Environment Promotion workflow.
 
 It turns architecture state into explicit artifacts:
 
@@ -9,7 +9,7 @@ It turns architecture state into explicit artifacts:
 - Generation Approval Artifact  
 - Architecture State  
 - Architecture Change Report  
-- Architecture Promotion Report  
+- Architecture State Comparison (`Architecture Promotion Report`)  
 - Architecture Approval Artifact  
 - Execution Impact Plan  
 - immutable Execution Run Plan  
@@ -103,14 +103,15 @@ Planning is read-only. Dry-run, JSON output, Architecture Control preview and gu
 
 A Target Generation Review summarizes SourceDataset-to-TargetDataset impact and receives its own deterministic review fingerprint. Breaking changes require a matching Generation Approval in the UI; additive and neutral changes remain approval-optional but are still drift-guarded.
 
-Generation Approval and Architecture Approval are separate decisions:
+Generation Approval, Environment Promotion Approval and Architecture Approval are separate decisions:
 
 | Approval | Authorizes | Bound to | Identifier |
 |---|---|---|---|
-| Generation Approval | Target metadata mutation | Target Generation Review and Plan | `gpa_...` |
+| Generation Approval | Target metadata mutation inside one environment | Target Generation Review and Plan | `gpa_...` |
+| Environment Promotion Approval | Release-to-target metadata deployment between environments | Environment Promotion Plan | `papr-...` |
 | Architecture Approval | Physical architecture change and execution readiness | Architecture Change Report | `apr_...` |
 
-A Generation Approval cannot authorize DDL, DML or load execution. After guarded target metadata apply, the resulting Architecture State and Architecture Change Report enter the existing Architecture Approval and execution workflow.
+A Generation Approval cannot authorize warehouse DDL, DML or load execution. An Environment Promotion Approval cannot authorize the target environment's physical Architecture Change Report. After metadata converges in a target environment, that target independently enters the Architecture Approval and execution workflow. See [Environment Promotion](environment_promotion.md).
 
 Architecture Control guides complete generated-layer convergence in dependency order:
 
@@ -524,7 +525,7 @@ Architecture Execution Record history is resolved from the configured execution 
 
 ---
 
-## 🔧 9. Architecture Promotion Report
+## 🔧 9. Architecture State Comparison (Architecture Promotion Report)
 
 An Architecture Promotion Report compares two Architecture State artifacts.
 
@@ -533,6 +534,9 @@ It answers:
 ```text
 What would change when this target architecture state is compared to that source state?
 ```
+
+!!! important
+    This report is a read-only Architecture State comparison. It does **not** deploy metadata between environments. Use [Environment Promotion](environment_promotion.md) for controlled DEV → TEST / PROD metadata deployment.
 
 Example:
 
@@ -681,9 +685,9 @@ Architecture Execution Records are audit artifacts. They complement load-run log
 
 ## 🔧 13. Deterministic Fingerprints
 
-Target Generation Plan, Target Generation Review, Generation Approval Artifact, Architecture State, Architecture Change Report, Architecture Promotion Report, Architecture Approval Artifact, Execution Impact Plan, Execution Preview, Execution Run Plan, finalization evidence, and Architecture Execution Record expose deterministic fingerprints or bind directly to fingerprinted artifacts.
- 
-Fingerprints are derived from canonical JSON representations and allow CI, review processes, approval decisions, scheduler runs, finalization, promotion workflows, and audit processes to reference exact architecture artifacts.
+Target Generation Plan, Target Generation Review, Generation Approval Artifact, Architecture State, Architecture Change Report, Architecture State Comparison (`Architecture Promotion Report`), Architecture Approval Artifact, Execution Impact Plan, Execution Preview, Execution Run Plan, finalization evidence, and Architecture Execution Record expose deterministic fingerprints or bind directly to fingerprinted artifacts.
+
+Fingerprints are derived from canonical JSON representations and allow CI, review processes, approval decisions, scheduler runs, finalization, Architecture State comparisons, and audit processes to reference exact architecture artifacts. Environment Promotion uses its own Release, Plan, Approval, Package and Record fingerprints.
 
 ---
 

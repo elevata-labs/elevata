@@ -1,6 +1,6 @@
 """
 elevata - Metadata-driven Data Platform Framework
-Copyright © 2025 Ilona Tag
+Copyright © 2025-2026 Ilona Tag
 
 This file is part of elevata.
 
@@ -66,7 +66,6 @@ def test_rawcore_surrogate_key_expression_contains_identity_and_is_alphabetical(
     short_name="rawcore",
     defaults={
       "display_name": "Rawcore",
-      "database_name": "dw",
       "schema_name": "rawcore",
       "surrogate_keys_enabled": True,
     },
