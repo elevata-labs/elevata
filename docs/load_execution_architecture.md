@@ -217,10 +217,11 @@ This separation ensures deterministic execution behavior across platforms.
 For rawcore datasets with historization enabled:
 
 - base dataset materialization is planned first  
-- corresponding `_hist` dataset schema is synchronized afterwards  
-- synchronization is best-effort and does not block base execution
+- the corresponding `_hist` dataset schema is synchronized with the same schema evolution intent (MigrationPlan)  
+- whenever the historized base enters a resolved execution scope, its existing `_hist` companion is a mandatory member of that scope  
+- the `_hist` dataset has an execution dependency on its base dataset, but this system-managed scheduling dependency is not modeled as semantic lineage
 
-The `_hist` synchronization uses the same schema evolution intent (MigrationPlan) so base and history schemas stay consistent and lineage-safe.
+The history companion is identified deterministically by the rawcore lineage identity and the `<base>_hist` naming contract. Missing, inactive, ambiguous, or unsynchronized companions block execution planning so a base load cannot silently advance without its required SCD2 history step.
 
 ---
 
@@ -231,10 +232,36 @@ Dataset dependencies are resolved into a directed acyclic graph (DAG).
 From this graph, elevata derives a **deterministic execution order**:
 
 - Upstream datasets are always executed before downstream datasets  
-- Independent branches may be executed in parallel in the future  
+- Independent branches may be executed in parallel  
+- A historized rawcore base is executed before its `_hist` companion  
+- The `_hist` companion and ordinary downstream datasets may run in parallel once their shared base dependency has completed  
 - The same metadata state always yields the same order
 
-Dependency resolution errors are treated as **best-effort warnings** and never block execution planning.
+Mandatory execution-contract violations fail closed. Other legacy graph-resolution failures retain their existing best-effort handling where applicable.
+
+### 🧩 4.1 Named Partial Load Scopes
+
+A `PartialLoad` is a **named, reusable set of explicit `TargetDataset` execution roots**. It does not define a second load engine, a row filter, or an incremental strategy.
+
+The resolved Partial Load scope is:
+
+```text
+explicit TargetDataset roots
+  + required upstream execution dependencies
+  + mandatory system-managed companions such as `_hist`
+  = exact execution scope
+```
+
+Scope rules are intentionally asymmetric:
+
+- A newly required upstream dependency is included automatically because it is necessary to satisfy an existing root.  
+- A new downstream consumer is **not** included automatically because that would expand the user-defined contract.  
+- Redundant explicit roots remain part of the Partial Load definition as user intent; execution deduplicates the resolved dataset set.  
+- Empty Partial Loads, inactive roots, explicit system-managed history roots, unresolved dependencies, and missing mandatory companions fail closed.
+
+The full load is implicit and always represents the complete active TargetDataset scope. Partial Loads reuse the same per-dataset load strategies, Execution Impact rules, Architecture Guard, and historization semantics as the full load.
+
+Scheduling is intentionally outside the Partial Load metadata contract. External schedulers decide **when** a named load runs. Execution Manifest v3 exposes both the central resolved load scopes and the resolved `load_scopes` membership of each TargetDataset so scheduler integrations do not reimplement scope resolution.
 
 ---
 
@@ -424,12 +451,14 @@ The execution architecture is exposed through the CLI:
 - `--max-retries` controls retry behavior  
 - `--debug-execution` prints execution snapshots  
 - `--write-execution-snapshot` persists snapshots to disk  
+- `--partial-load <name>` selects one named Partial Load and resolves its complete execution scope  
 - `--run-plan` binds one dataset task to an immutable scheduler Run Plan and requires `--execute --no-deps`
 
 Scheduler-facing commands:
 
 ```bash
 python manage.py elevata_run_plan --all-datasets
+python manage.py elevata_run_plan --partial-load sales
 python manage.py elevata_finalize_run_plan <RUN_PLAN_PATH>
 ```
 
@@ -460,6 +489,7 @@ Architecture Control supports the following execution scopes:
 | All datasets | Executes all active target datasets with dependency ordering |
 | Schema | Executes selected active schema roots with dependency ordering |
 | TargetDataset | Executes the selected active TargetDataset with dependency ordering |
+| Partial Load | Executes the named explicit roots plus required upstream dependencies and mandatory companions |
 | TargetDataset, target-only | Executes only the selected active TargetDataset |
 
 Schema review may include a previous-state dataset that has just been retired so the metadata-only removal remains visible and approvable. Execution resolution remains active-only, and inactive datasets are excluded from Execution Impact, preview steps, manifests, and Run Plans.
@@ -476,7 +506,8 @@ It contains:
 - operator  
 - timestamps and duration  
 - status and message  
-- Architecture Control scope  
+- Architecture Control scope and scope mode  
+- explicit root dataset keys and exact resolved execution dataset keys  
 - dependency mode  
 - report fingerprint  
 - approval identifier  

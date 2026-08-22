@@ -79,6 +79,14 @@ class Command(BaseCommand):
         "<schema>.<dataset> form."
       ),
     )
+    scope_group.add_argument(
+      "--partial-load",
+      dest="partial_load_name",
+      help=(
+        "Create a run plan for one named Partial Load using its "
+        "resolved execution roots and dependencies."
+      ),
+    )
 
     parser.add_argument(
       "--target-only",
@@ -251,17 +259,21 @@ def _resolve_scope(
   all_datasets = bool(options.get("all_datasets"))
   schema_short = _optional_text(options.get("schema_short"))
   dataset_key = _optional_text(options.get("dataset_key"))
+  partial_load_name = _optional_text(
+    options.get("partial_load_name")
+  )
   target_only = bool(options.get("target_only"))
 
   selected_scope_count = sum((
     1 if all_datasets else 0,
     1 if schema_short else 0,
     1 if dataset_key else 0,
+    1 if partial_load_name else 0,
   ))
   if selected_scope_count != 1:
     raise CommandError(
       "Select exactly one run-plan scope: --all-datasets, "
-      "--schema or --dataset."
+      "--schema, --dataset or --partial-load."
     )
 
   if target_only and dataset_key is None:
@@ -276,6 +288,14 @@ def _resolve_scope(
     try:
       return ArchitectureControlScope.for_schema(
         schema_short
+      ), False
+    except ValueError as exc:
+      raise CommandError(str(exc)) from exc
+
+  if partial_load_name is not None:
+    try:
+      return ArchitectureControlScope.for_partial_load(
+        partial_load_name
       ), False
     except ValueError as exc:
       raise CommandError(str(exc)) from exc

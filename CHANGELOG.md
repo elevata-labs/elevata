@@ -12,6 +12,179 @@ This project adheres to [Semantic Versioning](https://semver.org/) and [Keep a C
 
 ---
 
+## [3.1.0] - 2026-08-22
+
+This release adds **Deterministic Partial Loads** and completes named execution scopes across the elevata Architecture Runtime.
+
+Partial Loads are not a second loading mechanism. They define reusable sets of explicit TargetDataset execution roots. elevata resolves the required upstream dependency closure, adds mandatory execution companions such as SCD2 history datasets, and then executes the resulting scope through the same deterministic load, Architecture Control, immutable Run Plan, audit and scheduler contracts used by full execution.
+
+The execution manifest now exposes all available load scopes, and the Airflow example automatically creates one DAG for the full load and one DAG for every configured Partial Load without duplicating orchestration logic.
+
+---
+
+### ✨ Added
+
+#### Deterministic Partial Load Scopes
+
+- Added a canonical Partial Load scope resolver based on explicit TargetDataset execution roots  
+- Added deterministic upstream dependency closure for every Partial Load  
+- Added automatic inclusion of mandatory system-managed execution companions  
+- Kept downstream consumers outside existing Partial Loads unless users explicitly add them as roots  
+- Added fail-closed validation for empty scopes, inactive roots, system-managed history roots and unresolved execution dependencies  
+- Preserved explicitly configured roots as user intent even when one root becomes transitively redundant  
+- Reserved `full` as the implicit full-scope load identity
+
+#### Architecture Control Partial Load Scope
+
+- Added `partial_load` as a first-class Architecture Control scope  
+- Added Partial Load selection to the Architecture Control UI  
+- Added separate visibility for explicit roots and fully resolved execution order  
+- Reused the existing Architecture Change Report, Execution Impact Plan, review, approval and execution-preview contracts  
+- Restricted target-only execution to TargetDataset scopes  
+- Added controlled Partial Load execution through the existing Architecture Guard and load-runner path
+
+#### Immutable Partial Load Run Plans
+
+- Added `--partial-load` to `elevata_run_plan`  
+- Bound Partial Load identity, explicit root datasets and exact resolved execution decisions into immutable Execution Run Plans  
+- Ensured root-definition changes alter the canonical Run Plan fingerprint even when the resolved execution scope remains unchanged  
+- Added fail-closed root-intent validation between Architecture Control preview and actual controlled execution  
+- Added Partial Load execution-scope evidence to Architecture Execution Records  
+- Extended execution records with exact root and resolved dataset scope evidence
+
+#### Partial Load Runtime Execution
+
+- Added `--partial-load` to `elevata_load`
+- Reused the normal dataset LoadPlan for Partial Load execution  
+- Kept full refresh, merge, incremental ingestion, delete handling and historization semantics unchanged inside Partial Loads  
+- Added CLI and controlled-UI execution for named Partial Loads  
+- Kept Partial Load execution incompatible with `--no-deps` because the resolved dependency closure is part of the scope contract
+
+#### Execution Manifest v3
+
+- Added manifest-level `load_scopes`  
+- Added the implicit `full` scope and all configured Partial Loads to the execution manifest  
+- Added explicit `root_dataset_ids` and fully resolved `dataset_ids` per load scope  
+- Added resolved `load_scopes` membership to every executable TargetDataset node  
+- Derived node membership from resolved scopes rather than direct PartialLoad assignments  
+- Kept SourceDataset nodes outside executable load-scope membership  
+- Added fail-closed validation when manifest filtering would make a Partial Load incomplete  
+- Bumped the execution manifest contract to version 3
+
+#### Dynamic Airflow Load DAGs
+
+- Reworked the Airflow example into one generic DAG factory driven by manifest load scopes  
+- Kept the existing `elevata_load` DAG as the implicit full-scope DAG  
+- Added automatic DAG creation for every Partial Load, for example `elevata_load_sales`  
+- Added scheduler-local `SCHEDULES` configuration with `None` as the safe default  
+- Made newly created Partial Loads appear automatically after manifest regeneration and Airflow reparse without requiring DAG-code changes  
+- Added scope-specific immutable Execution Run Plan creation for full and Partial Load DAGs  
+- Added scope-specific manifest fingerprints so unrelated graph changes do not invalidate independent Partial Load DAGs  
+- Kept all dataset task creation and dependency wiring in one shared implementation
+
+---
+
+### 🔄 Improved
+
+#### Historization Execution Contract
+
+- Made an existing `_hist` companion a mandatory execution-scope member whenever its historized Rawcore base is selected directly or enters through dependency resolution  
+- Added explicit `hist_base_ready` execution dependencies from history companions to their Rawcore bases  
+- Kept history readiness separate from ordinary downstream serialization so `_hist` and normal downstream datasets may run in parallel after the base completes  
+- Added the history execution dependency to Execution Impact propagation  
+- Kept history datasets on their existing incremental historization strategy even when the Rawcore base requires a full rebuild  
+- Made missing, inactive, ambiguous or inconsistent history companions fail closed during execution planning
+
+#### Partial Load Semantics
+
+- Clarified that Partial Loads select architecture scope, not row subsets  
+- Kept SourceDataset incremental filters, increment policies, delete-detection scope and per-dataset load strategies authoritative  
+- Prevented Partial Loads from introducing separate watermarks, filters or SQL-generation paths  
+- Clarified that new required upstream dependencies enter an existing Partial Load automatically while new downstream consumers do not  
+- Kept scheduling outside Partial Load metadata so each external scheduler remains free to use its native schedule syntax
+
+#### Architecture Control UX
+
+- Aligned Partial Load scope selection with existing Architecture Control scope controls  
+- Standardized bounded execution-order lists so expanded sections show only remaining rows  
+- Kept execution-order table columns aligned across collapsed and expanded sections  
+- Added concise Partial Load guidance to the metadata landing page
+
+#### Scheduler Documentation
+
+- Documented manifest-driven full and Partial Load DAG generation  
+- Documented scheduler-local schedule configuration and automatic unscheduled DAG creation  
+- Added separate Linux/macOS Bash and Windows PowerShell examples for manifest regeneration  
+- Clarified that the manifest remains the single source of truth for execution scope and ordering
+
+---
+
+### 🔒 Governance & Determinism
+
+- Partial Load metadata defines explicit execution intent; runtime resolution never rewrites that intent  
+- The same metadata state and Partial Load definition produce the same resolved execution scope  
+- Explicit roots and resolved execution scope remain separate first-class concepts  
+- Required upstream dependencies are resolved automatically; downstream expansion always requires explicit user intent  
+- Mandatory history companions cannot be silently omitted from a resolved execution scope  
+- Partial Load execution reuses the same deterministic Execution Graph and LoadPlan semantics as full execution  
+- Partial Loads do not create alternate SQL generation, incremental, delete-detection or historization semantics  
+- Architecture Control, immutable Run Plans and Architecture Execution Records bind the exact Partial Load scope used for execution  
+- Root-definition drift and resolved-scope drift both fail closed before controlled execution  
+- Execution manifests contain resolved scheduler scope and never delegate Partial Load resolution to the scheduler  
+- Scheduler configuration controls when a load runs; elevata controls what belongs to that load and in which dependency graph  
+- New Partial Loads default to unscheduled scheduler DAGs and therefore cannot begin recurring execution implicitly
+
+---
+
+### 🧪 Quality & Stability
+
+- Added dedicated Partial Load scope-resolution tests  
+- Added Architecture Control Partial Load scope and preview tests  
+- Added Partial Load runtime execution tests  
+- Added immutable Run Plan tests for Partial Load identity, explicit roots and resolved scope  
+- Added Architecture Execution Record coverage for execution-scope evidence  
+- Added manifest tests for full and Partial Load scopes, resolved node memberships and incomplete-scope rejection  
+- Added regression coverage for mandatory history-companion scope expansion  
+- Added regression coverage for history execution ordering and parallel downstream behavior  
+- Added Execution Impact regression coverage for `hist_base_ready`  
+- Verified Partial Load selection, report scope, Execution Impact and execution preview through Architecture Control  
+- Verified controlled Partial Load execution successfully with required upstream datasets and SCD2 history companions  
+- Verified Execution Manifest v3 against real metadata  
+- Verified automatic Airflow creation of full and Partial Load DAGs  
+- Verified the Partial Load Airflow graph contains exactly the resolved Partial Load dataset scope  
+- Verified the full unit test suite successfully throughout the implementation
+
+---
+
+### 🛠️ Fixed
+
+- Fixed historized Rawcore datasets being executable without their required `_hist` companion when selected as a scoped execution root  
+- Fixed history companions being omitted when their Rawcore base entered execution only as an upstream dependency  
+- Fixed `hist_base_ready` initially being treated as an unknown Execution Impact dependency and therefore blocking otherwise valid controlled execution  
+- Fixed Architecture Control execution-order expansion repeating already visible rows  
+- Fixed expanded execution-order table columns no longer aligning with the primary table  
+- Fixed outdated Partial Load metadata guidance that described row/window-oriented subset extraction instead of named execution scopes  
+- Fixed historization documentation implying that SCD2 processing requires a Rawcore merge strategy rather than the completed Rawcore base load
+
+---
+
+### ⬆️ Upgrade Notes
+
+- **Run `python manage.py migrate` after installing elevata 3.1.0.**  
+- The metadata migration updates the Partial Load field descriptions to reflect the named execution-scope contract.  
+- Existing PartialLoad records and TargetDataset assignments remain compatible; no Partial Load redesign or data migration is required.  
+- Existing PartialLoad assignments are interpreted as explicit TargetDataset execution roots.  
+- `full` is reserved as the implicit full-load scope name.  
+- Regenerate Execution Manifest v3 after upgrading:  
+  `python manage.py elevata_manifest`  
+- Airflow users must allow the DAG processor or scheduler to reparse the regenerated manifest before starting a new run.  
+- The Airflow example now creates one DAG for the full load and one DAG per Partial Load automatically.  
+- Newly discovered Partial Load DAGs use `schedule=None` unless explicitly configured in the Airflow `SCHEDULES` mapping.  
+- Existing full-load orchestration remains available as `elevata_load`.  
+- Scheduler-managed runs created before the upgrade remain historical evidence and should not be reused after manifest or scope-contract changes.
+
+---
+
 ## [3.0.0] - 2026-08-15
 
 This release adds **Controlled Environment Promotion** and extends the elevata Architecture Runtime across separately governed metadata environments.

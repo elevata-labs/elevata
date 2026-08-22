@@ -33,6 +33,7 @@ from metadata.architecture.control import (
   build_architecture_control_context,
 )
 from metadata.execution.executor import build_execution_plan
+from metadata.execution.load_scope import LoadScopeError, resolve_partial_load_scope
 from metadata.execution.load_graph import (
   resolve_execution_order,
   resolve_execution_order_all,
@@ -297,6 +298,23 @@ def resolve_architecture_execution_scope(
   """
   Resolve the exact root and execution TargetDatasets for one execution mode.
   """
+  if scope.mode == "partial_load":
+    if no_deps:
+      raise ArchitectureExecutionPreviewError(
+        "Partial Load execution always includes required dependencies."
+      )
+
+    try:
+      resolved = resolve_partial_load_scope(scope.partial_load_name or "")
+    except LoadScopeError as exc:
+      raise ArchitectureExecutionPreviewError(str(exc)) from exc
+
+    return ArchitectureExecutionScopeResolution(
+      roots=resolved.roots,
+      execution_order=resolved.execution_order,
+      dependency_mode="with_dependencies",
+    )
+
   roots = tuple(_resolve_execution_roots(scope))
   execution_order = tuple(_resolve_execution_order(
     scope,

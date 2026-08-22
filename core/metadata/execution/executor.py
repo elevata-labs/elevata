@@ -59,10 +59,15 @@ def build_execution_plan(*, batch_run_id: str, execution_order: list[TargetDatas
   Keep deterministic order, store upstream_keys for blocked semantics.
   Prefer canonical execution upstream resolution from metadata.execution.load_graph.
   """
-  # Canonical execution upstream resolver (best-effort safe in your codebase)
+  # Canonical execution upstream resolver. Legacy resolution failures remain
+  # best-effort, but mandatory execution-contract errors must fail closed.
   try:
-    from metadata.execution.load_graph import resolve_execution_upstream_datasets
+    from metadata.execution.load_graph import (
+      ExecutionGraphError,
+      resolve_execution_upstream_datasets,
+    )
   except Exception:
+    ExecutionGraphError = None  # type: ignore[assignment,misc]
     resolve_execution_upstream_datasets = None  # type: ignore[assignment]
 
   steps: list[ExecutionStep] = []
@@ -74,8 +79,10 @@ def build_execution_plan(*, batch_run_id: str, execution_order: list[TargetDatas
       try:
         upstream_datasets = resolve_execution_upstream_datasets(td)
         ups = sorted(_dataset_key(u) for u in upstream_datasets)
-      except Exception:
-        # best-effort: never block planning due to upstream resolution issues
+      except Exception as exc:
+        if ExecutionGraphError is not None and isinstance(exc, ExecutionGraphError):
+          raise
+        # Preserve legacy best-effort handling for unrelated resolution issues.
         ups = []
     else:
       # fallback (should rarely be used)
@@ -202,7 +209,7 @@ def execute_plan(
   - Blocked semantics: if any upstream dataset has status=error, downstream is skipped(blocked).
   - Retry semantics: retries apply only in execute-mode; dry-run failures are surfaced immediately.
   - Attempt counter: attempt_no starts at 1 and is passed to run_dataset_fn.
-  - Best-effort: graph resolution errors never block execution.
+  - Graph resolution remains best-effort for legacy errors; mandatory execution-contract errors fail closed.
   """
   resolved_impact_decisions = _normalize_impact_decisions(
     plan=plan,

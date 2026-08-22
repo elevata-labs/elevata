@@ -45,7 +45,7 @@ from utils.db import build_metadata_database_url
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(find_dotenv(filename=".env", raise_error_if_not_found=False))
 
-ELEVATA_VERSION = "3.0.0"
+ELEVATA_VERSION = "3.1.0"
 
 ELEVATA_RUNTIME_MODE = env_str("ELEVATA_RUNTIME_MODE", "authoring").strip().lower()
 if ELEVATA_RUNTIME_MODE not in {"authoring", "promotion_target"}:
@@ -292,7 +292,7 @@ ELEVATA_CRUD = {
     "descriptions": {
       "Team": "Organize data teams and functional groups.",
       "Person": "Track users and their association with data teams across the organization.",
-      "PartialLoad": "Define additional loads to process subsets of datasets at individual frequencies.",
+      "PartialLoad": "Define reusable execution scopes from TargetDataset roots and dependencies.",
       "System": "Register and describe systems which can be targets or upstream systems that provide raw data to the platform.",
       "SourceDataset": "Define datasets extracted from source systems — the entry point for ingestion.",
       "SourceDatasetGroup": "Group structurally similar source datasets to enable unified target generation.",
@@ -304,7 +304,7 @@ ELEVATA_CRUD = {
     "icons": {
       "Team": "users",
       "Person": "user",
-      "PartialLoad": "timer",
+      "PartialLoad": "workflow",
       "System": "database",
       "SourceDataset": "file",
       "SourceDatasetGroup": "merge",

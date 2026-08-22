@@ -28,6 +28,12 @@ from metadata.models import TargetSchema, TargetDataset
 EXECUTION_DEPENDENCY_LINEAGE_INPUT = "lineage_input"
 EXECUTION_DEPENDENCY_SOURCE_RAW_READY = "source_raw_ready"
 EXECUTION_DEPENDENCY_REFERENCE_PARENT_READY = "reference_parent_ready"
+EXECUTION_DEPENDENCY_HIST_BASE_READY = "hist_base_ready"
+
+
+class ExecutionGraphError(ValueError):
+  """Raised when execution dependencies cannot be resolved deterministically."""
+
 
 
 @dataclass(frozen=True)
@@ -63,6 +69,195 @@ def _same_dataset(left: TargetDataset, right: TargetDataset) -> bool:
 
   return _dataset_sort_key(left) == _dataset_sort_key(right)
 
+
+def _effective_historize(td: TargetDataset) -> bool:
+  """Return whether historization is enabled for a base dataset."""
+  schema = getattr(td, "target_schema", None)
+  return bool(
+    getattr(td, "historize", False)
+    or getattr(schema, "default_historize", False)
+  )
+
+
+def _is_rawcore_base_dataset(td: TargetDataset) -> bool:
+  """Return whether this dataset can own a system-managed history companion."""
+  schema_short = getattr(getattr(td, "target_schema", None), "short_name", None)
+  return (
+    schema_short == "rawcore"
+    and not bool(getattr(td, "is_hist", False))
+  )
+
+
+def _dataset_label(td: TargetDataset) -> str:
+  return f"{td.target_schema.short_name}.{td.target_dataset_name}"
+
+
+def resolve_hist_companion_for_base(td: TargetDataset) -> TargetDataset | None:
+  """
+  Resolve the mandatory history companion for a historized rawcore base dataset.
+
+  The generated metadata contract identifies the companion by the same lineage_key
+  and the *_hist naming convention. Name lookup remains as the legacy fallback used
+  by target generation when lineage_key is unavailable.
+  """
+  if not _is_rawcore_base_dataset(td) or not _effective_historize(td):
+    return None
+
+  schema = td.target_schema
+  expected_name = f"{td.target_dataset_name}_hist"
+  lineage_key = str(getattr(td, "lineage_key", "") or "").strip()
+
+  hist_td = None
+  if lineage_key:
+    candidates = list(
+      TargetDataset.objects
+      .filter(
+        target_schema=schema,
+        lineage_key=lineage_key,
+        target_dataset_name__endswith="_hist",
+      )
+      .exclude(pk=getattr(td, "pk", None))
+      .order_by("target_dataset_name", "id")[:2]
+    )
+    if len(candidates) > 1:
+      raise ExecutionGraphError(
+        "Historized base dataset has multiple history companions for the same "
+        f"lineage identity: {_dataset_label(td)} -> "
+        + ", ".join(_dataset_label(item) for item in candidates)
+        + "."
+      )
+    if candidates:
+      hist_td = candidates[0]
+
+  if hist_td is None:
+    hist_td = (
+      TargetDataset.objects
+      .filter(
+        target_schema=schema,
+        target_dataset_name=expected_name,
+      )
+      .exclude(pk=getattr(td, "pk", None))
+      .first()
+    )
+
+  if hist_td is None:
+    raise ExecutionGraphError(
+      "Historized base dataset requires a history companion in the execution "
+      f"scope, but none exists: {_dataset_label(td)} -> "
+      f"{schema.short_name}.{expected_name}. Synchronize target metadata before execution."
+    )
+
+  if hist_td.target_dataset_name != expected_name:
+    raise ExecutionGraphError(
+      "History companion name is not synchronized with its base dataset: "
+      f"{_dataset_label(td)} -> {_dataset_label(hist_td)}; "
+      f"expected {schema.short_name}.{expected_name}. Synchronize target metadata before execution."
+    )
+
+  if not bool(getattr(hist_td, "is_hist", False)):
+    raise ExecutionGraphError(
+      "Resolved history companion does not use the historize load contract: "
+      f"{_dataset_label(td)} -> {_dataset_label(hist_td)}."
+    )
+
+  if not bool(getattr(hist_td, "active", True)):
+    raise ExecutionGraphError(
+      "Historized base dataset requires an active history companion: "
+      f"{_dataset_label(td)} -> {_dataset_label(hist_td)}."
+    )
+
+  companion_lineage_key = str(getattr(hist_td, "lineage_key", "") or "").strip()
+  if lineage_key and companion_lineage_key and companion_lineage_key != lineage_key:
+    raise ExecutionGraphError(
+      "History companion lineage identity does not match its base dataset: "
+      f"{_dataset_label(td)} -> {_dataset_label(hist_td)}."
+    )
+
+  return hist_td
+
+
+def resolve_hist_base_for_companion(td: TargetDataset) -> TargetDataset | None:
+  """Resolve the historized rawcore base dataset required by a history dataset."""
+  if not bool(getattr(td, "is_hist", False)):
+    return None
+
+  schema = td.target_schema
+  hist_name = str(getattr(td, "target_dataset_name", "") or "")
+  if not hist_name.endswith("_hist"):
+    raise ExecutionGraphError(
+      "History dataset does not follow the required *_hist naming contract: "
+      f"{_dataset_label(td)}."
+    )
+  expected_base_name = hist_name[:-5]
+  lineage_key = str(getattr(td, "lineage_key", "") or "").strip()
+
+  base_td = None
+  if lineage_key:
+    candidates = list(
+      TargetDataset.objects
+      .filter(
+        target_schema=schema,
+        lineage_key=lineage_key,
+      )
+      .exclude(target_dataset_name__endswith="_hist")
+      .exclude(pk=getattr(td, "pk", None))
+      .order_by("target_dataset_name", "id")[:2]
+    )
+    if len(candidates) > 1:
+      raise ExecutionGraphError(
+        "History dataset has multiple possible base datasets for the same "
+        f"lineage identity: {_dataset_label(td)} <- "
+        + ", ".join(_dataset_label(item) for item in candidates)
+        + "."
+      )
+    if candidates:
+      base_td = candidates[0]
+
+  if base_td is None:
+    base_td = (
+      TargetDataset.objects
+      .filter(
+        target_schema=schema,
+        target_dataset_name=expected_base_name,
+      )
+      .exclude(pk=getattr(td, "pk", None))
+      .first()
+    )
+
+  if base_td is None:
+    raise ExecutionGraphError(
+      "History dataset requires a corresponding rawcore base dataset, but none "
+      f"could be resolved: {_dataset_label(td)}."
+    )
+
+  if base_td.target_dataset_name != expected_base_name:
+    raise ExecutionGraphError(
+      "History dataset name is not synchronized with its base dataset: "
+      f"{_dataset_label(td)} <- {_dataset_label(base_td)}; "
+      f"expected {schema.short_name}.{expected_base_name}. Synchronize target metadata before execution."
+    )
+
+  if not _is_rawcore_base_dataset(base_td) or not _effective_historize(base_td):
+    raise ExecutionGraphError(
+      "History dataset resolved to a base dataset without an active historization "
+      f"contract: {_dataset_label(td)} <- {_dataset_label(base_td)}."
+    )
+
+  if not bool(getattr(base_td, "active", True)):
+    raise ExecutionGraphError(
+      "History dataset requires an active rawcore base dataset: "
+      f"{_dataset_label(td)} <- {_dataset_label(base_td)}."
+    )
+
+  base_lineage_key = str(getattr(base_td, "lineage_key", "") or "").strip()
+  if lineage_key and base_lineage_key and base_lineage_key != lineage_key:
+    raise ExecutionGraphError(
+      "History dataset lineage identity does not match its base dataset: "
+      f"{_dataset_label(td)} <- {_dataset_label(base_td)}."
+    )
+
+  return base_td
+
  
 def resolve_execution_order(root: TargetDataset) -> list[TargetDataset]:
   graph = build_load_graph(root)
@@ -82,10 +277,12 @@ def resolve_execution_order_all(roots: list[TargetDataset]) -> list[TargetDatase
   for r in (roots or []):
     try:
       graph.update(build_load_graph(r))
+    except ExecutionGraphError:
+      # Mandatory execution-contract violations must fail closed.
+      raise
     except Exception:
-      # Best-effort: graph building should never block orchestration.
-      # If a root cannot be resolved, we simply skip it here; caller can decide
-      # how to handle an empty plan.
+      # Preserve legacy best-effort handling for unrelated graph-resolution
+      # failures. Mandatory companion errors are re-raised above.
       continue
   return topological_sort(graph)
 
@@ -122,7 +319,8 @@ def resolve_execution_dependencies(td: TargetDataset) -> tuple[ExecutionDependen
   # Dummy/test datasets may not have ORM managers; treat them as leaf nodes.
   has_input_links = hasattr(td, "input_links")
   has_outgoing_references = hasattr(td, "outgoing_references")
-  if not has_input_links and not has_outgoing_references:
+  is_hist = bool(getattr(td, "is_hist", False))
+  if not has_input_links and not has_outgoing_references and not is_hist:
     return ()
 
   dependencies: list[ExecutionDependency] = []
@@ -178,6 +376,12 @@ def resolve_execution_dependencies(td: TargetDataset) -> tuple[ExecutionDependen
           reason=EXECUTION_DEPENDENCY_SOURCE_RAW_READY,
         )
         # raw_td may be None for federated / external source setups.
+
+  if is_hist:
+    add_dependency(
+      resolve_hist_base_for_companion(td),
+      reason=EXECUTION_DEPENDENCY_HIST_BASE_READY,
+    )
 
   if has_outgoing_references:
     refs_obj = getattr(td, "outgoing_references", None)
@@ -248,6 +452,13 @@ def build_load_graph(root: TargetDataset) -> dict[TargetDataset, set[TargetDatas
     deps = resolve_execution_upstream_datasets(td)
     graph[td] = deps
     stack.extend(deps)
+
+    # Historization is part of the base dataset execution contract. A history
+    # companion is a required scope member even though it is downstream of the
+    # base and therefore cannot be discovered through normal upstream traversal.
+    hist_companion = resolve_hist_companion_for_base(td)
+    if hist_companion is not None and hist_companion not in graph:
+      stack.append(hist_companion)
 
   return graph
 

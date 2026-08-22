@@ -31,7 +31,10 @@ from metadata.execution.manifest import build_manifest, manifest_to_dict
 
 
 class Command(BaseCommand):
-  help = "Generate an execution manifest (execution dependencies + parallelizable levels) for all datasets."
+  help = (
+    "Generate an execution manifest with dependencies, parallelizable levels "
+    "and resolved Full/Partial Load scopes."
+  )
 
   def add_arguments(self, parser):
     parser.add_argument(
@@ -47,7 +50,10 @@ class Command(BaseCommand):
     parser.add_argument(
       "--exclude-system-managed",
       action="store_true",
-      help="Exclude system-managed datasets from the manifest.",
+      help=(
+        "Exclude system-managed datasets from the manifest. Generation "
+        "fails if this would make a resolved Partial Load incomplete."
+      ),
     )
     parser.add_argument(
       "--no-sources",
@@ -94,3 +100,4 @@ class Command(BaseCommand):
 
     self.stdout.write(f"Nodes: {len(payload['nodes'])}")
     self.stdout.write(f"Levels: {len(payload['levels'])}")
+    self.stdout.write(f"Load scopes: {len(payload['load_scopes'])}")

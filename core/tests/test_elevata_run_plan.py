@@ -134,6 +134,7 @@ def _options(**overrides):
     "all_datasets": True,
     "schema_short": None,
     "dataset_key": None,
+    "partial_load_name": None,
     "target_only": False,
     "profile": None,
     "target_system": None,
@@ -161,6 +162,10 @@ def test_resolve_scope_supports_all_schema_and_target_only_dataset() -> None:
     dataset_key="rawcore.customer",
     target_only=True,
   ))
+  partial_scope, partial_no_deps = _resolve_scope(_options(
+    all_datasets=False,
+    partial_load_name="sales",
+  ))
 
   assert all_scope.mode == "all"
   assert all_no_deps is False
@@ -174,6 +179,11 @@ def test_resolve_scope_supports_all_schema_and_target_only_dataset() -> None:
   assert dataset_scope.schema_short == "rawcore"
   assert dataset_scope.target_name == "customer"
   assert dataset_no_deps is True
+
+  assert partial_scope.mode == "partial_load"
+  assert partial_scope.partial_load_name == "sales"
+  assert partial_scope.key == "partial_load:sales"
+  assert partial_no_deps is False
 
 
 def test_resolve_scope_rejects_invalid_selector_combinations() -> None:

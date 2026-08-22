@@ -351,3 +351,51 @@ def test_architecture_execution_record_store_deletes_old_records(tmp_path) -> No
   assert deleted == 1
   assert not (tmp_path / "exec_old.execution.json").exists()
   assert (tmp_path / "exec_recent.execution.json").exists()
+
+
+def test_execution_record_persists_exact_execution_scope_evidence() -> None:
+  """
+  Verify version 4 binds scope mode, explicit roots and resolved execution scope.
+  """
+  values = _result().__dict__.copy()
+  values.update({
+    "scope_key": "partial_load:sales",
+    "scope_label": "Partial load: sales",
+    "scope_mode": "partial_load",
+    "dependency_mode": "with_dependencies",
+    "root_dataset_keys": (
+      "bizcore.bc_dim_customer",
+      "bizcore.bc_fact_customer_order",
+    ),
+    "execution_dataset_keys": (
+      "raw.raw_aw1_customer",
+      "stage.stg_aw_customer",
+      "rawcore.rc_aw_customer",
+      "bizcore.bc_dim_customer",
+      "bizcore.bc_fact_customer_order",
+    ),
+  })
+
+  record = build_architecture_execution_record(
+    SimpleNamespace(**values)
+  )
+  payload = json.loads(
+    render_architecture_execution_record_json(record)
+  )
+
+  assert payload["record_version"] == 4
+  assert payload["execution_scope"] == {
+    "scope_mode": "partial_load",
+    "root_dataset_keys": [
+      "bizcore.bc_dim_customer",
+      "bizcore.bc_fact_customer_order",
+    ],
+    "execution_dataset_keys": [
+      "raw.raw_aw1_customer",
+      "stage.stg_aw_customer",
+      "rawcore.rc_aw_customer",
+      "bizcore.bc_dim_customer",
+      "bizcore.bc_fact_customer_order",
+    ],
+  }
+  assert record.scope_mode == "partial_load"

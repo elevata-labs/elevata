@@ -122,8 +122,18 @@ from metadata.generation.query_governance import analyze_query_governance
 from metadata.generation.validators import summarize_targetdataset_health, validate_query_tree_integrity
 from metadata.ingestion.import_service import import_metadata_for_datasets
 from metadata.models import (
-  QueryUnionNode, QueryUnionBranch, QueryUnionOutputColumn, QueryUnionBranchMapping,
-  SourceDataset, System, TargetSchema, TargetDataset, TargetDatasetInput, TargetColumn,)
+  PartialLoad,
+  QueryUnionNode,
+  QueryUnionBranch,
+  QueryUnionOutputColumn,
+  QueryUnionBranchMapping,
+  SourceDataset,
+  System,
+  TargetSchema,
+  TargetDataset,
+  TargetDatasetInput,
+  TargetColumn,
+)
 from metadata.rendering.dialects import get_active_dialect
 from metadata.rendering.sql_service import (
   render_preview_sql,
@@ -333,16 +343,19 @@ def _architecture_control_scope_params(request) -> dict[str, str]:
   """
   values = request.POST if request.method == "POST" else request.GET
   scope_mode = (values.get("scope_mode") or "all").strip()
-  if scope_mode not in {"all", "schema", "target_dataset"}:
+  if scope_mode not in {"all", "schema", "target_dataset", "partial_load"}:
     scope_mode = "all"
 
   schema_short = (values.get("schema_short") or "").strip()
   target_dataset_id = (values.get("target_dataset_id") or "").strip()
+  partial_load_name = (values.get("partial_load_name") or "").strip()
 
   if scope_mode == "target_dataset" and not target_dataset_id and schema_short:
     scope_mode = "schema"
   elif scope_mode == "all" and target_dataset_id:
     scope_mode = "target_dataset"
+  elif scope_mode == "all" and partial_load_name:
+    scope_mode = "partial_load"
   elif scope_mode == "all" and schema_short:
     scope_mode = "schema"
 
@@ -358,6 +371,9 @@ def _architecture_control_scope_params(request) -> dict[str, str]:
 
     if (values.get("execution_no_deps") or "").strip() in {"1", "true", "on"}:
       params["execution_no_deps"] = "1"
+
+  if scope_mode == "partial_load" and partial_load_name:
+    params["partial_load_name"] = partial_load_name
 
   return params
 
@@ -386,6 +402,11 @@ def _architecture_control_scope_from_params(
   if scope_mode == "schema":
     return ArchitectureControlScope.for_schema(
       params.get("schema_short") or "",
+    )
+
+  if scope_mode == "partial_load":
+    return ArchitectureControlScope.for_partial_load(
+      params.get("partial_load_name") or "",
     )
 
   if scope_mode == "target_dataset":
@@ -1137,6 +1158,7 @@ def architecture_control(request):
   execution_no_deps = _architecture_control_no_deps_from_params(scope_params)
   selected_schema_short = scope_params.get("schema_short") or ""
   selected_target_dataset_pk = _safe_int(scope_params.get("target_dataset_id"))
+  selected_partial_load_name = scope_params.get("partial_load_name") or ""
 
   generation_context = None
   generation_error = None
@@ -1347,6 +1369,7 @@ def architecture_control(request):
     .filter(active=True)
     .order_by("target_schema__short_name", "target_dataset_name", "id")
   )
+  partial_loads = PartialLoad.objects.order_by("name")
 
   ctx = {
     "title": "Architecture Control",
@@ -1357,6 +1380,7 @@ def architecture_control(request):
     "control_back_querystring": request.GET.urlencode(),
     "selected_schema_short": selected_schema_short,
     "selected_target_dataset_pk": selected_target_dataset_pk,
+    "selected_partial_load_name": selected_partial_load_name,
     "execution_no_deps": execution_no_deps,
     "generation_context": generation_context,
     "generation_error": generation_error,
@@ -1367,6 +1391,7 @@ def architecture_control(request):
     "controlled_generation_schemas": CONTROLLED_GENERATION_SCHEMA_SHORT_NAMES,
     "target_schemas": target_schemas,
     "target_datasets": target_datasets,
+    "partial_loads": partial_loads,
     "control_context": control_context,
     "review_status": review_status,
     "execution_preview": execution_preview,

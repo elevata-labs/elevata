@@ -161,11 +161,11 @@ Contact: <https://github.com/elevata-labs/elevata>.
       action="{% url 'architecture_control' %}"
     >
       <div class="row g-3 align-items-end">
-        <div class="col-lg-3">
+        <div class="col-lg-2">
           <label for="scope-mode" class="form-label small fw-semibold">
             Scope type
           </label>
-          <select id="scope-mode" name="scope_mode" class="form-select form-select-sm">
+          <select id="scope-mode" name="scope_mode" class="form-select form-select-sm" style="max-width: none;">
             <option value="all" {% if scope_mode == "all" %}selected{% endif %}>
               All datasets
             </option>
@@ -175,14 +175,17 @@ Contact: <https://github.com/elevata-labs/elevata>.
             <option value="target_dataset" {% if scope_mode == "target_dataset" %}selected{% endif %}>
               Target dataset
             </option>
+            <option value="partial_load" {% if scope_mode == "partial_load" %}selected{% endif %}>
+              Partial load
+            </option>
           </select>
         </div>
 
-        <div class="col-lg-3">
+        <div class="col-lg-2">
           <label for="schema-short" class="form-label small fw-semibold">
             Schema
           </label>
-          <select id="schema-short" name="schema_short" class="form-select form-select-sm">
+          <select id="schema-short" name="schema_short" class="form-select form-select-sm" style="max-width: none;">
             <option value="">— select schema —</option>
             {% for schema in target_schemas %}
               <option
@@ -195,11 +198,11 @@ Contact: <https://github.com/elevata-labs/elevata>.
           </select>
         </div>
 
-        <div class="col-lg-4">
+        <div class="col-lg-3">
           <label for="target-dataset-id" class="form-label small fw-semibold">
             Target dataset
           </label>
-          <select id="target-dataset-id" name="target_dataset_id" class="form-select form-select-sm">
+          <select id="target-dataset-id" name="target_dataset_id" class="form-select form-select-sm" style="max-width: none;">
             <option value="">— select target dataset —</option>
             {% for dataset in target_datasets %}
               <option
@@ -208,6 +211,23 @@ Contact: <https://github.com/elevata-labs/elevata>.
                 {% if selected_target_dataset_pk == dataset.pk %}selected{% endif %}
               >
                 {{ dataset.target_schema.short_name }}.{{ dataset.target_dataset_name }}
+              </option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="col-lg-3">
+          <label for="partial-load-name" class="form-label small fw-semibold">
+            Partial load
+          </label>
+          <select id="partial-load-name" name="partial_load_name" class="form-select form-select-sm" style="max-width: none;">
+            <option value="">— select partial load —</option>
+            {% for partial_load in partial_loads %}
+              <option
+                value="{{ partial_load.name }}"
+                {% if selected_partial_load_name == partial_load.name %}selected{% endif %}
+              >
+                {{ partial_load.name }}
               </option>
             {% endfor %}
           </select>
@@ -223,7 +243,9 @@ Contact: <https://github.com/elevata-labs/elevata>.
 
       <div class="small text-muted mt-3">
         Schema selection is used for schema scope. Target dataset selection is used
-        for target dataset scope. All datasets does not require an additional value.
+        for target dataset scope. Partial load selection resolves its explicit roots,
+        required upstream dependencies and mandatory companions. All datasets does not
+        require an additional value.
       </div>
 
       <div class="border rounded p-3 mt-3 bg-light">
@@ -737,11 +759,11 @@ Contact: <https://github.com/elevata-labs/elevata>.
             {% if execution_preview.root_count > 12 %}
               <details class="mt-2">
                 <summary class="small fw-semibold">
-                  <span class="details-closed-label">Show all selected roots</span>
-                  <span class="details-open-label">Hide all selected roots</span>
+                  <span class="details-closed-label">Show remaining selected roots</span>
+                  <span class="details-open-label">Hide remaining selected roots</span>
                 </summary>
                 <div class="border rounded p-2 bg-light mt-2">
-                  {% for dataset_key in execution_preview.root_dataset_keys %}
+                  {% for dataset_key in execution_preview.root_dataset_keys|slice:"12:" %}
                     <div><code>{{ dataset_key }}</code></div>
                   {% endfor %}
                 </div>
@@ -752,10 +774,15 @@ Contact: <https://github.com/elevata-labs/elevata>.
           <div class="col-lg-7">
             <div class="fw-semibold small mb-2">Execution order</div>
             <div class="table-responsive">
-              <table class="table table-sm align-middle mb-0">
+              <table class="table table-sm align-middle mb-0" style="table-layout: fixed;">
+                <colgroup>
+                  <col style="width: 4rem;">
+                  <col style="width: 50%;">
+                  <col>
+                </colgroup>
                 <thead>
                   <tr>
-                    <th style="width: 4rem;">#</th>
+                    <th>#</th>
                     <th>Dataset</th>
                     <th>Upstreams</th>
                   </tr>
@@ -787,22 +814,27 @@ Contact: <https://github.com/elevata-labs/elevata>.
 
               <details class="mt-2">
                 <summary class="small fw-semibold">
-                  <span class="details-closed-label">Show full execution order</span>
-                  <span class="details-open-label">Hide full execution order</span>
+                  <span class="details-closed-label">Show remaining execution steps</span>
+                  <span class="details-open-label">Hide remaining execution steps</span>
                 </summary>
                 <div class="table-responsive mt-2">
-                  <table class="table table-sm align-middle mb-0">
+                  <table class="table table-sm align-middle mb-0" style="table-layout: fixed;">
+                    <colgroup>
+                      <col style="width: 4rem;">
+                      <col style="width: 50%;">
+                      <col>
+                    </colgroup>
                     <thead>
                       <tr>
-                        <th style="width: 4rem;">#</th>
+                        <th>#</th>
                         <th>Dataset</th>
                         <th>Upstreams</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {% for step in execution_preview.steps %}
+                      {% for step in execution_preview.steps|slice:"12:" %}
                         <tr>
-                          <td>{{ forloop.counter }}</td>
+                          <td>{{ forloop.counter|add:"12" }}</td>
                           <td><code>{{ step.dataset_key }}</code></td>
                           <td>
                             {% if step.upstream_keys %}
@@ -916,6 +948,9 @@ Contact: <https://github.com/elevata-labs/elevata>.
             {% if selected_target_dataset_pk %}
               <input type="hidden" name="target_dataset_id" value="{{ selected_target_dataset_pk }}">
             {% endif %}
+            {% if selected_partial_load_name %}
+              <input type="hidden" name="partial_load_name" value="{{ selected_partial_load_name }}">
+            {% endif %}
             {% if execution_no_deps %}
               <input type="hidden" name="execution_no_deps" value="1">
             {% endif %}
@@ -972,6 +1007,9 @@ Contact: <https://github.com/elevata-labs/elevata>.
         {% endif %}
         {% if selected_target_dataset_pk %}
           <input type="hidden" name="target_dataset_id" value="{{ selected_target_dataset_pk }}">
+        {% endif %}
+        {% if selected_partial_load_name %}
+          <input type="hidden" name="partial_load_name" value="{{ selected_partial_load_name }}">
         {% endif %}
         {% if execution_no_deps %}
           <input type="hidden" name="execution_no_deps" value="1">
@@ -1146,6 +1184,9 @@ Contact: <https://github.com/elevata-labs/elevata>.
           {% if selected_target_dataset_pk %}
             <input type="hidden" name="target_dataset_id" value="{{ selected_target_dataset_pk }}">
           {% endif %}
+          {% if selected_partial_load_name %}
+            <input type="hidden" name="partial_load_name" value="{{ selected_partial_load_name }}">
+          {% endif %}
           {% if execution_no_deps %}
             <input type="hidden" name="execution_no_deps" value="1">
           {% endif %}
@@ -1229,6 +1270,9 @@ Contact: <https://github.com/elevata-labs/elevata>.
           {% if selected_target_dataset_pk %}
             <input type="hidden" name="target_dataset_id" value="{{ selected_target_dataset_pk }}">
           {% endif %}
+          {% if selected_partial_load_name %}
+            <input type="hidden" name="partial_load_name" value="{{ selected_partial_load_name }}">
+          {% endif %}
 
           <button
             type="submit"
@@ -1270,6 +1314,9 @@ Contact: <https://github.com/elevata-labs/elevata>.
           {% endif %}
           {% if selected_target_dataset_pk %}
             <input type="hidden" name="target_dataset_id" value="{{ selected_target_dataset_pk }}">
+          {% endif %}
+          {% if selected_partial_load_name %}
+            <input type="hidden" name="partial_load_name" value="{{ selected_partial_load_name }}">
           {% endif %}
 
           <label for="approval-note" class="form-label small fw-semibold">
@@ -1332,6 +1379,7 @@ Contact: <https://github.com/elevata-labs/elevata>.
     const scopeMode = document.getElementById("scope-mode");
     const schemaSelect = document.getElementById("schema-short");
     const targetDatasetSelect = document.getElementById("target-dataset-id");
+    const partialLoadSelect = document.getElementById("partial-load-name");
     const executionNoDeps = document.getElementById("execution-no-deps");
 
     const selectedTargetSchema = () => {
@@ -1344,15 +1392,17 @@ Contact: <https://github.com/elevata-labs/elevata>.
     };
 
     const syncScopeControls = () => {
-      if (!scopeMode || !schemaSelect || !targetDatasetSelect) {
+      if (!scopeMode || !schemaSelect || !targetDatasetSelect || !partialLoadSelect) {
         return;
       }
 
       if (scopeMode.value === "all") {
         schemaSelect.value = "";
         targetDatasetSelect.value = "";
+        partialLoadSelect.value = "";
         schemaSelect.disabled = true;
         targetDatasetSelect.disabled = true;
+        partialLoadSelect.disabled = true;
         if (executionNoDeps) {
           executionNoDeps.checked = false;
           executionNoDeps.disabled = true;
@@ -1362,8 +1412,10 @@ Contact: <https://github.com/elevata-labs/elevata>.
 
       if (scopeMode.value === "schema") {
         targetDatasetSelect.value = "";
+        partialLoadSelect.value = "";
         schemaSelect.disabled = false;
         targetDatasetSelect.disabled = true;
+        partialLoadSelect.disabled = true;
         if (executionNoDeps) {
           executionNoDeps.checked = false;
           executionNoDeps.disabled = true;
@@ -1372,7 +1424,9 @@ Contact: <https://github.com/elevata-labs/elevata>.
       }
 
       if (scopeMode.value === "target_dataset") {
+        partialLoadSelect.value = "";
         targetDatasetSelect.disabled = false;
+        partialLoadSelect.disabled = true;
         const schemaShort = selectedTargetSchema();
         if (schemaShort) {
           schemaSelect.value = schemaShort;
@@ -1380,6 +1434,19 @@ Contact: <https://github.com/elevata-labs/elevata>.
         schemaSelect.disabled = true;
         if (executionNoDeps) {
           executionNoDeps.disabled = !targetDatasetSelect.value;
+        }
+        return;
+      }
+
+      if (scopeMode.value === "partial_load") {
+        schemaSelect.value = "";
+        targetDatasetSelect.value = "";
+        schemaSelect.disabled = true;
+        targetDatasetSelect.disabled = true;
+        partialLoadSelect.disabled = false;
+        if (executionNoDeps) {
+          executionNoDeps.checked = false;
+          executionNoDeps.disabled = true;
         }
       }
     };
@@ -1414,10 +1481,18 @@ Contact: <https://github.com/elevata-labs/elevata>.
       });
     }
 
-    if (scopeForm && scopeMode && schemaSelect && targetDatasetSelect) {
+    if (partialLoadSelect && scopeMode) {
+      partialLoadSelect.addEventListener("change", () => {
+        scopeMode.value = partialLoadSelect.value ? "partial_load" : "all";
+        syncScopeControls();
+      });
+    }
+
+    if (scopeForm && scopeMode && schemaSelect && targetDatasetSelect && partialLoadSelect) {
       scopeForm.addEventListener("submit", () => {
         schemaSelect.disabled = false;
         targetDatasetSelect.disabled = false;
+        partialLoadSelect.disabled = false;
         if (executionNoDeps) {
           executionNoDeps.disabled = false;
         }
@@ -1425,6 +1500,7 @@ Contact: <https://github.com/elevata-labs/elevata>.
         if (scopeMode.value === "all") {
           schemaSelect.value = "";
           targetDatasetSelect.value = "";
+          partialLoadSelect.value = "";
           if (executionNoDeps) {
             executionNoDeps.checked = false;
           }
@@ -1432,15 +1508,25 @@ Contact: <https://github.com/elevata-labs/elevata>.
 
         if (scopeMode.value === "schema") {
           targetDatasetSelect.value = "";
+          partialLoadSelect.value = "";
           if (executionNoDeps) {
             executionNoDeps.checked = false;
           }
         }
 
         if (scopeMode.value === "target_dataset") {
+          partialLoadSelect.value = "";
           const schemaShort = selectedTargetSchema();
           if (schemaShort) {
             schemaSelect.value = schemaShort;
+          }
+        }
+
+        if (scopeMode.value === "partial_load") {
+          schemaSelect.value = "";
+          targetDatasetSelect.value = "";
+          if (executionNoDeps) {
+            executionNoDeps.checked = false;
           }
         }
       });

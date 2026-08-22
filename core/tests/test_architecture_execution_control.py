@@ -56,6 +56,7 @@ def _preview(
   can_execute: bool = True,
   dependency_mode: str = "with_dependencies",
   impact_plan_binding=None,
+  root_dataset_keys: tuple[str, ...] = ("raw.customer",),
   execution_dataset_keys: tuple[str, ...] = ("raw.customer",),
 ) -> SimpleNamespace:
   """
@@ -65,6 +66,7 @@ def _preview(
     scope_key="all",
     scope_label="All datasets",
     dependency_mode=dependency_mode,
+    root_dataset_keys=root_dataset_keys,
     execution_dataset_keys=execution_dataset_keys,
     report_fingerprint="report-1",
     approval_id="apr_123",
@@ -152,6 +154,9 @@ def test_execute_architecture_control_scope_runs_all_scope(
   assert result.output_lines == ("done",)
   assert result.output_tail == ("done",)
   assert result.output_truncated is False
+  assert result.scope_mode == "all"
+  assert result.root_dataset_keys == ("raw.customer",)
+  assert result.execution_dataset_keys == ("raw.customer",)
   assert result.execution_id
   assert result.execution_record_path.endswith(".execution.json")
   assert result.execution_record_fingerprint

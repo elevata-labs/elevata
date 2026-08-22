@@ -96,10 +96,14 @@ logger = logging.getLogger(__name__)
 # -------------------------------------------------------------------
 class PartialLoad(AuditFields):
   name = models.CharField(max_length=10, validators=[SHORT_NAME_VALIDATOR], unique=True,
-    help_text="Short code for this partial load. Will be displayed as the load pipeline name."
+    help_text=(
+      "Short code for this named execution scope. Used as the Partial Load name "
+      "in execution manifests and scheduler integrations. The name 'full' is reserved "
+      "for the implicit full execution scope."
+    )
   )
   description = models.CharField(max_length=255, blank=True, null=True,
-    help_text="Optional description which purpose this partial load is meant for."
+    help_text="Optional description of the purpose of this Partial Load execution scope."
   )
 
   class Meta:
@@ -781,7 +785,12 @@ class TargetDataset(AuditFields):
     ),
   )
   partial_load = models.ManyToManyField("PartialLoad", blank=True, related_name="datasets", db_table="target_dataset_partial_load",
-    help_text="Optional subset extraction definitions (per environment / window)."
+    help_text=(
+      "Optional Partial Loads for which this dataset is an explicit execution root. "
+      "Required upstream dependencies and mandatory system-managed companions are "
+      "resolved automatically. System-managed history datasets must not be assigned "
+      "as explicit roots."
+    )
   )
   owner = models.ManyToManyField("Person", blank=True, through="TargetDatasetOwnership", related_name="target_datasets",
     help_text="Declared business / technical owners with roles."

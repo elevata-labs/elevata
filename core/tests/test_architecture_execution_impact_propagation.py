@@ -602,7 +602,7 @@ def test_full_rebuild_upstream_keeps_historized_target_incremental() -> None:
     target_datasets=(hist, upstream),
     dependency_resolver=_resolver({
       "rawcore.customer_hist": (
-        DummyDependency(upstream, "lineage_input"),
+        DummyDependency(upstream, "hist_base_ready"),
       ),
     }),
   )
@@ -642,7 +642,7 @@ def test_incremental_upstream_keeps_historized_target_incremental() -> None:
     target_datasets=(hist, upstream),
     dependency_resolver=_resolver({
       "rawcore.customer_hist": (
-        DummyDependency(upstream, "lineage_input"),
+        DummyDependency(upstream, "hist_base_ready"),
       ),
     }),
   )
@@ -653,6 +653,44 @@ def test_incremental_upstream_keeps_historized_target_incremental() -> None:
     "INCREMENTAL_LOAD_STRATEGY",
     "UPSTREAM_EXECUTION_REQUIRED",
   )
+
+
+def test_blocked_hist_base_blocks_history_companion() -> None:
+  upstream = _target("rawcore.customer", incremental_strategy="merge")
+  hist = _target(
+    "rawcore.customer_hist",
+    incremental_strategy="historize",
+  )
+  plan = _plan(
+    _item(
+      "rawcore.customer",
+      decision="BLOCKED",
+      reason_codes=("POLICY_BLOCKED",),
+    ),
+    _item(
+      "rawcore.customer_hist",
+      decision="INCREMENTAL_EXECUTE",
+      reason_codes=("INCREMENTAL_LOAD_STRATEGY",),
+    ),
+  )
+
+  result = propagate_execution_impact_plan(
+    local_plan=plan,
+    target_datasets=(hist, upstream),
+    dependency_resolver=_resolver({
+      "rawcore.customer_hist": (
+        DummyDependency(upstream, "hist_base_ready"),
+      ),
+    }),
+  )
+  item = _items_by_key(result)["rawcore.customer_hist"]
+
+  assert item.decision == "BLOCKED"
+  assert item.reason_codes == (
+    "UPSTREAM_BLOCKED",
+  )
+  assert item.propagations[0].dependency_reason == "hist_base_ready"
+  assert item.propagations[0].reason_code == "UPSTREAM_BLOCKED"
 
 
 def test_target_only_assumes_resolved_external_upstream_readiness() -> None:

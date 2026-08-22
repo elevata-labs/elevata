@@ -70,6 +70,9 @@ class ArchitectureExecutionRecord:
   impact_assessed_count: int = 0
   impact_decision_counts: tuple[tuple[str, int], ...] = ()
   execution_outcomes: tuple[dict[str, Any], ...] = ()
+  scope_mode: str | None = None
+  root_dataset_keys: tuple[str, ...] = ()
+  execution_dataset_keys: tuple[str, ...] = ()
 
   @property
   def record_fingerprint(self) -> str:
@@ -125,6 +128,20 @@ class ArchitectureExecutionRecord:
         dict(item)
         for item in self.execution_outcomes
       ]
+
+    if (
+      self.scope_mode
+      or self.root_dataset_keys
+      or self.execution_dataset_keys
+    ):
+      payload["record_version"] = 4
+      payload["execution_scope"] = {
+        "scope_mode": self.scope_mode,
+        "root_dataset_keys": list(self.root_dataset_keys),
+        "execution_dataset_keys": list(
+          self.execution_dataset_keys
+        ),
+      }
 
     if include_fingerprint:
       payload["record_fingerprint"] = self.record_fingerprint
@@ -367,6 +384,22 @@ def build_architecture_execution_record(result: Any) -> ArchitectureExecutionRec
       for key, value in impact_decision_counts
     ),
     execution_outcomes=execution_outcomes,
+    scope_mode=(
+      str(getattr(result, "scope_mode", "") or "").strip()
+      or None
+    ),
+    root_dataset_keys=tuple(
+      str(dataset_key)
+      for dataset_key in (
+        getattr(result, "root_dataset_keys", ()) or ()
+      )
+    ),
+    execution_dataset_keys=tuple(
+      str(dataset_key)
+      for dataset_key in (
+        getattr(result, "execution_dataset_keys", ()) or ()
+      )
+    ),
   )
 
 

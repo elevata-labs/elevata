@@ -82,6 +82,7 @@ from metadata.rendering.placeholders import resolve_delta_cutoff_for_source_data
 from metadata.intent.ingestion import resolve_ingest_mode
 from metadata.ingestion.connectors import ingest_raw_for_source_dataset
 from metadata.execution.load_graph import resolve_execution_order, resolve_execution_order_all
+from metadata.execution.load_scope import LoadScopeError, resolve_partial_load_scope
 from metadata.execution.executor import build_execution_plan, execute_plan, ExecutionPolicy
 from metadata.execution.snapshot import (
   build_execution_snapshot,
@@ -947,6 +948,7 @@ def _validate_execution_run_plan_options(
   run_plan_path: str | None,
   execute: bool,
   all_datasets: bool,
+  partial_load_name: str | None = None,
   no_deps: bool,
   no_plan_guard: bool,
   execution_impact_selection: object | None,
@@ -970,6 +972,12 @@ def _validate_execution_run_plan_options(
     raise CommandError(
       "Execution Run Plan mode executes one scheduler step at a time "
       "and cannot be combined with --all."
+    )
+
+  if partial_load_name:
+    raise CommandError(
+      "Execution Run Plan mode executes one scheduler-managed dataset step at "
+      "a time and cannot be combined with --partial-load."
     )
 
   if not no_deps:
@@ -2884,6 +2892,7 @@ class Command(BaseCommand):
   stealth_options = (
     "execution_impact_selection",
     "execution_outcome_collector",
+    "expected_partial_load_root_keys",
   )
 
   help = (
@@ -2914,7 +2923,18 @@ class Command(BaseCommand):
       help=(
         "Execute all datasets in deterministic dependency order. "
         "Use --schema to scope roots to one target schema (dependencies are still included). "
-        "Ignores target_name if provided."
+        "Cannot be combined with target_name or --partial-load."
+      ),
+    )
+
+    parser.add_argument(
+      "--partial-load",
+      dest="partial_load_name",
+      type=str,
+      default=None,
+      help=(
+        "Execute one named Partial Load using its explicit TargetDataset roots, "
+        "required upstream dependencies and mandatory runtime companions."
       ),
     )
 
@@ -2989,8 +3009,8 @@ class Command(BaseCommand):
       dest="no_deps",
       action="store_true",
       help=(
-        "Execute only the specified target dataset, without resolving or executing "
-        "any upstream dependencies."
+        "Execute only the specified single target dataset, without resolving or "
+        "executing upstream dependencies. Not supported with --partial-load."
       ),
     )
 
@@ -3138,20 +3158,66 @@ class Command(BaseCommand):
         "Please specify --schema to disambiguate."
       ) from exc
 
+  def _resolve_partial_load_scope(self, partial_load_name: str):
+    """Resolve one Partial Load through the canonical reusable-scope contract."""
+    try:
+      return resolve_partial_load_scope(partial_load_name)
+    except LoadScopeError as exc:
+      raise CommandError(str(exc)) from exc
+
   def _validate_root_selection(
     self,
     *,
     target_name: str | None,
     all_datasets: bool,
+    partial_load_name: str | None = None,
+    schema_short: str | None = None,
+    no_deps: bool = False,
   ) -> None:
     """
     Validate CLI selection rules for root dataset(s).
     """
-    if all_datasets and target_name:
-      raise CommandError("Invalid arguments: do not pass target_name together with --all.")
+    selected_scope_count = sum((
+      1 if target_name else 0,
+      1 if all_datasets else 0,
+      1 if partial_load_name else 0,
+    ))
+    if selected_scope_count != 1:
+      raise CommandError(
+        "Select exactly one load scope: target_name, --all or --partial-load."
+      )
 
-    if (not all_datasets) and (not target_name):
-      raise CommandError("Missing target_name. Provide a dataset name or use --all.")
+    if partial_load_name and schema_short:
+      raise CommandError(
+        "--schema cannot be combined with --partial-load. Partial Load roots "
+        "already define the execution scope."
+      )
+
+    if partial_load_name and no_deps:
+      raise CommandError(
+        "--no-deps cannot be combined with --partial-load. Partial Loads always "
+        "execute their resolved dependencies and mandatory companions."
+      )
+
+  def _validate_partial_load_root_binding(
+    self,
+    *,
+    roots: list[TargetDataset],
+    expected_root_dataset_keys: tuple[str, ...] | None,
+  ) -> None:
+    """Fail closed when controlled Partial Load root intent changed in-flight."""
+    if expected_root_dataset_keys is None:
+      return
+
+    actual_root_dataset_keys = tuple(
+      _dataset_key_for_target_dataset(root)
+      for root in roots
+    )
+    if actual_root_dataset_keys != expected_root_dataset_keys:
+      raise CommandError(
+        "Partial Load root definition changed between controlled preview and "
+        "execution. Refresh Architecture Control before executing the scope."
+      )
 
   def _style_warning(self, text: str) -> str:
     """
@@ -3169,6 +3235,7 @@ class Command(BaseCommand):
     all_datasets: bool,
     schema_short: str | None,
     no_print: bool,
+    partial_load_name: str | None = None,
   ) -> None:
     """
     Print execution plan in a deterministic, stdout-safe way.
@@ -3179,7 +3246,16 @@ class Command(BaseCommand):
 
     self.stdout.write("")
 
-    if all_datasets:
+    if partial_load_name:
+      self.stdout.write(self.style.NOTICE(
+        "Execution plan "
+        f"(partial load={partial_load_name}, batch_run_id={batch_run_id}):"
+      ))
+      for i, td in enumerate(execution_order, start=1):
+        self.stdout.write(
+          f"  {i}. {td.target_schema.short_name}.{td.target_dataset_name}"
+        )
+    elif all_datasets:
       scope = f", schema={schema_short}" if schema_short else ""
       self.stdout.write(self.style.NOTICE(
         f"Execution plan (all datasets{scope}, batch_run_id={batch_run_id}):"
@@ -3216,7 +3292,11 @@ class Command(BaseCommand):
     """
     target_name: str | None = options.get("target_name")
     schema_short: str | None = options["schema_short"]
-    all_datasets: bool = bool(options.get("all_datasets", False))    
+    all_datasets: bool = bool(options.get("all_datasets", False))
+    partial_load_name = (
+      str(options.get("partial_load_name") or "").strip()
+      or None
+    )
     dialect_name: str | None = options["dialect_name"]
     target_system_name: str | None = options["target_system_name"]
     execute: bool = options["execute"]
@@ -3246,11 +3326,23 @@ class Command(BaseCommand):
     execution_outcome_collector = options.get(
       "execution_outcome_collector"
     )
+    raw_expected_partial_load_root_keys = options.get(
+      "expected_partial_load_root_keys"
+    )
+    expected_partial_load_root_keys = (
+      tuple(
+        str(dataset_key or "").strip()
+        for dataset_key in raw_expected_partial_load_root_keys
+      )
+      if raw_expected_partial_load_root_keys is not None
+      else None
+    )
 
     _validate_execution_run_plan_options(
       run_plan_path=run_plan_path,
       execute=execute,
       all_datasets=all_datasets,
+      partial_load_name=partial_load_name,
       no_deps=no_deps,
       no_plan_guard=no_plan_guard,
       execution_impact_selection=execution_impact_selection,
@@ -3289,13 +3381,31 @@ class Command(BaseCommand):
     self._validate_root_selection(
       target_name=target_name,
       all_datasets=all_datasets,
-    )    
+      partial_load_name=partial_load_name,
+      schema_short=schema_short,
+      no_deps=no_deps,
+    )
 
     # 1) Resolve root dataset(s)
     root_td = None
     roots: list[TargetDataset] = []
 
-    if all_datasets:
+    resolved_partial_load_scope = None
+    if partial_load_name:
+      resolved_partial_load_scope = self._resolve_partial_load_scope(
+        partial_load_name
+      )
+      roots = list(resolved_partial_load_scope.roots)
+      if not roots:
+        raise CommandError(
+          f"Partial Load '{partial_load_name}' resolved to no execution roots."
+        )
+      root_td = roots[0]
+      self._validate_partial_load_root_binding(
+        roots=roots,
+        expected_root_dataset_keys=expected_partial_load_root_keys,
+      )
+    elif all_datasets:
       qs = TargetDataset.objects.all()
       # In --all mode, --schema scopes the root set (dependencies are still included).
       if schema_short:
@@ -3332,7 +3442,9 @@ class Command(BaseCommand):
 
     try:
       # 5) Resolve execution order
-      if all_datasets:
+      if resolved_partial_load_scope is not None:
+        execution_order = list(resolved_partial_load_scope.execution_order)
+      elif all_datasets:
         if no_deps:
           # no_deps in --all means: run only the selected roots (no upstream expansion)
           execution_order = sorted(roots, key=lambda d: (d.target_schema.short_name, d.target_dataset_name))
@@ -3421,6 +3533,7 @@ class Command(BaseCommand):
         all_datasets=all_datasets,
         schema_short=schema_short,
         no_print=no_print,
+        partial_load_name=partial_load_name,
       )
 
       if not no_print:
@@ -4181,7 +4294,12 @@ class Command(BaseCommand):
       # 9) Execution summary
       if not no_print:
         self.stdout.write("")
-        if all_datasets:
+        if partial_load_name:
+          self.stdout.write(self.style.NOTICE(
+            "Execution summary "
+            f"(partial load={partial_load_name}, batch_run_id={batch_run_id}):"
+          ))
+        elif all_datasets:
           scope = f", schema={schema_short}" if schema_short else ""
           self.stdout.write(self.style.NOTICE(
             f"Execution summary (all datasets{scope}, batch_run_id={batch_run_id}):"

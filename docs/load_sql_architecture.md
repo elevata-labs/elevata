@@ -147,6 +147,8 @@ It:
 
 The same pipeline is used for SQL preview and execution.
 
+A named `PartialLoad` changes only **which datasets enter the resolved execution scope**. It does not introduce a separate SQL-generation path or load mode. Every selected dataset keeps its existing `LoadPlan`, incremental strategy, delete-detection behavior, and historization semantics.
+
 ---
 
 ## 🔧 7. Deterministic Generation

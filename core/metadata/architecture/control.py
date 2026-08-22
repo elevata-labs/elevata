@@ -65,6 +65,7 @@ from metadata.architecture.scope import (
 from metadata.architecture.service import ArchitectureStateService
 from metadata.architecture.state import ArchitectureState
 from metadata.architecture.store import ArchitectureStateStore
+from metadata.execution.load_scope import LoadScopeError, resolve_partial_load_scope
 from metadata.materialization.policy import load_materialization_policy
 from metadata.models import TargetDataset
 
@@ -72,6 +73,7 @@ from metadata.models import TargetDataset
 ArchitectureControlScopeMode = Literal[
   "target_dataset",
   "schema",
+  "partial_load",
   "all",
 ]
 
@@ -91,6 +93,7 @@ class ArchitectureControlScope:
   schema_short: str | None = None
   target_name: str | None = None
   dataset_key: str | None = None
+  partial_load_name: str | None = None
   include_related_hist: bool = True
 
   @property
@@ -104,6 +107,9 @@ class ArchitectureControlScope:
     if self.mode == "schema":
       return f"schema:{self.schema_short or ''}"
 
+    if self.mode == "partial_load":
+      return f"partial_load:{self.partial_load_name or ''}"
+
     return "all"
 
   @property
@@ -116,6 +122,9 @@ class ArchitectureControlScope:
 
     if self.mode == "schema":
       return f"Schema: {self.schema_short or ''}"
+
+    if self.mode == "partial_load":
+      return f"Partial load: {self.partial_load_name or ''}"
 
     return "All datasets"
 
@@ -168,6 +177,26 @@ class ArchitectureControlScope:
     return cls(
       mode="schema",
       schema_short=schema_value,
+      include_related_hist=include_related_hist,
+    )
+
+  @classmethod
+  def for_partial_load(
+    cls,
+    partial_load_name: str,
+    *,
+    include_related_hist: bool = True,
+  ) -> ArchitectureControlScope:
+    """
+    Build an Architecture Control scope for one named reusable Partial Load.
+    """
+    name = (partial_load_name or "").strip()
+    if not name:
+      raise ArchitectureControlError("Partial Load scope requires a Partial Load name.")
+
+    return cls(
+      mode="partial_load",
+      partial_load_name=name,
       include_related_hist=include_related_hist,
     )
 
@@ -267,7 +296,7 @@ def build_architecture_control_report_with_baseline(
       current_dataset_keys=current_dataset_keys,
       previous_state=baseline_resolution.previous_state,
     )
-  except ArchitectureScopeError as exc:
+  except (ArchitectureScopeError, LoadScopeError) as exc:
     raise ArchitectureControlError(str(exc)) from exc
 
   report = build_architecture_change_report(
@@ -615,6 +644,10 @@ def _resolve_relevant_dataset_keys(
       all_datasets=True,
       include_related_hist=scope.include_related_hist,
     )
+
+  if scope.mode == "partial_load":
+    resolved = resolve_partial_load_scope(scope.partial_load_name or "")
+    return set(resolved.execution_dataset_keys)
 
   return resolve_dataset_keys_from_state(
     state=current_state,

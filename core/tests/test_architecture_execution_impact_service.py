@@ -460,7 +460,7 @@ def test_service_keeps_historized_target_incremental_after_upstream_full_rebuild
     target_datasets=(hist, upstream),
     dependency_resolver=_resolver({
       "rawcore.customer_hist": (
-        DummyDependency(upstream, "lineage_input"),
+        DummyDependency(upstream, "hist_base_ready"),
       ),
     }),
   )

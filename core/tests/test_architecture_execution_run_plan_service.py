@@ -359,3 +359,45 @@ def test_run_plan_service_fails_before_artifact_creation_when_blocked(
         target_system_short="dwh",
       ),
     )
+
+
+def test_run_plan_service_binds_partial_load_identity_and_explicit_roots(
+  monkeypatch,
+) -> None:
+  """
+  Verify Partial Load run plans freeze named scope, roots and resolved decisions.
+  """
+  expected = _patch_run_plan_service(monkeypatch)
+  expected.execution_scope.roots = expected.execution_scope.execution_order
+  expected.execution_scope.root_dataset_keys = (
+    "raw.customer",
+    "rawcore.customer",
+  )
+  expected.preview.scope_key = "partial_load:sales"
+  expected.preview.scope_label = "Partial load: sales"
+  expected.preview.root_dataset_keys = (
+    "raw.customer",
+    "rawcore.customer",
+  )
+
+  result = build_architecture_execution_run_plan(
+    ArchitectureControlScope.for_partial_load("sales"),
+    artifact_context=ArchitectureArtifactContext(
+      profile_name="dev",
+      target_system_short="dwh",
+    ),
+    run_plan_id="run-plan-sales",
+    batch_run_id="batch-sales",
+    created_at="2026-08-20T04:30:00+00:00",
+  )
+
+  assert result.run_plan.scope_mode == "partial_load"
+  assert result.run_plan.scope_key == "partial_load:sales"
+  assert result.run_plan.root_dataset_keys == (
+    "raw.customer",
+    "rawcore.customer",
+  )
+  assert result.run_plan.dataset_keys == (
+    "raw.customer",
+    "rawcore.customer",
+  )

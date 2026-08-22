@@ -47,6 +47,7 @@ EXECUTION_RUN_PLAN_ARTIFACT_VERSION = 1
 ExecutionRunPlanScopeMode = Literal[
   "target_dataset",
   "schema",
+  "partial_load",
   "all",
 ]
 ExecutionRunPlanDependencyMode = Literal[
@@ -65,6 +66,7 @@ _EXECUTABLE_DECISION_ORDER: tuple[
 _ALLOWED_SCOPE_MODES = frozenset({
   "target_dataset",
   "schema",
+  "partial_load",
   "all",
 })
 _ALLOWED_DEPENDENCY_MODES = frozenset({
@@ -254,6 +256,21 @@ class ExecutionRunPlan:
       raise ValueError(
         "Target-dataset Execution Run Plans require exactly one root dataset."
       )
+
+    if scope_mode == "partial_load":
+      partial_load_name = (
+        scope_key.removeprefix("partial_load:").strip()
+        if scope_key.startswith("partial_load:")
+        else ""
+      )
+      if not partial_load_name:
+        raise ValueError(
+          "Partial-load Execution Run Plans require a partial_load:<name> scope key."
+        )
+      if dependency_mode != "with_dependencies":
+        raise ValueError(
+          "Partial-load Execution Run Plans require dependency execution."
+        )
 
     if dependency_mode == "target_only":
       if scope_mode != "target_dataset":

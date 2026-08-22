@@ -382,9 +382,16 @@ Schema review scope
 
 Execution scope
 = active TargetDatasets only
+
+Partial Load execution scope
+= explicit active TargetDataset roots
+  + required upstream execution dependencies
+  + mandatory system-managed companions
 ```
 
 The TargetDataset selector continues to show active datasets only. An inactive generated dataset therefore cannot be selected as an execution root. Its retirement remains visible through the schema or full review scope, can require an Approval Artifact, and is excluded from Execution Preview, Execution Impact, manifests, and Run Plans.
+
+For a Partial Load, Architecture Control shows the user-defined roots separately from the resolved execution order. Required upstream datasets and mandatory `_hist` companions are included automatically; ordinary downstream consumers are not. Target-only execution is not available for Partial Load scopes.
 
 This separation prevents a retired metadata object from silently re-entering execution while preserving explicit review of the architecture contract change.
 
@@ -408,7 +415,15 @@ python manage.py elevata_run_plan \
   --output .artifacts/full.run_plan.json
 ```
 
-The Run Plan binds the exact dataset order, dependency mode, review status, approval identifier, Architecture State fingerprint, report fingerprint, Execution Impact fingerprint, Execution Preview fingerprint, and ExecutionPlan fingerprint. It is stored together with a matching Planned Architecture State snapshot.
+Create a scheduler plan for a named Partial Load:
+
+```bash
+python manage.py elevata_run_plan \
+  --partial-load sales \
+  --output .artifacts/sales.run_plan.json
+```
+
+The Run Plan binds the scope identity, explicit root dataset keys, exact resolved dataset order, dependency mode, review status, approval identifier, Architecture State fingerprint, report fingerprint, Execution Impact fingerprint, Execution Preview fingerprint, and ExecutionPlan fingerprint. For a Partial Load, changing the explicit root definition changes the immutable Run Plan contract even when the resolved dataset set would remain unchanged. It is stored together with a matching Planned Architecture State snapshot.
 
 Each scheduler step validates its dataset metadata against that snapshot before execution and writes one structured outcome artifact. Finalization requires one semantically valid outcome for every planned dataset:
 
@@ -633,7 +648,7 @@ This preserves a strict separation:
 | `elevata_load` | Execute loads with preflight and guard checks |
 | `elevata_finalize_run_plan` | Validate scheduler outcomes and persist the planned applied state |
 
-The Architecture Control UI invokes the same load runner through a constrained execution path. The UI does not expose arbitrary load runner flags. It exposes controlled scope selection, approval status, Execution Impact, execution preview, controlled reference readiness, target-only execution for TargetDataset scopes, captured output, and execution records.
+The Architecture Control UI invokes the same load runner through a constrained execution path. The UI does not expose arbitrary load runner flags. It exposes controlled scope selection including named Partial Loads, approval status, Execution Impact, execution preview, controlled reference readiness, target-only execution for TargetDataset scopes, captured output, and execution records.
 
 Scheduler-managed execution adds a stricter immutable boundary. A dataset task must match the Run Plan runtime context and Planned Architecture State before it can execute. Clearing or retrying dataset tasks after changing metadata is not a supported rescue workflow; create a new Run Plan and start a new scheduler run.
 
@@ -649,7 +664,8 @@ It captures:
 - reviewer or operator  
 - timestamps and duration  
 - execution status  
-- Architecture Control scope  
+- Architecture Control scope and scope mode  
+- explicit root dataset keys and exact resolved execution dataset keys  
 - dependency mode  
 - report fingerprint  
 - approval identifier  
@@ -796,6 +812,14 @@ Create an immutable full-scope scheduler Run Plan:
 python manage.py elevata_run_plan \
   --all-datasets \
   --output .artifacts/full.run_plan.json
+```
+
+Create an immutable Partial Load scheduler Run Plan:
+
+```bash
+python manage.py elevata_run_plan \
+  --partial-load sales \
+  --output .artifacts/sales.run_plan.json
 ```
 
 After every scheduler step has written a valid outcome, finalize the plan:

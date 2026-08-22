@@ -49,7 +49,7 @@ From these definitions, elevata derives deterministic Target Generation Plans an
 Target metadata generation, schema evolution, incremental loads, historization, approvals, and execution evidence are planned, validated, and applied deterministically.
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/elevata-labs/elevata/main/docs/elevata_v3_0_0.png" alt="elevata UI preview" width="900"/>
+  <img src="https://raw.githubusercontent.com/elevata-labs/elevata/main/docs/elevata_v3_1_0.png" alt="elevata UI preview" width="900"/>
   <br/>
   <em>elevata user interface spanning metadata management, Architecture Control, and controlled Environment Promotion.</em>
 </p>

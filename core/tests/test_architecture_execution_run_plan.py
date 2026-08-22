@@ -259,3 +259,117 @@ def test_execution_run_plan_rejects_unknown_artifact_version() -> None:
     match="Unsupported Execution Run Plan artifact version",
   ):
     execution_run_plan_from_dict(payload)
+
+
+def test_partial_load_run_plan_round_trip_binds_named_scope_and_roots() -> None:
+  """
+  Verify Partial Load identity, explicit roots and resolved decisions are bound.
+  """
+  selection = _selection()
+  plan = build_execution_run_plan(
+    run_plan_id="run-plan-sales",
+    batch_run_id="batch-sales",
+    created_at="2026-08-20T04:30:00+00:00",
+    profile_name="dev",
+    target_system_short="dwh",
+    scope_mode="partial_load",
+    scope_key="partial_load:sales",
+    scope_label="Partial load: sales",
+    dependency_mode="with_dependencies",
+    review_status="no_changes",
+    approval_id=None,
+    architecture_fingerprint=_fingerprint("a"),
+    report_fingerprint=_fingerprint("b"),
+    preview_fingerprint=_fingerprint("d"),
+    execution_plan_fingerprint=_fingerprint("e"),
+    root_dataset_keys=("rawcore.customer",),
+    impact_selection=selection,
+  )
+
+  loaded = parse_execution_run_plan_json(
+    render_execution_run_plan_json(plan)
+  )
+
+  assert loaded == plan
+  assert plan.scope_mode == "partial_load"
+  assert plan.scope_key == "partial_load:sales"
+  assert plan.root_dataset_keys == ("rawcore.customer",)
+  assert plan.dataset_keys == selection.dataset_keys
+
+
+def test_partial_load_run_plan_fingerprint_binds_explicit_root_intent() -> None:
+  """
+  Verify redundant root changes alter the plan even if execution scope is equal.
+  """
+  common = dict(
+    run_plan_id="run-plan-sales",
+    batch_run_id="batch-sales",
+    created_at="2026-08-20T04:30:00+00:00",
+    profile_name="dev",
+    target_system_short="dwh",
+    scope_mode="partial_load",
+    scope_key="partial_load:sales",
+    scope_label="Partial load: sales",
+    dependency_mode="with_dependencies",
+    review_status="no_changes",
+    approval_id=None,
+    architecture_fingerprint=_fingerprint("a"),
+    report_fingerprint=_fingerprint("b"),
+    preview_fingerprint=_fingerprint("d"),
+    execution_plan_fingerprint=_fingerprint("e"),
+    impact_selection=_selection(),
+  )
+  original = build_execution_run_plan(
+    **common,
+    root_dataset_keys=("rawcore.customer",),
+  )
+  redundant_root_added = build_execution_run_plan(
+    **common,
+    root_dataset_keys=(
+      "raw.customer",
+      "rawcore.customer",
+    ),
+  )
+
+  assert original.dataset_keys == redundant_root_added.dataset_keys
+  assert (
+    original.run_plan_fingerprint
+    != redundant_root_added.run_plan_fingerprint
+  )
+
+
+def test_partial_load_run_plan_requires_named_dependency_scope() -> None:
+  """
+  Verify Partial Load run plans fail closed on invalid identity or target-only mode.
+  """
+  common = dict(
+    run_plan_id="run-plan-sales",
+    batch_run_id="batch-sales",
+    created_at="2026-08-20T04:30:00+00:00",
+    profile_name="dev",
+    target_system_short="dwh",
+    scope_mode="partial_load",
+    scope_label="Partial load: sales",
+    review_status="no_changes",
+    approval_id=None,
+    architecture_fingerprint=_fingerprint("a"),
+    report_fingerprint=_fingerprint("b"),
+    preview_fingerprint=_fingerprint("d"),
+    execution_plan_fingerprint=_fingerprint("e"),
+    root_dataset_keys=("rawcore.customer",),
+    impact_selection=_selection(),
+  )
+
+  with pytest.raises(ValueError, match="partial_load:<name>"):
+    build_execution_run_plan(
+      **common,
+      scope_key="sales",
+      dependency_mode="with_dependencies",
+    )
+
+  with pytest.raises(ValueError, match="require dependency execution"):
+    build_execution_run_plan(
+      **common,
+      scope_key="partial_load:sales",
+      dependency_mode="target_only",
+    )

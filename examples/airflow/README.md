@@ -62,31 +62,39 @@ It contains:
 - all target datasets  
 - execution dependencies for scheduling  
 - semantic lineage dependencies for explanation  
+- resolved load scopes (`full` plus all configured Partial Loads)  
+- resolved `nodes[].load_scopes` membership for every target dataset  
 - information required to maximize parallel execution
 
-Airflow uses this information to build a deterministic execution graph.
+Airflow uses this information to build deterministic execution graphs for every available load scope.
 
 ---
 
 ## Workflow
 
-The `elevata_load` DAG works as follows:
+The DAG file is a factory. It creates one Airflow DAG for every load scope in the manifest:
+
+- `elevata_load` for the implicit `full` scope  
+- `elevata_load_<partial_load_name>` for every Partial Load
+
+Every generated DAG uses the same implementation:
 
 1. `airflow-init` generates the initial elevata manifest before the DAG processor and scheduler start.  
-2. Airflow parses the manifest and builds the target-task graph from its execution dependencies.  
+2. Airflow parses `load_scopes` and creates one target-task graph per resolved load scope.  
 3. At the beginning of every DAG run, `generate_manifest` refreshes the canonical manifest.  
-4. `validate_manifest_contract` compares the refreshed effective target-task graph with the graph used when the DAG was parsed.  
-5. `create_execution_run_plan` creates a new immutable Execution Run Plan and stores the matching Planned Architecture State snapshot.  
+4. `validate_manifest_contract` compares the refreshed scope-specific graph, resolved membership and explicit Partial Load roots with the contract used when that DAG was parsed.  
+5. `create_execution_run_plan` creates a new immutable Execution Run Plan for the exact load scope and stores the matching Planned Architecture State snapshot.  
 6. Each dataset task validates its runtime context and dataset metadata against the Run Plan before execution and writes structured scheduler-step outcome evidence.  
 7. `finalize_execution_run_plan` validates the complete outcome set and persists exactly the Planned Architecture State that the run applied.  
 8. Metadata changes detected after Run Plan creation remain visible as post-plan drift and are handled by a new DAG run.
 
 This ensures:
 
-- the complete DAG is visible immediately after startup  
+- all currently available load DAGs are visible after manifest generation and DAG parsing  
 - execution order is deterministic  
 - orchestration follows elevata execution dependencies  
-- a DAG run never combines an old parsed Airflow graph with a changed elevata manifest  
+- a DAG run never combines an old parsed load scope with a changed elevata manifest  
+- unrelated changes outside a Partial Load do not invalidate that Partial Load's parsed task graph  
 - dataset execution is bound to an immutable architecture snapshot  
 - the recorded Architecture State represents the architecture actually applied by the completed run
 
@@ -97,14 +105,44 @@ This ensures:
 After starting Airflow:
 
 1. `airflow-init` creates or refreshes the initial manifest.  
-2. The DAG processor parses the manifest and exposes the full execution graph.  
-3. Trigger the DAG `elevata_load`.
+2. The DAG processor parses the manifest and exposes `elevata_load` plus one DAG for every Partial Load already present in the manifest.  
+3. Trigger `elevata_load` for the full scope, or trigger one of the generated Partial Load DAGs.
 
 No bootstrap DAG run is required.
 
 The first successful full-scope run establishes the recorded Architecture State for the selected profile and target system. The state is written only after all planned dataset outcomes have been validated successfully.
 
-When target datasets or their execution dependencies change, the next run refreshes the manifest and stops before dataset execution. Airflow then reparses the updated manifest. Trigger a new run after the updated graph is visible.
+When target datasets, execution dependencies or load-scope definitions change, the next relevant run refreshes the manifest and stops before dataset execution when its own parsed scope contract changed. Airflow then reparses the updated manifest. Trigger a new run after the updated graph is visible.
+
+---
+
+## Load Scopes and Scheduling
+
+Load-scope definition belongs to elevata metadata; scheduling belongs to Airflow.
+
+The manifest always contains the implicit `full` scope and additionally contains every configured Partial Load. The DAG factory therefore exposes for example:
+
+```text
+elevata_load
+elevata_load_sales
+elevata_load_finance
+```
+
+A newly created Partial Load requires no new DAG code. Regenerate the manifest and allow Airflow to reparse the DAG file; the new load then appears automatically.
+
+Schedules are configured locally in `elevata_load_dag.py`:
+
+```python
+SCHEDULES = {
+  "full": None,
+  # "sales": "0 * * * *",
+  # "finance": "0 4 * * *",
+}
+```
+
+Any load scope not listed in `SCHEDULES` automatically uses `schedule=None`. New Partial Loads therefore appear safely unscheduled until the user explicitly assigns an Airflow schedule.
+
+The schedule map is intentionally not part of elevata metadata. Other schedulers may use different scheduling syntax and configuration.
 
 ---
 
@@ -131,7 +169,9 @@ An Approval Artifact does not override blocking policy decisions. A report that 
 
 ### Regenerating the Manifest
 
-Run the manifest command in the scheduler container:
+Run the manifest command in the scheduler container. The command differs slightly depending on the shell used on the host.
+
+**Linux / macOS shell (Bash):**
 
 ```bash
 docker compose exec airflow-scheduler bash -lc \
@@ -141,11 +181,29 @@ docker compose exec airflow-scheduler bash -lc \
   --target-system ${ELEVATA_TARGET_SYSTEM:-dwh}"
 ```
 
-The manifest must be regenerated when the scheduler graph changes, including:
+**Windows PowerShell:**
+
+```powershell
+docker compose exec airflow-scheduler bash -lc '/opt/airflow/elevata_venv/bin/python /opt/elevata/core/manage.py elevata_manifest --profile ${ELEVATA_PROFILE:-dev} --target-system ${ELEVATA_TARGET_SYSTEM:-dwh}'
+```
+
+The outer single quotes in the PowerShell variant are intentional. They prevent PowerShell from interpreting Bash expressions such as `${ELEVATA_PROFILE:-dev}` before the command reaches the container.
+
+If preferred, explicit values can be used instead:
+
+```powershell
+docker compose exec airflow-scheduler bash -lc '/opt/airflow/elevata_venv/bin/python /opt/elevata/core/manage.py elevata_manifest --profile dev --target-system dwh'
+```
+
+The manifest must be regenerated when scheduler-relevant metadata changes, including:
 
 - activating or deactivating a TargetDataset  
 - adding or removing a TargetDataset  
-- adding, removing or changing execution dependencies
+- adding, removing or changing execution dependencies  
+- adding or removing a Partial Load  
+- changing the explicit TargetDataset roots assigned to a Partial Load
+
+A change to one Partial Load does not redefine unrelated Partial Load DAGs. Each DAG validates only its own resolved scope contract before execution.
 
 After regeneration, wait for the normal Airflow parse cycle. A scheduler or DAG processor restart may be used when an immediate reparse is required.
 
@@ -339,11 +397,13 @@ To avoid re-installing dependencies on every container start, the entrypoint wri
 ## Notes
 
 - Source datasets appear in the manifest for lineage completeness but do not create Airflow tasks.  
+- Every manifest load scope becomes one Airflow DAG automatically.  
+- `full` maps to `elevata_load`; Partial Loads map to `elevata_load_<partial_load_name>`.  
 - Dataset execution is parallelized based on execution dependencies.  
-- Semantic lineage and execution scheduling are represented separately in the manifest.  
-- Datasets run as soon as all upstream execution dependencies are completed.  
-- The manifest is the single source of truth for execution ordering.  
-- The effective target-task graph is fingerprinted at DAG parse time and revalidated before every run.  
+- Semantic lineage, execution scheduling and load-scope membership are represented separately in the manifest.  
+- Datasets run as soon as all upstream execution dependencies in the selected load scope are completed.  
+- The manifest is the single source of truth for execution ordering and resolved load-scope membership.  
+- The effective scope-specific target-task graph is fingerprinted at DAG parse time and revalidated before every run.  
 - The Execution Run Plan and Planned Architecture State are immutable execution inputs for one DAG run.  
 - The recorded Architecture State advances only through successful finalization or explicit interrupted-initial-deployment recovery.
 
@@ -353,7 +413,9 @@ To avoid re-installing dependencies on every container start, the entrypoint wri
 
 To keep this example easy to adopt and update, the following parts are intended to remain stable:
 
-- **DAG ID**: `elevata_load`  
+- **DAG IDs**:  
+    - `elevata_load` for the full scope  
+    - `elevata_load_<partial_load_name>` for Partial Loads  
 - **Environment variables**:  
     - `ELEVATA_SQL_DIALECT`  
     - `ELEVATA_PROFILE`  
@@ -365,7 +427,12 @@ To keep this example easy to adopt and update, the following parts are intended 
     - `nodes[].type`  
     - `nodes[].deps`  
     - `nodes[].execution_deps`  
-    - `nodes[].lineage_deps`
+    - `nodes[].lineage_deps`  
+    - `nodes[].load_scopes`  
+    - `load_scopes[].name`  
+    - `load_scopes[].scope_mode`  
+    - `load_scopes[].root_dataset_ids`  
+    - `load_scopes[].dataset_ids`
 
 If the manifest format changes in the future, it should remain backward compatible or be versioned explicitly (e.g. `manifest_version`) so orchestration examples can adapt cleanly.
 

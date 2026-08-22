@@ -129,7 +129,7 @@ Note: `_hist` physical drops are **disabled by default** even when base auto-dro
 
 ## 🔧 4. Historization Workflow (Incremental, SCD2)
 
-Historization runs **after** the Rawcore Merge Load.
+Historization runs **after** the corresponding Rawcore base load. The base may use a full or merge strategy; historization always consumes the fully materialized current Rawcore state.
 
 The historization pipeline consists of **four steps**, executed in order:
 
@@ -267,9 +267,11 @@ WHERE NOT EXISTS (
 
 ## 🔧 9. Ordering Guarantees
 
-Historization is always executed as a downstream step of the Rawcore load and relies on the Rawcore snapshot being fully materialized for the same load timestamp and load run ID.
+Historization is always executed as a downstream step of the Rawcore base load and relies on the Rawcore snapshot being fully materialized before the history step starts. The history step uses one consistent runtime load timestamp and load run ID across its four SCD2 statements. Whenever a historized Rawcore base dataset is part of a resolved execution scope, its existing `_hist` companion is included automatically and depends on successful completion of the base dataset.
 
-The SCD2 pipeline must always run in the following order:
+This dependency does not serialize unrelated downstream work. After the Rawcore base completes, the `_hist` companion and ordinary downstream datasets may execute in parallel when no additional execution dependency exists between them.
+
+Within the `_hist` task itself, the SCD2 pipeline must always run in the following order:
 
 1. Close changed versions  
 2. Close deleted versions  
@@ -317,9 +319,9 @@ No dialect requires MERGE for historization.
 
 ---
 
-## 🔧 12. Interaction with Rawcore Merge Load
+## 🔧 12. Interaction with the Rawcore Base Load
 
-Historization relies on Rawcore being loaded with a consistent **incremental merge** before it runs.
+Historization relies on the corresponding Rawcore base dataset being loaded successfully before it runs. The base keeps its normal `TargetDataset` load strategy, including full refresh or merge. Historization does not introduce or override the base load strategy.
 
 Historization consumes:
 

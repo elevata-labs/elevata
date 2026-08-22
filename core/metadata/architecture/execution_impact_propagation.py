@@ -42,6 +42,7 @@ from .execution_impact import (
 _DATA_PROPAGATION_DEPENDENCY_REASONS = frozenset({
   "lineage_input",
   "source_raw_ready",
+  "hist_base_ready",
 })
 
 _READINESS_ONLY_DEPENDENCY_REASONS = frozenset({
@@ -125,7 +126,7 @@ def propagate_execution_impact_plan(
   Propagate dataset-local impact decisions across execution dependencies.
 
   Propagation is read-only and conservative:
-  - lineage_input and source_raw_ready propagate data-impact decisions
+  - lineage_input, source_raw_ready and hist_base_ready propagate data-impact decisions
   - reference_parent_ready remains a readiness and ordering dependency
   - missing or unsupported dependency evidence blocks unsafe decisions
   - no execution behavior is changed by this function

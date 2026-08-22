@@ -103,6 +103,9 @@ class ArchitectureControlledExecutionResult:
   execution_record_error: str | None = None
   impact_plan_binding: ArchitectureExecutionImpactBinding | None = None
   execution_outcomes: tuple[dict[str, Any], ...] = ()
+  scope_mode: str | None = None
+  root_dataset_keys: tuple[str, ...] = ()
+  execution_dataset_keys: tuple[str, ...] = ()
 
   @property
   def succeeded(self) -> bool:
@@ -169,6 +172,19 @@ def execute_architecture_control_scope(
     no_deps=no_deps,
   )
 
+  if scope.mode == "partial_load":
+    expected_root_dataset_keys = tuple(
+      getattr(preview, "root_dataset_keys", ()) or ()
+    )
+    if not expected_root_dataset_keys:
+      raise ArchitectureControlledExecutionError(
+        "Controlled Partial Load execution requires explicit root evidence."
+      )
+    command_options = {
+      **command_options,
+      "expected_partial_load_root_keys": expected_root_dataset_keys,
+    }
+
   if impact_selection is not None:
     command_options = {
       **command_options,
@@ -201,6 +217,7 @@ def execute_architecture_control_scope(
       status="failed",
       message=_controlled_error_message(str(exc)),
       preview=preview,
+      scope_mode=scope.mode,
       command_name=command_name,
       command_args=command_args,
       command_options=command_options,
@@ -220,6 +237,7 @@ def execute_architecture_control_scope(
       status="failed",
       message=str(exc),
       preview=preview,
+      scope_mode=scope.mode,
       command_name=command_name,
       command_args=command_args,
       command_options=command_options,
@@ -238,6 +256,7 @@ def execute_architecture_control_scope(
     status="success",
     message=f"Architecture execution completed for {scope.label}{actor_suffix}.",
     preview=preview,
+    scope_mode=scope.mode,
     command_name=command_name,
     command_args=command_args,
     command_options=command_options,
@@ -285,6 +304,22 @@ def _build_elevata_load_command(
     options["schema_short"] = scope.schema_short
     options["no_deps"] = bool(no_deps)
     return "elevata_load", (scope.target_name,), options
+
+  if scope.mode == "partial_load":
+    partial_load_name = str(
+      getattr(scope, "partial_load_name", "") or ""
+    ).strip()
+    if not partial_load_name:
+      raise ArchitectureControlledExecutionError(
+        "Partial Load scope requires a Partial Load name."
+      )
+    if no_deps:
+      raise ArchitectureControlledExecutionError(
+        "Partial Load execution always includes required dependencies."
+      )
+
+    options["partial_load_name"] = partial_load_name
+    return "elevata_load", (), options
 
   raise ArchitectureControlledExecutionError(
     f"Unsupported Architecture Control scope: {scope.mode}"
@@ -374,6 +409,7 @@ def _execution_result(
   status: ArchitectureControlledExecutionStatus,
   message: str,
   preview: ArchitectureExecutionPreview,
+  scope_mode: str,
   command_name: str,
   command_args: tuple[str, ...],
   command_options: dict[str, Any],
@@ -392,6 +428,7 @@ def _execution_result(
       "stderr",
       "execution_impact_selection",
       "execution_outcome_collector",
+      "expected_partial_load_root_keys",
     }
   }
   output_lines, output_truncated = _captured_lines(stdout.getvalue())
@@ -409,7 +446,14 @@ def _execution_result(
     message=message,
     scope_key=preview.scope_key,
     scope_label=preview.scope_label,
+    scope_mode=str(scope_mode or "").strip(),
     dependency_mode=preview.dependency_mode,
+    root_dataset_keys=tuple(
+      getattr(preview, "root_dataset_keys", ()) or ()
+    ),
+    execution_dataset_keys=tuple(
+      getattr(preview, "execution_dataset_keys", ()) or ()
+    ),
     report_fingerprint=preview.report_fingerprint,
     approval_id=preview.approval_id,
     preview_fingerprint=preview.preview_fingerprint,

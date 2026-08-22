@@ -22,7 +22,7 @@ Contact: <https://github.com/elevata-labs/elevata>.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Dict, List, Set
 
@@ -33,8 +33,13 @@ from metadata.execution.load_graph import (
   EXECUTION_DEPENDENCY_SOURCE_RAW_READY,
   resolve_execution_dependencies,
 )
+from metadata.execution.load_scope import (
+  FULL_LOAD_SCOPE_NAME,
+  LOAD_SCOPE_MODE_PARTIAL_LOAD,
+  resolve_partial_load_scope,
+)
 
-MANIFEST_VERSION = 2
+MANIFEST_VERSION = 3
 EXECUTION_DEPENDENCY_SOURCE_INPUT = "source_input"
 
 
@@ -59,6 +64,16 @@ class ManifestNode:
   deps: List[str]
   lineage_deps: List[str]
   execution_deps: List[ManifestExecutionDependency]
+  load_scopes: List[str] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class ManifestLoadScope:
+  """Resolved named execution scope emitted for scheduler discovery."""
+  name: str
+  scope_mode: str  # "all" | "partial_load"
+  root_dataset_ids: List[str]
+  dataset_ids: List[str]
 
 
 @dataclass(frozen=True)
@@ -68,6 +83,7 @@ class Manifest:
   target_system: str
   nodes: List[ManifestNode]
   levels: List[List[str]]  # parallelizable execution waves by node id
+  load_scopes: List[ManifestLoadScope] = field(default_factory=list)
 
 
 def _now_iso() -> str:
@@ -134,6 +150,7 @@ def _empty_node(
     deps=[],
     lineage_deps=[],
     execution_deps=[],
+    load_scopes=[],
   )
 
 
@@ -179,6 +196,82 @@ def _toposort_levels(node_ids: Set[str], deps_map: Dict[str, Set[str]]) -> List[
   return levels
 
 
+def _build_load_scopes(
+  *,
+  target_node_ids: Set[str],
+) -> List[ManifestLoadScope]:
+  """
+  Resolve all scheduler-visible load scopes against the canonical runtime graph.
+
+  The implicit Full Load is always present. Named Partial Loads are resolved by
+  metadata.execution.load_scope so manifest generation never duplicates scope
+  semantics. A filtered manifest must still be able to represent every resolved
+  Partial Load exactly; otherwise generation fails closed instead of silently
+  weakening the load contract.
+  """
+  PartialLoad = apps.get_model("metadata", "PartialLoad")
+
+  scopes: List[ManifestLoadScope] = [
+    ManifestLoadScope(
+      name=FULL_LOAD_SCOPE_NAME,
+      scope_mode="all",
+      root_dataset_ids=[],
+      dataset_ids=sorted(target_node_ids),
+    )
+  ]
+
+  partial_loads = sorted(
+    list(PartialLoad.objects.all()),
+    key=lambda partial_load: (
+      str(partial_load.name).casefold(),
+      str(partial_load.name),
+      int(partial_load.pk or 0),
+    ),
+  )
+
+  for partial_load in partial_loads:
+    resolved = resolve_partial_load_scope(partial_load)
+    root_dataset_ids = list(resolved.root_dataset_keys)
+    dataset_ids = list(resolved.execution_dataset_keys)
+
+    missing_dataset_ids = [
+      dataset_id
+      for dataset_id in dataset_ids
+      if dataset_id not in target_node_ids
+    ]
+    if missing_dataset_ids:
+      raise ValueError(
+        "Execution manifest cannot represent Partial Load "
+        f"'{partial_load.name}' because its resolved scope contains "
+        "TargetDataset node(s) excluded from this manifest: "
+        + ", ".join(sorted(missing_dataset_ids))
+        + ". Generate the complete execution manifest or change the "
+        "manifest filters."
+      )
+
+    scopes.append(ManifestLoadScope(
+      name=str(partial_load.name),
+      scope_mode=LOAD_SCOPE_MODE_PARTIAL_LOAD,
+      root_dataset_ids=root_dataset_ids,
+      dataset_ids=dataset_ids,
+    ))
+
+  return scopes
+
+
+def _load_scope_memberships(
+  load_scopes: List[ManifestLoadScope],
+) -> Dict[str, List[str]]:
+  """Return resolved load-scope membership for each TargetDataset node id."""
+  memberships: Dict[str, List[str]] = {}
+
+  for load_scope in load_scopes:
+    for dataset_id in load_scope.dataset_ids:
+      memberships.setdefault(dataset_id, []).append(load_scope.name)
+
+  return memberships
+
+
 def build_manifest(
   profile_name: str,
   target_system_short: str,
@@ -191,6 +284,8 @@ def build_manifest(
   - deps contains execution dependency ids for schedulers and orchestrators.
   - lineage_deps contains semantic lineage dependency ids for explanation.
   - execution_deps contains structured dependency reasons for transparency.
+  - load_scopes contains the implicit Full Load plus all resolved Partial Loads.
+  - TargetDataset nodes expose their resolved load-scope memberships.
   - SourceDataset nodes are read-only manifest nodes and do not create load tasks.
   """
   TargetDataset = apps.get_model("metadata", "TargetDataset")
@@ -333,7 +428,18 @@ def build_manifest(
           lineage=True,
         )
 
-  # --- 3) Finalize nodes with dependency payloads
+  # --- 3) Resolve named load scopes and TargetDataset memberships
+  target_node_ids = {
+    node_id
+    for node_id, node in nodes.items()
+    if node.type == "target"
+  }
+  load_scopes = _build_load_scopes(
+    target_node_ids=target_node_ids,
+  )
+  load_scope_memberships = _load_scope_memberships(load_scopes)
+
+  # --- 4) Finalize nodes with dependency and scope payloads
   finalized_nodes: Dict[str, ManifestNode] = {}
   for node_id, node in nodes.items():
     ensure_maps(node_id)
@@ -350,6 +456,7 @@ def build_manifest(
         execution_deps_map[node_id].values(),
         key=lambda dep: (dep.id, dep.reason, dep.reference_id or 0),
       ),
+      load_scopes=list(load_scope_memberships.get(node_id, [])),
     )
 
   all_node_ids = set(finalized_nodes.keys())
@@ -364,6 +471,7 @@ def build_manifest(
     target_system=target_system_short,
     nodes=ordered_nodes,
     levels=levels,
+    load_scopes=load_scopes,
   )
 
 
@@ -391,8 +499,18 @@ def manifest_to_dict(m: Manifest) -> Dict:
           }
           for dep in n.execution_deps
         ],
+        "load_scopes": n.load_scopes,
       }
       for n in m.nodes
     ],
     "levels": m.levels,
+    "load_scopes": [
+      {
+        "name": load_scope.name,
+        "scope_mode": load_scope.scope_mode,
+        "root_dataset_ids": load_scope.root_dataset_ids,
+        "dataset_ids": load_scope.dataset_ids,
+      }
+      for load_scope in m.load_scopes
+    ],
   }

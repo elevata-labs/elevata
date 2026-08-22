@@ -43,6 +43,19 @@ This ensures consistency between:
 - incremental merge logic  
 - delete detection scope  
 
+### 🧩 2.1 Interaction with Partial Loads
+
+A `PartialLoad` is an **architecture execution scope**, not a row-level or time-window filter. It selects explicit `TargetDataset` execution roots; elevata resolves their required upstream dependencies and mandatory system-managed companions.
+
+Partial Load execution therefore does **not** create separate incremental semantics:
+
+- `SourceDataset.static_filter` and `SourceDataset.increment_filter` remain authoritative for row scoping.  
+- Each `TargetDataset` keeps its normal full, merge, delete-detection, and historization behavior.  
+- Partial Loads do not create, reset, or replace incremental state or watermarks.  
+- A dataset reached through a Partial Load is processed exactly as it would be in the full execution scope.
+
+This separation prevents architecture subsetting from being confused with source-data subsetting.
+
 ---
 
 ## 🔧 3. Core Concepts
