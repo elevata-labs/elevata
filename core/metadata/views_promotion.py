@@ -226,10 +226,13 @@ def _build_environment_promotion_context(
   release_store = release_store or ArchitectureReleaseStore()
 
   release_error = ""
+  release_issues = ()
   target_config_error = ""
 
   try:
-    bundles = tuple(release_store.load_all())
+    inspection = release_store.inspect_all()
+    bundles = inspection.bundles
+    release_issues = inspection.issues
   except ArchitectureReleaseStoreError as exc:
     bundles = ()
     release_error = str(exc)
@@ -261,6 +264,12 @@ def _build_environment_promotion_context(
     "releases": tuple(_release_row(bundle) for bundle in ordered_bundles),
     "release_count": len(ordered_bundles),
     "release_error": release_error,
+    "release_issues": tuple({
+      "path": str(issue.path),
+      "error": issue.error,
+      "release_name": issue.release_name,
+      "release_version": issue.release_version,
+    } for issue in release_issues),
     "release_name_suggestion": (
       ordered_bundles[0].release_name if ordered_bundles else ""
     ),
@@ -405,8 +414,8 @@ def _build_remote_history_review(
   history = client.history()
 
   release_store = release_store or ArchitectureReleaseStore()
-  bundles = tuple(release_store.load_all())
-  release_by_id = {bundle.release_id: bundle for bundle in bundles}
+  inspection = release_store.inspect_all()
+  release_by_id = {bundle.release_id: bundle for bundle in inspection.bundles}
   rows = tuple(
     sorted(
       (

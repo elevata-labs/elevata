@@ -24,7 +24,7 @@ Step-by-step:
 
 1. **Metadata lookup**  
      - The TargetDataset is loaded together with its upstream inputs.  
-     - All TargetColumns are included in ordinal order.  
+     - The effective dataset/query contract determines the visible output columns.  
 
 2. **Logical Plan generation**  
      - The builder creates a `LogicalSelect`, `LogicalUnion`, or `SubquerySource` depending on dataset type.  
@@ -32,8 +32,8 @@ Step-by-step:
      - Incremental models may produce `MERGE` plans.  
 
 3. **Expression AST construction**  
-     - Column expressions (including hashing) are translated into AST nodes.  
-     - Dialect-neutral functions (CONCAT_WS, COALESCE, ROW_NUMBER) are represented explicitly.  
+     - Portable calculated expressions, predicates, generated key expressions, and window expressions are translated into typed AST nodes.  
+     - Arithmetic, CASE, comparisons, logical casts, controlled scalar functions, CONCAT/COALESCE/hashing, and window semantics remain dialect-neutral.  
 
 4. **Dialect selection**  
      - The active dialect is determined by:  
@@ -163,7 +163,7 @@ No full page reloads occur.
 
 ## 🔧 5. Caching Considerations
 
-Currently the SQL preview is regenerated on every request. In practice:
+SQL preview is regenerated from the authoritative metadata contract on each request. In practice:
 
 - Logical Plan generation is lightweight  
 - SQL rendering is fast even for large DAGs  

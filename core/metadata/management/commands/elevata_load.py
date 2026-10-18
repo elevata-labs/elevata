@@ -65,6 +65,7 @@ from metadata.architecture.shadow_compare import (
   compare_schema_op_tokens,
   format_schema_op_token,
   parse_schema_op_token,
+  schema_op_token_for_action,
 )
 
 from metadata.config.profiles import load_profile
@@ -727,6 +728,92 @@ def _norm_physical_column_name(name: str) -> str:
   Normalize physical column names for deterministic drift checks.
   """
   return str(name or "").strip().strip('"').strip("`").strip("[]").lower()
+
+
+def _merge_materialization_steps(
+  *,
+  physical_steps,
+  migration_steps,
+) -> list:
+  """Merge safe physical reconciliation with migration-driven steps.
+
+  ENSURE_SCHEMA, ADD_COLUMN, RENAME_COLUMN and RENAME_DATASET are metadata-driven,
+  non-destructive reconciliation steps discovered from the actual target. They
+  remain applicable when recorded Architecture State is already ahead of the
+  physical target and the MigrationPlan therefore contains no matching action.
+  Destructive and type-changing operations remain MigrationPlan-driven.
+  """
+  preserve_ops = {"ENSURE_SCHEMA", "ADD_COLUMN", "RENAME_COLUMN", "RENAME_DATASET"}
+  candidates = [
+    step
+    for step in (physical_steps or [])
+    if getattr(step, "op", None) in preserve_ops
+  ] + list(migration_steps or [])
+
+  merged = []
+  seen = set()
+  for step in candidates:
+    key = (
+      getattr(step, "op", None),
+      str(getattr(step, "sql", "") or "").strip(),
+    )
+    if key in seen:
+      continue
+    seen.add(key)
+    merged.append(step)
+  return merged
+
+
+def _schema_op_tokens_already_applied(
+  *,
+  warnings,
+  actions,
+) -> set[str]:
+  """Return schema-op tokens whose approved intent is already physical.
+
+  Migration materialization is intentionally idempotent. When an approved
+  RENAME_COLUMN or ADD_COLUMN has already reached the physical table, the
+  migration executor emits SCHEMA_ACTION_ALREADY_APPLIED instead of duplicate
+  DDL. Shadow compare must treat that warning as fulfilled architecture intent.
+  """
+  warning_texts = [
+    str(warning)
+    for warning in (warnings or [])
+    if str(warning).startswith("SCHEMA_ACTION_ALREADY_APPLIED:")
+  ]
+  if not warning_texts:
+    return set()
+
+  out: set[str] = set()
+  for action in (actions or []):
+    action_type = str(getattr(action, "action_type", "") or "")
+    dataset_key = str(getattr(action, "dataset_key", "") or "")
+    marker = ""
+
+    if action_type == "RENAME_COLUMN":
+      old_name = str(getattr(action, "previous_column_name", "") or "")
+      new_name = str(getattr(action, "column_name", "") or "")
+      if dataset_key and old_name and new_name:
+        marker = (
+          "SCHEMA_ACTION_ALREADY_APPLIED: RENAME_COLUMN requested by MigrationPlan "
+          f"for {dataset_key}.{old_name} -> {new_name},"
+        )
+    elif action_type == "ADD_COLUMN":
+      column_name = str(getattr(action, "column_name", "") or "")
+      if dataset_key and column_name:
+        marker = (
+          "SCHEMA_ACTION_ALREADY_APPLIED: ADD_COLUMN requested by MigrationPlan "
+          f"for {dataset_key}.{column_name},"
+        )
+
+    if not marker or not any(marker in warning for warning in warning_texts):
+      continue
+
+    token = schema_op_token_for_action(action)
+    if token:
+      out.add(token)
+
+  return out
 
 
 def _active_target_column_names(td) -> list[str]:
@@ -2037,8 +2124,10 @@ def run_single_target_dataset(
         exec_engine=target_system_engine,
         is_full_refresh=is_full_refresh,
       )
-      ensure_steps = [s for s in (getattr(plan, "steps", None) or []) if getattr(s, "op", None) == "ENSURE_SCHEMA"]
-      plan.steps = ensure_steps + list(mig_res.steps or [])
+      plan.steps = _merge_materialization_steps(
+        physical_steps=getattr(plan, "steps", None),
+        migration_steps=mig_res.steps,
+      )
       if mig_res.warnings:
         plan.warnings = list(getattr(plan, "warnings", None) or []) + list(mig_res.warnings)
       if mig_res.blocking_errors:
@@ -2280,8 +2369,10 @@ def run_single_target_dataset(
                 exec_engine=target_system_engine,
                 is_full_refresh=False,
               )
-              ensure_steps = [s for s in (getattr(hist_plan, "steps", None) or []) if getattr(s, "op", None) == "ENSURE_SCHEMA"]
-              hist_plan.steps = ensure_steps + list(mig_res.steps or [])
+              hist_plan.steps = _merge_materialization_steps(
+                physical_steps=getattr(hist_plan, "steps", None),
+                migration_steps=mig_res.steps,
+              )
               if mig_res.warnings:
                 hist_plan.warnings = list(getattr(hist_plan, "warnings", None) or []) + list(mig_res.warnings)
               if mig_res.blocking_errors:
@@ -3406,7 +3497,7 @@ class Command(BaseCommand):
         expected_root_dataset_keys=expected_partial_load_root_keys,
       )
     elif all_datasets:
-      qs = TargetDataset.objects.all()
+      qs = TargetDataset.objects.filter(active=True)
       # In --all mode, --schema scopes the root set (dependencies are still included).
       if schema_short:
         qs = qs.filter(target_schema__short_name=schema_short)
@@ -4008,6 +4099,10 @@ class Command(BaseCommand):
                     if getattr(s, "op", None) == "ENSURE_SCHEMA"
                   ]
                   plan_shadow.steps = ensure_steps + list(mig_res.steps or [])
+                  actual.update(_schema_op_tokens_already_applied(
+                    warnings=mig_res.warnings,
+                    actions=migration_plan.actions,
+                  ))
 
                 if is_full_refresh_shadow:
                   keep_ops = {"ENSURE_SCHEMA", "RENAME_DATASET"}
@@ -4055,6 +4150,7 @@ class Command(BaseCommand):
                 expected=expected,
                 actual=actual,
                 allow_hist_drop=allow_hist_drop,
+                allowed_rebuild_dataset_keys=expected_build.suppressed_full_refresh_dataset_keys,
               )
 
               missing = list(compare.missing)

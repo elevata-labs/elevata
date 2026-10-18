@@ -23,6 +23,7 @@ Contact: <https://github.com/elevata-labs/elevata>.
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from pathlib import Path
 from types import SimpleNamespace
 
 from django.conf import settings
@@ -31,7 +32,11 @@ from django.urls import reverse
 import pytest
 
 import metadata.views_promotion as views_promotion
-from metadata.promotion.release_store import ArchitectureReleaseStoreError
+from metadata.promotion.release_store import (
+  ArchitectureReleaseStoreError,
+  ArchitectureReleaseStoreInspection,
+  ArchitectureReleaseStoreIssue,
+)
 
 
 class FakeStore:
@@ -44,13 +49,14 @@ class FakeStore:
     self.base_path = base_path
     self.error = error
 
-  def load_all(self):
-    """
-    Return configured items or raise the configured store error.
-    """
+  def inspect_all(self):
+    """Return configured discovery results or raise the configured store error."""
     if self.error is not None:
       raise self.error
-    return self.items
+    return ArchitectureReleaseStoreInspection(
+      bundles=self.items,
+      issues=(),
+    )
 
 
 def _release(
@@ -114,7 +120,7 @@ def test_environment_promotion_context_is_summary_first_and_newest_first():
 
 
 def test_environment_promotion_context_reports_invalid_release_store():
-  """Verify invalid immutable release artifacts remain visible fail-closed findings."""
+  """Verify store-level discovery failures remain visible fail-closed findings."""
   context = views_promotion._build_environment_promotion_context(
     release_store=FakeStore(
       error=ArchitectureReleaseStoreError("invalid release"),
@@ -124,6 +130,43 @@ def test_environment_promotion_context_reports_invalid_release_store():
 
   assert context["releases"] == ()
   assert context["release_error"] == "invalid release"
+  assert context["release_issues"] == ()
+
+
+def test_environment_promotion_context_keeps_valid_releases_with_incompatible_artifact():
+  """Verify one incompatible stored artifact does not hide readable releases."""
+  created_at = datetime(2026, 8, 14, 8, 0, tzinfo=timezone.utc)
+  release = _release(
+    release_id="rel-0000000000000002",
+    version="1.0.2",
+    created_at=created_at,
+    metadata_fingerprint="2" * 64,
+  )
+  issue = ArchitectureReleaseStoreIssue(
+    path=Path(".test-store/rel-0000000000000001.release.json"),
+    error="legacy contract mismatch",
+    release_name="customer-platform",
+    release_version="1.0.1",
+  )
+
+  class InspectingStore(FakeStore):
+    def inspect_all(self):
+      return ArchitectureReleaseStoreInspection(
+        bundles=(release,),
+        issues=(issue,),
+      )
+
+  context = views_promotion._build_environment_promotion_context(
+    release_store=InspectingStore(),
+    targets=(),
+  )
+
+  assert context["release_count"] == 1
+  assert context["releases"][0]["release_id"] == release.release_id
+  assert context["release_error"] == ""
+  assert len(context["release_issues"]) == 1
+  assert context["release_issues"][0]["release_version"] == "1.0.1"
+  assert context["release_issues"][0]["error"] == "legacy contract mismatch"
 
 
 def test_environment_promotion_url_is_registered():

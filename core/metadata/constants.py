@@ -195,6 +195,35 @@ WINDOW_FUNCTION_CHOICES = [
   ("NTILE", "NTILE"),
   ("LAG", "LAG"),
   ("LEAD", "LEAD"),
+  ("FIRST_VALUE", "FIRST_VALUE"),
+  ("LAST_VALUE", "LAST_VALUE"),
+  ("SUM", "SUM"),
+  ("AVG", "AVG"),
+  ("MIN", "MIN"),
+  ("MAX", "MAX"),
+  ("COUNT", "COUNT"),
+]
+
+WINDOW_FRAME_TYPE_CHOICES = [
+  ("", "No explicit frame"),
+  ("ROWS", "ROWS"),
+  ("RANGE", "RANGE"),
+]
+
+WINDOW_FRAME_START_CHOICES = [
+  ("", "Select start"),
+  ("UNBOUNDED_PRECEDING", "UNBOUNDED PRECEDING"),
+  ("PRECEDING", "n PRECEDING"),
+  ("CURRENT_ROW", "CURRENT ROW"),
+  ("FOLLOWING", "n FOLLOWING"),
+]
+
+WINDOW_FRAME_END_CHOICES = [
+  ("", "Select end"),
+  ("PRECEDING", "n PRECEDING"),
+  ("CURRENT_ROW", "CURRENT ROW"),
+  ("FOLLOWING", "n FOLLOWING"),
+  ("UNBOUNDED_FOLLOWING", "UNBOUNDED FOLLOWING"),
 ]
 
 WINDOW_ARG_TYPE_CHOICES = [

@@ -205,6 +205,13 @@ because there is no *_detail route under a parent. -->
             Settings
           </a>
 
+        {% elif object.node_type == 'filter' and object.filter %}
+          <a href="{% url 'queryfilter_edit' object.filter.pk %}"
+            class="btn btn-outline-primary"
+            title="Configure FILTER predicate">
+            Settings
+          </a>
+
         {% elif object.node_type == 'window' and object.window %}
           <a href="{% url 'querywindownode_list' object.pk %}"
             class="btn btn-outline-primary"
@@ -352,6 +359,13 @@ because there is no *_detail route under a parent. -->
           class="btn btn-outline-secondary"
         >
           Items
+        </a>
+      {% elif model_name == 'querywindowcolumn' %}
+        <a
+          href="{% url 'querywindowcolumnarg_list' object.pk %}"
+          class="btn btn-outline-secondary"
+        >
+          Arguments
         </a>
       {% elif detail_url %}
         <a

@@ -102,7 +102,7 @@ This decision is shared across:
 
 - RAW target generation  
 - ingestion execution planning  
-- future drift detection and quality checks
+- drift detection and quality checks
 
 ### 🧩 Ingestion mode
 The function `resolve_ingest_mode(SourceDataset)` determines how RAW is populated:
@@ -208,7 +208,7 @@ Delete detection is implemented as a separate anti‑join statement that runs be
 
 The SQL layer translates incremental scope filters from source lineage into target column expressions.
 
-The incremental scope used for delete detection is derived from the SourceDataset.increment_filter and translated via lineage into target column references.
+The incremental scope used for delete detection is derived from `SourceDataset.portable_increment_filter` and translated via lineage into target column references. The runtime delta cutoff is resolved by the load runtime and rendered through the portable predicate contract.
 
 
 ---
@@ -287,7 +287,7 @@ Practical rule:
 
 For RAW ingestion, source connection details and behavior are defined via `SourceDataset.ingestion_config`.
 
-- For relational sources, scoping is controlled via `static_filter` and `increment_filter`.  
+- For relational sources, scoping is controlled through `portable_static_filter` and `portable_increment_filter`.  
 - For non-relational sources (Files / REST), `ingestion_config` contains connector-specific parameters (e.g. `uri` or `url`).
 
 Regardless of source type, RAW ingestion is always executed as **Full Replace**:

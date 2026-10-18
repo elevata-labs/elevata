@@ -41,8 +41,8 @@ from metadata.constants import (
   MATERIALIZATION_CHOICES, RELATIONSHIP_TYPE_CHOICES, PII_LEVEL_CHOICES, TARGET_DATASET_INPUT_ROLE_CHOICES,
   ACCESS_INTENT_CHOICES, ROLE_CHOICES, SENSITIVITY_CHOICES, ENVIRONMENT_CHOICES, LINEAGE_ORIGIN_CHOICES,
   TARGET_COMBINATION_MODE_CHOICES, BIZ_ENTITY_ROLE_CHOICES, INCREMENTAL_STRATEGY_CHOICES, JOIN_TYPE_CHOICES, 
-  OPERATOR_CHOICES, AGGREGATE_MODE_CHOICES, ORDER_BY_DIR_CHOICES, NULLS_PLACEMENT_CHOICES, WINDOW_FUNCTION_CHOICES, 
-  WINDOW_ARG_TYPE_CHOICES)
+  OPERATOR_CHOICES, AGGREGATE_MODE_CHOICES, ORDER_BY_DIR_CHOICES, NULLS_PLACEMENT_CHOICES, WINDOW_FUNCTION_CHOICES,
+  WINDOW_FRAME_TYPE_CHOICES, WINDOW_FRAME_START_CHOICES, WINDOW_FRAME_END_CHOICES, WINDOW_ARG_TYPE_CHOICES)
 from metadata.generation.validators import SHORT_NAME_VALIDATOR
 
 
@@ -50,8 +50,8 @@ class QueryNodeType(models.TextChoices):
   SELECT = "select", "Select"
   AGGREGATE = "aggregate", "Aggregate"
   UNION = "union", "Union"
-  # Future:
   WINDOW = "window", "Window"
+  FILTER = "filter", "Filter"
   CTE = "cte", "CTE"
 
 
@@ -61,7 +61,7 @@ class AggregateFunction(models.TextChoices):
   MIN = "MIN", "MIN"
   MAX = "MAX", "MAX"
   AVG = "AVG", "AVG"
-  # Future: COUNT_DISTINCT, STRING_AGG, etc.
+  STRING_AGG = "STRING_AGG", "STRING_AGG"
 
 
 class UnionMode(models.TextChoices):
@@ -249,11 +249,16 @@ class SourceDataset(AuditFields):
   )
   static_filter = models.CharField(max_length=255, blank=True, null=True,
     help_text=(
-      "Static WHERE clause applied to all loads of this dataset. "
-      "Used for permanent business or technical scoping. "
-      "Example: is_deleted_flag = 0 AND country_code = 'DE'."
+      "Deprecated source-specific SQL fallback for permanent source filtering. "
+      "Migrate this filter to Portable static filter before upgrading to elevata 3.3."
     ),
-  )  
+  )
+  portable_static_filter = models.JSONField(blank=True, null=True, editable=False,
+    help_text=(
+      "Platform-neutral structured filter applied to every extraction from this source dataset. "
+      "The filter can reference columns of this SourceDataset."
+    ),
+  )
   incremental = models.BooleanField(default=False,
     help_text=(
       "If checked, an incremental load strategy will be applied. "
@@ -262,11 +267,15 @@ class SourceDataset(AuditFields):
   )
   increment_filter = models.CharField(max_length=255, blank=True, null=True,
     help_text=(
-      "Template WHERE clause for incremental extraction. "
-      "Use the placeholder {{DELTA_CUTOFF}} for the dynamic cutoff timestamp/date. "
-      "Example: (last_update_ts >= {{DELTA_CUTOFF}} OR created_at >= {{DELTA_CUTOFF}}) "
-      "AND is_deleted_flag = 0."
+      "Deprecated source-specific SQL fallback for incremental source filtering. "
+      "Migrate this filter to Portable increment filter before upgrading to elevata 3.3."
     )
+  )
+  portable_increment_filter = models.JSONField(blank=True, null=True, editable=False,
+    help_text=(
+      "Platform-neutral structured filter for incremental source extraction. "
+      "The filter can reference columns of this SourceDataset and the Delta cutoff runtime value."
+    ),
   )
   manual_model = models.BooleanField(default=False,
     help_text="If checked: dataset is manually maintained, not fully auto-generated."
@@ -317,6 +326,22 @@ class SourceDataset(AuditFields):
   def __str__(self):
     return f"({self.source_system}) {display_key(self.schema_name, self.source_dataset_name)}"
 
+  def clean(self):
+    """Normalize persisted portable source predicates without resolving runtime values."""
+    super().clean()
+
+    from metadata.rendering.portable_expression import normalize_predicate_contract
+
+    if self.portable_static_filter:
+      self.portable_static_filter = normalize_predicate_contract(
+        self.portable_static_filter,
+      )
+    if self.portable_increment_filter:
+      self.portable_increment_filter = normalize_predicate_contract(
+        self.portable_increment_filter,
+        allowed_runtime_values=("delta_cutoff",),
+      )
+
   def save(self, *args, **kwargs):
     # Automatically set retired_at when a row becomes inactive
     if not self.active and self.retired_at is None:
@@ -335,7 +360,18 @@ class SourceDataset(AuditFields):
     if not getattr(self, "incremental", False):
       return []
 
-    if not (getattr(self, "increment_filter", None) or "").strip():
+    portable_filter = getattr(self, "portable_increment_filter", None)
+    legacy_filter = (getattr(self, "increment_filter", None) or "").strip()
+    if portable_filter:
+      from metadata.rendering.portable_expression import expression_runtime_value_names
+      uses_delta_cutoff = "delta_cutoff" in expression_runtime_value_names(
+        portable_filter,
+        allowed_runtime_values=("delta_cutoff",),
+      )
+    else:
+      uses_delta_cutoff = "{{DELTA_CUTOFF" in legacy_filter
+
+    if not uses_delta_cutoff:
       return []
 
     active_envs = list(
@@ -360,7 +396,18 @@ class SourceDataset(AuditFields):
     if not getattr(self, "incremental", False):
       return True
 
-    if not (getattr(self, "increment_filter", None) or "").strip():
+    portable_filter = getattr(self, "portable_increment_filter", None)
+    legacy_filter = (getattr(self, "increment_filter", None) or "").strip()
+    if portable_filter:
+      from metadata.rendering.portable_expression import expression_runtime_value_names
+      uses_delta_cutoff = "delta_cutoff" in expression_runtime_value_names(
+        portable_filter,
+        allowed_runtime_values=("delta_cutoff",),
+      )
+    else:
+      uses_delta_cutoff = "{{DELTA_CUTOFF" in legacy_filter
+
+    if not uses_delta_cutoff:
       return True
 
     return self.increment_policies.filter(active=True).exists()
@@ -368,6 +415,46 @@ class SourceDataset(AuditFields):
   @property
   def has_missing_increment_policies(self) -> bool:
     return not self.has_no_missing_increment_policies
+
+
+  @property
+  def has_portable_static_filter(self) -> bool:
+    """Return whether a portable static source filter is defined."""
+    return self.portable_static_filter is not None
+
+  @property
+  def has_portable_increment_filter(self) -> bool:
+    """Return whether a portable incremental source filter is defined."""
+    return self.portable_increment_filter is not None
+
+  @property
+  def portable_static_filter_display(self) -> str:
+    """Return a concise user-facing representation of the portable static filter."""
+    if not self.portable_static_filter:
+      return ""
+    from metadata.rendering.portable_expression import format_expression_contract
+    return format_expression_contract(self.portable_static_filter)
+
+  @property
+  def portable_increment_filter_display(self) -> str:
+    """Return a concise user-facing representation of the portable increment filter."""
+    if not self.portable_increment_filter:
+      return ""
+    from metadata.rendering.portable_expression import format_expression_contract
+    return format_expression_contract(
+      self.portable_increment_filter,
+      allowed_runtime_values=("delta_cutoff",),
+    )
+
+  @property
+  def has_static_filter_sql_fallback(self) -> bool:
+    """Return whether the deprecated static SQL fallback is defined."""
+    return bool((self.static_filter or "").strip())
+
+  @property
+  def has_increment_filter_sql_fallback(self) -> bool:
+    """Return whether the deprecated incremental SQL fallback is defined."""
+    return bool((self.increment_filter or "").strip())
 
 
 # -------------------------------------------------------------------
@@ -766,14 +853,6 @@ class TargetDataset(AuditFields):
   distinct_select = models.BooleanField(default=False,
     help_text="If checked: SELECT DISTINCT is enforced during generation."
   )
-  static_filter = models.CharField(max_length=255, blank=True, null=True,
-    help_text=(
-      "Optional row-level filter to restrict records. "
-      "Static WHERE clause applied to all loads of this dataset. "
-      "Used for permanent business or technical scoping. "
-      "Example: is_deleted_flag = 0 AND country_code = 'DE'."
-    ),
-  ) 
   query_root = models.ForeignKey("QueryNode", on_delete=models.SET_NULL, null=True, blank=True, related_name="+",
     help_text="Optional query-tree root. If empty, dataset uses the classic select/joins definition.",
   )
@@ -1138,6 +1217,45 @@ class QueryNode(AuditFields):
       label += f" · {nm}"
     label += f" (node#{self.pk})"
     return label
+
+
+# -------------------------------------------------------------------
+# QueryFilterNode
+# -------------------------------------------------------------------
+class QueryFilterNode(AuditFields):
+  """
+  Query-tree operator that keeps rows matching one portable predicate.
+
+  The predicate is stored as a versioned portable expression contract. SQL syntax
+  is not persisted here; dialect rendering remains responsible for platform SQL.
+  """
+  node = models.OneToOneField(
+    QueryNode,
+    on_delete=models.CASCADE,
+    related_name="filter",
+    limit_choices_to={"node_type": QueryNodeType.FILTER},
+    help_text="Query node header for this FILTER operator.",
+  )
+  input_node = models.ForeignKey(
+    QueryNode,
+    on_delete=models.PROTECT,
+    related_name="used_as_filter_input",
+    help_text="Input query node providing rows to filter (wrapped as a subquery).",
+  )
+  predicate = models.JSONField(
+    help_text="Versioned portable predicate contract evaluated against the input node output.",
+  )
+
+  class Meta:
+    db_table = "query_filter_node"
+    verbose_name = "Query filter node"
+    verbose_name_plural = "Query filter nodes"
+
+  def __str__(self) -> str:
+    node = getattr(self, "node", None)
+    if node is not None:
+      return str(node)
+    return f"filter#{self.pk}"
 
 
 # -------------------------------------------------------------------
@@ -1612,6 +1730,21 @@ class QueryWindowColumn(AuditFields):
   order_by = models.ForeignKey(OrderByExpression, null=True, blank=True, on_delete=models.PROTECT,
     help_text="Optional ORDER BY definition (recommended for deterministic results).",
   )
+  frame_type = models.CharField(max_length=5, choices=WINDOW_FRAME_TYPE_CHOICES, blank=True, default="",
+    help_text="Optional explicit window frame type. Leave empty only when the function does not require an explicit frame.",
+  )
+  frame_start = models.CharField(max_length=24, choices=WINDOW_FRAME_START_CHOICES, blank=True, default="",
+    help_text="Start boundary of the explicit window frame.",
+  )
+  frame_start_offset = models.PositiveIntegerField(null=True, blank=True,
+    help_text="Non-negative offset used when the frame start is n PRECEDING or n FOLLOWING.",
+  )
+  frame_end = models.CharField(max_length=24, choices=WINDOW_FRAME_END_CHOICES, blank=True, default="",
+    help_text="End boundary of the explicit window frame.",
+  )
+  frame_end_offset = models.PositiveIntegerField(null=True, blank=True,
+    help_text="Non-negative offset used when the frame end is n PRECEDING or n FOLLOWING.",
+  )
   ordinal_position = models.PositiveIntegerField(default=0,
     help_text="Position of this window output column in the projection.",
   )
@@ -1724,6 +1857,33 @@ class TargetDatasetInput(AuditFields):
       )
     ]
 
+  def clean(self):
+    """Reject active target-to-target dependencies that would create a cycle."""
+    super().clean()
+
+    target_id = getattr(self, "target_dataset_id", None)
+    upstream_id = getattr(self, "upstream_target_dataset_id", None)
+    if not getattr(self, "active", True) or not target_id or not upstream_id:
+      return
+
+    path = target_dataset_dependency_path(
+      upstream_id,
+      target_id,
+      exclude_input_id=getattr(self, "pk", None),
+    )
+    if not path:
+      return
+
+    labels = _target_dataset_labels(path)
+    readable_path = " -> ".join(labels.get(dataset_id, str(dataset_id)) for dataset_id in path)
+    raise ValidationError({
+      "upstream_target_dataset": (
+        "This upstream dependency would create a dataset cycle: "
+        + readable_path
+        + "."
+      )
+    })
+
   def __str__(self):
     """
     Human-readable representation of this dataset-level lineage.
@@ -1742,6 +1902,87 @@ class TargetDatasetInput(AuditFields):
     role = getattr(self, "role", "") or ""
     role_part = f"{role} · " if role else ""
     return f"{role_part}{src_label} -> {self.target_dataset}"
+
+def target_dataset_dependency_path(
+  start_dataset_id: int,
+  target_dataset_id: int,
+  *,
+  exclude_input_id: int | None = None,
+) -> tuple[int, ...]:
+  """Return an active upstream path from start to target, or an empty tuple."""
+  start_id = int(start_dataset_id)
+  target_id = int(target_dataset_id)
+  if start_id == target_id:
+    return (start_id, target_id)
+
+  parents: dict[int, int | None] = {start_id: None}
+  frontier = [start_id]
+
+  while frontier:
+    current_ids = tuple(frontier)
+    frontier = []
+    links = TargetDatasetInput.objects.filter(
+      active=True,
+      target_dataset_id__in=current_ids,
+      upstream_target_dataset__isnull=False,
+    )
+    if exclude_input_id:
+      links = links.exclude(pk=exclude_input_id)
+
+    for downstream_id, upstream_id in links.values_list(
+      "target_dataset_id",
+      "upstream_target_dataset_id",
+    ):
+      if upstream_id in parents:
+        continue
+      parents[upstream_id] = downstream_id
+      if upstream_id == target_id:
+        path = [target_id]
+        cursor = target_id
+        while parents[cursor] is not None:
+          cursor = parents[cursor]
+          path.append(cursor)
+        path.reverse()
+        return tuple(path)
+      frontier.append(upstream_id)
+
+  return ()
+
+
+def target_dataset_downstream_ids(target_dataset_id: int) -> set[int]:
+  """Return active transitive downstream TargetDataset ids."""
+  root_id = int(target_dataset_id)
+  visited = {root_id}
+  downstream: set[int] = set()
+  frontier = [root_id]
+
+  while frontier:
+    child_ids = set(
+      TargetDatasetInput.objects.filter(
+        active=True,
+        upstream_target_dataset_id__in=frontier,
+      ).values_list("target_dataset_id", flat=True)
+    )
+    child_ids.difference_update(visited)
+    if not child_ids:
+      break
+    downstream.update(child_ids)
+    visited.update(child_ids)
+    frontier = list(child_ids)
+
+  return downstream
+
+
+def _target_dataset_labels(dataset_ids: tuple[int, ...]) -> dict[int, str]:
+  """Return deterministic schema.dataset labels for dataset ids."""
+  labels = {}
+  rows = TargetDataset.objects.filter(pk__in=set(dataset_ids)).select_related("target_schema")
+  for dataset in rows:
+    schema = getattr(getattr(dataset, "target_schema", None), "short_name", "") or ""
+    name = getattr(dataset, "target_dataset_name", "") or str(dataset.pk)
+    labels[dataset.pk] = f"{schema}.{name}".strip(".")
+  return labels
+
 
 # -------------------------------------------------------------------
 # TargetDatasetJoin
@@ -2080,6 +2321,12 @@ class TargetColumn(AuditFields):
       "This default applies to all inputs unless overridden at source level."
     )
   )
+  portable_expression = models.JSONField(blank=True, null=True, editable=False,
+    help_text=(
+      "Platform-neutral structured expression contract used to derive this column. "
+      "Column references are resolved through explicit column-level lineage."
+    ),
+  )
   description = models.CharField(max_length=255, blank=True, null=True,
     help_text="Business description / semantic meaning of the column."
   )
@@ -2166,6 +2413,24 @@ class TargetColumn(AuditFields):
       "default_member",
     }
 
+  @property
+  def has_manual_expression(self) -> bool:
+    """Return whether a target-specific manual expression is defined."""
+    return bool((self.manual_expression or "").strip())
+
+  @property
+  def has_portable_expression(self) -> bool:
+    """Return whether a portable expression contract is defined."""
+    return self.portable_expression is not None
+
+  @property
+  def portable_expression_display(self) -> str:
+    """Return a concise user-facing representation of the portable expression."""
+    if not self.portable_expression:
+      return ""
+    from metadata.rendering.portable_expression import format_expression_contract
+    return format_expression_contract(self.portable_expression)
+
   def __str__(self):
     return display_key(self.target_dataset, self.target_column_name)
 
@@ -2193,6 +2458,15 @@ class TargetColumn(AuditFields):
       raise ValidationError(
         "system_role can only be set on system-managed columns."
       )
+    if self.portable_expression is not None:
+      from metadata.rendering.portable_expression import (
+        PortableExpressionError,
+        normalize_expression_contract,
+      )
+      try:
+        self.portable_expression = normalize_expression_contract(self.portable_expression)
+      except PortableExpressionError as exc:
+        raise ValidationError({"portable_expression": str(exc)}) from exc
 
 
 # -------------------------------------------------------------------
@@ -2217,6 +2491,12 @@ class TargetColumnInput(AuditFields):
       "- If you enter plain SQL without {{ }}, it may be used directly in SQL preview "
       "for this input.\n"
       "If empty, the TargetColumn.manual_expression (or a direct column reference) is used."
+    ),
+  )
+  portable_expression = models.JSONField(blank=True, null=True, editable=False,
+    help_text=(
+      "Platform-neutral structured expression contract for this specific input mapping. "
+      "When set, it overrides the column-level expression for this input."
     ),
   )
   ordinal_position = models.PositiveIntegerField(default=1, 
@@ -2245,6 +2525,25 @@ class TargetColumnInput(AuditFields):
       )
     ]
     ordering = ["target_column", "ordinal_position"]
+
+  def clean(self):
+    if self.portable_expression is not None:
+      from metadata.rendering.portable_expression import (
+        PortableExpressionError,
+        normalize_expression_contract,
+      )
+      try:
+        self.portable_expression = normalize_expression_contract(self.portable_expression)
+      except PortableExpressionError as exc:
+        raise ValidationError({"portable_expression": str(exc)}) from exc
+
+  @property
+  def portable_expression_display(self) -> str:
+    """Return a concise user-facing representation of the portable expression."""
+    if not self.portable_expression:
+      return ""
+    from metadata.rendering.portable_expression import format_expression_contract
+    return format_expression_contract(self.portable_expression)
 
   def __str__(self):
     """

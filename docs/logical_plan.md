@@ -3,10 +3,10 @@
 This document describes the **Logical Plan** layer of elevata, which includes:
 
 - Subqueries in the FROM clause  
-- Window Functions (ROW_NUMBER, etc.)  
+- FILTER, aggregation, UNION, and window composition  
 - Multi-source Stage logic (identity vs non-identity)  
-- Updated Select/Union/Source nodes  
-- Integration with the Expression DSL & AST  
+- structured Select/Union/Source nodes  
+- Portable Expressions and generated Expression DSL through one AST  
 - Dialect-safe rendering  
 
 ---
@@ -38,12 +38,13 @@ The Logical Plan:
 
 The **Query Tree** operates at a higher abstraction level than the Logical Plan.
 
-- The Query Tree defines *what* operations occur and in which order (e.g. SELECT → WINDOW → AGGREGATE).  
-- The Logical Plan defines *how* these operations are represented as structured SQL components (LogicalSelect, SubquerySource, LogicalUnion, …).
+- The Query Tree defines typed relational operations and their order, including SELECT, FILTER, AGGREGATE, UNION, and WINDOW.  
+- Portable Expression contracts define calculated values and predicates.  
+- The Logical Plan represents those semantics as structured query components such as LogicalSelect, SubquerySource, LogicalUnion, and typed AST expressions.
 
-When custom query logic is enabled, the Query Tree is compiled into a Logical Plan using the same builder infrastructure as default generation.
+Both standard generation and explicit Query Trees compile through the same builder infrastructure. Nested query nodes intentionally become nested Logical Plan boundaries when this is required to preserve node semantics; for example, a FILTER after AGGREGATE remains an outer filter rather than being rewritten as HAVING.
 
-This design keeps the Logical Plan as a stable, vendor-neutral intermediate representation, regardless of whether SQL is generated automatically or via an explicit Query Tree.
+This keeps SQL structure vendor-neutral and makes explicit query composition predictable across dialects.
 
 ---
 

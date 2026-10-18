@@ -180,11 +180,35 @@ Contact: <https://github.com/elevata-labs/elevata>.
     {% endif %}
 
     {% if release_error %}
-      <div class="alert alert-danger small mb-0">
+      <div class="alert alert-danger small mb-3">
         <div class="fw-semibold">Release store validation failed</div>
         <div class="mt-1">{{ release_error }}</div>
       </div>
-    {% elif releases %}
+    {% endif %}
+
+    {% if release_issues %}
+      <div class="alert alert-warning small mb-3">
+        <div class="fw-semibold">Stored release compatibility issue</div>
+        <div class="mt-1">
+          {{ release_issues|length }} stored immutable release artifact{{ release_issues|length|pluralize }}
+          cannot be loaded by this elevata version. Compatible releases remain available;
+          incompatible artifacts are excluded from promotion and are not modified.
+        </div>
+        <ul class="mb-0 mt-2 ps-3">
+          {% for issue in release_issues %}
+            <li>
+              {% if issue.release_name and issue.release_version %}
+                <strong>{{ issue.release_name }} {{ issue.release_version }}</strong> ·
+              {% endif %}
+              <code>{{ issue.path }}</code>
+              <div class="text-muted mt-1">{{ issue.error }}</div>
+            </li>
+          {% endfor %}
+        </ul>
+      </div>
+    {% endif %}
+
+    {% if releases %}
       <div class="table-responsive">
         <table class="table table-sm align-middle mb-0">
           <thead>
@@ -250,7 +274,7 @@ Contact: <https://github.com/elevata-labs/elevata>.
       </div>
     {% else %}
       <div class="alert alert-light border small mb-0">
-        No Architecture Release Bundles are stored for this runtime.
+        No compatible Architecture Release Bundles are available for this runtime.
       </div>
     {% endif %}
   </div>

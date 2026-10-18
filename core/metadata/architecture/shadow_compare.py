@@ -55,6 +55,7 @@ class SchemaOpTokenBuildResult:
   suppressed_full_refresh_add_columns: int = 0
   suppressed_full_refresh_alter_columns: int = 0
   suppressed_full_refresh_drop_columns: int = 0
+  suppressed_full_refresh_dataset_keys: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -255,6 +256,7 @@ def build_expected_schema_op_tokens(
   suppressed_adds = 0
   suppressed_alters = 0
   suppressed_drops = 0
+  suppressed_dataset_keys: set[str] = set()
 
   for action in actions:
     action_type = str(getattr(action, "action_type", "") or "")
@@ -265,18 +267,22 @@ def build_expected_schema_op_tokens(
 
     if action_type == "RENAME_COLUMN" and dataset_key in full_refresh_keys:
       suppressed_renames += 1
+      suppressed_dataset_keys.add(dataset_key)
       continue
 
     if action_type == "ADD_COLUMN" and dataset_key in full_refresh_keys:
       suppressed_adds += 1
+      suppressed_dataset_keys.add(dataset_key)
       continue
 
     if action_type == "ALTER_COLUMN" and dataset_key in full_refresh_keys:
       suppressed_alters += 1
+      suppressed_dataset_keys.add(dataset_key)
       continue
 
     if action_type == "DROP_COLUMN" and dataset_key in full_refresh_keys:
       suppressed_drops += 1
+      suppressed_dataset_keys.add(dataset_key)
       continue
 
     token = schema_op_token_for_action(action)
@@ -289,6 +295,7 @@ def build_expected_schema_op_tokens(
     suppressed_full_refresh_add_columns=suppressed_adds,
     suppressed_full_refresh_alter_columns=suppressed_alters,
     suppressed_full_refresh_drop_columns=suppressed_drops,
+    suppressed_full_refresh_dataset_keys=tuple(sorted(suppressed_dataset_keys)),
   )
 
 
@@ -377,6 +384,7 @@ def compare_schema_op_tokens(
   expected: Iterable[str],
   actual: Iterable[str],
   allow_hist_drop: bool = False,
+  allowed_rebuild_dataset_keys: Iterable[str] = (),
 ) -> SchemaOpCompareResult:
   """
   Compare expected and actual schema operation tokens.
@@ -403,6 +411,7 @@ def compare_schema_op_tokens(
   unexpected, suppressed_rebuild_steps = _suppress_unexpected_rebuild_steps(
     expected=expected_set,
     unexpected=unexpected,
+    allowed_rebuild_dataset_keys=allowed_rebuild_dataset_keys,
   )
 
   missing, suppressed_hist_drop_columns = _suppress_hist_drop_columns(
@@ -559,11 +568,16 @@ def _suppress_unexpected_rebuild_steps(
   *,
   expected: set[str],
   unexpected: list[str],
+  allowed_rebuild_dataset_keys: Iterable[str] = (),
 ) -> tuple[list[str], list[str]]:
   """
   Suppress rebuild steps that satisfy column-level architecture intent.
   """
-  expected_dataset_keys = set()
+  expected_dataset_keys = {
+    str(dataset_key)
+    for dataset_key in allowed_rebuild_dataset_keys
+    if dataset_key
+  }
   for token in expected:
     parsed = parse_schema_op_token(token) or {}
     if parsed.get("op") in COLUMN_SCHEMA_OPS and parsed.get("ds"):

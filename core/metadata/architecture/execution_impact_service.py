@@ -73,6 +73,7 @@ def build_execution_impact_plan(
   assessed_dataset_keys = _normalize_execution_dataset_keys(
     execution_dataset_keys
   )
+
   resolved_dependency_mode = _normalize_dependency_mode(dependency_mode)
 
   _validate_authoritative_inputs(

@@ -214,6 +214,100 @@ def test_architecture_release_validation_accepts_symbolic_runtime_references():
 
 
 @pytest.mark.django_db
+def test_architecture_release_store_inspection_keeps_valid_release_when_peer_is_invalid(
+  tmp_path,
+):
+  """Verify discovery isolates incompatible immutable artifacts without modifying them."""
+  store = ArchitectureReleaseStore(tmp_path / "releases")
+  bundle = create_architecture_release_bundle(
+    release_name="customer-platform",
+    release_version="1.0.2",
+    created_by="owner@example.com",
+    environment_label="dev",
+  )
+  store.save(bundle)
+
+  incompatible_path = store.base_path / "rel-0000000000000001.release.json"
+  incompatible_payload = {
+    "release_name": "customer-platform",
+    "release_version": "1.0.1",
+    "legacy": True,
+  }
+  incompatible_text = json.dumps(incompatible_payload, sort_keys=True)
+  incompatible_path.write_text(incompatible_text, encoding="utf-8")
+
+  inspection = store.inspect_all()
+
+  assert tuple(item.release_id for item in inspection.bundles) == (bundle.release_id,)
+  assert len(inspection.issues) == 1
+  assert inspection.issues[0].path == incompatible_path
+  assert inspection.issues[0].coordinate == ("customer-platform", "1.0.1")
+  assert incompatible_path.read_text(encoding="utf-8") == incompatible_text
+
+  with pytest.raises(ArchitectureReleaseStoreError):
+    store.load_all()
+
+
+@pytest.mark.django_db
+def test_architecture_release_store_allows_new_coordinate_with_incompatible_peer(
+  tmp_path,
+):
+  """Verify incompatible peers do not block unrelated coordinates during save."""
+  store = ArchitectureReleaseStore(tmp_path / "releases")
+  store.base_path.mkdir(parents=True, exist_ok=True)
+  incompatible_path = store.base_path / "rel-0000000000000001.release.json"
+  incompatible_path.write_text(
+    json.dumps({
+      "release_name": "customer-platform",
+      "release_version": "1.0.1",
+      "legacy": True,
+    }),
+    encoding="utf-8",
+  )
+
+  bundle = create_architecture_release_bundle(
+    release_name="customer-platform",
+    release_version="1.0.2",
+    created_by="owner@example.com",
+    environment_label="dev",
+  )
+  path = store.save(bundle)
+
+  assert path.exists()
+  assert store.require(bundle.release_id).release_version == "1.0.2"
+
+
+@pytest.mark.django_db
+def test_architecture_release_store_blocks_coordinate_reuse_by_incompatible_peer(
+  tmp_path,
+):
+  """Verify tolerant discovery never weakens immutable coordinate uniqueness."""
+  store = ArchitectureReleaseStore(tmp_path / "releases")
+  store.base_path.mkdir(parents=True, exist_ok=True)
+  incompatible_path = store.base_path / "rel-0000000000000001.release.json"
+  incompatible_path.write_text(
+    json.dumps({
+      "release_name": "customer-platform",
+      "release_version": "1.0.1",
+      "legacy": True,
+    }),
+    encoding="utf-8",
+  )
+
+  bundle = create_architecture_release_bundle(
+    release_name="customer-platform",
+    release_version="1.0.1",
+    created_by="owner@example.com",
+    environment_label="dev",
+  )
+  with pytest.raises(
+    ArchitectureReleaseStoreError,
+    match="already used by an incompatible stored artifact",
+  ):
+    store.save(bundle)
+
+
+@pytest.mark.django_db
 def test_elevata_release_command_create_list_download_and_validate(tmp_path):
   store_dir = tmp_path / "release-store"
   create_stdout = StringIO()

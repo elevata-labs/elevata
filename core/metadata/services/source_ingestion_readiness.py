@@ -34,6 +34,7 @@ from metadata.constants import (
 )
 from metadata.intent.ingestion import resolve_ingest_mode
 from metadata.intent.landing import landing_required
+from metadata.rendering.portable_expression import expression_runtime_value_names
 
 
 _FILE_SOURCE_TYPES = {
@@ -411,30 +412,36 @@ def _relational_config_signals(
   if getattr(source_dataset, "incremental", False) is not True:
     return signals
 
-  increment_filter = str(
+  portable_increment_filter = getattr(source_dataset, "portable_increment_filter", None)
+  legacy_increment_filter = str(
     getattr(source_dataset, "increment_filter", "") or ""
   ).strip()
-  if not increment_filter:
+
+  if not portable_increment_filter and not legacy_increment_filter:
     signals.append(_signal(
       "increment_filter_missing",
       "warning",
       "Incremental filter missing",
-      (
-        "The dataset is marked incremental, but no increment_filter is "
-        "configured."
-      ),
+      "The dataset is marked incremental, but no increment filter is configured.",
     ))
-  elif (
-    "{{DELTA_CUTOFF" in increment_filter
-    and not _has_active_increment_policy(source_dataset)
-  ):
+    return signals
+
+  if portable_increment_filter:
+    uses_delta_cutoff = "delta_cutoff" in expression_runtime_value_names(
+      portable_increment_filter,
+      allowed_runtime_values=("delta_cutoff",),
+    )
+  else:
+    uses_delta_cutoff = "{{DELTA_CUTOFF" in legacy_increment_filter
+
+  if uses_delta_cutoff and not _has_active_increment_policy(source_dataset):
     signals.append(_signal(
       "increment_policy_missing",
       "blocking",
       "Increment policy missing",
       (
-        "increment_filter uses the DELTA_CUTOFF placeholder, but no active "
-        "increment policy is configured."
+        "The effective increment filter uses the Delta cutoff runtime value, "
+        "but no active increment policy is configured."
       ),
     ))
 

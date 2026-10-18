@@ -1,0 +1,73 @@
+<!--
+elevata - Metadata-driven Data Platform Framework
+Copyright © 2025-2026 Ilona Tag
+
+This file is part of elevata.
+
+elevata is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of
+the License, or (at your option) any later version.
+
+elevata is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with elevata. If not, see <https://www.gnu.org/licenses/>.
+
+Contact: <https://github.com/elevata-labs/elevata>.
+-->
+
+{% extends "base.html" %}
+
+{% block title %}{{ title }} · elevata{% endblock %}
+
+{% block content %}
+<h1 class="h4 mb-3 d-flex align-items-center justify-content-between">
+  <span>
+    Query filter
+    <span class="badge badge-lineage-layer ms-2">{{ object.target_schema.short_name }}</span>
+    <span class="badge text-bg-secondary ms-2">{{ object.target_dataset_name }}</span>
+  </span>
+  <a href="{% url 'targetdataset_query_builder' object.pk %}" class="btn btn-sm btn-outline-primary">
+    <i class="bi bi-arrow-left"></i> Back to query builder
+  </a>
+</h1>
+
+<div class="card">
+  <div class="card-body">
+    <div class="fw-semibold mb-1">
+      {% if filter_node %}Edit FILTER node{% else %}Add FILTER node{% endif %}
+    </div>
+    <div class="small text-muted mb-3">
+      The filter keeps rows from <strong>{{ input_node }}</strong> for which the condition is true.
+      It does not change the output columns of the input node.
+    </div>
+
+    {% if form.non_field_errors %}
+      <div class="alert alert-danger">{{ form.non_field_errors }}</div>
+    {% endif %}
+
+    <form method="post">
+      {% csrf_token %}
+      <div class="mb-3">
+        {{ form.predicate.label_tag }}
+        {{ form.predicate }}
+        {% if form.predicate.errors %}
+          <div class="text-danger small mt-1">{{ form.predicate.errors }}</div>
+        {% endif %}
+      </div>
+
+      <div class="d-flex gap-2">
+        <button type="submit" class="btn btn-primary">
+          <i class="bi bi-check2"></i>
+          {% if filter_node %}Save filter{% else %}Create filter node{% endif %}
+        </button>
+        <a href="{% url 'targetdataset_query_builder' object.pk %}" class="btn btn-outline-secondary">Cancel</a>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

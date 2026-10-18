@@ -24,14 +24,403 @@ from django import forms
 from django.apps import apps
 
 from django.core.exceptions import ValidationError
-from metadata.models import TargetDataset, TargetColumn, TargetSchema
+from metadata.models import (
+  SourceDataset,
+  TargetDataset,
+  TargetColumn,
+  TargetColumnInput,
+  TargetSchema,
+  target_dataset_downstream_ids,
+)
 from metadata.generation import validators  # reuse central naming rules
+from metadata.rendering.portable_expression import (
+  PortableExpressionError,
+  normalize_expression_contract,
+  normalize_predicate_contract,
+)
+from metadata.widgets.portable_expression_widget import PortableExpressionWidget
 
 # Single source of truth for serving-friendly naming
 from metadata.generation.validators import (
   serving_clean_identifier,
   serving_normalize_identifier,
 )
+
+
+
+class PortableExpressionFormField(forms.CharField):
+  """Form field that validates a hidden portable expression or filter contract."""
+
+  def __init__(
+    self,
+    *args,
+    predicate_only=False,
+    allowed_runtime_values=(),
+    **kwargs,
+  ):
+    kwargs.setdefault("required", False)
+    kwargs.setdefault("widget", PortableExpressionWidget())
+    self.predicate_only = bool(predicate_only)
+    self.allowed_runtime_values = tuple(allowed_runtime_values)
+    super().__init__(*args, **kwargs)
+
+  def clean(self, value):
+    raw = super().clean(value)
+    if not raw:
+      return None
+
+    import json
+
+    try:
+      contract = json.loads(raw) if isinstance(raw, str) else raw
+    except (TypeError, ValueError) as exc:
+      raise ValidationError("Portable contract contains invalid JSON.") from exc
+
+    try:
+      if self.predicate_only:
+        return normalize_predicate_contract(
+          contract,
+          allowed_runtime_values=self.allowed_runtime_values,
+        )
+      return normalize_expression_contract(
+        contract,
+        allowed_runtime_values=self.allowed_runtime_values,
+      )
+    except PortableExpressionError as exc:
+      raise ValidationError(str(exc)) from exc
+
+
+def _portable_contract_initial(instance, field_name) -> str:
+  """Return stable JSON for a structured editor without exposing it directly."""
+  import json
+
+  contract = getattr(instance, field_name, None)
+  if not contract:
+    return ""
+  return json.dumps(contract, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
+
+
+def _portable_expression_initial(instance) -> str:
+  """Return the persisted TargetColumn portable expression as stable JSON."""
+  return _portable_contract_initial(instance, "portable_expression")
+
+
+def _expression_column_names(contract) -> set[str]:
+  """Collect logical column references from a normalized expression contract."""
+  names: set[str] = set()
+
+  def walk(node):
+    if not isinstance(node, dict):
+      return
+    if node.get("type") == "column":
+      name = str(node.get("name") or "").strip()
+      if name:
+        names.add(name)
+    for value in node.values():
+      if isinstance(value, dict):
+        walk(value)
+      elif isinstance(value, list):
+        for item in value:
+          if isinstance(item, dict):
+            walk(item)
+
+  if isinstance(contract, dict):
+    walk(contract.get("expression"))
+  return names
+
+
+class PortableExpressionFormMixin:
+  """Persist the structured editor value into the non-editable model field."""
+
+  system_managed_field_aliases = {
+    "portable_expression": "portable_expression_editor",
+  }
+
+  def _configure_portable_expression_editor(self, column_names):
+    field = self.fields.get("portable_expression_editor")
+    if field is None:
+      return
+    field.initial = _portable_expression_initial(self.instance)
+    field.widget.column_names = sorted({str(name) for name in column_names if str(name).strip()})
+    posted_manual = ""
+    if getattr(self, "data", None):
+      posted_manual = str(self.data.get("manual_expression") or "").strip()
+    field.widget.manual_expression_present = bool(
+      posted_manual
+      or str(getattr(self.instance, "manual_expression", "") or "").strip()
+    )
+
+    manual_field = self.fields.get("manual_expression")
+    if manual_field is not None:
+      manual_field.label = "Target-specific SQL fallback"
+      manual_field.help_text = (
+        "Use only when the transformation cannot be expressed as a portable expression. "
+        "A portable expression takes precedence when both are defined."
+      )
+
+  def _order_portable_expression_fields(self, anchor_names):
+    """Place portable authoring directly after the relevant lineage fields."""
+    portable_name = "portable_expression_editor"
+    manual_name = "manual_expression"
+    if portable_name not in self.fields:
+      return
+
+    ordered_names = [
+      name for name in self.fields
+      if name not in (portable_name, manual_name)
+    ]
+    anchor_positions = [
+      ordered_names.index(name)
+      for name in anchor_names
+      if name in ordered_names
+    ]
+    insert_at = max(anchor_positions) + 1 if anchor_positions else len(ordered_names)
+    ordered_names.insert(insert_at, portable_name)
+    if manual_name in self.fields:
+      ordered_names.insert(insert_at + 1, manual_name)
+    self.order_fields(ordered_names)
+
+  def _validate_expression_columns(self, cleaned, allowed_names):
+    contract = cleaned.get("portable_expression_editor")
+    if not contract:
+      return cleaned
+    referenced = _expression_column_names(contract)
+    allowed = {str(name) for name in allowed_names if str(name).strip()}
+    unknown = sorted(referenced - allowed)
+    if unknown:
+      self.add_error(
+        "portable_expression_editor",
+        "Portable expression references columns outside the selected input lineage: "
+        + ", ".join(unknown)
+        + ".",
+      )
+    return cleaned
+
+  def save(self, commit=True):
+    instance = super().save(commit=False)
+    field = self.fields.get("portable_expression_editor")
+    if field is not None and not field.disabled:
+      instance.portable_expression = self.cleaned_data.get("portable_expression_editor")
+    if commit:
+      instance.save()
+      if hasattr(self, "save_m2m"):
+        self.save_m2m()
+    return instance
+
+
+class QueryFilterAuthoringForm(forms.Form):
+  """Portable predicate editor used to create and edit Query FILTER nodes."""
+
+  predicate = PortableExpressionFormField(
+    label="Filter",
+    predicate_only=True,
+    required=True,
+    widget=PortableExpressionWidget(
+      editor_kind="filter",
+      column_label="Input column",
+      intro_text="Build a platform-neutral row filter from columns exposed by the input query node.",
+      empty_text="No filter defined.",
+    ),
+  )
+
+  def __init__(self, *args, column_names=(), initial_contract=None, **kwargs):
+    super().__init__(*args, **kwargs)
+    ordered_column_names = []
+    seen = set()
+    for name in column_names:
+      value = str(name).strip()
+      if not value:
+        continue
+      key = value.lower()
+      if key in seen:
+        continue
+      seen.add(key)
+      ordered_column_names.append(value)
+
+    self.column_names = set(ordered_column_names)
+    field = self.fields["predicate"]
+    field.widget.column_names = ordered_column_names
+    if initial_contract:
+      import json
+      field.initial = json.dumps(
+        initial_contract,
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+      )
+
+  def clean_predicate(self):
+    contract = self.cleaned_data.get("predicate")
+    if not contract:
+      raise ValidationError("Define a filter before saving the FILTER node.")
+
+    unknown = sorted(_expression_column_names(contract) - self.column_names)
+    if unknown:
+      raise ValidationError(
+        "Portable filter references columns outside the input query contract: "
+        + ", ".join(unknown)
+        + "."
+      )
+    return contract
+
+
+class SourceDatasetForm(forms.ModelForm):
+  """SourceDataset form with structured static and incremental filter editors."""
+
+  portable_static_filter_editor = PortableExpressionFormField(
+    label="Portable static filter",
+    predicate_only=True,
+    widget=PortableExpressionWidget(
+      editor_kind="filter",
+      column_label="Source column",
+      intro_text="Build a platform-neutral filter from columns of this source dataset.",
+      empty_text="No portable static filter defined.",
+    ),
+  )
+  portable_increment_filter_editor = PortableExpressionFormField(
+    label="Portable increment filter",
+    predicate_only=True,
+    allowed_runtime_values=("delta_cutoff",),
+    widget=PortableExpressionWidget(
+      editor_kind="filter",
+      column_label="Source column",
+      intro_text=(
+        "Build a platform-neutral incremental filter from source columns and the Delta cutoff runtime value."
+      ),
+      empty_text="No portable increment filter defined.",
+      runtime_values=(("delta_cutoff", "Delta cutoff"),),
+    ),
+  )
+
+  class Meta:
+    model = SourceDataset
+    fields = "__all__"
+
+  def __init__(self, *args, **kwargs):
+    super().__init__(*args, **kwargs)
+
+    source_names = []
+    if getattr(self.instance, "pk", None):
+      source_names = list(
+        self.instance.source_columns.order_by("ordinal_position", "id").values_list(
+          "source_column_name",
+          flat=True,
+        )
+      )
+
+    self._configure_source_filter_editor(
+      "portable_static_filter_editor",
+      "portable_static_filter",
+      "static_filter",
+      source_names,
+      (
+        "A deprecated source-specific SQL static filter is also stored. "
+        "The portable filter takes precedence when present; clearing it restores the SQL fallback."
+      ),
+    )
+    self._configure_source_filter_editor(
+      "portable_increment_filter_editor",
+      "portable_increment_filter",
+      "increment_filter",
+      source_names,
+      (
+        "A deprecated source-specific SQL increment filter is also stored. "
+        "The portable filter takes precedence when present; clearing it restores the SQL fallback."
+      ),
+    )
+
+    static_sql = self.fields.get("static_filter")
+    if static_sql is not None:
+      static_sql.label = "Deprecated static SQL fallback"
+    increment_sql = self.fields.get("increment_filter")
+    if increment_sql is not None:
+      increment_sql.label = "Deprecated increment SQL fallback"
+
+    self._order_source_filter_fields()
+
+  def _configure_source_filter_editor(
+    self,
+    editor_name,
+    model_field_name,
+    fallback_field_name,
+    source_names,
+    fallback_note,
+  ):
+    field = self.fields.get(editor_name)
+    if field is None:
+      return
+    field.initial = _portable_contract_initial(self.instance, model_field_name)
+    field.widget.column_names = sorted({str(name) for name in source_names if str(name).strip()})
+
+    posted_fallback = ""
+    if getattr(self, "data", None):
+      posted_fallback = str(self.data.get(fallback_field_name) or "").strip()
+    field.widget.fallback_present = bool(
+      posted_fallback
+      or str(getattr(self.instance, fallback_field_name, "") or "").strip()
+    )
+    field.widget.fallback_note = fallback_note
+
+  def _order_source_filter_fields(self):
+    """Keep each portable filter immediately before its deprecated SQL fallback."""
+    preferred_order = [
+      "source_system",
+      "schema_name",
+      "source_dataset_name",
+      "description",
+      "integrate",
+      "portable_static_filter_editor",
+      "static_filter",
+      "incremental",
+      "portable_increment_filter_editor",
+      "increment_filter",
+      "manual_model",
+      "distinct_select",
+      "owner",
+      "generate_raw_table",
+      "ingestion_config",
+      "active",
+    ]
+    ordered = [name for name in preferred_order if name in self.fields]
+    ordered.extend(name for name in self.fields if name not in ordered)
+    self.order_fields(ordered)
+
+  def _validate_filter_columns(self, editor_name, cleaned, source_names):
+    contract = cleaned.get(editor_name)
+    if not contract:
+      return
+    referenced = _expression_column_names(contract)
+    allowed = {str(name) for name in source_names if str(name).strip()}
+    unknown = sorted(referenced - allowed)
+    if unknown:
+      self.add_error(
+        editor_name,
+        "Portable filter references columns outside this SourceDataset: "
+        + ", ".join(unknown)
+        + ".",
+      )
+
+  def clean(self):
+    cleaned = super().clean()
+    source_names = []
+    if getattr(self.instance, "pk", None):
+      source_names = list(
+        self.instance.source_columns.values_list("source_column_name", flat=True)
+      )
+    self._validate_filter_columns("portable_static_filter_editor", cleaned, source_names)
+    self._validate_filter_columns("portable_increment_filter_editor", cleaned, source_names)
+    return cleaned
+
+  def save(self, commit=True):
+    instance = super().save(commit=False)
+    instance.portable_static_filter = self.cleaned_data.get("portable_static_filter_editor")
+    instance.portable_increment_filter = self.cleaned_data.get("portable_increment_filter_editor")
+    if commit:
+      instance.save()
+      if hasattr(self, "save_m2m"):
+        self.save_m2m()
+    return instance
+
 
 class TargetDatasetForm(forms.ModelForm):
   """Validation form for TargetDataset with consistent naming rules."""
@@ -97,15 +486,31 @@ class TargetDatasetForm(forms.ModelForm):
       .first()
     )
 
-    qs = f.queryset
-    if schema_short == "bizcore":
-      # Bizcore: only rawcore (incl _hist)
-      f.queryset = qs.filter(target_schema__short_name="rawcore")
-    elif schema_short == "serving":
-      # Serving: rawcore + bizcore
-      f.queryset = qs.filter(target_schema__short_name__in=["rawcore", "bizcore"])
-    else:
-      f.queryset = qs
+    allowed_upstream_layers = {
+      "bizcore": ["rawcore", "bizcore"],
+      "serving": ["rawcore", "bizcore", "serving"],
+    }
+    allowed_layers = allowed_upstream_layers.get(schema_short)
+    if allowed_layers is None:
+      f.queryset = f.queryset.order_by("target_dataset_name")
+      return
+
+    qs = (
+      f.queryset
+      .filter(target_schema__short_name__in=allowed_layers)
+      .order_by("target_schema__short_name", "target_dataset_name")
+    )
+    current_id = getattr(self.instance, "pk", None)
+    if current_id:
+      forbidden_ids = target_dataset_downstream_ids(current_id)
+      forbidden_ids.add(current_id)
+      qs = qs.exclude(pk__in=forbidden_ids)
+      if forbidden_ids:
+        f.help_text = (
+          "Datasets that already depend on this dataset are excluded because "
+          "selecting them as upstream would create a dependency cycle."
+        )
+    f.queryset = qs
 
   class Meta:
     model = TargetDataset
@@ -140,21 +545,36 @@ class TargetDatasetForm(forms.ModelForm):
       raise forms.ValidationError(str(e))
     return name
 
-class TargetColumnForm(forms.ModelForm):
-  """
-  ModelForm for TargetColumn ensuring consistent validation for both
-  normal CRUD (full-page form) and inline/row edits.
+class TargetColumnForm(PortableExpressionFormMixin, forms.ModelForm):
+  """Validation and portable-expression authoring form for TargetColumn."""
 
-  Responsibilities:
-    - Validate technical column name using elevata's shared validators
-    - Enforce uniqueness within the parent dataset
-    - Avoid duplicate logic between UI paths (scoped + normal CRUD)
-  """
+  portable_expression_editor = PortableExpressionFormField(
+    label="Portable expression",
+  )
 
   def __init__(self, *args, **kwargs):
     super().__init__(*args, **kwargs)
 
     self.fields["target_dataset"].widget.attrs["data-elevata-refresh"] = "1"
+
+    editor_names = []
+    try:
+      editor_names = list(
+        self.instance.input_links.filter(active=True).values_list(
+          "upstream_target_column__target_column_name",
+          flat=True,
+        )
+      )
+      editor_names += list(
+        self.instance.input_links.filter(active=True).values_list(
+          "source_column__source_column_name",
+          flat=True,
+        )
+      )
+    except Exception:
+      editor_names = []
+    self._configure_portable_expression_editor(editor_names)
+    self._order_portable_expression_fields(("upstream_columns",))
 
     f = self.fields.get("upstream_columns")
     if f is None:
@@ -196,6 +616,22 @@ class TargetColumnForm(forms.ModelForm):
       .filter(target_dataset__in=upstreams)
       .order_by("target_dataset__target_dataset_name", "ordinal_position")
     )
+
+    selected_ids = []
+    if getattr(self, "data", None):
+      selected_ids = self.data.getlist("upstream_columns")
+    if not selected_ids:
+      initial_upstream = self.initial.get("upstream_columns")
+      if initial_upstream is not None:
+        try:
+          selected_ids = [str(obj.pk) for obj in initial_upstream]
+        except TypeError:
+          selected_ids = [str(initial_upstream)]
+    if selected_ids:
+      editor_names = list(
+        f.queryset.filter(pk__in=selected_ids).values_list("target_column_name", flat=True)
+      )
+      self._configure_portable_expression_editor(editor_names)
 
   class Meta:
     model = TargetColumn
@@ -269,47 +705,87 @@ class TargetColumnForm(forms.ModelForm):
     return new_name
 
   def clean(self):
-    """
-    Safety net for datatype propagation:
-    If no manual_expression is set and exactly one upstream column is selected,
-    hard-overwrite datatype/length/precision/scale/nullability from upstream.
-    """
+    """Apply datatype propagation and validate expression lineage."""
     cleaned = super().clean()
 
-    manual_expr = (cleaned.get("manual_expression") or "").strip()
-    if manual_expr:
-      return cleaned
-
     upstream_cols = cleaned.get("upstream_columns")
-    if upstream_cols is None:
-      return cleaned
-
     try:
-      upstream_list = list(upstream_cols.all())
+      upstream_list = list(upstream_cols.all()) if upstream_cols is not None else []
     except Exception:
       upstream_list = list(upstream_cols) if upstream_cols else []
 
-    if len(upstream_list) != 1:
+    cleaned = self._validate_expression_columns(
+      cleaned,
+      [getattr(col, "target_column_name", "") for col in upstream_list],
+    )
+
+    portable_expr = cleaned.get("portable_expression_editor")
+    manual_expr = (cleaned.get("manual_expression") or "").strip()
+    if portable_expr is not None or manual_expr or len(upstream_list) != 1:
       return cleaned
 
     src = upstream_list[0]
 
-    # Only propagate if datatype is not explicitly set.
-    # TargetColumn datatype is authoritative once defined.
     if not cleaned.get("datatype"):
       cleaned["datatype"] = src.datatype or ""
-
     if cleaned.get("max_length") in (None, "", 0):
       cleaned["max_length"] = src.max_length
-
     if cleaned.get("decimal_precision") in (None, "", 0):
       cleaned["decimal_precision"] = src.decimal_precision
-
     if cleaned.get("decimal_scale") in (None, "", 0):
       cleaned["decimal_scale"] = src.decimal_scale
-
-    # nullable is advisory only — do not override explicit user changes
     if cleaned.get("nullable") is None:
       cleaned["nullable"] = src.nullable
 
     return cleaned
+
+
+
+class TargetColumnInputForm(PortableExpressionFormMixin, forms.ModelForm):
+  """Form for source-specific column lineage with portable-expression editing."""
+
+  portable_expression_editor = PortableExpressionFormField(
+    label="Portable expression",
+  )
+
+  class Meta:
+    model = TargetColumnInput
+    fields = "__all__"
+
+  def __init__(self, *args, **kwargs):
+    super().__init__(*args, **kwargs)
+    names = []
+    upstream = getattr(self.instance, "upstream_target_column", None)
+    source = getattr(self.instance, "source_column", None)
+    if upstream is not None:
+      names.append(getattr(upstream, "target_column_name", ""))
+    if source is not None:
+      names.append(getattr(source, "source_column_name", ""))
+
+    if getattr(self, "data", None):
+      upstream_id = self.data.get("upstream_target_column")
+      source_id = self.data.get("source_column")
+      upstream_field = self.fields.get("upstream_target_column")
+      source_field = self.fields.get("source_column")
+      if upstream_id and upstream_field is not None:
+        selected = upstream_field.queryset.filter(pk=upstream_id).first()
+        if selected is not None:
+          names.append(getattr(selected, "target_column_name", ""))
+      if source_id and source_field is not None:
+        selected = source_field.queryset.filter(pk=source_id).first()
+        if selected is not None:
+          names.append(getattr(selected, "source_column_name", ""))
+
+    self._configure_portable_expression_editor(names)
+    self._order_portable_expression_fields(("upstream_target_column", "source_column"))
+
+  def clean(self):
+    cleaned = super().clean()
+    names = []
+    upstream = cleaned.get("upstream_target_column")
+    source = cleaned.get("source_column")
+    if upstream is not None:
+      names.append(getattr(upstream, "target_column_name", ""))
+    if source is not None:
+      names.append(getattr(source, "source_column_name", ""))
+    return self._validate_expression_columns(cleaned, names)

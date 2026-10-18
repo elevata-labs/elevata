@@ -25,6 +25,8 @@ from __future__ import annotations
 from typing import Optional, TYPE_CHECKING
 import re
 
+from django.db.models import Q
+
 from metadata.rendering.logical_plan import (
   SourceTable,
   SelectItem,
@@ -37,15 +39,26 @@ from metadata.rendering.logical_plan import (
 from metadata.generation.naming import build_surrogate_key_name
 from metadata.rendering.expr import (
   Expr,
+  Cast,
   ColumnRef,
+  BooleanOp,
   FuncCall,
   OrderByExpr,
   OrderByClause,
   RawSql,
+  WindowFrame,
+  WindowFrameBoundary,
   WindowSpec,
   WindowFunction,
 )
 from metadata.rendering.dsl import col, lit, raw, row_number, parse_surrogate_dsl
+from metadata.rendering.portable_expression import (
+  expression_runtime_value_names,
+  predicate_contract_to_ast,
+)
+from metadata.rendering.column_expression import column_expression_contract_to_ast
+from metadata.generation.query_contract import infer_query_node_contract
+from metadata.generation.window_fn_registry import get_window_fn_spec
 
 if TYPE_CHECKING:
   # Only for type hints, no runtime import -> no circular import
@@ -179,6 +192,89 @@ def _qualify_expr_identifiers_by_map(expr_text: str, *, name_to_alias: dict[str,
 
   return _IDENT_RE.sub(repl, expr_text)
 
+def _strip_manual_expression_wrapper(value: str) -> str:
+  """Return compatibility expression text without optional elevata braces."""
+  text = str(value or "").strip()
+  if text.startswith("{{") and text.endswith("}}"):
+    return text[2:-2].strip()
+  return text
+
+
+def _configured_column_expression(
+  tcol,
+  *,
+  selected_input=None,
+  available_links=None,
+  alias_resolver=None,
+  manual_qualifier=None,
+):
+  """Resolve structured/input-specific/default expression precedence for one target column."""
+  links = list(available_links or [])
+
+  for owner in (selected_input, tcol):
+    if owner is None:
+      continue
+
+    contract = getattr(owner, "portable_expression", None)
+    if contract is not None:
+      return column_expression_contract_to_ast(
+        contract,
+        links=links,
+        alias_resolver=alias_resolver,
+      )
+
+    manual = str(getattr(owner, "manual_expression", "") or "").strip()
+    if manual:
+      text = manual_qualifier(manual) if manual_qualifier is not None else manual
+      return raw(_strip_manual_expression_wrapper(text))
+
+  return None
+
+
+
+
+def _target_columns_for_base_projection(target_dataset, required_input_columns: set[str] | None = None) -> list:
+  """Return columns needed to build the base projection for a query plan.
+
+  Active authored columns participate by default. Inactive authored columns may
+  still be required by downstream operators, for example when an aggregate
+  consumes a calculated pre-aggregate column that is not part of the final head
+  schema. Query-derived columns are outputs of the query tree and never belong
+  to the dataset-definition base projection.
+  """
+  required = {
+    str(name).strip()
+    for name in (required_input_columns or set())
+    if str(name).strip()
+  }
+  cols = target_dataset.target_columns.order_by("ordinal_position", "id")
+  selected = []
+  for col in cols:
+    name = (getattr(col, "target_column_name", "") or "").strip()
+    is_active = bool(getattr(col, "active", True))
+    lineage_origin = (getattr(col, "lineage_origin", "") or "").strip()
+
+    if lineage_origin == "query_derived":
+      continue
+    if not is_active and name not in required:
+      continue
+    selected.append(col)
+  return selected
+
+def _active_input_links(tcol) -> list:
+  """Return active column-level lineage links in deterministic priority order."""
+  return list(
+    tcol.input_links
+    .select_related(
+      "upstream_target_column",
+      "source_column",
+      "source_column__source_dataset",
+    )
+    .filter(active=True)
+    .order_by("ordinal_position", "id")
+  )
+
+
 def _pick_single_upstream_target_dataset(target_dataset) -> Optional["TargetDataset"]:
   """
   For non-stage layers, we treat multiple upstream TargetDatasets as unsupported
@@ -202,34 +298,33 @@ def _pick_single_upstream_target_dataset(target_dataset) -> Optional["TargetData
 # Extract Stage-level lineage of a RawCore column
 # ------------------------------------------------------------------------------
 def _get_stage_expr_for_rawcore_col(col: TargetColumn) -> Optional[str]:
-  """
-  Resolve the Stage-level expression feeding this RawCore column.
+  """Resolve the Stage-level lineage expression used by RawCore key propagation."""
+  links = _active_input_links(col)
+  selected_input = links[0] if links else None
 
-  Priority:
-    1) manual_expression (overrides all)
-    2) upstream_target_column (Stage → RawCore lineage)
+  for owner in (selected_input, col):
+    if owner is None:
+      continue
 
-  Returns:
-    DSL expression string such as 'col("stage_col")'
-    or a manual expression, or None if no Stage lineage is found.
-  """
-  # Manual expression always wins
-  if col.manual_expression:
-    return col.manual_expression
+    contract = getattr(owner, "portable_expression", None)
+    if contract is not None:
+      expr = column_expression_contract_to_ast(contract, links=links)
+      if isinstance(expr, ColumnRef):
+        return f'col("{expr.column_name}")'
+      raise ValueError(
+        f"RawCore reference component '{col.target_column_name}' uses a portable "
+        "expression that cannot be represented in surrogate-key lineage. "
+        "Reference key components must resolve to a direct input column."
+      )
 
-  # Upstream Stage column
-  link = (
-    col.input_links
-    .filter(active=True)
-    .select_related("upstream_target_column")
-    .order_by("ordinal_position", "id")
-    .first()
-  )
-  if link and link.upstream_target_column:
-    stage_col = link.upstream_target_column
+    manual = str(getattr(owner, "manual_expression", "") or "").strip()
+    if manual:
+      return manual
+
+  if selected_input and selected_input.upstream_target_column:
+    stage_col = selected_input.upstream_target_column
     return f'col("{stage_col.target_column_name}")'
 
-  # No Stage lineage
   return None
 
 
@@ -373,6 +468,139 @@ def build_source_dataset_where_sql(
     return parts[0]
 
   return " AND ".join(f"({p})" for p in parts)
+
+
+def build_source_dataset_where_expr(
+  source_dataset,
+  *,
+  source_alias: str = "s",
+  delta_cutoff=None,
+) -> Expr | None:
+  """Build one source-extraction filter with portable-first fallback semantics."""
+  source_columns_manager = getattr(source_dataset, "source_columns", None)
+  if source_columns_manager is None:
+    source_columns = []
+  elif hasattr(source_columns_manager, "all"):
+    source_columns = list(source_columns_manager.all())
+  else:
+    source_columns = list(source_columns_manager)
+  by_lower = {
+    str(col.source_column_name).lower(): str(col.source_column_name)
+    for col in source_columns
+    if getattr(col, "source_column_name", None)
+  }
+
+  def resolve_column(name: str) -> ColumnRef:
+    key = str(name or "").strip().lower()
+    if not key or key not in by_lower:
+      raise ValueError(
+        f"Source filter references unknown SourceDataset column: {name!r}"
+      )
+    return ColumnRef(table_alias=source_alias, column_name=by_lower[key])
+
+  parts: list[Expr] = []
+
+  portable_static = getattr(source_dataset, "portable_static_filter", None)
+  if portable_static:
+    parts.append(
+      predicate_contract_to_ast(
+        portable_static,
+        column_resolver=resolve_column,
+      )
+    )
+  else:
+    static_filter = (getattr(source_dataset, "static_filter", None) or "").strip()
+    if static_filter:
+      parts.append(
+        raw(qualify_source_filter(source_dataset, static_filter, source_alias=source_alias))
+      )
+
+  if getattr(source_dataset, "incremental", False):
+    portable_increment = getattr(source_dataset, "portable_increment_filter", None)
+    if portable_increment:
+      def resolve_runtime_value(name: str) -> Expr:
+        if str(name).strip().lower() != "delta_cutoff":
+          raise ValueError(f"Unsupported source runtime value: {name!r}")
+        if delta_cutoff is None:
+          return raw("{{DELTA_CUTOFF}}")
+        return lit(delta_cutoff)
+
+      parts.append(
+        predicate_contract_to_ast(
+          portable_increment,
+          column_resolver=resolve_column,
+          allowed_runtime_values=("delta_cutoff",),
+          runtime_value_resolver=resolve_runtime_value,
+        )
+      )
+    else:
+      increment_filter = (getattr(source_dataset, "increment_filter", None) or "").strip()
+      if increment_filter:
+        parts.append(
+          raw(
+            qualify_source_filter(
+              source_dataset,
+              increment_filter,
+              source_alias=source_alias,
+            )
+          )
+        )
+
+  if not parts:
+    return None
+  if len(parts) == 1:
+    return parts[0]
+  return BooleanOp(operator="AND", parts=parts)
+
+
+def build_source_dataset_select_sql(
+  source_dataset,
+  *,
+  dialect,
+  source_column_names,
+  source_alias: str = "s",
+  delta_cutoff=None,
+) -> str:
+  """Render the relational source SELECT used by preview and native RAW ingestion."""
+  names = [str(name) for name in source_column_names if str(name or "").strip()]
+  if not names:
+    raise ValueError("Source extraction requires at least one integrated source column.")
+
+  select_sql = ", ".join(
+    f"{source_alias}.{dialect.render_identifier(name)}"
+    for name in names
+  )
+  from_sql = dialect.render_table_identifier(
+    getattr(source_dataset, "schema_name", None),
+    getattr(source_dataset, "source_dataset_name", None),
+  )
+  sql = f"SELECT {select_sql} FROM {from_sql} AS {source_alias}"
+
+  where_expr = build_source_dataset_where_expr(
+    source_dataset,
+    source_alias=source_alias,
+    delta_cutoff=delta_cutoff,
+  )
+  if where_expr is not None:
+    sql += " WHERE " + dialect.render_expr(where_expr)
+
+  return sql + ";"
+
+
+def source_increment_filter_uses_delta_cutoff(source_dataset) -> bool:
+  """Return whether the selected incremental filter requires the Delta cutoff runtime value."""
+  if not getattr(source_dataset, "incremental", False):
+    return False
+
+  portable_increment = getattr(source_dataset, "portable_increment_filter", None)
+  if portable_increment:
+    return "delta_cutoff" in expression_runtime_value_names(
+      portable_increment,
+      allowed_runtime_values=("delta_cutoff",),
+    )
+
+  increment_filter = (getattr(source_dataset, "increment_filter", None) or "").strip()
+  return "{{DELTA_CUTOFF" in increment_filter
 
 
 def build_surrogate_fk_expression(reference: "TargetDatasetReference") -> Expr:
@@ -651,10 +879,37 @@ def _build_single_select_for_upstream(
       expr = raw(f"'{identity_id}'")
 
     else:
-      if col_meta.target_column_name in upstream_col_names:
-        expr = col(col_meta.target_column_name, "s")
-      else:
-        expr = raw("NULL")
+      branch_links = list(
+        col_meta.input_links
+        .select_related("upstream_target_column", "source_column")
+        .filter(
+          active=True,
+          upstream_target_column__target_dataset=upstream_dataset,
+        )
+        .order_by("ordinal_position", "id")
+      )
+      selected_input = branch_links[0] if branch_links else None
+      branch_names = {
+        link.upstream_target_column.target_column_name
+        for link in branch_links
+        if getattr(link, "upstream_target_column", None) is not None
+      }
+      expr = _configured_column_expression(
+        col_meta,
+        selected_input=selected_input,
+        available_links=branch_links,
+        alias_resolver=lambda _link: "s",
+        manual_qualifier=lambda value: _qualify_expr_identifiers(
+          value,
+          col_names=branch_names,
+          alias="s",
+        ),
+      )
+      if expr is None:
+        if col_meta.target_column_name in upstream_col_names:
+          expr = col(col_meta.target_column_name, "s")
+        else:
+          expr = raw("NULL")
 
     logical.select_list.append(
       SelectItem(expr=expr, alias=col_meta.target_column_name)
@@ -701,9 +956,9 @@ def _build_single_select_for_source_stage(
   logical = LogicalSelect(from_=source_table, select_list=[])
 
   # Apply SourceDataset extraction filters (static + optional incremental)
-  where_sql = build_source_dataset_where_sql(source_dataset, source_alias="s")
-  if where_sql:
-    logical.where = raw(where_sql)
+  where_expr = build_source_dataset_where_expr(source_dataset, source_alias="s")
+  if where_expr is not None:
+    logical.where = where_expr
 
   # Fast lookup of source columns by lowercased name
   src_cols_by_name = {
@@ -728,13 +983,40 @@ def _build_single_select_for_source_stage(
         expr = raw("NULL")
 
     else:
-      # Normal mapping: try to find a source column with the same name
-      src_col = src_cols_by_name.get(tcol.target_column_name.lower())
-      if src_col:
-        expr = col(src_col.source_column_name, "s")
-      else:
-        # No matching source column → NULL for this branch
-        expr = raw("NULL")
+      branch_links = list(
+        tcol.input_links
+        .select_related("source_column", "upstream_target_column")
+        .filter(
+          active=True,
+          source_column__source_dataset=source_dataset,
+        )
+        .order_by("ordinal_position", "id")
+      )
+      selected_input = branch_links[0] if branch_links else None
+      branch_names = {
+        link.source_column.source_column_name
+        for link in branch_links
+        if getattr(link, "source_column", None) is not None
+      }
+      expr = _configured_column_expression(
+        tcol,
+        selected_input=selected_input,
+        available_links=branch_links,
+        alias_resolver=lambda _link: "s",
+        manual_qualifier=lambda value: _qualify_expr_identifiers(
+          value,
+          col_names=branch_names,
+          alias="s",
+        ),
+      )
+      if expr is None:
+        # Normal mapping: try to find a source column with the same name
+        src_col = src_cols_by_name.get(tcol.target_column_name.lower())
+        if src_col:
+          expr = col(src_col.source_column_name, "s")
+        else:
+          # No matching source column → NULL for this branch
+          expr = raw("NULL")
 
     logical.select_list.append(
       SelectItem(expr=expr, alias=tcol.target_column_name)
@@ -984,10 +1266,146 @@ def _build_plan_for_query_node(node, required_input_columns: set[str] | None = N
   if node_type == "window":
     return _build_window_plan_for_node(node, required_input_columns=required_input_columns)
 
+  if node_type == "filter":
+    return _build_filter_plan_for_node(node, required_input_columns=required_input_columns)
+
   if node_type == "union":
     return _build_union_plan_for_node(node, required_input_columns=required_input_columns)
 
   raise ValueError(f"Unsupported QueryNode type: {node_type}")
+
+
+def _build_filter_plan_for_node(node, required_input_columns: set[str] | None = None):
+  """
+  Build a FILTER as a wrapped SELECT over its input node.
+
+  FILTER preserves the visible input output contract exactly. Its predicate may
+  also reference non-projected columns exposed through available_input_columns;
+  those columns are pushed into the inner SELECT only for predicate evaluation
+  and are not leaked into the FILTER output unless a downstream operator needs
+  them as well.
+  """
+  filter_node = getattr(node, "filter", None)
+  if filter_node is None:
+    raise ValueError("Filter node has no filter details (node.filter is None)")
+
+  input_node = getattr(filter_node, "input_node", None)
+  if input_node is None:
+    raise ValueError("Filter node has no input node")
+
+  input_contract = infer_query_node_contract(input_node)
+  errors = [issue for issue in input_contract.issues if str(issue or "").startswith("ERROR:")]
+  if errors:
+    raise ValueError("Filter input contract is invalid: " + "; ".join(errors))
+
+  columns = list(input_contract.columns or [])
+  if not columns:
+    raise ValueError("Filter input contract has no output columns")
+
+  selectable = list(input_contract.available_input_columns or columns)
+  selectable_lower = {name.lower(): name for name in selectable}
+
+  downstream_required = {
+    str(name).strip()
+    for name in (required_input_columns or set())
+    if str(name).strip()
+  }
+  unknown_required = sorted(
+    name for name in downstream_required if name.lower() not in selectable_lower
+  )
+  if unknown_required:
+    raise ValueError(
+      "Filter downstream operator references unavailable input columns: "
+      + ", ".join(unknown_required)
+    )
+
+  predicate_columns: set[str] = set()
+
+  def _resolve_column(name: str) -> ColumnRef:
+    key = (name or "").strip().lower()
+    if not key or key not in selectable_lower:
+      raise ValueError(f"Filter predicate references unknown input column: {name!r}")
+    resolved = selectable_lower[key]
+    predicate_columns.add(resolved)
+    return ColumnRef(table_alias="f", column_name=resolved)
+
+  predicate = predicate_contract_to_ast(
+    getattr(filter_node, "predicate", None),
+    column_resolver=_resolve_column,
+  )
+
+  required = set(columns)
+  required.update(selectable_lower[name.lower()] for name in downstream_required)
+  required.update(predicate_columns)
+
+  inner_plan = _build_plan_for_query_node(input_node, required_input_columns=required)
+  if not isinstance(inner_plan, (LogicalSelect, LogicalUnion)):
+    raise TypeError(
+      f"Filter input must compile to LogicalSelect or LogicalUnion, got {type(inner_plan).__name__}"
+    )
+
+  src = SubquerySource(select=inner_plan, alias="f")
+  visible_columns = list(columns)
+  visible_lower = {name.lower() for name in visible_columns}
+  passthrough_required = [
+    selectable_lower[name.lower()]
+    for name in downstream_required
+    if name.lower() not in visible_lower
+  ]
+  select_items = [
+    SelectItem(expr=ColumnRef(table_alias="f", column_name=name), alias=name)
+    for name in (visible_columns + sorted(passthrough_required, key=str.lower))
+  ]
+  return LogicalSelect(
+    from_=src,
+    where=predicate,
+    select_list=select_items,
+  )
+
+
+def _aggregate_output_type_contract(node, output_name: str) -> dict[str, object] | None:
+  """Return the synchronized physical output contract for one aggregate output.
+
+  QueryContractColumnSyncService owns aggregate result-type inference. The query
+  builder consumes that synchronized TargetColumn contract rather than repeating
+  SUM/AVG type rules here.
+  """
+  td = getattr(node, "target_dataset", None)
+  name = str(output_name or "").strip()
+  if td is None or not name:
+    return None
+
+  col = (
+    td.target_columns
+    .filter(active=True, target_column_name__iexact=name)
+    .order_by("ordinal_position", "id")
+    .first()
+  )
+  if col is None:
+    return None
+
+  return {
+    "datatype": (getattr(col, "datatype", "") or "").strip(),
+    "max_length": getattr(col, "max_length", None),
+    "precision": getattr(col, "decimal_precision", None),
+    "scale": getattr(col, "decimal_scale", None),
+  }
+
+
+def _cast_to_type_contract(expr: Expr, contract: dict[str, object] | None) -> Expr:
+  """Wrap an expression in a vendor-neutral Cast when a type contract exists."""
+  if not contract:
+    return expr
+  datatype = str(contract.get("datatype") or "").strip()
+  if not datatype:
+    return expr
+  return Cast(
+    expr=expr,
+    target_type=datatype,
+    max_length=contract.get("max_length"),
+    precision=contract.get("precision"),
+    scale=contract.get("scale"),
+  )
 
 
 def _build_aggregate_plan_for_node(node):
@@ -1043,6 +1461,7 @@ def _build_aggregate_plan_for_node(node):
     in_name = (m.input_column_name or "").strip()
     delimiter = (getattr(m, "delimiter", "") or ",")
     order_by_obj = getattr(m, "order_by", None)
+    output_type = _aggregate_output_type_contract(node, out_name) if fn in ("SUM", "AVG") else None
 
     # COUNT(*) support
     if fn == "COUNT" and not in_name:
@@ -1050,6 +1469,11 @@ def _build_aggregate_plan_for_node(node):
 
     else:
       arg = ColumnRef(table_alias="u", column_name=in_name) if in_name else None
+      if arg is not None and output_type is not None:
+        # SUM must widen before accumulation and AVG must use the canonical exact
+        # numeric domain before averaging. Casting only the final result can be too
+        # late (overflow / approximate FLOAT semantics on some platforms).
+        arg = _cast_to_type_contract(arg, output_type)
 
       # DISTINCT handling: prefer a logical function name to keep dialect rendering clean.
       # Dialects can map COUNT_DISTINCT(x) -> COUNT(DISTINCT x), etc.
@@ -1059,7 +1483,7 @@ def _build_aggregate_plan_for_node(node):
         else:
           expr = FuncCall(name=f"{fn}_DISTINCT", args=[arg] if arg else [])
       else:
-        # Optional deterministic ordering for STRING_AGG (and future order-sensitive aggregates).
+        # Optional deterministic ordering for STRING_AGG.
         if fn == "STRING_AGG":
           args = [arg] if arg else []
           # Delimiter from model (default ',')
@@ -1081,6 +1505,11 @@ def _build_aggregate_plan_for_node(node):
           expr = FuncCall(name="STRING_AGG", args=args)
         else:
           expr = FuncCall(name=fn, args=[arg] if arg else [])
+
+      # The input cast establishes the aggregate calculation domain.
+      # Do not cast the aggregate result again: dialects such as BigQuery
+      # distinguish DDL type parameters from CAST type syntax, and the target
+      # column contract already enforces the persisted precision/scale.
 
     measure_items.append(SelectItem(expr=expr, alias=out_name))
 
@@ -1164,25 +1593,60 @@ def _build_union_plan_for_node(node, required_input_columns: set[str] | None = N
 def _build_window_select_items(window_node, upstream_alias: str) -> list[SelectItem]:
   items: list[SelectItem] = []
 
-  for col in window_node.columns.all().order_by("ordinal_position", "id"):
+  for col in window_node.columns.filter(active=True).order_by("ordinal_position", "id"):
     fn = (col.function or "").strip().upper()
     out_name = (col.output_name or "").strip()
     if not out_name:
       continue
 
-    # Build function args (normalized)
+    # Validate the persisted function arguments before SQL construction. Window
+    # columns are saved before their arguments are authored in the separate editor,
+    # so incomplete definitions can exist temporarily. Preview/execution must fail
+    # closed instead of emitting invalid SQL such as SUM() OVER (...).
+    spec = get_window_fn_spec(fn)
+    if spec is None:
+      raise ValueError(f"Unsupported window function '{fn}' (column '{out_name}').")
+
+    persisted_args = list(col.args.all().order_by("ordinal_position", "id"))
+    if not (spec.min_args <= len(persisted_args) <= spec.max_args):
+      raise ValueError(
+        f"Window function {fn} expects {spec.min_args}..{spec.max_args} args, "
+        f"got {len(persisted_args)} (column '{out_name}')."
+      )
+
     fn_args = []
-    for a in col.args.all().order_by("ordinal_position", "id"):
+    for idx, a in enumerate(persisted_args):
       t = (a.arg_type or "").strip().lower()
+      if idx < len(spec.arg_schema):
+        allowed = spec.arg_schema[idx]
+        if t not in allowed:
+          raise ValueError(
+            f"Window function {fn} arg {idx + 1} must be one of {allowed}, "
+            f"got '{t}' (column '{out_name}')."
+          )
+
       if t == "column":
         nm = (a.column_name or "").strip()
-        if nm:
-          fn_args.append(ColumnRef(table_alias=upstream_alias, column_name=nm))
+        if not nm:
+          raise ValueError(
+            f"Window function {fn} arg {idx + 1} column name is empty "
+            f"(column '{out_name}')."
+          )
+        fn_args.append(ColumnRef(table_alias=upstream_alias, column_name=nm))
       elif t == "int":
-        if a.int_value is not None:
-          fn_args.append(lit(a.int_value))
+        if a.int_value is None:
+          raise ValueError(
+            f"Window function {fn} arg {idx + 1} integer value is empty "
+            f"(column '{out_name}')."
+          )
+        fn_args.append(lit(a.int_value))
       elif t == "str":
         fn_args.append(lit(a.str_value or ""))
+      else:
+        raise ValueError(
+          f"Window function {fn} arg {idx + 1} has unsupported type '{t}' "
+          f"(column '{out_name}')."
+        )
 
     partition_by_exprs = []
     if col.partition_by:
@@ -1204,12 +1668,28 @@ def _build_window_select_items(window_node, upstream_alias: str) -> list[SelectI
           )
         )
 
+    frame = None
+    frame_type = (getattr(col, "frame_type", "") or "").strip().upper()
+    if frame_type:
+      frame = WindowFrame(
+        frame_type=frame_type,
+        start=WindowFrameBoundary(
+          kind=(getattr(col, "frame_start", "") or "").strip().upper(),
+          offset=getattr(col, "frame_start_offset", None),
+        ),
+        end=WindowFrameBoundary(
+          kind=(getattr(col, "frame_end", "") or "").strip().upper(),
+          offset=getattr(col, "frame_end_offset", None),
+        ),
+      )
+
     wf = WindowFunction(
       name=fn,
       args=fn_args,
       window=WindowSpec(
         partition_by=partition_by_exprs,
         order_by=order_by_exprs,
+        frame=frame,
       ),
     )
     items.append(SelectItem(expr=wf, alias=out_name))
@@ -1242,7 +1722,77 @@ def _build_window_plan_for_node(node, required_input_columns: set[str] | None = 
   if win is None:
     raise ValueError("Window node has no window details (node.window is None)")
 
-  inner_plan = _build_plan_for_query_node(win.input_node, required_input_columns=required_input_columns)
+  input_contract = infer_query_node_contract(win.input_node)
+  errors = [issue for issue in input_contract.issues if str(issue or "").startswith("ERROR:")]
+  if errors:
+    raise ValueError("Window input contract is invalid: " + "; ".join(errors))
+
+  visible_input_columns = list(input_contract.columns or [])
+  selectable = list(input_contract.available_input_columns or visible_input_columns)
+  selectable_lower = {name.lower(): name for name in selectable}
+
+  window_columns = list(win.columns.filter(active=True).order_by("ordinal_position", "id"))
+  window_output_lower = {
+    (col.output_name or "").strip().lower()
+    for col in window_columns
+    if (col.output_name or "").strip()
+  }
+
+  # Window expressions may reference selectable upstream columns that are not part
+  # of the visible input projection. Push those dependencies into the inner plan
+  # without leaking them into the Window node's visible output contract.
+  own_required: set[str] = set()
+  for col in window_columns:
+    for arg in col.args.all().order_by("ordinal_position", "id"):
+      if (arg.arg_type or "").strip().lower() != "column":
+        continue
+      name = (arg.column_name or "").strip()
+      if name:
+        own_required.add(name)
+
+    if col.partition_by:
+      for item in col.partition_by.items.all().order_by("ordinal_position", "id"):
+        name = (item.input_column_name or "").strip()
+        if name:
+          own_required.add(name)
+
+    if col.order_by:
+      for item in col.order_by.items.all().order_by("ordinal_position", "id"):
+        name = (item.input_column_name or "").strip()
+        if name:
+          own_required.add(name)
+
+  unknown_own = sorted(name for name in own_required if name.lower() not in selectable_lower)
+  if unknown_own:
+    raise ValueError(
+      "Window expression references unavailable input columns: " + ", ".join(unknown_own)
+    )
+
+  downstream_required = {
+    str(name).strip()
+    for name in (required_input_columns or set())
+    if str(name).strip()
+  }
+  passthrough_required: set[str] = set()
+  unknown_downstream: list[str] = []
+  for name in downstream_required:
+    key = name.lower()
+    if key in window_output_lower:
+      continue
+    if key in selectable_lower:
+      passthrough_required.add(selectable_lower[key])
+      continue
+    unknown_downstream.append(name)
+
+  if unknown_downstream:
+    raise ValueError(
+      "Window downstream operator references unavailable columns: "
+      + ", ".join(sorted(unknown_downstream))
+    )
+
+  required = {selectable_lower[name.lower()] for name in own_required}
+  required.update(passthrough_required)
+  inner_plan = _build_plan_for_query_node(win.input_node, required_input_columns=required)
 
   # Same safety rule as aggregate/union: only these can be embedded as subqueries.
   if not isinstance(inner_plan, (LogicalSelect, LogicalUnion)):
@@ -1254,9 +1804,19 @@ def _build_window_plan_for_node(node, required_input_columns: set[str] | None = 
   src = SubquerySource(select=inner_plan, alias=upstream_alias)
   outer = LogicalSelect(from_=src, select_list=[])
 
-  # 1) pass-through input projection (u.<col> AS <col>)
+  # Preserve the Window node's visible input contract. Extra upstream columns are
+  # projected only when a downstream operator explicitly needs them.
+  projection_names = list(visible_input_columns)
+  visible_lower = {name.lower() for name in projection_names}
+  projection_names.extend(
+    sorted(
+      (name for name in passthrough_required if name.lower() not in visible_lower),
+      key=str.lower,
+    )
+  )
+
   existing_aliases: set[str] = set()
-  for name in _get_plan_output_column_names(inner_plan):
+  for name in projection_names:
     if name in existing_aliases:
       raise ValueError(f"Duplicate output column alias in window input: '{name}'")
     existing_aliases.add(name)
@@ -1267,7 +1827,6 @@ def _build_window_plan_for_node(node, required_input_columns: set[str] | None = 
       )
     )
 
-  # 2) add window expressions (using existing helper)
   win_items = _build_window_select_items(win, upstream_alias)
   for it in win_items:
     alias = (getattr(it, "alias", "") or "").strip()
@@ -1286,6 +1845,32 @@ def _build_window_plan_for_node(node, required_input_columns: set[str] | None = 
 # ------------------------------------------------------------------------------
 # Main builder: Build logical select for a target dataset
 # ------------------------------------------------------------------------------
+def _apply_dataset_distinct(plan, target_dataset: TargetDataset):
+  """Apply TargetDataset.distinct_select to the final dataset result only."""
+  if not bool(getattr(target_dataset, "distinct_select", False)):
+    return plan
+
+  if isinstance(plan, LogicalSelect):
+    plan.distinct = True
+    return plan
+
+  if isinstance(plan, LogicalUnion):
+    columns = _get_plan_output_column_names(plan)
+    if not columns:
+      raise ValueError("Cannot apply dataset DISTINCT to a UNION without an output contract.")
+    alias = "d"
+    return LogicalSelect(
+      from_=SubquerySource(select=plan, alias=alias),
+      select_list=[
+        SelectItem(expr=ColumnRef(table_alias=alias, column_name=name), alias=name)
+        for name in columns
+      ],
+      distinct=True,
+    )
+
+  raise TypeError(f"Unsupported logical plan for dataset DISTINCT: {type(plan).__name__}")
+
+
 def build_logical_select_for_target(target_dataset: TargetDataset):
   """
   Build a vendor-neutral logical representation (LogicalSelect or LogicalUnion)
@@ -1294,10 +1879,10 @@ def build_logical_select_for_target(target_dataset: TargetDataset):
 
   # If a query graph root is defined, compile the query tree instead of the classic path.
   query_plan = _build_plan_from_query_root(target_dataset)
-  if query_plan is not None:
-    return query_plan
+  if query_plan is None:
+    query_plan = _build_plan_from_dataset_definition(target_dataset, required_input_columns=None)
 
-  return _build_plan_from_dataset_definition(target_dataset, required_input_columns=None)
+  return _apply_dataset_distinct(query_plan, target_dataset)
 
 
 def _build_plan_from_dataset_definition(
@@ -1308,6 +1893,7 @@ def _build_plan_from_dataset_definition(
   Classic elevata path: build from TargetDataset definition (inputs, joins, columns, manual expressions).
   This function contains the previous body of build_logical_select_for_target().
   """
+  required_input_columns = required_input_columns or set()
   schema_short = target_dataset.target_schema.short_name
 
   inputs_qs = (
@@ -1400,20 +1986,10 @@ def _build_plan_from_dataset_definition(
       #   - if TargetColumn has upstream_columns, pick the upstream alias based on that column's dataset
       # For now: if a column has exactly one upstream_target_column, we qualify against that upstream dataset alias.
 
-      required_input_columns = required_input_columns or set()
-      tcols_qs = (
-        target_dataset.target_columns
-          .filter(active=True)
-          .order_by("ordinal_position", "id")
+      tcols = _target_columns_for_base_projection(
+        target_dataset,
+        required_input_columns=required_input_columns,
       )
-      # Default: hide query-derived outputs to avoid double projection,
-      # but keep explicitly required inputs (e.g. aggregate measure inputs).
-      tcols = []
-      for c in tcols_qs:
-        name = (getattr(c, "target_column_name", "") or "").strip()
-        if getattr(c, "lineage_origin", "") == "query_derived" and name not in required_input_columns:
-          continue
-        tcols.append(c)
 
       # helper: map upstream dataset id -> alias by inspecting the FROM and joins we built
       # base
@@ -1429,28 +2005,32 @@ def _build_plan_from_dataset_definition(
 
       # project columns
       for tcol in tcols:
-        col_input = (
-          tcol.input_links
-            .select_related("upstream_target_column", "source_column")
-            .filter(active=True)
-            .order_by("ordinal_position", "id")
-            .first()
+        links = _active_input_links(tcol)
+        col_input = links[0] if links else None
+
+        def _joined_alias(link):
+          up_col = getattr(link, "upstream_target_column", None)
+          if up_col is None:
+            return None
+          return ds_alias.get(up_col.target_dataset_id)
+
+        name_to_alias = _collect_input_column_alias_map(
+          tcol,
+          ds_alias_by_dataset_id=ds_alias,
+        )
+        expr = _configured_column_expression(
+          tcol,
+          selected_input=col_input,
+          available_links=links,
+          alias_resolver=_joined_alias,
+          manual_qualifier=lambda value: _qualify_expr_identifiers_by_map(
+            value,
+            name_to_alias=name_to_alias,
+          ),
         )
 
-        # Expressions:
-        if tcol.manual_expression:
-          # manual_expression may contain bare identifiers; qualify based on input_links.
-          manual = (tcol.manual_expression or "").strip()
-          name_to_alias = _collect_input_column_alias_map(
-            tcol,
-            ds_alias_by_dataset_id=ds_alias,
-          )
-          qualified = _qualify_expr_identifiers_by_map(
-            manual,
-            name_to_alias=name_to_alias,
-          )
-          expr = raw(qualified)
-
+        if expr is not None:
+          pass
         elif col_input and col_input.upstream_target_column:
           up_col = col_input.upstream_target_column
           up_ds_id = up_col.target_dataset_id
@@ -1467,18 +2047,55 @@ def _build_plan_from_dataset_definition(
         logical.select_list.append(SelectItem(expr=expr, alias=tcol.target_column_name))
 
       # Ensure required input columns exist in the projection even if they are not
-      # part of the current dataset output schema (e.g. aggregate measure inputs).
-      present = set()
-      for si in (logical.select_list or []):
-        alias = getattr(si, "alias", None)
-        if alias:
-          present.add(alias)
-      for name in sorted(required_input_columns):
+      # part of the current dataset output schema (e.g. FILTER predicates or
+      # aggregate measure inputs). For joined inputs, resolve each plain column
+      # name to exactly one upstream dataset. Ambiguous names fail closed.
+      present = {
+        getattr(si, "alias", None)
+        for si in (logical.select_list or [])
+        if getattr(si, "alias", None)
+      }
+
+      upstream_by_name: dict[str, list[tuple[str, str]]] = {}
+      for inp in upstream_inputs:
+        up = inp.upstream_target_dataset
+        alias = ds_alias.get(up.id)
+        if not alias:
+          continue
+        for up_name in _get_active_target_colnames(up):
+          key = (up_name or "").strip().lower()
+          if not key:
+            continue
+          upstream_by_name.setdefault(key, []).append((up_name, alias))
+
+      for name in sorted(required_input_columns, key=str.lower):
         if not name or name in present:
           continue
-        # MVP: passthrough from base alias (i1) if available.
-        base_alias = getattr(logical.from_, "alias", "i1")
-        logical.select_list.append(SelectItem(expr=col(name, base_alias), alias=name))
+        matches = upstream_by_name.get(name.lower(), [])
+        if len(matches) == 1:
+          source_name, source_alias = matches[0]
+          logical.select_list.append(
+            SelectItem(expr=col(source_name, source_alias), alias=name)
+          )
+          present.add(name)
+          continue
+        if len(matches) > 1:
+          # Unqualified duplicate names follow the join namespace convention:
+          # the first/base input wins. This mirrors the visible left-to-right
+          # join direction and keeps plain input-column references deterministic.
+          base_alias = getattr(logical.from_, "alias", None)
+          source_name, source_alias = next(
+            (match for match in matches if match[1] == base_alias),
+            matches[0],
+          )
+          logical.select_list.append(
+            SelectItem(expr=col(source_name, source_alias), alias=name)
+          )
+          present.add(name)
+          continue
+        raise ValueError(
+          f"Required input column '{name}' is not available from the joined upstream datasets."
+        )
 
       return logical
 
@@ -1574,9 +2191,9 @@ def _build_plan_from_dataset_definition(
     src_input = next((inp for inp in inputs_qs if inp.source_dataset is not None), None)
     if src_input and src_input.source_dataset:
       sd = src_input.source_dataset
-      where_sql = build_source_dataset_where_sql(sd, source_alias="s")
-      if where_sql:
-        logical.where = raw(where_sql)
+      where_expr = build_source_dataset_where_expr(sd, source_alias="s")
+      if where_expr is not None:
+        logical.where = where_expr
 
   # If STAGE reads directly from SourceDataset (no RAW),
   # apply SourceDataset extraction filters on the source table.
@@ -1584,26 +2201,14 @@ def _build_plan_from_dataset_definition(
     src_input = next((inp for inp in inputs_qs if inp.source_dataset is not None), None)
     if src_input and src_input.source_dataset:
       sd = src_input.source_dataset
-      where_sql = build_source_dataset_where_sql(sd, source_alias="s")
-      if where_sql:
-        logical.where = raw(where_sql)
+      where_expr = build_source_dataset_where_expr(sd, source_alias="s")
+      if where_expr is not None:
+        logical.where = where_expr
 
-  required_input_columns = required_input_columns or set()
-  tcols_qs = (
-    target_dataset.target_columns
-    .filter(active=True)
-    .order_by("ordinal_position", "id")
+  tcols = _target_columns_for_base_projection(
+    target_dataset,
+    required_input_columns=required_input_columns,
   )
-  # Default: hide query-derived columns in the base dataset-definition SELECT
-  # to avoid double projection (e.g. window outputs).
-  # Exception: if a downstream operator (e.g. AGGREGATE) explicitly requires
-  # an input column, we must keep it even if it is marked query_derived.
-  tcols = []
-  for c in tcols_qs:
-    name = (getattr(c, "target_column_name", "") or "").strip()
-    if getattr(c, "lineage_origin", "") == "query_derived" and name not in required_input_columns:
-      continue
-    tcols.append(c)
 
   for tcol in tcols:
     # 1) Surrogate key column
@@ -1648,29 +2253,22 @@ def _build_plan_from_dataset_definition(
 
     # 4) Normal column: derive from upstream or fall back to same-name column
     else:
-      # 0) Manual override: author does not need to type alias; we qualify from inputs.
-      manual = (tcol.manual_expression or "").strip()
-      if manual:
-        input_names = _collect_input_column_names(tcol)
-        qualified = _qualify_expr_identifiers(manual, col_names=input_names, alias="s")
+      links = _active_input_links(tcol)
+      col_input = links[0] if links else None
+      input_names = _collect_input_column_names(tcol)
+      expr = _configured_column_expression(
+        tcol,
+        selected_input=col_input,
+        available_links=links,
+        alias_resolver=lambda _link: "s",
+        manual_qualifier=lambda value: _qualify_expr_identifiers(
+          value,
+          col_names=input_names,
+          alias="s",
+        ),
+      )
 
-        # Keep DSL text without braces or plain SQL as-is (renderer will handle raw text).
-        if qualified.startswith("{{") and qualified.endswith("}}"):
-          qualified = qualified[2:-2].strip()
-        expr = raw(qualified)
-      else:
-        col_input = (
-          tcol.input_links
-          .select_related(
-            "upstream_target_column",
-            "source_column",
-            "source_column__source_dataset",
-          )
-          .filter(active=True)
-          .order_by("ordinal_position", "id")
-          .first()
-        )
-
+      if expr is None:
         upstream_col_name = (
           col_input.upstream_target_column.target_column_name
           if col_input and col_input.upstream_target_column

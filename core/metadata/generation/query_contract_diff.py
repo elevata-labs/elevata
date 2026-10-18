@@ -42,6 +42,9 @@ def _get_root_input_node(root) -> Optional[object]:
   if ntype == "window":
     w = getattr(root, "window", None)
     return getattr(w, "input_node", None) if w else None
+  if ntype == "filter":
+    flt = getattr(root, "filter", None)
+    return getattr(flt, "input_node", None) if flt else None
   return None
 
 

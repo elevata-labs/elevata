@@ -928,6 +928,17 @@ class DatabricksDialect(SqlDialect):
     return f"SUBSTRING({expr}, 1, {int(max_length)})"
 
 
+  def render_string_agg(self, args) -> str:
+    if len(args) < 2:
+      raise ValueError("STRING_AGG requires at least 2 arguments: value, delimiter.")
+    value_sql = self.render_expr(args[0])
+    delim_sql = self.render_expr(args[1])
+    if len(args) >= 3 and args[2] is not None:
+      order_by_sql = self.render_expr(args[2])
+      return f"LISTAGG({value_sql}, {delim_sql}) WITHIN GROUP (ORDER BY {order_by_sql})"
+    return f"LISTAGG({value_sql}, {delim_sql})"
+
+
   def concat_expression(self, parts: Sequence[str]) -> str:
     if not parts:
       return "''"

@@ -399,31 +399,31 @@ This architecture supports multiple SQL backends without changing metadata or Lo
 
 ---
 
-## 🔧 13. Default Generation vs Custom Query Logic
+## 🔧 13. Default Generation vs Explicit Query Logic
 
-elevata distinguishes between two generation modes:
+elevata uses one Logical Plan and dialect-rendering pipeline for both standard generation and explicit semantic query logic.
 
 ### 🧩 Default Generation
-SQL is derived automatically from:
+
+SQL is derived from:
 
 - dataset inputs and joins  
-- column definitions and expressions  
-- lineage and metadata rules
+- TargetColumns and column-level lineage  
+- portable calculated expressions  
+- generated key expressions  
+- metadata rules and execution semantics  
 
-This mode requires no explicit query definition and is the default.
+No explicit Query Tree is required.
 
-### 🧩 Custom Query Logic (Query Tree)
-In semantic layers (`bizcore`, `serving`), a dataset may define an explicit Query Tree.
+### 🧩 Explicit Query Logic (Query Tree)
 
-If a Query Tree is present:
+`bizcore` and `serving` datasets can define a Query Tree whose Base select uses the normal dataset definition. Typed FILTER, AGGREGATE, UNION, and WINDOW nodes then define additional relational structure.
 
-- it defines the query structure  
-- output columns are inferred from the tree  
-- the resulting plan is rendered via the same Logical Plan and dialect system
+Portable expressions describe calculated values. Portable predicates describe row-selection conditions. The Query Tree describes relational shape. These semantics compile into the same vendor-neutral Logical Plan used by standard generation.
 
-If no Query Tree is present, elevata always falls back to default generation.
+The output contract of the effective query head is the physical materialization contract for the dataset. Authored TargetColumns remain metadata inputs and are not destructively removed when a Query Tree temporarily exposes a smaller output.
 
-This opt-in model prevents accidental complexity while enabling advanced, deterministic transformations where needed.
+This keeps advanced transformation logic explicit, deterministic, and platform-neutral.
 
 ---
 

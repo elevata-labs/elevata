@@ -14,7 +14,7 @@ Incremental logic is configured per `TargetDataset` using:
 - `incremental_strategy = "full" | "merge"`  
 - `handle_deletes = True | False`  
 
-Currently implemented strategies:
+Supported strategies:
 
 - **full** → full rebuild  
 - **merge** → incremental upsert based on natural key lineage  
@@ -27,13 +27,13 @@ While incremental strategies operate between Stage → Rawcore, elevata also sup
 
 This is controlled at the SourceDataset level via:
 
-- `static_filter` – permanent scoping, applied only during ingestion  
-- `increment_filter` – time-based delta scoping using `{{DELTA_CUTOFF}}`  
+- `portable_static_filter` - permanent source-row scoping applied during ingestion  
+- `portable_increment_filter` - time-based incremental source-row scoping using the runtime delta cutoff  
 
 Key rules:
 
-- `static_filter` is applied only during ingestion (RAW or stage-direct-source)  
-- `increment_filter` is applied during ingestion and delete detection  
+- `portable_static_filter` is applied only during ingestion (RAW or stage-direct-source)  
+- `portable_increment_filter` is applied during ingestion and delete detection  
 - Incremental scoping during ingestion does **not** imply incremental RAW storage;  
   RAW tables are always rebuilt (TRUNCATE + INSERT)
 
@@ -49,7 +49,7 @@ A `PartialLoad` is an **architecture execution scope**, not a row-level or time-
 
 Partial Load execution therefore does **not** create separate incremental semantics:
 
-- `SourceDataset.static_filter` and `SourceDataset.increment_filter` remain authoritative for row scoping.  
+- `SourceDataset.portable_static_filter` and `SourceDataset.portable_increment_filter` define source row scoping.  
 - Each `TargetDataset` keeps its normal full, merge, delete-detection, and historization behavior.  
 - Partial Loads do not create, reset, or replace incremental state or watermarks.  
 - A dataset reached through a Partial Load is processed exactly as it would be in the full execution scope.

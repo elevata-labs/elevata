@@ -22,6 +22,8 @@ Contact: <https://github.com/elevata-labs/elevata>.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+import json
 import os
 from pathlib import Path
 import re
@@ -47,6 +49,35 @@ class ArchitectureReleaseStoreError(ValueError):
   """
   Raised when an immutable release cannot be stored or loaded.
   """
+
+
+@dataclass(frozen=True)
+class ArchitectureReleaseStoreIssue:
+  """
+  Describe one stored release artifact that cannot be loaded by this runtime.
+  """
+
+  path: Path
+  error: str
+  release_name: str = ""
+  release_version: str = ""
+
+  @property
+  def coordinate(self) -> tuple[str, str] | None:
+    """Return the stored release coordinate when it can be read safely."""
+    if not self.release_name or not self.release_version:
+      return None
+    return (self.release_name, self.release_version)
+
+
+@dataclass(frozen=True)
+class ArchitectureReleaseStoreInspection:
+  """
+  Separate readable immutable releases from incompatible stored artifacts.
+  """
+
+  bundles: tuple[ArchitectureReleaseBundle, ...]
+  issues: tuple[ArchitectureReleaseStoreIssue, ...]
 
 
 def resolve_architecture_release_dir(
@@ -89,7 +120,8 @@ class ArchitectureReleaseStore:
     except ArchitectureReleaseValidationError as exc:
       raise ArchitectureReleaseStoreError(str(exc)) from exc
 
-    for existing in self.load_all():
+    inspection = self.inspect_all()
+    for existing in inspection.bundles:
       if existing.coordinate != bundle.coordinate:
         continue
       if existing.bundle_fingerprint == bundle.bundle_fingerprint:
@@ -98,6 +130,19 @@ class ArchitectureReleaseStore:
         "Architecture release coordinate is already used by a different "
         f"immutable bundle: {bundle.release_name} {bundle.release_version}."
       )
+
+    for issue in inspection.issues:
+      if issue.coordinate is None:
+        raise ArchitectureReleaseStoreError(
+          "Architecture release coordinate uniqueness cannot be verified because "
+          f"a stored artifact is unreadable: {issue.path}. {issue.error}"
+        )
+      if issue.coordinate == bundle.coordinate:
+        raise ArchitectureReleaseStoreError(
+          "Architecture release coordinate is already used by an incompatible "
+          "stored artifact: "
+          f"{bundle.release_name} {bundle.release_version}."
+        )
 
     path = self.release_file(bundle.release_id)
     if path.exists():
@@ -132,16 +177,31 @@ class ArchitectureReleaseStore:
       )
     return bundle
 
-  def load_all(self) -> tuple[ArchitectureReleaseBundle, ...]:
+  def inspect_all(self) -> ArchitectureReleaseStoreInspection:
     """
-    Load all valid stored releases in deterministic order.
+    Inspect stored releases without letting one incompatible artifact hide others.
+
+    Stored artifacts are never modified. Readable bundles remain available for
+    discovery while incompatible artifacts are returned as explicit issues.
     """
     if not self.base_path.exists():
-      return ()
+      return ArchitectureReleaseStoreInspection(bundles=(), issues=())
+
     bundles = []
+    issues = []
     for path in sorted(self.base_path.glob("rel-*.release.json")):
-      bundles.append(self.load_file(path))
-    return tuple(sorted(
+      try:
+        bundles.append(self.load_file(path))
+      except ArchitectureReleaseStoreError as exc:
+        release_name, release_version = _read_release_coordinate(path)
+        issues.append(ArchitectureReleaseStoreIssue(
+          path=path,
+          error=str(exc),
+          release_name=release_name,
+          release_version=release_version,
+        ))
+
+    ordered_bundles = tuple(sorted(
       bundles,
       key=lambda item: (
         item.release_name,
@@ -150,6 +210,22 @@ class ArchitectureReleaseStore:
         item.release_id,
       ),
     ))
+    return ArchitectureReleaseStoreInspection(
+      bundles=ordered_bundles,
+      issues=tuple(issues),
+    )
+
+  def load_all(self) -> tuple[ArchitectureReleaseBundle, ...]:
+    """
+    Load all stored releases strictly in deterministic order.
+
+    This strict API preserves fail-closed behavior for callers that require the
+    complete store to be valid. Use inspect_all() for tolerant discovery.
+    """
+    inspection = self.inspect_all()
+    if inspection.issues:
+      raise ArchitectureReleaseStoreError(inspection.issues[0].error)
+    return inspection.bundles
 
   def export(
     self,
@@ -193,6 +269,19 @@ class ArchitectureReleaseStore:
         f"Architecture Release Bundle is invalid: {release_path}: {exc}"
       ) from exc
     return bundle
+
+
+def _read_release_coordinate(path: Path) -> tuple[str, str]:
+  """Read only the immutable coordinate from a stored JSON artifact."""
+  try:
+    data = json.loads(path.read_text(encoding="utf-8"))
+  except (OSError, json.JSONDecodeError):
+    return ("", "")
+  if not isinstance(data, dict):
+    return ("", "")
+  release_name = str(data.get("release_name") or "").strip()
+  release_version = str(data.get("release_version") or "").strip()
+  return (release_name, release_version)
 
 
 def _validate_release_id(value: str) -> str:

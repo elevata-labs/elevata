@@ -43,6 +43,7 @@ def analyze_query_governance(root) -> Dict[str, Any]:
       "uses_aggregate": False,
       "uses_union": False,
       "uses_window": False,
+      "uses_filter": False,
       "deterministic": True,
       "non_deterministic_reasons": [],
       "issue_counts": {"errors": 0, "warnings": 0},
@@ -56,6 +57,7 @@ def analyze_query_governance(root) -> Dict[str, Any]:
   uses_aggregate = False
   uses_union = False
   uses_window = False
+  uses_filter = False
 
   nondet_reasons = []
   explanations = []
@@ -103,11 +105,17 @@ def analyze_query_governance(root) -> Dict[str, Any]:
           if getattr(b, "input_node", None):
             q.append(b.input_node)
 
+    elif ntype == "filter":
+      uses_filter = True
+      flt = getattr(n, "filter", None)
+      if flt and getattr(flt, "input_node", None):
+        q.append(flt.input_node)
+
     elif ntype == "window":
       uses_window = True
       w = getattr(n, "window", None)
       if w:
-        for c in w.columns.all():
+        for c in w.columns.filter(active=True):
           fn = (getattr(c, "function", "") or "").strip().upper()
           spec = get_window_fn_spec(fn)
           if spec and spec.requires_order_by and not getattr(c, "order_by_id", None):
@@ -132,6 +140,7 @@ def analyze_query_governance(root) -> Dict[str, Any]:
     "uses_aggregate": uses_aggregate,
     "uses_union": uses_union,
     "uses_window": uses_window,
+    "uses_filter": uses_filter,
     "deterministic": deterministic,
     "non_deterministic_reasons": nondet_reasons[:8],  # keep UI short
     "issue_counts": {"errors": err_cnt, "warnings": warn_cnt},

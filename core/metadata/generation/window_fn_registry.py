@@ -36,6 +36,7 @@ class WindowFnSpec:
   # positional argument schemas; if shorter than max_args, remaining positions are flexible
   arg_schema: List[List[ArgType]]
   requires_order_by: bool
+  frame_policy: Literal["forbidden", "optional", "required"] = "forbidden"
 
 
 WINDOW_FN_REGISTRY: Dict[str, WindowFnSpec] = {
@@ -71,14 +72,14 @@ WINDOW_FN_REGISTRY: Dict[str, WindowFnSpec] = {
     name="LAG",
     min_args=1,
     max_args=3,
-    arg_schema=[["column"], ["int"], ["column", "int", "str"]],
+    arg_schema=[["column"], ["int"], ["int", "str"]],
     requires_order_by=True,
   ),
   "LEAD": WindowFnSpec(
     name="LEAD",
     min_args=1,
     max_args=3,
-    arg_schema=[["column"], ["int"], ["column", "int", "str"]],
+    arg_schema=[["column"], ["int"], ["int", "str"]],
     requires_order_by=True,
   ),
   
@@ -89,6 +90,7 @@ WINDOW_FN_REGISTRY: Dict[str, WindowFnSpec] = {
     max_args=1,
     arg_schema=[["column"]],
     requires_order_by=True,
+    frame_policy="required",
   ),
   "LAST_VALUE": WindowFnSpec(
     name="LAST_VALUE",
@@ -96,14 +98,9 @@ WINDOW_FN_REGISTRY: Dict[str, WindowFnSpec] = {
     max_args=1,
     arg_schema=[["column"]],
     requires_order_by=True,
+    frame_policy="required",
   ),
-  "NTH_VALUE": WindowFnSpec(
-    name="NTH_VALUE",
-    min_args=2,
-    max_args=2,
-    arg_schema=[["column"], ["int"]],
-    requires_order_by=True,
-  ),
+
 
   # Windowed aggregates (optional ORDER BY; semantics still deterministic without it)
   "SUM": WindowFnSpec(
@@ -112,6 +109,7 @@ WINDOW_FN_REGISTRY: Dict[str, WindowFnSpec] = {
     max_args=1,
     arg_schema=[["column"]],
     requires_order_by=False,
+    frame_policy="optional",
   ),
   "AVG": WindowFnSpec(
     name="AVG",
@@ -119,6 +117,7 @@ WINDOW_FN_REGISTRY: Dict[str, WindowFnSpec] = {
     max_args=1,
     arg_schema=[["column"]],
     requires_order_by=False,
+    frame_policy="optional",
   ),
   "MIN": WindowFnSpec(
     name="MIN",
@@ -126,6 +125,7 @@ WINDOW_FN_REGISTRY: Dict[str, WindowFnSpec] = {
     max_args=1,
     arg_schema=[["column"]],
     requires_order_by=False,
+    frame_policy="optional",
   ),
   "MAX": WindowFnSpec(
     name="MAX",
@@ -133,6 +133,7 @@ WINDOW_FN_REGISTRY: Dict[str, WindowFnSpec] = {
     max_args=1,
     arg_schema=[["column"]],
     requires_order_by=False,
+    frame_policy="optional",
   ),
   "COUNT": WindowFnSpec(
     name="COUNT",
@@ -141,6 +142,7 @@ WINDOW_FN_REGISTRY: Dict[str, WindowFnSpec] = {
     max_args=1,
     arg_schema=[["column"]],
     requires_order_by=False,
+    frame_policy="optional",
   ),
 }
 

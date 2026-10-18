@@ -1,254 +1,189 @@
 # ⚙️ Query Builder & Query Tree
 
-This document explains elevata’s **Query Builder** and the underlying **Query Tree** concept. It also clarifies the meaning of **query_root** and **query_head** as used in the UI and SQL generation. It focuses on **why** this exists, **when** to use it, and **how** it fits into elevata’s metadata-driven execution model.
+The Query Builder models advanced transformation structure as explicit metadata. It keeps relational query shape separate from platform SQL while preserving query contracts, lineage, determinism, and dialect portability.
+
+The central separation is:
+
+```text
+Portable Expression   -> What value does this expression produce?
+Query Tree            -> Which rows and relational shape does this dataset produce?
+```
+
+Portable expressions therefore describe calculated values and predicates. Query nodes describe relational operations such as filtering, aggregation, union composition, and windowing.
 
 ---
 
-## 🔧 1. Why Query Trees exist
+## 🔧 1. Standard generation and explicit query logic
 
-elevata generates SQL from metadata by default:
+A TargetDataset without a Query Tree is generated from its dataset definition:
 
-**Metadata → Logical Plan → Dialect Rendering → SQL**
+- dataset inputs and joins  
+- TargetColumns and column-level lineage  
+- portable expressions  
+- dialect rendering  
 
-This works for the majority of datasets because joins, columns, lineage, and expressions already describe a dataset’s intent.
+For `bizcore` and `serving`, explicit query logic can be enabled. Enabling it creates a **Base select** QueryNode that uses the existing TargetDataset definition. Additional typed nodes build on that base contract.
 
-However, some transformations require an explicit **query shape** that cannot be inferred safely from the dataset definition alone, for example:
-
-- window functions (ROW_NUMBER, LAG/LEAD, ranking)  
-- multi-step shaping (subselect boundaries)  
-- UNION composition across different branches  
-- controlled aggregation steps (group keys vs measures)
-
-The Query Tree provides this explicit query shape - while keeping elevata’s guarantees around governance, determinism, and reproducibility.
-
-See also: [Lineage Model & Logical Plan](logical_plan.md) and [Expression DSL & AST](expression_dsl_and_ast.md).
+Query Trees are not available for `raw`, `stage`, or `rawcore`. These layers remain governed by their integration and generation contracts.
 
 ---
 
-## 🔧 2. Two modes: Standard SQL vs Custom Query Logic
+## 🔧 2. Query root and query head
 
-### 🧩 2.1 Standard SQL (default)
-If no Query Tree is configured, elevata builds SQL automatically from the dataset definition:
+A TargetDataset with explicit query logic stores two pointers:
 
-- inputs / joins (metadata)  
-- column mappings (metadata)  
-- expressions (DSL/AST)  
-- dialect rendering
+- **query_root** - the stable anchor of the Query Tree, normally the Base select  
+- **query_head** - the node that defines the effective dataset output  
 
-This is the default and recommended approach whenever possible.
+SQL preview, query contract inference, governance checks, and physical materialization use the effective head. If `query_head` is absent while `query_root` exists, the root is used as the effective head.
 
-### 🧩 2.2 Custom Query Logic (opt-in)
-For **bizcore** and **serving** datasets, custom query logic can be enabled. Enabling custom logic creates an explicit Query Tree on top of the dataset definition.
-
-In the UI, this is presented as:
-
-- “Enable custom query logic”  
-- “Disable / reset” (safe rollback to standard generation)
-
-The goal is to provide advanced shaping without turning elevata into a manual SQL editor.
-
-> *Complex aggregations are expected to be modeled as separate datasets.*
+The head changes as typed operators are added or selected. The root remains the stable entry point into the dataset definition.
 
 ---
 
-## 🔧 3 query_root vs query_head (core concept)
+## 🔧 3. Query node semantics
 
-When custom query logic is enabled, elevata stores two pointers on the TargetDataset:
+The Query Tree supports these relational operators:
 
-- **query_root**: the *stable anchor* of the query tree  
-    - created when you “Enable custom query logic”  
-    - typically the initial **Base select** node  
-    - used as the safe starting point for the tree  
-    - should remain stable across most edits
+### 🧩 SELECT
 
-- **query_head**: the *current leaf / SQL endpoint*  
-    - points to the node that represents the dataset’s final query shape  
-    - SQL preview and contract inference are based on the **head**  
-    - when you add operators (AGGREGATE / UNION / WINDOW), the new operator becomes the new **head**  
-    - the head may “move” as you iterate
+The Base select compiles the owning TargetDataset definition, including its inputs, joins, authored TargetColumns, and portable expressions.
 
-In short:
+### 🧩 FILTER
 
-- The Query Contract and all governance checks are evaluated at the **head** (or root fallback).  
-- **Root = anchor**  
-- **Head = current result**
+FILTER consumes one input QueryNode and retains rows for which its portable predicate evaluates to true.
 
-Why this matters:
+FILTER is a logical operator rather than a literal SQL `WHERE` fragment. The builder may introduce a subquery boundary when required to preserve node semantics. This is what allows filters before aggregation, after aggregation, or after windowing to remain explicit and predictable.
 
-- The UI shows the “current head” so users understand what defines the dataset output *right now*.  
-- Determinism and governance checks are evaluated at the head.  
-- Some operations are blocked if downstream datasets depend on the current contract (head output).
+The visible output contract is inherited from the input node. Columns used only by the predicate may be pushed into inner projections without leaking into the final output.
 
-### 🧩 Fallback solution
+### 🧩 AGGREGATE
 
-If `query_head` is NULL but `query_root` exists, elevata treats `query_root` as the effective head. This ensures stable behavior for early datasets and keeps SQL preview/contract inference deterministic.
+AGGREGATE replaces its input schema with an explicit output contract consisting of:
 
----
+```text
+Group Keys + Measures
+```
 
-## 🔧 4. What the Query Tree is (and what it is not)
+Group keys inherit their upstream datatype contract. Measures define aggregate function, input, output name, and function-specific options. Supported aggregate behavior includes:
 
-### 🧩 4.1 What it is
-The Query Tree is a structured, explicit plan that defines how a dataset is computed. It is composed of typed nodes (operators) such as:
+- `COUNT(*)` and `COUNT(column)`  
+- aggregate `DISTINCT` where supported by the function contract  
+- `SUM`, `AVG`, `MIN`, `MAX`  
+- ordered `STRING_AGG` with delimiter and reusable ORDER BY definition  
 
-- Select node  
-- Aggregate node  
-- Union node  
-- Window node
+Numeric SUM/AVG semantics use canonical result types and are rendered consistently across dialects.
 
-Each node has clear inputs and produces an inferred output contract.
+### 🧩 UNION
 
-### 🧩 4.2 What it is not
-- Not a BI semantic layer  
-- Not a query-time metric store  
-- Not a drag & drop graph editor (future possible)  
-- Not a place to store vendor-specific SQL
+UNION combines independent QueryNode branch outputs under one explicit output schema. Branch mappings bind each UNION output column to one input-column name exposed by that branch.
 
-The Query Tree remains **metadata-native**: it compiles into the same vendor-neutral Logical Plan and Expression AST that power the rest of elevata.
+A branch may reference a QueryNode owned by another TargetDataset. The branch plan is compiled inline, so the UNION consumes the referenced query definition rather than requiring that TargetDataset itself to be materialized first. Physical upstream dependencies remain governed by the underlying dataset inputs and joins.
 
----
+Both `UNION` and `UNION ALL` are supported. UNION validation checks output uniqueness, branch inputs, complete mappings, and mapped input columns.
 
-## 🔧 5. Layer semantics: where Query Trees are allowed
+### 🧩 WINDOW
 
-Custom query logic is restricted to **semantic layers**:
+WINDOW extends its input schema with query-derived output columns. Supported functions include:
 
-- ✅ allowed: `bizcore`, `serving`  
-- ❌ not allowed: `raw`, `stage`, `rawcore`
+- `ROW_NUMBER`, `RANK`, `DENSE_RANK`, `NTILE`  
+- `LAG`, `LEAD`  
+- `FIRST_VALUE`, `LAST_VALUE`  
+- `SUM`, `AVG`, `MIN`, `MAX`, `COUNT`  
 
-Rationale:  
-raw/stage/rawcore are generated layers with strict, system-managed behavior. bizcore/serving are the correct place for business and presentation shaping.
+Window columns can reference reusable PARTITION BY and ORDER BY definitions. Explicit `ROWS` and `RANGE` frames are modeled with start/end boundaries and optional offsets. `COUNT(*) OVER (...)` is supported.
+
+Function signatures and argument types are validated fail-closed. Ordered window aggregates and FIRST_VALUE/LAST_VALUE require an explicit frame so semantics remain portable. Numeric PRECEDING/FOLLOWING offsets with RANGE frames are rejected because their meaning is not portable across supported backends.
 
 ---
 
-## 🔧 6. Output contract inference
+## 🔧 4. Portable predicates and expressions
 
-A key design principle: **the Query Tree defines the dataset contract**.
+Query FILTER predicates and calculated TargetColumn expressions are represented as structured, platform-neutral contracts. They are converted into the same Expression AST used by Logical Plan rendering.
 
-- the output columns of the root node are inferred from the tree  
-- computed columns (aggregates, window columns) become part of the dataset contract  
-- serving can “see” and build on computed upstream columns
+Portable expressions can represent:
 
-This avoids the classic drift between “what the SQL does” and “what metadata says the dataset provides”.
+- column and literal values  
+- arithmetic and unary arithmetic  
+- comparisons and boolean logic  
+- `NOT`, `IS NULL`, `BETWEEN`, and `IN`  
+- `CASE`  
+- controlled logical casts  
+- controlled scalar functions  
+- `CONCAT`, `CONCAT_WS`, `COALESCE`, and hashing  
 
-Query-derived columns (aggregates, window outputs, union outputs) are automatically synchronized to the dataset schema.
-The physical schema therefore always reflects the inferred query contract of the current query head.
+Column references are resolved against the relevant input contract. Unknown or ambiguous references fail closed rather than being guessed.
 
----
-
-## 🔧 7. Determinism and governance
-
-elevata treats deterministic execution as a correctness feature.
-
-Examples:
-
-- Ranking / navigation window functions require ORDER BY  
-- Some aggregates require explicit ordering to avoid nondeterministic results  
-- Column name collisions must be resolved deterministically
-
-The Query Builder surfaces determinism as:
-
-- “Deterministic” badge  
-- “Needs ordering” badge  
-- Errors vs Warnings
-
-See: [Determinism and execution semantics](determinism_and_execution_semantics.md)
+See [Expression DSL & AST](expression_dsl_and_ast.md).
 
 ---
 
-## 🔧 8. UNION validation & contract semantics
+## 🔧 5. Query contracts and TargetColumns
 
-UNION nodes are subject to stricter validation rules than linear query nodes, because they merge multiple independent query branches into a single output contract.
+The Query Tree defines the effective output contract of the dataset. Query-derived outputs are synchronized into TargetColumn metadata with `lineage_origin="query_derived"`.
 
-### 🧩 What is validated?
+The synchronization rules preserve authored metadata:
 
-When validating a UNION, elevata checks:
+- authored TargetColumns are not deleted by Query Tree contract changes  
+- query-derived columns are managed by Query Tree output semantics  
+- aggregate output replacement and window output extension remain distinct  
+- inactive authored inputs may remain available inside an inner plan when a downstream node requires them  
+- physical CREATE/INSERT materialization uses the effective Query Tree output contract rather than every persisted TargetColumn  
 
-- the UNION defines an explicit output schema  
-- all output column names are unique (case-insensitive)  
-- at least one branch exists  
-- each branch has a valid input node  
-- each branch provides exactly one mapping per UNION output column  
-- all mapped input columns exist in the branch input contract  
-- no output column is mapped more than once per branch
-
-These checks are performed using the same query contract inference that powers SQL generation and governance indicators.
-
-### 🧩 When does validation run?
-
-UNION validation is **not executed automatically on every edit**.
-
-Instead, elevata provides an explicit **“Validate UNION”** action in the Query Builder UI:
-
-- validation is executed on demand  
-- results are shown inline, without leaving the current context  
-- issues are reported as errors or warnings with clear explanations
-
-This keeps the UI responsive while making validation a conscious, transparent step.
-
-### 🧩 Relationship to query_head
-
-UNION validation is evaluated against the current `query_head`.
-
-Changing the query head may therefore:
-
-- change the effective output contract  
-- introduce or resolve UNION validation issues
-
-Users are encouraged to validate the UNION whenever:
-
-- output columns change  
-- branch mappings are modified  
-- the query head is moved across UNION boundaries
-
-In short:
-> A UNION is only considered safe if its validation passes for the current query head.
+This separation keeps authoring metadata reversible while ensuring the physical target matches the effective query output.
 
 ---
 
-## 🔧 9. UNION validation (UI guardrail)
+## 🔧 6. Join-aware input contracts
 
-On UNION-related pages (Branches / Output columns), elevata provides a **Validate UNION** action.
+Joins remain part of the TargetDataset relationship model because they carry lineage and execution dependency semantics.
 
-What it does:
+Query Builder column candidates are derived from the effective dataset/query contract. For joined datasets, candidate discovery includes:
 
-- Runs UNION-specific integrity checks (output schema, mappings, branch input contracts).  
-- Shows issues as **Errors vs Warnings** in a compact panel.  
-- If issues are detected, the UI automatically scrolls to the **first affected branch** and highlights it briefly, so you can fix problems without hunting.
+1. authored TargetDataset columns  
+2. left-side input columns  
+3. right-side input columns in join order  
 
-Tip:
-
-- Run **Validate UNION** after:  
-    - adding/removing output columns  
-    - changing a branch input node  
-    - using “Auto-map by name”
+Duplicate names are de-duplicated deterministically with left-side precedence. This applies to filters, aggregate group keys, aggregate measures, and downstream query-node requirements.
 
 ---
 
-## 🔧 10. Typical use cases
+## 🔧 7. Determinism and validation
 
-Use custom query logic when you need:
+Query logic is validated as architecture, not as arbitrary SQL text.
 
-- **Windowed ranking** for stable selection (e.g., latest record per entity)  
-- **Union composition** across multiple shaped branches  
-- **Explicit aggregation** as a stable intermediate step  
-- **Presentation shaping** in serving without leaking SQL to BI tools
+Blocking conditions include:
 
-Avoid custom logic when a dataset can be expressed purely via metadata inputs + columns.
+- missing or invalid query-node inputs  
+- unknown or ambiguous portable expression references  
+- invalid function signatures  
+- missing required ORDER BY or window frames  
+- invalid UNION output mappings  
+- output-name collisions  
+- Query Tree cycles  
+- same-layer TargetDataset dependency cycles  
+
+The Query Builder exposes deterministic/ordering status, query contract, Query Tree structure, SQL preview, and operator-specific validation.
+
+See [Determinism & Execution Semantics](determinism_and_execution_semantics.md).
 
 ---
 
-## 🔧 11. UI workflow (Query Builder)
+## 🔧 8. UI workflow
 
-The Query Builder guides the user through a safe sequence:
+A typical workflow is:
 
-1. Decide between Standard SQL and Custom Query Logic  
-2. Enable custom logic (creates query root; initially root=head)  
-3. Add nodes (e.g. window node)  
-4. Review inferred contract  
-5. Validate governance & determinism  
-6. Preview SQL  
-7. Reset/disable if needed
+1. Define the TargetDataset, inputs, joins, and TargetColumns.  
+2. Use portable expressions for calculated column values where required.  
+3. Enable explicit query logic for a Bizcore or Serving dataset.  
+4. Add FILTER, AGGREGATE, UNION, or WINDOW nodes.  
+5. Configure operator-specific contracts such as predicates, group keys, measures, mappings, arguments, ordering, partitioning, and frames.  
+6. Review the Query Contract and Query Tree.  
+7. Validate determinism and UNION integrity.  
+8. Inspect dialect-specific SQL Preview.  
+9. Execute through the normal Architecture Runtime and execution-scope contracts.  
 
-This ensures users are guided, not overwhelmed.
+Disabling/resetting explicit query logic returns the dataset to standard generation from its dataset definition.
 
 ---
 

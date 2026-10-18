@@ -34,13 +34,19 @@ from metadata.architecture.execution_impact_evidence import (
 from metadata.architecture.state import ArchitectureState, ColumnState, DatasetState
 
 
-def _column(name: str, *, datatype: str = "string") -> ColumnState:
+def _column(
+  name: str,
+  *,
+  datatype: str = "string",
+  former_names: tuple[str, ...] = (),
+) -> ColumnState:
   return ColumnState(
     column_name=name,
     datatype=datatype,
     nullable=True,
     active=True,
     lineage_key=f"lk_{name}",
+    former_names=former_names,
   )
 
 
@@ -49,6 +55,7 @@ def _dataset(
   *,
   materialization_type: str = "table",
   incremental_strategy: str = "full",
+  former_names: tuple[str, ...] = (),
   columns: tuple[ColumnState, ...] | None = None,
 ) -> DatasetState:
   schema_short, dataset_name = dataset_key.split(".", 1)
@@ -61,6 +68,7 @@ def _dataset(
     historize=False,
     is_hist=False,
     active=True,
+    former_names=former_names,
     column_states=columns or (_column("id"),),
   )
 
@@ -565,3 +573,80 @@ def test_report_scope_must_reference_current_datasets() -> None:
       report=FakeReport(dataset_keys=("rawcore.missing",)),
       review_status=_review_status(),
     )
+
+def test_rename_history_does_not_create_execution_impact_drift() -> None:
+  previous_dataset = _dataset(
+    "rawcore.customer",
+    columns=(
+      _column("id"),
+      _column("availability"),
+    ),
+  )
+  current_dataset = _dataset(
+    "rawcore.customer",
+    former_names=("customer_old",),
+    columns=(
+      _column("id"),
+      _column(
+        "availability",
+        former_names=("availability", "availability_desc"),
+      ),
+    ),
+  )
+  previous = _state(previous_dataset)
+  current = _state(current_dataset)
+
+  assert previous_dataset.fingerprint != current_dataset.fingerprint
+
+  resolution = resolve_execution_impact_evidence(
+    scope_key="rawcore.customer",
+    current_state=current,
+    baseline_resolution=_baseline(previous),
+    report=FakeReport(dataset_keys=("rawcore.customer",)),
+    review_status=_review_status(status="approved"),
+  )
+
+  item = resolution.datasets[0]
+  assert item.has_architecture_changes is False
+  assert item.architecture_fingerprint == item.baseline_fingerprint
+
+  current_evidence = next(
+    evidence
+    for evidence in item.evidence
+    if evidence.evidence_key == "current:rawcore.customer"
+  )
+  baseline_evidence = next(
+    evidence
+    for evidence in item.evidence
+    if evidence.evidence_key == "baseline:rawcore.customer"
+  )
+  assert current_evidence.fingerprint == current_dataset.fingerprint
+  assert baseline_evidence.fingerprint == previous_dataset.fingerprint
+  assert current_evidence.fingerprint != baseline_evidence.fingerprint
+
+
+def test_runtime_column_change_changes_execution_impact_fingerprint() -> None:
+  previous = _state(
+    _dataset(
+      "rawcore.customer",
+      columns=(_column("id", datatype="integer"),),
+    )
+  )
+  current = _state(
+    _dataset(
+      "rawcore.customer",
+      columns=(_column("id", datatype="bigint"),),
+    )
+  )
+
+  resolution = resolve_execution_impact_evidence(
+    scope_key="rawcore.customer",
+    current_state=current,
+    baseline_resolution=_baseline(previous),
+    report=FakeReport(dataset_keys=("rawcore.customer",)),
+    review_status=_review_status(status="approved"),
+  )
+
+  item = resolution.datasets[0]
+  assert item.architecture_fingerprint != item.baseline_fingerprint
+

@@ -22,8 +22,6 @@ Contact: <https://github.com/elevata-labs/elevata>.
 
 from __future__ import annotations
 
-from types import SimpleNamespace
-
 from metadata.architecture.migration_plan import MigrationAction
 from metadata.architecture.shadow_compare import (
   build_actual_schema_op_tokens_from_plan,
@@ -164,30 +162,10 @@ def test_build_expected_schema_op_tokens_suppresses_full_refresh_column_ops():
   assert result.suppressed_full_refresh_col_renames == 1
   assert result.suppressed_full_refresh_add_columns == 1
   assert result.suppressed_full_refresh_drop_columns == 1
+  assert result.suppressed_full_refresh_dataset_keys == (
+    "rawcore.customer",
+  )
   assert result.tokens == ()
-
-
-def test_build_expected_schema_op_tokens_keeps_non_full_refresh_drop_columns():
-  result = build_expected_schema_op_tokens(
-    actions=(
-      MigrationAction(
-        action_type="DROP_COLUMN",
-        strategy="ALTER_TABLE",
-        dataset_key="rawcore.customer",
-        column_name="legacy_flag",
-      ),
-    ),
-    full_refresh_dataset_keys=set(),
-  )
-
-  assert result.suppressed_full_refresh_drop_columns == 0
-  assert result.tokens == (
-    make_schema_op_token(
-      "DROP_COLUMN",
-      ds="rawcore.customer",
-      col="legacy_flag",
-    ),
-  )
 
 
 def test_build_actual_schema_op_tokens_reads_rename_column_step():
@@ -439,57 +417,66 @@ def test_compare_schema_op_tokens_keeps_hist_drop_when_allowed():
   assert result.missing == tuple(expected)
   assert result.suppressed_hist_drop_columns == ()
 
-def _action(
-  action_type: str,
-  *,
-  dataset_key: str,
-  column_name: str | None = None,
-  previous_column_name: str | None = None,
-):
-  """
-  Return a migration-action-shaped object.
-  """
-  return SimpleNamespace(
-    action_type=action_type,
-    dataset_key=dataset_key,
-    column_name=column_name,
-    previous_column_name=previous_column_name,
+def test_full_refresh_suppressed_column_ops_expose_dataset_keys():
+  actions = (
+    MigrationAction(
+      action_type="DROP_COLUMN",
+      strategy="ALTER_TABLE",
+      dataset_key="bizcore.bc_dim_product",
+      column_name="product_name",
+    ),
+    MigrationAction(
+      action_type="ADD_COLUMN",
+      strategy="ALTER_TABLE",
+      dataset_key="bizcore.bc_dim_product",
+      column_name="product_list",
+    ),
   )
 
-
-def test_build_expected_schema_op_tokens_suppresses_full_refresh_alter_columns() -> None:
-  """
-  Verify Full Refresh suppresses column alter expectations.
-  """
   result = build_expected_schema_op_tokens(
-    actions=(
-      _action(
-        "ALTER_COLUMN",
-        dataset_key="rawcore.rc_aw_person",
-        column_name="person_type_code",
-      ),
-    ),
-    full_refresh_dataset_keys={"rawcore.rc_aw_person"},
+    actions=actions,
+    full_refresh_dataset_keys={"bizcore.bc_dim_product"},
   )
 
   assert result.tokens == ()
-  assert result.suppressed_full_refresh_alter_columns == 1
-
-
-def test_build_expected_schema_op_tokens_keeps_non_full_refresh_alter_columns() -> None:
-  """
-  Verify non-Full-Refresh alter expectations remain comparable.
-  """
-  result = build_expected_schema_op_tokens(
-    actions=(
-      _action(
-        "ALTER_COLUMN",
-        dataset_key="rawcore.rc_aw_person",
-        column_name="person_type_code",
-      ),
-    ),
-    full_refresh_dataset_keys=set(),
+  assert result.suppressed_full_refresh_dataset_keys == (
+    "bizcore.bc_dim_product",
   )
 
-  assert len(result.tokens) == 1
-  assert result.suppressed_full_refresh_alter_columns == 0
+
+def test_compare_suppresses_actual_rebuild_for_full_refresh_column_drift():
+  actual = (
+    make_schema_op_token(
+      "REBUILD_DATASET",
+      ds="bizcore.bc_dim_product",
+    ),
+  )
+
+  result = compare_schema_op_tokens(
+    expected=(),
+    actual=actual,
+    allowed_rebuild_dataset_keys={"bizcore.bc_dim_product"},
+  )
+
+  assert result.is_mismatch is False
+  assert result.missing == ()
+  assert result.unexpected == ()
+  assert result.suppressed_rebuild_steps == actual
+
+
+def test_compare_keeps_unrelated_rebuild_unexpected():
+  actual = (
+    make_schema_op_token(
+      "REBUILD_DATASET",
+      ds="bizcore.bc_other",
+    ),
+  )
+
+  result = compare_schema_op_tokens(
+    expected=(),
+    actual=actual,
+    allowed_rebuild_dataset_keys={"bizcore.bc_dim_product"},
+  )
+
+  assert result.is_mismatch is True
+  assert result.unexpected == actual

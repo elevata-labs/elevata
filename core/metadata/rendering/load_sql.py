@@ -49,6 +49,7 @@ from metadata.rendering.dsl import parse_surrogate_dsl
 from metadata.rendering.expr import (
   Expr, ColumnRef, Cast, Concat, Coalesce, FuncCall, RawSql
 )
+from metadata.rendering.portable_expression import predicate_contract_to_ast
 from metadata.ingestion.types_map import canonicalize_type
 
 
@@ -194,54 +195,41 @@ def _build_incremental_scope_filter_for_target(
   target_alias: str = "t",
 ) -> str | None:
   """
-  Build a WHERE-clause fragment for delete detection on the target dataset,
-  based on the incremental_filter defined on td.incremental_source (SourceDataset).
+  Build a target-side WHERE fragment for delete detection.
 
-  Key behavior:
-  - The filter is authored in terms of SourceDataset column names.
-  - We map those source column names to rawcore target column names via full lineage.
-  - Replacements are rendered as qualified + quoted target references:
-      <target_alias>.<dialect.render_identifier(rawcore_col_name)>
-  - The placeholder {{DELTA_CUTOFF}} is preserved for runtime substitution.
+  Increment predicates are taken from the SourceDataset with portable-first
+  fallback semantics, matching source extraction behavior:
+    - portable_increment_filter is preferred when present
+    - legacy increment_filter remains supported as a fallback
 
-  Notes:
-  - This is intentionally a string-based rewrite (not a full boolean DSL parser).
-  - We only rewrite identifiers that match known source column names (case-insensitive).
+  Source column references are mapped to rawcore target columns through the
+  immediate stage lineage. The Delta cutoff remains a runtime placeholder and
+  is substituted by the execution layer.
   """
 
-  # Unit tests (and some callers) may provide lightweight stubs that do not
-  # include the ORM relation. In that case, we cannot do a safe rewrite.
+  # Unit tests and lightweight callers may not expose ORM relations. Without
+  # target columns we cannot safely map source/stage columns to rawcore columns.
   if not getattr(td, "target_columns", None):
     return None
 
   src = getattr(td, "incremental_source", None)
-  if not src:
-    return None
-
-  # Only apply when an incremental filter exists (and is enabled on the source dataset).
-  if not getattr(src, "incremental", False):
-    return None
-
-  inc_filter = (getattr(src, "increment_filter", None) or "").strip()
-  if not inc_filter:
+  if not src or not getattr(src, "incremental", False):
     return None
 
   def _norm(name: str) -> str:
-    # Normalize identifiers so ModifiedDate and modified_date match.
     return re.sub(r"[^a-z0-9]+", "", (name or "").lower())
 
-  # Mapping: stage_column_name.lower() -> rawcore target_column_name
-  # This is stable even if rawcore columns are renamed, because rawcore is built from stage.
+  # Mapping: normalized stage/source column name -> rawcore target column name.
+  # Normalization intentionally bridges naming variants such as ModifiedDate and
+  # modified_date while lineage keeps renamed rawcore columns deterministic.
   mapping: dict[str, str] = {}
 
-  # Iterate rawcore columns and resolve their immediate stage upstream column (active link)
   cols_obj = getattr(td, "target_columns", None)
   if cols_obj is None:
     return None
   cols = cols_obj.all() if hasattr(cols_obj, "all") else cols_obj
 
   for rc_col in cols:
-    # Find the primary upstream stage column feeding this rawcore column
     link_qs = getattr(rc_col, "input_links", None)
     if not link_qs:
       continue
@@ -261,12 +249,10 @@ def _build_incremental_scope_filter_for_target(
           .select_related("upstream_target_column")
           .order_by("ordinal_position", "id")
           .first()
-    )
+      )
 
-    if not link or not link.upstream_target_column:
-      continue
-
-    stage_col_name = getattr(link.upstream_target_column, "target_column_name", None)
+    upstream_col = getattr(link, "upstream_target_column", None) if link else None
+    stage_col_name = getattr(upstream_col, "target_column_name", None)
     if not stage_col_name:
       continue
 
@@ -275,24 +261,40 @@ def _build_incremental_scope_filter_for_target(
   if not mapping:
     return None
 
-  expr = inc_filter
+  portable_increment = getattr(src, "portable_increment_filter", None)
+  if portable_increment:
+    def resolve_column(name: str) -> ColumnRef:
+      target_col = mapping.get(_norm(name))
+      if target_col is None:
+        raise ValueError(
+          f"Increment filter references source column {name!r}, but no rawcore "
+          f"target column can be resolved for {_dataset_key(td)}."
+        )
+      return ColumnRef(table_alias=target_alias, column_name=target_col)
 
-  # Optional normalization: allow col("X") / col('X') in increment_filter
-  # without requiring a full boolean DSL parser.
-  expr = re.sub(r"col\(\s*['\"]([^'\"]+)['\"]\s*\)", r"\1", expr)
+    def resolve_runtime_value(name: str) -> Expr:
+      if str(name or "").strip().lower() != "delta_cutoff":
+        raise ValueError(f"Unsupported delete-detection runtime value: {name!r}")
+      return RawSql(sql="{{DELTA_CUTOFF}}", is_template=True)
 
-  # Rewrite identifiers that match source column names to qualified rawcore columns.
-  # We keep placeholders like {{DELTA_CUTOFF}} intact.
-  #
-  # IMPORTANT: This is a conservative rewrite. It only replaces tokens that
-  # exactly match known source column identifiers (by regex word boundary).
+    expr = predicate_contract_to_ast(
+      portable_increment,
+      column_resolver=resolve_column,
+      allowed_runtime_values=("delta_cutoff",),
+      runtime_value_resolver=resolve_runtime_value,
+    )
+    return dialect.render_expr(expr)
 
+  # Legacy SQL filter fallback.
+  inc_filter = (getattr(src, "increment_filter", None) or "").strip()
+  if not inc_filter:
+    return None
+
+  expr = re.sub(r"col\(\s*['\"]([^'\"]+)['\"]\s*\)", r"\1", inc_filter)
   ident_pattern = re.compile(r"\b[a-zA-Z_][a-zA-Z0-9_]*\b")
 
   def replace_identifier(match: re.Match) -> str:
     token = match.group(0)
-
-    # Do not touch the placeholder keyword itself (DELTA_CUTOFF)
     if token.upper() == "DELTA_CUTOFF":
       return token
 
@@ -303,10 +305,7 @@ def _build_incremental_scope_filter_for_target(
     return f"{target_alias}.{dialect.render_identifier(target_col)}"
 
   expr = ident_pattern.sub(replace_identifier, expr)
-
-  # Normalize whitespace
   return " ".join(expr.split())
-
 
 def get_rawcore_name_from_hist(hist_name: str) -> str:
   if hist_name and hist_name.endswith("_hist"):
@@ -651,7 +650,14 @@ def render_full_refresh_sql(td: TargetDataset, dialect) -> str:
   schema_name = td.target_schema.schema_name
   table_name = td.target_dataset_name
 
-  target_cols = [c.target_column_name for c in _get_target_columns_in_order(td)]
+  if hasattr(dialect, "get_effective_target_columns"):
+    target_cols = [
+      c.target_column_name
+      for c in dialect.get_effective_target_columns(td)
+    ]
+  else:
+    target_cols = [c.target_column_name for c in _get_target_columns_in_order(td)]
+
   return dialect.render_insert_into_table(
     schema_name,
     table_name,

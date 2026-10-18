@@ -105,7 +105,11 @@ def test_render_full_refresh_sql_uses_insert_hook(monkeypatch):
   class DummyCol:
     def __init__(self, name): self.target_column_name = name
 
-  monkeypatch.setattr(load_sql, "_get_target_columns_in_order", lambda _: [DummyCol("dummy_col")])
+  monkeypatch.setattr(
+    dialect,
+    "get_effective_target_columns",
+    lambda _: [DummyCol("dummy_col")],
+  )
 
   monkeypatch.setattr(load_sql, "render_select_for_target", fake_render_select_for_target)
 
@@ -134,7 +138,11 @@ def test_render_load_sql_for_target_full_mode(monkeypatch):
   class DummyCol:
     def __init__(self, name): self.target_column_name = name
 
-  monkeypatch.setattr(load_sql, "_get_target_columns_in_order", lambda _: [DummyCol("dummy_col")])
+  monkeypatch.setattr(
+    dialect,
+    "get_effective_target_columns",
+    lambda _: [DummyCol("dummy_col")],
+  )
 
   sql = render_load_sql_for_target(td, dialect)
 

@@ -536,9 +536,13 @@ def _build_dataset_evidence(
 
   return ExecutionImpactDatasetEvidence(
     dataset_key=dataset_key,
-    architecture_fingerprint=current_dataset.fingerprint,
+    architecture_fingerprint=_execution_impact_dataset_fingerprint(
+      current_dataset
+    ),
     baseline_fingerprint=(
-      previous_dataset.fingerprint if previous_dataset is not None else None
+      _execution_impact_dataset_fingerprint(previous_dataset)
+      if previous_dataset is not None
+      else None
     ),
     report_evidence_fingerprint=report_evidence_fingerprint,
     review_status=review_status_key,
@@ -572,6 +576,32 @@ def _build_dataset_evidence(
     evidence=evidence,
   )
 
+
+
+def _execution_impact_dataset_fingerprint(dataset: DatasetState) -> str:
+  """
+  Return the semantic dataset fingerprint used for execution-impact drift checks.
+
+  Rename-history metadata remains part of the canonical Architecture State and
+  its audit fingerprint, but does not represent an unexplained runtime change on
+  its own. The normalized payload therefore excludes former_names while keeping
+  all other dataset and column fingerprint fields aligned with DatasetState.
+  """
+  payload = dataset.fingerprint_payload()
+
+  dataset_payload = dict(payload.get("dataset") or {})
+  dataset_payload.pop("former_names", None)
+
+  columns_payload = []
+  for column_payload in payload.get("columns") or []:
+    normalized_column = dict(column_payload)
+    normalized_column.pop("former_names", None)
+    columns_payload.append(normalized_column)
+
+  return _stable_json_hash({
+    "dataset": dataset_payload,
+    "columns": columns_payload,
+  })
 
 def _baseline_dataset_evidence(
   *,

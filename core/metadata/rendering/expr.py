@@ -33,15 +33,92 @@ class Expr:
 
 @dataclass
 class Cast(Expr):
-  """Vendor-neutral CAST(expr AS target type)."""
+  """Vendor-neutral CAST with optional logical type parameters."""
   expr: Expr
   target_type: str
+  max_length: Optional[int] = None
+  precision: Optional[int] = None
+  scale: Optional[int] = None
 
 
 @dataclass
 class Coalesce(Expr):
   """Vendor-neutral representation for COALESCE(a, b, ...)."""
   parts: List[Expr]
+
+
+@dataclass(frozen=True)
+class Arithmetic(Expr):
+  """Vendor-neutral binary arithmetic expression."""
+  left: Expr
+  operator: str
+  right: Expr
+
+
+@dataclass(frozen=True)
+class Comparison(Expr):
+  """Vendor-neutral binary comparison expression."""
+  left: Expr
+  operator: str
+  right: Expr
+
+
+@dataclass(frozen=True)
+class UnaryArithmetic(Expr):
+  """Vendor-neutral unary arithmetic expression."""
+  operator: str
+  expr: Expr
+
+
+@dataclass(frozen=True)
+class BooleanOp(Expr):
+  """Vendor-neutral AND/OR expression over two or more predicates."""
+  operator: str
+  parts: List[Expr]
+
+
+@dataclass(frozen=True)
+class Not(Expr):
+  """Vendor-neutral boolean negation."""
+  expr: Expr
+
+
+@dataclass(frozen=True)
+class IsNull(Expr):
+  """Vendor-neutral IS NULL / IS NOT NULL predicate."""
+  expr: Expr
+  negated: bool = False
+
+
+@dataclass(frozen=True)
+class Between(Expr):
+  """Vendor-neutral BETWEEN / NOT BETWEEN predicate."""
+  expr: Expr
+  lower: Expr
+  upper: Expr
+  negated: bool = False
+
+
+@dataclass(frozen=True)
+class InList(Expr):
+  """Vendor-neutral IN / NOT IN predicate with explicit values."""
+  expr: Expr
+  values: List[Expr]
+  negated: bool = False
+
+
+@dataclass(frozen=True)
+class CaseBranch:
+  """One WHEN/THEN branch of a portable CASE expression."""
+  condition: Expr
+  result: Expr
+
+
+@dataclass(frozen=True)
+class CaseWhen(Expr):
+  """Vendor-neutral searched CASE expression."""
+  branches: List[CaseBranch]
+  else_expr: Optional[Expr] = None
 
 
 @dataclass
@@ -89,11 +166,27 @@ class Literal(Expr):
   value: object
 
 
+@dataclass(frozen=True)
+class WindowFrameBoundary:
+  """One vendor-neutral boundary of an explicit window frame."""
+  kind: str
+  offset: Optional[int] = None
+
+
+@dataclass(frozen=True)
+class WindowFrame:
+  """Vendor-neutral explicit ROWS/RANGE frame."""
+  frame_type: str
+  start: WindowFrameBoundary
+  end: WindowFrameBoundary
+
+
 @dataclass
 class WindowSpec(Expr):
   """Logical window specification for window functions."""
   partition_by: List[Expr] = field(default_factory=list)
   order_by: List[Expr] = field(default_factory=list)
+  frame: Optional[WindowFrame] = None
 
 
 @dataclass

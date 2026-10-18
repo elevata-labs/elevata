@@ -159,9 +159,12 @@ def _is_deactivation_blocked(obj) -> bool:
 
     if cls == "QueryNode":
       QueryWindowNode = apps.get_model("metadata", "QueryWindowNode")
+      QueryFilterNode = apps.get_model("metadata", "QueryFilterNode")
       QueryAggregateNode = apps.get_model("metadata", "QueryAggregateNode")
       QueryUnionBranch = apps.get_model("metadata", "QueryUnionBranch")
       if QueryWindowNode.objects.filter(input_node=obj).exists():
+        return True
+      if QueryFilterNode.objects.filter(input_node=obj).exists():
         return True
       if QueryAggregateNode.objects.filter(input_node=obj).exists():
         return True
@@ -570,6 +573,23 @@ class GenericCRUDView(LoginRequiredMixin, View):
     return getattr(instance, "is_system_managed", False) is True
 
 
+  def _disable_form_field(self, form, field_name):
+    """Disable a model field and any form-only editor alias representing it."""
+    names = [field_name]
+    aliases = getattr(form, "system_managed_field_aliases", {}) or {}
+    alias_names = aliases.get(field_name, [])
+    if isinstance(alias_names, str):
+      alias_names = [alias_names]
+    names.extend(alias_names)
+
+    for name in names:
+      field = form.fields.get(name)
+      if field is None:
+        continue
+      field.disabled = True
+      field.widget.attrs["readonly"] = True
+      field.widget.attrs["disabled"] = True
+
   def apply_system_managed_locking(self, form, instance):
     """
     Apply read-only rules to the form:
@@ -582,17 +602,13 @@ class GenericCRUDView(LoginRequiredMixin, View):
     # 1) Always-readonly fields for this schema/model
     readonly_fields = self.get_schema_readonly_fields(instance)
     for fname in readonly_fields:
-      if fname in form.fields:
-        form.fields[fname].disabled = True
-        form.fields[fname].widget.attrs["readonly"] = True
+      self._disable_form_field(form, fname)
 
     # 2) System-managed locked fields (existing behavior)
     locked_fields = self.get_system_managed_locked_fields(instance)
     if self.is_instance_system_managed(instance):
       for fname in locked_fields:
-        if fname in form.fields:
-          form.fields[fname].disabled = True
-          form.fields[fname].widget.attrs["readonly"] = True
+        self._disable_form_field(form, fname)
 
     # 3) Hide is_system_managed flag itself
     if "is_system_managed" in form.fields:
@@ -929,7 +945,11 @@ class GenericCRUDView(LoginRequiredMixin, View):
 
     # Tweak widgets for all base fields
     for name, bf in FormClass.base_fields.items():
-      model_field = self.model._meta.get_field(name)
+      try:
+        model_field = self.model._meta.get_field(name)
+      except FieldDoesNotExist:
+        continue
+
       widget = bf.widget
 
       # ManyToMany -> nice multi-select
@@ -1048,45 +1068,14 @@ class GenericCRUDView(LoginRequiredMixin, View):
     """
     Domain-specific form enhancements (not generic 'dynamic choices').
 
-    - TargetDataset.upstream_datasets filtered by target_schema
     - TargetColumn.upstream_columns filtered by TargetDataset.upstream_datasets
     """
     try:
-      from metadata.models import TargetDataset, TargetSchema
+      from metadata.models import TargetDataset
     except Exception:
       return form
 
     model_name = self.model.__name__
-
-    # ---- TargetDataset.upstream_datasets filtering by layer ----
-    if model_name == "TargetDataset" and "upstream_datasets" in form.fields:
-      upstream_field = form.fields.get("upstream_datasets")
-      if upstream_field is not None:
-        schema_short = None
-
-        ts_id = (getattr(form, "data", {}) or {}).get("target_schema") or getattr(form.instance, "target_schema_id", None)
-        if ts_id:
-          schema_short = (
-            TargetSchema.objects
-              .filter(pk=ts_id)
-              .values_list("short_name", flat=True)
-              .first()
-          )
-        else:
-          schema = getattr(form.instance, "target_schema", None)
-          schema_short = getattr(schema, "short_name", None)
-
-        qs = upstream_field.queryset
-        if schema_short == "bizcore":
-          upstream_field.queryset = (
-            qs.filter(target_schema__short_name="rawcore")
-              .order_by("target_dataset_name")
-          )
-        elif schema_short == "serving":
-          upstream_field.queryset = (
-            qs.filter(target_schema__short_name__in=["rawcore", "bizcore"])
-              .order_by("target_dataset_name")
-          )
 
     # ---- TargetColumn.upstream_columns filtering by selected upstream_datasets ----
     if model_name == "TargetColumn" and "upstream_columns" in form.fields:

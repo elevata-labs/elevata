@@ -28,8 +28,8 @@ FunctionKind = Literal["scalar", "aggregate", "window"]
 
 ALLOWED_NODE_TYPES_BY_SCHEMA: Dict[str, Set[str]] = {
   # Custom logic is restricted to bizcore/serving (see query_tree_allowed_for_dataset()).
-  "bizcore": {"select", "aggregate", "union", "window"},
-  "serving": {"select", "aggregate", "union", "window"},
+  "bizcore": {"select", "aggregate", "union", "window", "filter"},
+  "serving": {"select", "aggregate", "union", "window", "filter"},
 }
 
 ALLOWED_FUNCTION_KINDS_BY_SCHEMA: Dict[str, Set[FunctionKind]] = {

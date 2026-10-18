@@ -44,7 +44,7 @@ Contact: <https://github.com/elevata-labs/elevata>.
   <div class="alert alert-warning">
     <strong>Query logic is disabled for this layer.</strong>
     <div class="small mt-1">
-      Custom query operators (aggregate/union/window) are only allowed in <code>bizcore</code> and <code>serving</code>.
+      Custom query operators (filter/aggregate/union/window) are only allowed in <code>bizcore</code> and <code>serving</code>.
     </div>
   </div>
 {% endif %}
@@ -118,7 +118,7 @@ Contact: <https://github.com/elevata-labs/elevata>.
                 By default, SQL is generated automatically from the dataset definition (joins, columns, expressions).
                 <br>
                 Enable custom query logic only if you need explicit query steps
-                such as aggregates, UNIONs, or window functions.
+                such as filters, aggregates, UNIONs, or window functions.
               </div>
               <details>
                 <summary class="btn btn-sm btn-primary d-inline-flex align-items-center">
@@ -166,11 +166,15 @@ Contact: <https://github.com/elevata-labs/elevata>.
             <div class="mb-3">
               <div class="fw-semibold mb-1">Step 2 — Define the query structure</div>
               <div class="small text-muted mb-2">
-                Create and connect query nodes (SELECT, AGGREGATE, UNION, WINDOW). Start here to change how the dataset is computed.
+                Create and connect query nodes (SELECT, FILTER, AGGREGATE, UNION, WINDOW). Start here to change how the dataset is computed.
               </div>
               <div class="badge-row">
                 <a href="{% url 'querynode_list' object.pk %}" class="btn btn-sm btn-primary">
                   <i class="bi bi-sliders"></i> Configure query nodes
+                </a>
+
+                <a href="{% url 'targetdataset_add_filter_node' object.pk %}" class="btn btn-sm btn-primary">
+                  <i class="bi bi-funnel"></i> Add filter node
                 </a>
 
                 <form method="post" action="{% url 'targetdataset_add_aggregate_node' object.pk %}" class="d-inline">
@@ -197,6 +201,13 @@ Contact: <https://github.com/elevata-labs/elevata>.
               <div class="small text-muted mt-2">
                 Tip: In the node list, use <strong>Details</strong> to configure operator-specific settings.
               </div>
+              {% if query_head.node_type == "filter" and query_head.filter %}
+                <div class="mt-2">
+                  <a href="{% url 'queryfilter_edit' query_head.filter.pk %}" class="btn btn-sm btn-outline-primary">
+                    <i class="bi bi-funnel"></i> Edit current filter
+                  </a>
+                </div>
+              {% endif %}
             </div>
 
             <div class="mb-3">

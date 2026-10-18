@@ -406,13 +406,27 @@ Serving is the **presentation-facing** layer. Serving datasets typically expose 
 
 ### 🧩 Custom Query Logic (Query Tree)
 
-For most datasets, elevata generates SQL automatically from metadata. In semantic layers (`bizcore`, `serving`), elevata additionally supports **Custom Query Logic** via an explicit **Query Tree**.
+Most datasets are generated directly from dataset inputs, joins, TargetColumns, lineage, and portable expressions. Semantic layers (`bizcore`, `serving`) can additionally define an explicit **Query Tree** when the transformation requires relational steps that must remain visible as architecture.
 
-The Query Tree defines the *shape* of a query (e.g. windowing, aggregation steps, union composition) while remaining fully metadata-native.
+The Query Tree supports FILTER, AGGREGATE, UNION, and WINDOW operations on top of the Base select. Calculated values and predicates use Portable Expression contracts, while joins remain explicit dataset relationships for lineage and execution dependency semantics.
 
-If enabled, the Query Tree is compiled into the same Logical Plan and Expression AST used by the default generation pipeline. If disabled, elevata falls back to fully automatic SQL generation.
+```text
+Dataset relationships + TargetColumns
+              ↓
+        Base SELECT
+              ↓
+ FILTER / AGGREGATE / UNION / WINDOW
+              ↓
+       Query output contract
+              ↓
+         Logical Plan
+              ↓
+       Dialect rendering
+```
 
-This ensures advanced query shaping without introducing manual SQL or breaking determinism, lineage, or governance guarantees.
+The effective query-head contract governs SQL preview and physical materialization. Query-derived output metadata is synchronized without deleting authored TargetColumns, which keeps query authoring reversible while ensuring the physical target matches the active query shape.
+
+This enables advanced shaping without moving architecture into vendor-specific SQL.
 
 ---
 
@@ -428,7 +442,7 @@ Delete Detection
 Rawcore Dataset
 ```
 
-**These two strategies are currently implemented:**
+**Supported strategies:**
 
 - `full`  
 - `merge`  

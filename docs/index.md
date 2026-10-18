@@ -96,7 +96,7 @@ This index gives you an overview of all major topics and how they fit together.
   High-level view of elevata’s architecture: metadata, lineage, Logical Plan, rendering and execution.
 
 - [Query Builder & Query Tree](query_builder_and_query_tree.md)  
-  Conceptual introduction to elevata’s Query Builder and Query Tree. Explains *why* custom query logic exists, *when* it should be used, and *how* it integrates with metadata-driven generation.
+  Reference for explicit Query Tree semantics, including FILTER, AGGREGATE, UNION, WINDOW, query contracts, join-aware inputs, and the boundary between relational query shape and Portable Expressions.
 
 - [Determinism & Execution Semantics](determinism_and_execution_semantics.md)  
   Rules and guarantees for deterministic SQL generation, including ORDER BY requirements, window functions, aggregation semantics and error vs warning classification.
@@ -105,7 +105,7 @@ This index gives you an overview of all major topics and how they fit together.
   How datasets depend on each other, how lineage is represented, and how the Logical Plan encodes queries.
 
 - [Expression DSL & AST](expression_dsl_and_ast.md)  
-  The vendor-neutral expression DSL (Domain Specific Language) (HASH256, CONCAT_WS, COALESCE, COL, …), the AST (Abstract Syntax Tree), and how dialects render it.
+  Portable Expression and predicate contracts, generated Expression DSL, the shared AST, fail-closed reference resolution, and dialect-owned rendering.
 
 - [Hashing Architecture](hashing_architecture.md)  
   Surrogate key and foreign key hashing: deterministic rules, cross-dialect SHA-256, null handling and pepper strategy.

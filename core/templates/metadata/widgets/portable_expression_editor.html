@@ -1,0 +1,86 @@
+<!--
+elevata - Metadata-driven Data Platform Framework
+Copyright © 2025-2026 Ilona Tag
+
+This file is part of elevata.
+
+elevata is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of
+the License, or (at your option) any later version.
+
+elevata is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with elevata. If not, see <https://www.gnu.org/licenses/>.
+
+Contact: <https://github.com/elevata-labs/elevata>.
+-->
+
+{% load static %}
+<div
+  class="portable-expression-editor rounded p-2"
+  style="border: 2px solid var(--elevata-primary);"
+  data-portable-expression-editor
+  data-column-names='{{ widget.column_names_json|escape }}'
+  data-editor-kind="{{ widget.editor_kind|escape }}"
+  data-column-label="{{ widget.column_label|escape }}"
+  data-runtime-values='{{ widget.runtime_values_json|escape }}'
+  data-empty-text="{{ widget.empty_text|escape }}"
+  data-manual-expression-present="{% if widget.manual_expression_present %}1{% else %}0{% endif %}"
+>
+  <input
+    type="hidden"
+    name="{{ widget.name }}"
+    value="{{ widget.value|default_if_none:''|escape }}"
+    data-portable-expression-value
+    {% if widget.attrs.disabled %}disabled{% endif %}
+  />
+
+  <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
+    <div>
+      <div class="mb-1"><span class="badge" style="background-color: var(--elevata-primary); color: var(--elevata-white);">Preferred</span></div>
+      <div class="small text-muted">{{ widget.intro_text }}</div>
+    </div>
+    <div class="d-flex gap-2">
+      <button type="button" class="btn btn-outline-primary btn-sm" data-expression-start {% if widget.attrs.disabled %}disabled{% endif %}>
+        {% if widget.value %}Edit {{ widget.editor_kind }}{% else %}Add {{ widget.editor_kind }}{% endif %}
+      </button>
+      <button type="button" class="btn btn-outline-secondary btn-sm" data-expression-clear {% if not widget.value %}hidden{% endif %} {% if widget.attrs.disabled %}disabled{% endif %}>
+        Clear
+      </button>
+    </div>
+  </div>
+
+  {% if widget.manual_expression_present %}
+    <div class="alert alert-secondary py-2 px-3 mb-2 small" data-manual-expression-note>
+      A target-specific manual expression is also stored. The portable expression takes precedence when present; clearing it restores the manual fallback.
+    </div>
+  {% endif %}
+  {% if widget.fallback_present %}
+    <div class="alert alert-secondary py-2 px-3 mb-2 small" data-portable-fallback-note>
+      {{ widget.fallback_note }}
+    </div>
+  {% endif %}
+
+  {% if widget.attrs.disabled %}
+    <div class="small text-muted mb-2">This expression is managed by layer rules and cannot be edited here.</div>
+  {% endif %}
+
+  <div class="small mb-2" data-expression-summary>
+    {% if widget.value %}
+      <span class="badge text-bg-success">Portable expression defined</span>
+    {% else %}
+      <span class="text-muted">{{ widget.empty_text }}</span>
+    {% endif %}
+  </div>
+
+  <fieldset class="border-0 p-0 m-0" {% if widget.attrs.disabled %}disabled{% endif %}>
+    <div data-expression-workspace {% if not widget.value %}hidden{% endif %}></div>
+  </fieldset>
+  <div class="invalid-feedback d-block" data-expression-client-error hidden></div>
+</div>
+<script src="{% static 'metadata/js/portable_expression_editor.js' %}?v={{ ELEVATA_VERSION|urlencode }}"></script>

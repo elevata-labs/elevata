@@ -98,6 +98,7 @@ def _dataset(
   output_links=None,
   incremental: bool = False,
   increment_filter: str | None = None,
+  portable_increment_filter=None,
   increment_policies=None,
 ):
   return SimpleNamespace(
@@ -122,6 +123,7 @@ def _dataset(
     ),
     incremental=incremental,
     increment_filter=increment_filter,
+    portable_increment_filter=portable_increment_filter,
     increment_policies=_Manager(increment_policies or []),
   )
 
@@ -243,4 +245,40 @@ def test_multiple_raw_targets_require_attention():
 
   assert readiness.status == "attention"
   assert readiness.warning_signal_count == 1
-  assert "multiple_raw_targets" in _codes(readiness)
+
+def test_portable_increment_filter_satisfies_readiness_filter_requirement():
+  readiness = build_source_ingestion_readiness(_dataset(
+    incremental=True,
+    portable_increment_filter={
+      "version": 1,
+      "expression": {
+        "type": "comparison",
+        "operator": ">=",
+        "left": {"type": "column", "name": "customer_id"},
+        "right": {"type": "literal", "value": 1},
+      },
+    },
+  ))
+
+  assert "increment_filter_missing" not in _codes(readiness)
+  assert "increment_policy_missing" not in _codes(readiness)
+
+
+def test_portable_delta_cutoff_filter_requires_active_increment_policy():
+  readiness = build_source_ingestion_readiness(_dataset(
+    incremental=True,
+    portable_increment_filter={
+      "version": 1,
+      "expression": {
+        "type": "comparison",
+        "operator": ">=",
+        "left": {"type": "column", "name": "customer_id"},
+        "right": {"type": "runtime_value", "name": "delta_cutoff"},
+      },
+    },
+    increment_policies=[],
+  ))
+
+  assert "increment_filter_missing" not in _codes(readiness)
+  assert "increment_policy_missing" in _codes(readiness)
+

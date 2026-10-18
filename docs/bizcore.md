@@ -44,6 +44,10 @@ Bizcore fields can represent:
 - KPIs and business calculations
 - normalized business rules
 
+Calculated values can be expressed through **Portable Expressions**, so arithmetic, CASE logic, comparisons, boolean conditions, controlled casts, scalar functions, concatenation, coalescing, and hashing remain platform-neutral metadata.
+
+For transformations that require an explicit relational shape, Bizcore can use the **Query Builder** with FILTER, AGGREGATE, UNION, and WINDOW nodes. The Query Builder defines row and query structure; Portable Expressions define calculated values and predicates.
+
 All Bizcore definitions are:
 
 - metadata-driven
@@ -106,10 +110,12 @@ What you define is what executes.
 
 Bizcore uses:
 
-- the same logical planner
+- the same Logical Plan and dialect system
 - the same dependency graph
-- the same execution engine
+- the same Architecture Control and execution contracts
 - the same retry and failure semantics
+
+Joins remain explicit TargetDataset relationships so execution dependencies and lineage are visible. Query Builder branches can reuse semantic query definitions inline without turning those reusable definitions into unnecessary physical execution dependencies.
 
 Every Bizcore field is traceable to:
 
@@ -142,7 +148,8 @@ Model a business-level `Customer` entity derived from multiple Core datasets.
 - Left join address
 - Define business identifiers
 - Define business attributes
-- Define derived fields
+- Define derived fields through Portable Expressions
+- Add FILTER / AGGREGATE / UNION / WINDOW steps where the business rule requires explicit relational shaping
 
 ### 🧩 Result
 - A single Bizcore dataset

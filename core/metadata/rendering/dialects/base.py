@@ -31,16 +31,27 @@ import datetime
 from decimal import Decimal
 
 from ..expr import (
+  Arithmetic,
+  Between,
+  BooleanOp,
+  CaseWhen,
   Cast,
   Concat,
   Coalesce,
   ColumnRef,
+  Comparison,
   Expr,
   FuncCall,
+  InList,
+  IsNull,
   Literal,
+  Not,
   OrderByExpr,
   OrderByClause,
   RawSql,
+  UnaryArithmetic,
+  WindowFrame,
+  WindowFrameBoundary,
   WindowFunction,
   WindowSpec,
 )
@@ -94,6 +105,8 @@ class SqlDialect(ABC):
   class FunctionSpec:
     name: str
     kind: str  # "scalar" | "aggregate" | "window"
+
+  FUNCTION_NAME_OVERRIDES: dict[str, str] = {}
 
   BASE_FUNCTION_REGISTRY = {
     # Aggregates
@@ -364,7 +377,7 @@ class SqlDialect(ABC):
     columns: list[dict[str, object]] = []
     seen_column_names: set[str] = set()
     duplicate_column_names: list[str] = []
-    for c in self._iter_target_columns(td):
+    for c in self.get_effective_target_columns(td):
       column_name = str(getattr(c, "target_column_name", "") or "").strip()
       if not column_name:
         continue
@@ -406,6 +419,10 @@ class SqlDialect(ABC):
       table=table_name,
       columns=columns,
     )
+
+  def get_effective_target_columns(self, td) -> list[Any]:
+    """Return the active physical output columns for a target dataset."""
+    return self._iter_target_columns(td)
 
   def _iter_target_columns(self, td) -> list[Any]:
     cols_obj = getattr(td, "target_columns", None)
@@ -1683,6 +1700,68 @@ class SqlDialect(ABC):
         return f"{self.render_identifier(expr.table_alias)}.{self.render_identifier(expr.column_name)}"
       return self.render_identifier(expr.column_name)
 
+    if isinstance(expr, Arithmetic):
+      return self.render_arithmetic_expression(expr)
+
+    if isinstance(expr, UnaryArithmetic):
+      operator = str(expr.operator or "").strip()
+      if operator not in {"+", "-"}:
+        raise ValueError(f"Unsupported unary arithmetic operator: {operator!r}")
+      return f"({operator}{self.render_expr(expr.expr)})"
+
+    if isinstance(expr, Comparison):
+      operator = str(expr.operator or "").strip()
+      normalized = operator.upper() if operator.upper() == "LIKE" else operator
+      if normalized not in {"=", "!=", "<", "<=", ">", ">=", "LIKE"}:
+        raise ValueError(f"Unsupported comparison operator: {operator!r}")
+      left_sql = self.render_expr(expr.left)
+      right_sql = self.render_expr(expr.right)
+      return f"({left_sql} {normalized} {right_sql})"
+
+    if isinstance(expr, BooleanOp):
+      operator = str(expr.operator or "").strip().upper()
+      if operator not in {"AND", "OR"}:
+        raise ValueError(f"Unsupported boolean operator: {operator!r}")
+      if len(expr.parts or []) < 2:
+        raise ValueError("Boolean expression requires at least two parts.")
+      rendered = [self.render_expr(part) for part in expr.parts]
+      return "(" + f" {operator} ".join(rendered) + ")"
+
+    if isinstance(expr, Not):
+      return f"(NOT {self.render_expr(expr.expr)})"
+
+    if isinstance(expr, IsNull):
+      negated = " NOT" if expr.negated else ""
+      return f"({self.render_expr(expr.expr)} IS{negated} NULL)"
+
+    if isinstance(expr, Between):
+      negated = " NOT" if expr.negated else ""
+      expr_sql = self.render_expr(expr.expr)
+      lower_sql = self.render_expr(expr.lower)
+      upper_sql = self.render_expr(expr.upper)
+      return f"({expr_sql}{negated} BETWEEN {lower_sql} AND {upper_sql})"
+
+    if isinstance(expr, InList):
+      if not expr.values:
+        raise ValueError("IN expression requires at least one value.")
+      negated = " NOT" if expr.negated else ""
+      expr_sql = self.render_expr(expr.expr)
+      values_sql = ", ".join(self.render_expr(value) for value in expr.values)
+      return f"({expr_sql}{negated} IN ({values_sql}))"
+
+    if isinstance(expr, CaseWhen):
+      if not expr.branches:
+        raise ValueError("CASE expression requires at least one branch.")
+      parts = ["CASE"]
+      for branch in expr.branches:
+        condition_sql = self.render_expr(branch.condition)
+        result_sql = self.render_expr(branch.result)
+        parts.append(f"WHEN {condition_sql} THEN {result_sql}")
+      if expr.else_expr is not None:
+        parts.append(f"ELSE {self.render_expr(expr.else_expr)}")
+      parts.append("END")
+      return " ".join(parts)
+
     if isinstance(expr, RawSql):
       # ------------------------------------------------------------
       # RawSql supports two "modes" seen in the codebase:
@@ -1732,9 +1811,15 @@ class SqlDialect(ABC):
         # fail-safe
         return self.cast_expression(inner, "varchar")
 
-      # Map logical -> physical type for this dialect.
-      # Postgres e.g. doesn't support "string" as a type name.
-      db_type = self.map_logical_type(datatype=str(tt), strict=False)
+      # Map the logical type contract, including optional parameters, to the
+      # physical type for this dialect.
+      db_type = self.map_logical_type(
+        datatype=str(tt),
+        max_length=getattr(expr, "max_length", None),
+        precision=getattr(expr, "precision", None),
+        scale=getattr(expr, "scale", None),
+        strict=False,
+      )
       if not db_type:
         # DuckDB behavior: if we can't map, do not emit a CAST.
         return inner
@@ -1770,25 +1855,25 @@ class SqlDialect(ABC):
       if fn_lc in ("hash256", "sha256") and len(args) == 1:
         return self.hash_expression(self.render_expr(args[0]), algo="sha256")
 
-      args_sql_list = [self.render_expr(a) for a in args]
-      args_sql = ", ".join(args_sql_list)
-
-      # COUNT_DISTINCT(x) -> COUNT(DISTINCT x)
-      if fn == "COUNT_DISTINCT":
+      # Aggregate DISTINCT is represented logically as <FUNCTION>_DISTINCT.
+      if fn.endswith("_DISTINCT"):
+        aggregate_fn = fn[:-9]
+        if aggregate_fn not in {"COUNT", "SUM", "AVG", "MIN", "MAX"}:
+          raise ValueError(f"DISTINCT is not supported for aggregate function {aggregate_fn!r}.")
         if len(args) != 1:
-          raise ValueError("COUNT_DISTINCT requires exactly one argument.")
-        return f"COUNT(DISTINCT {args_sql_list[0]})"
+          raise ValueError(f"{fn} requires exactly one argument.")
+        return f"{aggregate_fn}(DISTINCT {self.render_expr(args[0])})"
 
       # STRING_AGG(value, delimiter[, order_by]) -> dialect-specific rendering
       if fn == "STRING_AGG":
         return self.render_string_agg(args)
 
-      return f"{fn}({args_sql})"
+      return self.render_function_call(fn, args)
 
     if isinstance(expr, WindowFunction):
       func_name = expr.name.upper()
       args_sql = ", ".join(self.render_expr(a) for a in (expr.args or []))
-      func_sql = f"{func_name}({args_sql})"
+      func_sql = "COUNT(*)" if func_name == "COUNT" and not args_sql else f"{func_name}({args_sql})"
       win = expr.window or WindowSpec()
       parts = []
       if win.partition_by:
@@ -1797,11 +1882,65 @@ class SqlDialect(ABC):
       if win.order_by:
         order_sql = ", ".join(self.render_expr(e) for e in win.order_by)
         parts.append(f"ORDER BY {order_sql}")
+      if win.frame is not None:
+        parts.append(self.render_window_frame(win.frame))
       over_sql = " ".join(parts)
       return f"{func_sql} OVER ({over_sql})" if over_sql else f"{func_sql} OVER ()"
 
     # Fallback: attempt stringification (kept permissive for DSL growth)
     return str(expr)
+
+
+  def render_window_frame(self, frame: WindowFrame) -> str:
+    """Render a validated vendor-neutral ROWS/RANGE frame."""
+    frame_type = str(frame.frame_type or "").strip().upper()
+    if frame_type not in {"ROWS", "RANGE"}:
+      raise ValueError(f"Unsupported window frame type: {frame_type!r}")
+    start_sql = self.render_window_frame_boundary(frame.start)
+    end_sql = self.render_window_frame_boundary(frame.end)
+    return f"{frame_type} BETWEEN {start_sql} AND {end_sql}"
+
+
+  def render_window_frame_boundary(self, boundary: WindowFrameBoundary) -> str:
+    """Render one explicit window frame boundary."""
+    kind = str(boundary.kind or "").strip().upper()
+    if kind == "UNBOUNDED_PRECEDING":
+      return "UNBOUNDED PRECEDING"
+    if kind == "CURRENT_ROW":
+      return "CURRENT ROW"
+    if kind == "UNBOUNDED_FOLLOWING":
+      return "UNBOUNDED FOLLOWING"
+    if kind in {"PRECEDING", "FOLLOWING"}:
+      offset = boundary.offset
+      if not isinstance(offset, int) or isinstance(offset, bool) or offset < 0:
+        raise ValueError(f"Window frame boundary {kind} requires a non-negative integer offset.")
+      return f"{offset} {kind}"
+    raise ValueError(f"Unsupported window frame boundary: {kind!r}")
+
+
+  def render_arithmetic_expression(self, expr: Arithmetic) -> str:
+    """Render portable arithmetic with ANSI-style operators by default."""
+    operator = str(expr.operator or "").strip()
+    if operator not in {"+", "-", "*", "/", "%"}:
+      raise ValueError(f"Unsupported arithmetic operator: {operator!r}")
+    left_sql = self.render_expr(expr.left)
+    right_sql = self.render_expr(expr.right)
+    return f"({left_sql} {operator} {right_sql})"
+
+
+  def render_function_call(self, name: str, args: Sequence[Expr]) -> str:
+    """Render a scalar function call, allowing dialects to override real syntax differences."""
+    rendered_fn = self.render_function_name(name)
+    args_sql = ", ".join(self.render_expr(arg) for arg in args)
+    return f"{rendered_fn}({args_sql})"
+
+
+  def render_function_name(self, name: str) -> str:
+    """Return the physical function name for a logical scalar function."""
+    original = str(name or "").strip()
+    if not original:
+      raise ValueError("Function name must not be empty.")
+    return self.FUNCTION_NAME_OVERRIDES.get(original.upper(), original)
 
 
   def render_string_agg(self, args) -> str:

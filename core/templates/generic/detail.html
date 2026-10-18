@@ -119,6 +119,12 @@ Contact: <https://github.com/elevata-labs/elevata>.
       {% endif %}
     {% endif %}
 
+    {% if object and model_name == 'querynode' and object.node_type == 'filter' %}
+      <a href="{% url 'queryfilter_edit' object.filter.pk %}" class="btn btn-sm btn-outline-primary">
+        <i class="bi bi-funnel"></i> Edit filter
+      </a>
+    {% endif %}
+
     {% if object and model_name == 'sourcecolumn' and object.primary_key_column %}
       <span class="ec-chip ec-chip--pk ms-2" title="Primary key">PK</span>
     {% endif %}
@@ -204,6 +210,14 @@ Contact: <https://github.com/elevata-labs/elevata>.
             </div>
           </td>
 
+        {% elif model_name == 'sourcedataset' and field.name == 'portable_static_filter' %}
+          <td>{{ object.portable_static_filter_display|default:'–' }}</td>
+        {% elif model_name == 'sourcedataset' and field.name == 'portable_increment_filter' %}
+          <td>{{ object.portable_increment_filter_display|default:'–' }}</td>
+        {% elif model_name == 'targetcolumn' and field.name == 'portable_expression' %}
+          <td>{{ object.portable_expression_display|default:'–' }}</td>
+        {% elif model_name == 'targetcolumninput' and field.name == 'portable_expression' %}
+          <td>{{ object.portable_expression_display|default:'–' }}</td>
         {% else %}
           <td>{{ object|attr:field.name }}</td>
         {% endif %}
@@ -227,8 +241,11 @@ Contact: <https://github.com/elevata-labs/elevata>.
   </tbody>
 </table>
 
-{% if object and model_name == 'sourcedataset' and source_ingestion_readiness %}
-  {% include "metadata/partials/_source_ingestion_readiness_panel.html" with readiness=source_ingestion_readiness only %}
+{% if object and model_name == 'sourcedataset' %}
+  {% include "metadata/partials/_source_dataset_sql_preview_panel.html" %}
+  {% if source_ingestion_readiness %}
+    {% include "metadata/partials/_source_ingestion_readiness_panel.html" with readiness=source_ingestion_readiness only %}
+  {% endif %}
 {% endif %}
 
 <!-- Import button for SourceDataset detail -->

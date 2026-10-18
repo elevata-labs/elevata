@@ -171,12 +171,31 @@ class QueryContractColumnSyncService:
     return s
 
 
+  def _should_defer_empty_contract_sync(self, td: TargetDataset, desired: list[Any]) -> bool:
+    """Keep persisted columns intact while a query tree has no output contract."""
+    if desired:
+      return False
+
+    query_root = getattr(td, "query_root", None)
+    query_head = getattr(td, "query_head", None) or query_root
+    return query_root is not None and query_head is not None
+
+
   def sync_for_dataset(self, td: TargetDataset) -> None:
     if td is None:
       return
 
     contract_cols = self._infer_contract_cols(td)
     desired = [c for c in contract_cols if c.name]
+
+    # Query authoring is multi-step. Operators such as AGGREGATE and UNION can
+    # temporarily expose an empty contract before their output metadata is
+    # configured. Never interpret that transient state as an instruction to
+    # delete the dataset's persisted columns. Once the query head exposes at
+    # least one output column, normal contract reconciliation resumes.
+    if self._should_defer_empty_contract_sync(td, desired):
+      return
+
     desired_norm = [_norm(c.name) for c in desired]
 
     inferred_type_by_norm = self._infer_query_output_types(td)
@@ -185,20 +204,14 @@ class QueryContractColumnSyncService:
     current = list(TargetColumn.objects.filter(target_dataset=td))
     current_by_norm = {_norm(c.target_column_name): c for c in current}
 
-    # If query_root exists, dataset schema must match query output contract.
-    # That means: manage ALL non-tech target columns (not only query_derived).
-    query_root = getattr(td, "query_root", None)
-    is_query_tree = query_root is not None
-
     def _is_tech_col(col: TargetColumn) -> bool:
-      # "elevata tech columns" are already handled elsewhere and must not be touched here
+      # elevata tech columns are managed elsewhere and must never be reconciled here.
       role = (getattr(col, "system_column_role", "") or "").strip()
       return bool(role)
 
-    managed_cols = [c for c in current if not _is_tech_col(c)] if is_query_tree else [
-      c for c in current
-      if (getattr(c, "lineage_origin", "") or "") == self.LINEAGE_ORIGIN_QUERY and not _is_tech_col(c)
-    ]
+    # Query authoring must never make pre-existing dataset columns destructive state.
+    # Only columns created by the query contract sync belong to this service.
+    managed_cols = self._managed_query_columns(current)
 
     with transaction.atomic():
       # 1) Apply renames via former_names
@@ -243,10 +256,11 @@ class QueryContractColumnSyncService:
 
       # 2) Create / update desired columns
       # IMPORTANT:
-      # Query-derived columns must NOT renumber into 1..N, otherwise we collide with existing
-      # dataset columns (often unique per (target_dataset, ordinal_position)).
-      # Policy: append query-derived columns after the current max ordinal of NON query-derived columns.
-      ord_base = self._next_query_derived_ordinal_base(td)
+      # New query-derived columns need a collision-free temporary ordinal before the
+      # final normalization pass. Existing query-derived columns may already occupy
+      # the ordinals directly after the non-query segment, so creation must start
+      # above the current maximum ordinal of the whole dataset.
+      ord_base = self._query_derived_creation_ordinal_base(current)
 
       created_or_seen: list[TargetColumn] = []
       for idx, dc in enumerate(desired, start=1):
@@ -330,12 +344,16 @@ class QueryContractColumnSyncService:
               self._stamp_missing_audit(obj)
         created_or_seen.append(obj)
 
-      # 3) Delete query-derived columns removed from contract
-      desired_set = set(desired_norm)
+      # 3) Delete only orphaned query-derived columns.
+      # Intermediate query-node outputs remain valid authoring metadata even when a
+      # downstream aggregate becomes the current head. They are removed only after
+      # no active query node defines them anymore.
+      retained_query_outputs = self._query_defined_output_names(td)
+      retained_query_outputs.update(desired_norm)
       removed = []
       for c in managed_cols:
         cn = _norm(getattr(c, "target_column_name", "") or "")
-        if cn and cn not in desired_set:
+        if cn and cn not in retained_query_outputs:
           removed.append(c)
 
       if removed:
@@ -354,6 +372,93 @@ class QueryContractColumnSyncService:
       # 5) Conservative backfill for column-level lineage rows belonging to this dataset
       self._backfill_target_column_inputs_for_dataset(td)
 
+
+
+
+  def _managed_query_columns(self, columns) -> list[TargetColumn]:
+    """Return only query-derived, non-technical columns owned by this sync service."""
+    managed = []
+    for column in columns or []:
+      if (getattr(column, "lineage_origin", "") or "") != self.LINEAGE_ORIGIN_QUERY:
+        continue
+      role = (getattr(column, "system_column_role", "") or "").strip()
+      if role:
+        continue
+      managed.append(column)
+    return managed
+
+  def _query_defined_output_names(self, td: TargetDataset) -> set[str]:
+    """Return normalized output names still defined by active query nodes."""
+    try:
+      from metadata.models import QueryNode
+    except Exception:
+      return set()
+
+    td_id = getattr(td, "pk", None) or getattr(td, "id", None)
+    if not isinstance(td_id, int):
+      return set()
+
+    names: set[str] = set()
+    try:
+      nodes = QueryNode.objects.filter(target_dataset_id=td_id, active=True)
+    except Exception:
+      return set()
+
+    for node in nodes:
+      node_type = (getattr(node, "node_type", "") or "").strip().lower()
+
+      if node_type == "window":
+        window = getattr(node, "window", None)
+        if window is None:
+          continue
+        try:
+          columns = window.columns.filter(active=True)
+        except Exception:
+          columns = []
+        for column in columns:
+          name = _norm(getattr(column, "output_name", "") or "")
+          if name:
+            names.add(name)
+        continue
+
+      if node_type == "aggregate":
+        aggregate = getattr(node, "aggregate", None)
+        if aggregate is None:
+          continue
+        try:
+          group_keys = aggregate.group_keys.all()
+        except Exception:
+          group_keys = []
+        for group_key in group_keys:
+          output_name = (getattr(group_key, "output_name", "") or "").strip()
+          input_name = (getattr(group_key, "input_column_name", "") or "").strip()
+          name = _norm(output_name or input_name)
+          if name:
+            names.add(name)
+        try:
+          measures = aggregate.measures.all()
+        except Exception:
+          measures = []
+        for measure in measures:
+          name = _norm(getattr(measure, "output_name", "") or "")
+          if name:
+            names.add(name)
+        continue
+
+      if node_type == "union":
+        union = getattr(node, "union", None)
+        if union is None:
+          continue
+        try:
+          output_columns = union.output_columns.all()
+        except Exception:
+          output_columns = []
+        for output_column in output_columns:
+          name = _norm(getattr(output_column, "output_name", "") or "")
+          if name:
+            names.add(name)
+
+    return names
 
   # -----------------------------
   # Contract inference + typing
@@ -486,6 +591,143 @@ class QueryContractColumnSyncService:
   # Query-derived type inference
   # -----------------------------
 
+  def _select_upstream_type_map(self, td: TargetDataset) -> dict[str, dict[str, Any]]:
+    """
+    Return join-aware upstream column type metadata for a dataset SELECT namespace.
+
+    The precedence mirrors query_contract._select_upstream_column_names():
+    base/left input first, then right inputs in join order, then remaining inputs.
+    Duplicate unqualified names keep the first winner.
+    """
+    inputs = getattr(td, "input_links", None)
+    if inputs is None:
+      return {}
+
+    try:
+      items = inputs.all() if hasattr(inputs, "all") else list(inputs)
+      items = sorted(list(items), key=lambda item: getattr(item, "id", 0) or 0)
+    except Exception:
+      return {}
+
+    def _types_for_input(inp) -> dict[str, dict[str, Any]]:
+      result: dict[str, dict[str, Any]] = {}
+
+      upstream_td = getattr(inp, "upstream_target_dataset", None)
+      if upstream_td is not None:
+        cols = getattr(upstream_td, "target_columns", None)
+        if cols is None:
+          return result
+        try:
+          col_items = cols.filter(active=True) if hasattr(cols, "filter") else list(cols)
+          if hasattr(col_items, "order_by"):
+            col_items = col_items.order_by("ordinal_position", "id")
+          else:
+            col_items = sorted(
+              list(col_items),
+              key=lambda col: (
+                getattr(col, "ordinal_position", 0) or 0,
+                getattr(col, "id", 0) or 0,
+              ),
+            )
+        except Exception:
+          return result
+
+        for col in col_items:
+          name = (getattr(col, "target_column_name", "") or "").strip()
+          dtype = (getattr(col, "datatype", "") or "").strip()
+          if not name or not dtype:
+            continue
+          result[_norm(name)] = {
+            "datatype": dtype,
+            "max_length": getattr(col, "max_length", None),
+            "decimal_precision": getattr(col, "decimal_precision", None),
+            "decimal_scale": getattr(col, "decimal_scale", None),
+          }
+        return result
+
+      source_ds = getattr(inp, "source_dataset", None)
+      if source_ds is not None:
+        cols = getattr(source_ds, "source_columns", None)
+        if cols is None:
+          return result
+        try:
+          col_items = cols.all() if hasattr(cols, "all") else list(cols)
+          if hasattr(col_items, "order_by"):
+            col_items = col_items.order_by("ordinal_position", "id")
+          else:
+            col_items = sorted(
+              list(col_items),
+              key=lambda col: (
+                getattr(col, "ordinal_position", 0) or 0,
+                getattr(col, "id", 0) or 0,
+              ),
+            )
+        except Exception:
+          return result
+
+        for col in col_items:
+          name = (getattr(col, "source_column_name", "") or "").strip()
+          dtype = (getattr(col, "datatype", "") or "").strip()
+          if not name or not dtype:
+            continue
+          result[_norm(name)] = {
+            "datatype": dtype,
+            "max_length": getattr(col, "max_length", None),
+            "decimal_precision": getattr(col, "decimal_precision", None),
+            "decimal_scale": getattr(col, "decimal_scale", None),
+          }
+        return result
+
+      return result
+
+    types_by_input_id = {
+      getattr(item, "id", None): _types_for_input(item)
+      for item in items
+    }
+
+    priority_ids: list[int] = []
+    joins = getattr(td, "joins", None)
+    if joins is not None:
+      try:
+        join_items = joins.all() if hasattr(joins, "all") else list(joins)
+        if hasattr(join_items, "order_by"):
+          join_items = list(join_items.order_by("join_order", "id"))
+        else:
+          join_items = sorted(
+            list(join_items),
+            key=lambda join: (
+              getattr(join, "join_order", 0) or 0,
+              getattr(join, "id", 0) or 0,
+            ),
+          )
+
+        if join_items:
+          base_left_id = getattr(join_items[0], "left_input_id", None)
+          if base_left_id is None:
+            base_left_id = getattr(getattr(join_items[0], "left_input", None), "id", None)
+          if base_left_id is not None:
+            priority_ids.append(base_left_id)
+
+          for join in join_items:
+            right_id = getattr(join, "right_input_id", None)
+            if right_id is None:
+              right_id = getattr(getattr(join, "right_input", None), "id", None)
+            if right_id is not None and right_id not in priority_ids:
+              priority_ids.append(right_id)
+      except Exception:
+        priority_ids = []
+
+    for item in items:
+      item_id = getattr(item, "id", None)
+      if item_id is not None and item_id not in priority_ids:
+        priority_ids.append(item_id)
+
+    out: dict[str, dict[str, Any]] = {}
+    for input_id in priority_ids:
+      for name, inferred in types_by_input_id.get(input_id, {}).items():
+        out.setdefault(name, inferred)
+    return out
+
   def _infer_query_output_types(self, td: TargetDataset) -> dict[str, dict[str, Any]]:
     """
     Infer datatypes for query-derived columns by scanning all query nodes of the dataset.
@@ -545,6 +787,30 @@ class QueryContractColumnSyncService:
           continue
         inp_node = getattr(agg, "input_node", None)
         input_td = self._resolve_select_input_target_dataset(inp_node) or getattr(inp_node, "target_dataset", None)
+        # Resolve the actual input-node schema, not only a directly attached SELECT.
+        # FILTER and WINDOW nodes preserve upstream columns, so a group key can
+        # legitimately come from a joined right-side input several nodes below.
+        input_type_map = self._infer_types_from_node(inp_node) if inp_node is not None else {}
+
+        try:
+          group_keys = list(agg.group_keys.all().order_by("ordinal_position", "id"))
+        except Exception:
+          group_keys = []
+        for group_key in group_keys:
+          input_name = (getattr(group_key, "input_column_name", "") or "").strip()
+          output_name = (
+            (getattr(group_key, "output_name", "") or "").strip()
+            or input_name
+          )
+          if not input_name or not output_name:
+            continue
+
+          inferred = input_type_map.get(_norm(input_name))
+          if inferred is None:
+            inferred = self._infer_type_from_target_dataset(input_td, input_name)
+          if inferred:
+            out[_norm(output_name)] = inferred
+
         try:
           measures = list(agg.measures.all().order_by("ordinal_position", "id"))
         except Exception:
@@ -559,8 +825,10 @@ class QueryContractColumnSyncService:
             out[_norm(out_name)] = {"datatype": self._best_integer_datatype()}
             continue
           if fn in ("sum", "min", "max", "avg"):
-            inferred = self._infer_type_from_target_dataset(input_td, arg)
-            out[_norm(out_name)] = inferred or {"datatype": "STRING"}
+            inferred = input_type_map.get(_norm(arg))
+            if inferred is None:
+              inferred = self._infer_type_from_target_dataset(input_td, arg)
+            out[_norm(out_name)] = self._infer_aggregate_result_type(fn, inferred)
             continue
           out[_norm(out_name)] = {"datatype": "STRING"}
 
@@ -570,6 +838,94 @@ class QueryContractColumnSyncService:
   # ------------------------------------------------------------
   # Integer datatype resolver (canonical for window/count)
   # ------------------------------------------------------------
+  def _best_wide_integer_datatype(self) -> str:
+    """Return the widest canonical integer type available to query inference."""
+    allowed = self._allowed_datatypes()
+    if "BIGINT" in allowed:
+      return "BIGINT"
+    if "INTEGER" in allowed:
+      return "INTEGER"
+    return "STRING" if "STRING" in allowed else next(iter(allowed), "STRING")
+
+
+  def _infer_aggregate_result_type(
+    self,
+    function: str,
+    input_type: Optional[dict[str, Any]],
+  ) -> dict[str, Any]:
+    """Return the canonical output type for a numeric aggregate function.
+
+    MIN/MAX preserve the complete input descriptor. SUM widens integer inputs and
+    gives DECIMAL inputs additional integral headroom. AVG always permits a
+    fractional result for exact numeric inputs. These are logical elevata rules;
+    dialects remain responsible for physical SQL type rendering.
+    """
+    if not input_type:
+      return {"datatype": "STRING"}
+
+    inferred = dict(input_type)
+    fn = (function or "").strip().lower()
+    datatype = (inferred.get("datatype") or "").strip().upper()
+
+    if fn in ("min", "max"):
+      return inferred
+
+    if fn == "sum":
+      if datatype in ("SMALLINT", "INT", "INTEGER"):
+        return {
+          "datatype": self._best_wide_integer_datatype(),
+          "max_length": None,
+          "decimal_precision": None,
+          "decimal_scale": None,
+        }
+
+      if datatype == "DECIMAL":
+        precision = inferred.get("decimal_precision")
+        scale = inferred.get("decimal_scale")
+        widened = dict(inferred)
+        if isinstance(precision, int) and precision > 0:
+          widened["decimal_precision"] = min(38, precision + 10)
+        if isinstance(scale, int) and scale >= 0:
+          widened["decimal_scale"] = scale
+        return widened
+
+      return inferred
+
+    if fn == "avg":
+      allowed = self._allowed_datatypes()
+
+      if datatype in ("SMALLINT", "INT", "INTEGER", "BIGINT"):
+        if "DECIMAL" in allowed:
+          return {
+            "datatype": "DECIMAL",
+            "max_length": None,
+            "decimal_precision": 38,
+            "decimal_scale": 10,
+          }
+        if "FLOAT" in allowed:
+          return {
+            "datatype": "FLOAT",
+            "max_length": None,
+            "decimal_precision": None,
+            "decimal_scale": None,
+          }
+        return inferred
+
+      if datatype == "DECIMAL":
+        scale = inferred.get("decimal_scale")
+        avg_scale = max(scale, 10) if isinstance(scale, int) and scale >= 0 else 10
+        return {
+          "datatype": "DECIMAL",
+          "max_length": None,
+          "decimal_precision": 38,
+          "decimal_scale": min(38, avg_scale),
+        }
+
+      return inferred
+
+    return inferred
+
+
   def _best_integer_datatype(self) -> str:
     """
     Return the preferred integer datatype defined in DATATYPE_CHOICES.
@@ -620,6 +976,14 @@ class QueryContractColumnSyncService:
 
     node_type = (getattr(node, "node_type", "") or "").strip().lower()
     out: dict[str, dict[str, Any]] = {}
+
+    # -----------------------------
+    # FILTER NODE
+    # -----------------------------
+    if node_type == "filter":
+      flt = getattr(node, "filter", None)
+      inp = getattr(flt, "input_node", None) if flt else None
+      return self._infer_types_from_node(inp) if inp else {}
 
     # -----------------------------
     # WINDOW NODE
@@ -674,6 +1038,27 @@ class QueryContractColumnSyncService:
 
       input_td = getattr(inp, "target_dataset", None)
 
+      group_keys = []
+      try:
+        group_keys = list(agg.group_keys.all().order_by("ordinal_position", "id"))
+      except Exception:
+        group_keys = []
+
+      for group_key in group_keys:
+        input_name = (getattr(group_key, "input_column_name", "") or "").strip()
+        output_name = (
+          (getattr(group_key, "output_name", "") or "").strip()
+          or input_name
+        )
+        if not input_name or not output_name:
+          continue
+
+        inferred = upstream_types.get(_norm(input_name))
+        if inferred is None:
+          inferred = self._infer_type_from_target_dataset(input_td, input_name)
+        if inferred:
+          out[_norm(output_name)] = inferred
+
       measures = []
       try:
         measures = list(agg.measures.all().order_by("ordinal_position", "id"))
@@ -693,11 +1078,10 @@ class QueryContractColumnSyncService:
           continue
 
         if fn in ("sum", "min", "max", "avg"):
-          inferred = self._infer_type_from_target_dataset(input_td, arg)
-          if inferred:
-            out[_norm(out_name)] = inferred
-          else:
-            out[_norm(out_name)] = {"datatype": "STRING"}
+          inferred = upstream_types.get(_norm(arg))
+          if inferred is None:
+            inferred = self._infer_type_from_target_dataset(input_td, arg)
+          out[_norm(out_name)] = self._infer_aggregate_result_type(fn, inferred)
           continue
 
         out[_norm(out_name)] = {"datatype": "STRING"}
@@ -722,7 +1106,36 @@ class QueryContractColumnSyncService:
     # -----------------------------
     # SELECT or fallback
     # -----------------------------
-    # passthrough
+    if node_type == "select":
+      td = getattr(node, "target_dataset", None)
+      if td is not None:
+        out.update(self._select_upstream_type_map(td))
+
+        # Authored SELECT columns are the closest visible definitions and shadow
+        # equally named upstream inputs.
+        try:
+          target_columns = getattr(td, "target_columns", None)
+          if target_columns is not None:
+            items = target_columns.all() if hasattr(target_columns, "all") else list(target_columns)
+            if hasattr(items, "order_by"):
+              items = items.order_by("ordinal_position", "id")
+            for column in items:
+              if (getattr(column, "lineage_origin", "") or "") == self.LINEAGE_ORIGIN_QUERY:
+                continue
+              name = (getattr(column, "target_column_name", "") or "").strip()
+              dtype = (getattr(column, "datatype", "") or "").strip()
+              if not name or not dtype:
+                continue
+              out[_norm(name)] = {
+                "datatype": dtype,
+                "max_length": getattr(column, "max_length", None),
+                "decimal_precision": getattr(column, "decimal_precision", None),
+                "decimal_scale": getattr(column, "decimal_scale", None),
+              }
+        except Exception:
+          pass
+      return out
+
     try:
       sel = getattr(node, "select", None)
       inp = getattr(sel, "input_node", None) if sel else None
@@ -767,6 +1180,16 @@ class QueryContractColumnSyncService:
   # -----------------------------
   # Ordinals
   # -----------------------------
+  def _query_derived_creation_ordinal_base(self, columns) -> int:
+    """Return a collision-free base ordinal for newly created query-derived columns."""
+    base = 0
+    for column in columns or []:
+      ordinal = getattr(column, "ordinal_position", None) or 0
+      if ordinal > base:
+        base = ordinal
+    return base
+
+
   def _next_query_derived_ordinal_base(self, td: TargetDataset) -> int:
     """
     Base ordinal = max ordinal among NON query_derived columns.

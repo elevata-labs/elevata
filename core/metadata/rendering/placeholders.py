@@ -41,8 +41,9 @@ def resolve_delta_cutoff_for_source_dataset(*, source_dataset, profile, now_ts):
   if source_dataset is None:
     return None
 
-  inc_filter = (getattr(source_dataset, "increment_filter", None) or "").strip()
-  if not inc_filter:
+  portable_increment = getattr(source_dataset, "portable_increment_filter", None)
+  legacy_increment = (getattr(source_dataset, "increment_filter", None) or "").strip()
+  if not portable_increment and not legacy_increment:
     return None
 
   env = (getattr(profile, "name", None) or "dev").strip()

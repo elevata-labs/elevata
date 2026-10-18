@@ -45,7 +45,7 @@ from utils.db import build_metadata_database_url
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(find_dotenv(filename=".env", raise_error_if_not_found=False))
 
-ELEVATA_VERSION = "3.1.0"
+ELEVATA_VERSION = "3.2.0"
 
 ELEVATA_RUNTIME_MODE = env_str("ELEVATA_RUNTIME_MODE", "authoring").strip().lower()
 if ELEVATA_RUNTIME_MODE not in {"authoring", "promotion_target"}:
@@ -348,6 +348,7 @@ ELEVATA_CRUD = {
       "QueryAggregateMeasure",
       "OrderByExpression",
       "OrderByItem",
+      "QueryFilterNode",
       "QueryUnionNode",
       "QueryUnionOutputColumn",
       "QueryUnionBranch",
@@ -397,7 +398,6 @@ ELEVATA_CRUD = {
         "biz_grain_note",
         "manual_model",
         "distinct_select",
-        "static_filter",
         "query_root",
         "query_head",
         "active",
@@ -416,6 +416,7 @@ ELEVATA_CRUD = {
         "nullable",
         "system_role",
         "manual_expression",
+        "portable_expression",
         "lineage_origin",
         "surrogate_expression",
         "active",
@@ -444,7 +445,6 @@ ELEVATA_CRUD = {
               "historize",
               "manual_model",
               "distinct_select",
-              "static_filter",
               "active",
             ],
           },
@@ -457,6 +457,7 @@ ELEVATA_CRUD = {
               "decimal_scale",
               "nullable",
               "manual_expression",
+              "portable_expression",
               "active",
             ],
           },
@@ -613,7 +614,7 @@ ELEVATA_CRUD = {
       ],
       "SourceDataset": [
         {
-          "field": "active", 
+          "field": "active",
           "class_map": {
             "True": "",
             "False": "badge badge-health-warning",
@@ -624,6 +625,8 @@ ELEVATA_CRUD = {
             "False": "Retired",
             "default": "",
           },
+        },
+        {
           "field": "has_no_missing_increment_policies",
           "class_map": {
             "True": "",
@@ -632,7 +635,59 @@ ELEVATA_CRUD = {
           },
           "label_map": {
             "True": "",
-            "False": "missing increment policies",
+            "False": "Missing increment policies",
+            "default": "",
+          },
+        },
+        {
+          "field": "has_portable_static_filter",
+          "class_map": {
+            "True": "badge badge-pii-low",
+            "False": "",
+            "default": "",
+          },
+          "label_map": {
+            "True": "Static filter",
+            "False": "",
+            "default": "",
+          },
+        },
+        {
+          "field": "has_portable_increment_filter",
+          "class_map": {
+            "True": "badge badge-pii-low",
+            "False": "",
+            "default": "",
+          },
+          "label_map": {
+            "True": "Increment filter",
+            "False": "",
+            "default": "",
+          },
+        },
+        {
+          "field": "has_static_filter_sql_fallback",
+          "class_map": {
+            "True": "badge badge-health-warning",
+            "False": "",
+            "default": "",
+          },
+          "label_map": {
+            "True": "Static SQL fallback",
+            "False": "",
+            "default": "",
+          },
+        },
+        {
+          "field": "has_increment_filter_sql_fallback",
+          "class_map": {
+            "True": "badge badge-health-warning",
+            "False": "",
+            "default": "",
+          },
+          "label_map": {
+            "True": "Increment SQL fallback",
+            "False": "",
             "default": "",
           },
         },
@@ -804,6 +859,32 @@ ELEVATA_CRUD = {
             "public": "",
           },
         },
+        {
+          "field": "has_portable_expression",
+          "class_map": {
+            "True": "badge badge-sk",
+            "False": "",
+            "default": "",
+          },
+          "label_map": {
+            "True": "Portable",
+            "False": "",
+            "default": "",
+          },
+        },
+        {
+          "field": "has_manual_expression",
+          "class_map": {
+            "True": "badge bg-secondary",
+            "False": "",
+            "default": "",
+          },
+          "label_map": {
+            "True": "SQL fallback",
+            "False": "",
+            "default": "",
+          },
+        },
       ],
       "TargetDataset": [
         {
@@ -867,6 +948,22 @@ ELEVATA_CRUD = {
         },
       },
       "models": {
+        "SourceDataset": {
+          "list": {
+            "exclude_fields": [
+              "static_filter",
+              "portable_static_filter",
+              "increment_filter",
+              "portable_increment_filter",
+            ],
+          },
+          "form": {
+            "exclude_fields": [
+              "portable_static_filter",
+              "portable_increment_filter",
+            ],
+          },
+        },
         "TargetSchema": {
           "form": {
             "include_fields": [
@@ -892,7 +989,6 @@ ELEVATA_CRUD = {
               "incremental_strategy",
               "manual_model",
               "distinct_select",
-              "static_filter",
               "materialization_type",
               "sensitivity",
               "access_intent",
@@ -913,7 +1009,6 @@ ELEVATA_CRUD = {
               "incremental_strategy",
               "manual_model",
               "distinct_select",
-              "static_filter",
               "partial_load",
               "owner",
               "materialization_type",
@@ -951,7 +1046,6 @@ ELEVATA_CRUD = {
               "decimal_scale",
               "nullable",
               "system_role",
-              "manual_expression",
               "description",
               "pii_level",
               "remark",
@@ -973,6 +1067,7 @@ ELEVATA_CRUD = {
               "decimal_scale",
               "nullable",
               "manual_expression",
+              "portable_expression",
               "description",
               "pii_level",
               "remark",

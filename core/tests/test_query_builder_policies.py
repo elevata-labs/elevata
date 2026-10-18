@@ -57,8 +57,8 @@ def test_query_tree_allowed_for_dataset_false_for_other_layers():
 
 def test_allowed_query_node_types_for_dataset():
   from metadata.generation.policies import allowed_query_node_types_for_dataset
-  assert allowed_query_node_types_for_dataset(DummyTD("bizcore")) == {"select", "aggregate", "union", "window"}
-  assert allowed_query_node_types_for_dataset(DummyTD("serving")) == {"select", "aggregate", "union", "window"}
+  assert allowed_query_node_types_for_dataset(DummyTD("bizcore")) == {"select", "aggregate", "union", "window", "filter"}
+  assert allowed_query_node_types_for_dataset(DummyTD("serving")) == {"select", "aggregate", "union", "window", "filter"}
   assert allowed_query_node_types_for_dataset(DummyTD("raw")) == set()
 
 

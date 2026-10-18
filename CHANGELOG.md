@@ -12,6 +12,176 @@ This project adheres to [Semantic Versioning](https://semver.org/) and [Keep a C
 
 ---
 
+## [3.2.0] - 2026-10-18
+
+This release adds **Advanced Transformation Semantics** to the elevata Architecture Runtime.
+
+Complex Bizcore and Serving logic can be modeled through portable metadata instead of being pushed back into target-specific SQL. Portable Expressions describe calculated values and source/query predicates, while the Query Builder provides explicit FILTER, AGGREGATE, UNION, and WINDOW semantics. The resulting contracts compile through the same vendor-neutral Logical Plan and dialect system used by standard generation.
+
+The result is more expressive transformation logic without giving up portability, deterministic contracts, lineage visibility, Architecture Control, or platform independence.
+
+---
+
+### ✨ Added
+
+#### Portable Expressions and Predicates
+
+- Added structured platform-neutral expressions for `TargetColumn` and input-specific `TargetColumnInput` calculations  
+- Added portable SourceDataset static and increment filters  
+- Added portable Query FILTER predicates  
+- Added arithmetic, unary arithmetic, comparisons, boolean logic, `NOT`, null checks, `BETWEEN`, `IN`, searched `CASE`, controlled casts and controlled scalar functions  
+- Reused CONCAT, CONCAT_WS, COALESCE and hashing semantics through the common Expression AST  
+- Added canonical contract normalization and fail-closed validation for unknown, ambiguous, unsupported or vendor-specific semantics  
+- Added runtime delta-cutoff binding for portable incremental source filters
+
+#### FILTER Query Node
+
+- Added FILTER as a first-class Query Tree operator  
+- Added explicit input-node and portable-predicate contracts  
+- Preserved input output contracts while allowing predicate-only columns to be pushed into inner projections  
+- Kept post-aggregate filtering as an explicit outer FILTER rather than rewriting it into HAVING  
+- Added Query Contract, governance, diff, validation, promotion and UI support for FILTER nodes
+
+#### Aggregate Semantics
+
+- Added authorable ordered `STRING_AGG` measures with delimiter and reusable ORDER BY definitions  
+- Added aggregate DISTINCT contracts where supported  
+- Added canonical type inference for aggregate Group Keys and measures  
+- Added exact numeric SUM/AVG result semantics and input-domain casting before aggregation  
+- Added `COUNT(*)` support  
+- Kept STRING_AGG output as unbounded STRING
+
+#### Window Semantics
+
+- Added ROW_NUMBER, RANK, DENSE_RANK, NTILE, LAG, LEAD, FIRST_VALUE, LAST_VALUE, SUM, AVG, MIN, MAX and COUNT window functions  
+- Added authorable Window Function Arguments  
+- Added reusable PARTITION BY and ORDER BY definitions  
+- Added explicit ROWS/RANGE frame metadata with boundaries and offsets  
+- Added `COUNT(*) OVER (...)`  
+- Added function-signature and argument-type validation  
+- Added portability guards for explicit frames and RANGE offset semantics
+
+#### Query Builder Composition
+
+- Added explicit FILTER -> AGGREGATE -> FILTER composition and equivalent multi-step query chains  
+- Completed UNION and UNION ALL branch composition under explicit output mappings  
+- Allowed UNION branches to compile reusable QueryNode definitions from other semantic datasets inline  
+- Added required-input pushdown so hidden technical columns can feed downstream FILTER, AGGREGATE, and WINDOW logic without leaking into final output  
+- Added join-aware query candidate discovery across authored, left-side and right-side input columns
+
+---
+
+### 🔄 Improved
+
+#### Query Contract and Physical Materialization
+
+- Synchronized query-derived TargetColumns with the effective Query Tree contract  
+- Preserved authored TargetColumns across Query Tree shape changes  
+- Kept query-derived output lifecycle separate from authored metadata lifecycle  
+- Made the effective query-head output the physical materialization contract when explicit query logic is active  
+- Aligned CREATE/INSERT materialization with the same effective output column set
+
+#### Cross-Dialect Numeric Semantics
+
+- Standardized SUM/AVG exact-result behavior across supported dialects  
+- Added BigQuery NUMERIC/BIGNUMERIC family handling for expression casts while retaining parameterized numeric DDL  
+- Added SQL Server unbounded string casting for STRING_AGG to avoid the 8000-byte aggregation limit  
+- Added Fabric Warehouse VARCHAR(MAX) equivalent behavior
+
+#### Query Builder UX
+
+- Added the recursive Portable Expression Editor with user-facing expression controls instead of raw JSON authoring  
+- Scoped Window argument column choices to the actual input-node contract  
+- Scoped reusable PARTITION BY and ORDER BY choices to the active dataset  
+- Added concrete dataset identity to Query Contract and Query Tree pages  
+- Added portable/SQL-fallback indicators for expression configuration  
+- Kept Query Builder authoring restricted to Bizcore and Serving layers
+
+#### Source Filtering
+
+- Made portable SourceDataset filters the structured architecture contract for source extraction  
+- Reused the same source-select generation path for preview and native RAW ingestion  
+- Kept runtime increment-boundary resolution separate from predicate structure
+
+---
+
+### 🔒 Governance & Determinism
+
+- Portable expression references resolve by logical names rather than local database IDs  
+- Unknown or ambiguous expression references fail closed  
+- Vendor-specific functions, vendor-specific types and raw SQL are rejected from portable expression contracts  
+- Input-specific expressions are validated against their concrete input mapping  
+- Query FILTER predicates are validated against their input-node output contract  
+- Same-layer TargetDataset cycles are rejected during authoring  
+- UNION output schemas and branch mappings remain explicit and validated  
+- Window function signatures, required ordering and required frames are validated before rendering  
+- Query-node composition remains explicit through nested Logical Plan boundaries instead of semantic SQL rewrites
+
+---
+
+### 🛠️ Fixed
+
+- Fixed Query Contract synchronization being able to remove authored TargetColumns when a smaller query-head contract was selected  
+- Fixed ordinal collisions while synchronizing query-derived columns  
+- Fixed full-refresh INSERT target columns diverging from the effective query output contract  
+- Fixed Group Key type inference across joined/filter/aggregate chains, including right-side join inputs  
+- Fixed SUM/AVG backend type drift by casting aggregate inputs into the canonical result domain before aggregation  
+- Fixed BigQuery exact numeric aggregate inserts failing because AVG over integer inputs produced FLOAT64  
+- Fixed SQL Server STRING_AGG failing when accumulated values exceeded the bounded VARCHAR/NVARCHAR limit  
+- Fixed Window plans omitting hidden required columns used by function arguments, PARTITION BY or ORDER BY  
+- Fixed Window argument validation accepting missing or invalid function arguments  
+- Fixed pure `former_names` metadata changes being misclassified as physical Execution Impact drift  
+- Fixed already-applied schema actions in Shadow Compare not being recognized as fulfilled runtime evidence  
+- Fixed history-companion materialization ordering so schema updates are applied before physical schema validation  
+- Fixed incompatible historical Architecture Release artifacts blocking discovery and use of valid current releases; incompatible artifacts remain unchanged and excluded from promotion.
+
+---
+
+### ⚠️ Deprecated
+
+The following SQL-text compatibility fields remain executable in 3.2.0 to support migration to the portable contracts:
+
+- `TargetColumn.manual_expression`  
+- `TargetColumnInput.manual_expression`  
+- `SourceDataset.static_filter`  
+- `SourceDataset.increment_filter`  
+
+Migrate existing values to Portable Expressions and portable SourceDataset filters. These deprecated compatibility fields are scheduled for removal in the next release.
+
+Platform-specific logic that cannot be represented by the portable contracts should therefore be reviewed before upgrading beyond 3.2.0.
+
+`TargetDataset.static_filter` has been removed because target-row filtering belongs to explicit Query FILTER semantics.
+
+---
+
+### 🧪 Quality & Stability
+
+- Added regression coverage for Portable Expression normalization, validation, persistence, promotion and rendering  
+- Added FILTER query-node contract, rendering and UI coverage  
+- Added aggregate result-type and Group Key type-inference coverage  
+- Added STRING_AGG ordering and dialect coverage  
+- Added Window function, argument, frame and required-input coverage  
+- Added Query Contract synchronization and effective materialization regression coverage  
+- Added same-layer dependency-cycle protection coverage  
+- Added Shadow Compare semantic-fingerprint and already-applied-action coverage  
+- Verified representative Full Load and Partial Load execution paths  
+- Validated cross-platform execution across supported platforms
+
+---
+
+### ⬆️ Upgrade Notes
+
+- **Run `python manage.py migrate` after installing elevata 3.2.0.**  
+- The release uses one consolidated metadata migration: `0015_advanced_transformation_semantics.py`.  
+- Existing Query Trees remain compatible.  
+- Existing Manual Expression and SourceDataset SQL filter values continue to execute through compatibility fallback semantics in 3.2.0.  
+- Migrate these values to Portable Expressions and portable SourceDataset filters before the next upgrade. The deprecated SQL-text compatibility fields are scheduled for removal in the next release.  
+- Review intentionally platform-specific logic that cannot be represented by the portable contracts before upgrading beyond 3.2.0.  
+- `TargetDataset.static_filter` is removed; model target-row filtering through a Query FILTER node.  
+- Regenerate execution manifests after migration when scheduler-managed environments consume generated manifest metadata.
+
+---
+
 ## [3.1.0] - 2026-08-22
 
 This release adds **Deterministic Partial Loads** and completes named execution scopes across the elevata Architecture Runtime.

@@ -95,7 +95,7 @@ from metadata.architecture.operations import (
   render_target_dataset_architecture_report_text,
 )
 from metadata.constants import DIALECT_HINTS
-from metadata.forms import TargetColumnForm, TargetDatasetForm
+from metadata.forms import QueryFilterAuthoringForm, TargetColumnForm, TargetDatasetForm
 from metadata.generation.policies import (
   query_tree_allowed_for_dataset,
   query_tree_mutations_allowed_for_dataset,
@@ -135,6 +135,7 @@ from metadata.models import (
   TargetColumn,
 )
 from metadata.rendering.dialects import get_active_dialect
+from metadata.rendering.builder import build_source_dataset_select_sql
 from metadata.rendering.sql_service import (
   render_preview_sql,
   render_merge_sql,
@@ -149,13 +150,88 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-def source_dataset_detail_context(*, request, instance) -> dict[str, Any]:
-  """
-  Build SourceDataset-specific context for the shared generic detail view.
-  """
+_SOURCE_SQL_PREVIEW_DIALECTS = {
+  "bigquery",
+  "databricks",
+  "duckdb",
+  "fabric_warehouse",
+  "mssql",
+  "postgres",
+  "snowflake",
+}
+
+
+def _source_dataset_extraction_preview(instance) -> dict[str, Any]:
+  """Build a read-only source extraction SQL preview without source I/O."""
+  source_system = getattr(instance, "source_system", None)
+  source_type = str(getattr(source_system, "type", "") or "").strip().lower()
+  if source_type not in _SOURCE_SQL_PREVIEW_DIALECTS:
+    return {
+      "source_extraction_sql": None,
+      "source_extraction_dialect": source_type,
+      "source_extraction_sql_error": (
+        f"SQL preview is unavailable because elevata has no SQL renderer for source type '{source_type}'."
+      ),
+    }
+
+  manager = getattr(instance, "source_columns", None)
+  if manager is None:
+    columns = []
+  elif hasattr(manager, "filter"):
+    columns = manager.filter(integrate=True)
+    if hasattr(columns, "order_by"):
+      columns = columns.order_by("ordinal_position")
+    columns = list(columns)
+  else:
+    columns = [
+      column
+      for column in manager
+      if getattr(column, "integrate", False) is True
+    ]
+    columns.sort(key=lambda column: getattr(column, "ordinal_position", 0))
+
+  column_names = [
+    str(getattr(column, "source_column_name", "") or "").strip()
+    for column in columns
+    if str(getattr(column, "source_column_name", "") or "").strip()
+  ]
+  if not column_names:
+    return {
+      "source_extraction_sql": None,
+      "source_extraction_dialect": source_type,
+      "source_extraction_sql_error": "SQL preview requires at least one integrated SourceColumn.",
+    }
+
+  try:
+    dialect = get_active_dialect(source_type)
+    sql = build_source_dataset_select_sql(
+      instance,
+      dialect=dialect,
+      source_column_names=column_names,
+      source_alias="s",
+      delta_cutoff=None,
+    )
+  except Exception as exc:
+    return {
+      "source_extraction_sql": None,
+      "source_extraction_dialect": source_type,
+      "source_extraction_sql_error": str(exc),
+    }
+
   return {
+    "source_extraction_sql": sql,
+    "source_extraction_dialect": source_type,
+    "source_extraction_sql_error": None,
+  }
+
+
+def source_dataset_detail_context(*, request, instance) -> dict[str, Any]:
+  """Build SourceDataset-specific context for the shared generic detail view."""
+  context = {
     "source_ingestion_readiness": build_source_ingestion_readiness(instance),
   }
+  context.update(_source_dataset_extraction_preview(instance))
+  return context
 
 
 def _normalize_colname(name: str) -> str:
@@ -2130,6 +2206,17 @@ def targetdataset_query_tree_view(request, pk: int):
               edges.append((nid, cid))
               q.append((inp, lvl + 1))
 
+      elif ntype == "filter":
+        flt = getattr(n, "filter", None)
+        summary = "row filter"
+        if flt and getattr(flt, "input_node", None):
+          inp = flt.input_node
+          cid = int(getattr(inp, "id", 0) or 0)
+          if cid:
+            child_ids.append(cid)
+            edges.append((nid, cid))
+            q.append((inp, lvl + 1))
+
       elif ntype == "window":
         w = getattr(n, "window", None)
         col_cnt = w.columns.count() if w else 0
@@ -2275,6 +2362,7 @@ def targetdataset_reset_query_root(request, pk: int):
 
   QueryNode = apps.get_model("metadata", "QueryNode")
   QueryAggregateNode = apps.get_model("metadata", "QueryAggregateNode")
+  QueryFilterNode = apps.get_model("metadata", "QueryFilterNode")
   QueryUnionBranch = apps.get_model("metadata", "QueryUnionBranch")
   QueryWindowNode = apps.get_model("metadata", "QueryWindowNode")
 
@@ -2298,6 +2386,11 @@ def targetdataset_reset_query_root(request, pk: int):
         raise RuntimeError("Reset failed: exceeded iteration limit while deleting query graph.")
 
       referenced_ids = set()
+      referenced_ids.update(
+        QueryFilterNode.objects.filter(node__target_dataset=td)
+        .exclude(input_node_id__isnull=True)
+        .values_list("input_node_id", flat=True)
+      )
       referenced_ids.update(
         QueryAggregateNode.objects.filter(node__target_dataset=td)
         .exclude(input_node_id__isnull=True)
@@ -2325,6 +2418,141 @@ def targetdataset_reset_query_root(request, pk: int):
 
   messages.success(request, "Custom query logic has been disabled and reset.")
   return redirect("targetdataset_query_builder", pk=td.pk)
+
+def _query_filter_column_names(input_node) -> list[str]:
+  """Return columns the FILTER predicate may reference from its input node."""
+  contract = infer_query_node_contract(input_node)
+  selectable = getattr(contract, "available_input_columns", None) or contract.columns or []
+  return [str(name) for name in selectable]
+
+
+def _render_query_filter_editor(
+  request,
+  *,
+  target_dataset,
+  input_node,
+  form,
+  filter_node=None,
+):
+  """Render the shared create/edit page for a Query FILTER predicate."""
+  return render(
+    request,
+    "metadata/query/query_filter_editor.html",
+    {
+      "title": "Query filter",
+      "object": target_dataset,
+      "input_node": input_node,
+      "filter_node": filter_node,
+      "form": form,
+    },
+  )
+
+
+@login_required
+@permission_required("metadata.change_targetdataset", raise_exception=True)
+def targetdataset_add_filter_node(request, pk: int) -> HttpResponse:
+  """Create a FILTER node only after a valid portable predicate is defined."""
+  td = get_object_or_404(TargetDataset, pk=pk)
+  actor = _get_actor_from_request(request)
+
+  if not query_tree_allowed_for_dataset(td):
+    messages.error(request, "Custom query logic is only allowed in bizcore/serving.")
+    return redirect("targetdataset_query_builder", td.pk)
+
+  if not query_tree_mutations_allowed_for_dataset(td):
+    messages.error(request, query_tree_mutation_block_reason(td))
+    return redirect("targetdataset_query_builder", pk=td.pk)
+
+  query_root = getattr(td, "query_root", None)
+  query_head = getattr(td, "query_head", None) or query_root
+  if not query_root or not query_head:
+    return HttpResponseBadRequest("No query root configured. Enable custom query logic first.")
+
+  column_names = _query_filter_column_names(query_head)
+  form = QueryFilterAuthoringForm(
+    request.POST or None,
+    column_names=column_names,
+  )
+
+  if request.method == "POST" and form.is_valid():
+    QueryNode = apps.get_model("metadata", "QueryNode")
+    QueryFilterNode = apps.get_model("metadata", "QueryFilterNode")
+
+    with transaction.atomic():
+      new_node = QueryNode(
+        target_dataset=td,
+        node_type="filter",
+        name="Filter",
+        active=True,
+      )
+      _save_with_actor(new_node, actor)
+
+      filter_node = QueryFilterNode(
+        node=new_node,
+        input_node=query_head,
+        predicate=form.cleaned_data["predicate"],
+      )
+      _save_with_actor(filter_node, actor)
+
+      td.query_head = new_node
+      _save_with_actor(td, actor, update_fields=["query_head"])
+
+    messages.success(request, "FILTER node created. The dataset head now applies this row filter.")
+    return redirect("queryfilter_edit", pk=filter_node.pk)
+
+  return _render_query_filter_editor(
+    request,
+    target_dataset=td,
+    input_node=query_head,
+    form=form,
+  )
+
+
+@login_required
+@permission_required("metadata.change_targetdataset", raise_exception=True)
+def queryfilter_edit(request, pk: int) -> HttpResponse:
+  """Edit the portable predicate of an existing Query FILTER node."""
+  QueryFilterNode = apps.get_model("metadata", "QueryFilterNode")
+  filter_node = get_object_or_404(
+    QueryFilterNode.objects.select_related(
+      "node",
+      "node__target_dataset",
+      "input_node",
+    ),
+    pk=pk,
+  )
+  td = filter_node.node.target_dataset
+  actor = _get_actor_from_request(request)
+
+  if not query_tree_allowed_for_dataset(td):
+    messages.error(request, "Custom query logic is only allowed in bizcore/serving.")
+    return redirect("targetdataset_query_builder", td.pk)
+
+  if not query_tree_mutations_allowed_for_dataset(td):
+    messages.error(request, query_tree_mutation_block_reason(td))
+    return redirect("targetdataset_query_builder", pk=td.pk)
+
+  column_names = _query_filter_column_names(filter_node.input_node)
+  form = QueryFilterAuthoringForm(
+    request.POST or None,
+    column_names=column_names,
+    initial_contract=filter_node.predicate,
+  )
+
+  if request.method == "POST" and form.is_valid():
+    filter_node.predicate = form.cleaned_data["predicate"]
+    _save_with_actor(filter_node, actor, update_fields=["predicate"])
+    messages.success(request, "FILTER predicate saved.")
+    return redirect("queryfilter_edit", pk=filter_node.pk)
+
+  return _render_query_filter_editor(
+    request,
+    target_dataset=td,
+    input_node=filter_node.input_node,
+    filter_node=filter_node,
+    form=form,
+  )
+
 
 @login_required
 @permission_required("metadata.change_targetdataset", raise_exception=True)

@@ -1,44 +1,115 @@
 # ⚙️ Expression DSL & AST
 
-This document describes elevata’s vendor-neutral **Expression DSL** (Domain Specific Language) and its corresponding **AST** (Expression Abstract Syntax Tree).
+elevata represents expression semantics independently from SQL dialect syntax. Two portable metadata forms feed the same Expression AST:
 
-It forms the foundation of the multi-dialect SQL engine and powers:
+- generated Expression DSL used by deterministic key and system expressions  
+- structured Portable Expression contracts used for authored calculated values and predicates  
 
-- surrogate-key hashing  
-- foreign-key lineage hashing  
-- CONCAT/COALESCE operations  
-- window functions (ROW_NUMBER, etc.)  
-- subqueries in the LogicalPlan  
-- deterministic SQL generation across dialects  
+The AST is rendered by the active dialect for BigQuery, Databricks, DuckDB, Fabric Warehouse, MSSQL, Postgres, and Snowflake.
 
 ---
 
-## 🔧 1. Purpose of the DSL & AST
+## 🔧 1. Expression architecture
 
-**The architecture introduces:**
+```text
+Generated DSL -------------------┐
+                                 ├-> Expression AST -> Dialect Renderer -> SQL
+Portable Expression contract ----┘
+```
 
-- a safe, declarative **Expression DSL** stored in metadata  
-- a **parser** converting DSL → AST  
-- a **vendor-neutral AST** describing expressions  
-- **dialect renderers** (BigQuery, Databricks, DuckDB, Fabric Warehouse, MSSQL, Postgres, Snowflake) that emit actual SQL  
+The AST describes expression meaning. Dialects own platform syntax. Vendor-specific SQL is not part of a portable expression contract.
 
-This ensures:
+This separation provides:
 
-- deterministic SQL generation  
-- cross-dialect reproducibility  
-- fully testable and composable expression logic  
-- consistent hashing on all platforms  
+- deterministic rendering  
+- portable authored transformation logic  
+- controlled function and cast semantics  
+- fail-closed validation of unsupported or ambiguous expressions  
+- one expression model for preview and execution  
 
 ---
 
-## 🔧 2. DSL → AST → SQL Rendering Pipeline
+## 🔧 2. Portable Expression contracts
 
-```
-DSL string  →  DSL Parser  →  Expression AST  →  Dialect Renderer  →  Final SQL
-```
+Portable Expression contracts are structured JSON metadata edited through the Portable Expression Editor. The JSON contract is an internal persistence form; the UI presents expression structure and values rather than requiring manual JSON authoring.
 
-Example DSL:
-```
+Contracts are normalized before persistence and resolved into AST nodes when a query plan is built. Persisted column references use logical names rather than local database IDs.
+
+Portable expressions are supported for:
+
+- `TargetColumn.portable_expression`  
+- input-specific `TargetColumnInput.portable_expression`  
+- `SourceDataset.portable_static_filter`  
+- `SourceDataset.portable_increment_filter`  
+- Query FILTER predicates  
+
+Input-specific TargetColumn expressions take precedence over the column-level expression for that input mapping.
+
+---
+
+## 🔧 3. Value expressions
+
+Portable value expressions support these semantic families:
+
+### 🧩 Primitive values
+
+- column reference  
+- literal value  
+- runtime value where the owning contract explicitly allows it  
+
+### 🧩 Arithmetic
+
+- addition  
+- subtraction  
+- multiplication  
+- division  
+- modulo  
+- unary positive/negative operations  
+
+### 🧩 Conditional logic
+
+- comparisons  
+- boolean `AND` / `OR`  
+- `NOT`  
+- `IS NULL` / `IS NOT NULL`  
+- `BETWEEN`  
+- `IN`  
+- searched `CASE` expressions  
+
+### 🧩 Conversion and scalar functions
+
+- controlled logical casts  
+- controlled portable scalar functions  
+- `CONCAT`  
+- `CONCAT_WS`  
+- `COALESCE`  
+- SHA-256 hashing expressions  
+
+Function names and cast targets are validated against portable contracts. Vendor-specific aliases and vendor-only types are rejected.
+
+---
+
+## 🔧 4. Predicate contracts
+
+Predicate contracts use the same expression semantics but require a boolean result. They are used by Query FILTER nodes and SourceDataset extraction filters.
+
+A SourceDataset static filter can reference columns from that SourceDataset.
+
+A SourceDataset increment filter can additionally reference the runtime value `delta_cutoff`. The increment boundary is resolved by the load runtime and injected into the portable predicate during SQL generation.
+
+Source predicates do not reference TargetColumns, QueryNodes, aggregates, windows, subqueries, or arbitrary SQL.
+
+Query FILTER predicates resolve column references against the output contract of their input QueryNode. Unknown or ambiguous references fail closed.
+
+---
+
+## 🔧 5. Generated Expression DSL
+
+The generated DSL remains the canonical compact representation for deterministic system expressions such as surrogate-key and foreign-key hashing.
+
+Example:
+
+```text
 HASH256(
   CONCAT_WS('|',
     CONCAT('productid', '~', COALESCE({expr:productid}, 'null_replaced')),
@@ -47,211 +118,100 @@ HASH256(
 )
 ```
 
-AST (conceptual):
-```
-Hash256(
-  ConcatWs('|', [
-    Concat([
-      Literal('productid'),
-      Literal('~'),
-      Coalesce(ColumnRef('productid'), Literal('null_replaced'))
-    ]),
-    Literal(<runtime pepper>)
-  ])
-)
-```
+Core DSL forms include:
 
-`{runtime:pepper}` remains symbolic in persisted metadata. During DSL parsing, elevata resolves the token through `get_runtime_pepper()` and places the concrete runtime value into a normal `Literal` AST node. The secret is never stored in the portable DSL.
+| DSL form | Meaning |
+|---|---|
+| `HASH256(expr)` | portable SHA-256 expression |
+| `CONCAT(a,b,...)` | concatenation |
+| `CONCAT_WS(sep,a,b,...)` | separator-based concatenation |
+| `COALESCE(a,b)` | first non-null value |
+| `COL(name)` | column reference |
+| `{expr:column}` | upstream expression reference |
+| `{runtime:pepper}` | environment-local hashing pepper binding |
 
-Dialect renderings:
-
-- **BigQuery** → `TO_HEX(SHA256(CONCAT_WS('|', ...)))`  
-- **Databricks** → `SHA2(CONCAT_WS('|', ...), 256)`  
-- **DuckDB** → `SHA256(CONCAT_WS('|', ...))`  
-- **Fabric Warehouse** → `CONVERT(VARCHAR(64), HASHBYTES('SHA2_256', CAST(CONCAT_WS('|', ...) AS VARCHAR(4000))), 2)`  
-- **MSSQL** → `CONVERT(VARCHAR(64), HASHBYTES('SHA2_256', CONCAT_WS('|', ...)), 2)`  
-- **Postgres** → `ENCODE(DIGEST(CONCAT_WS('|', ...), 'sha256'), 'hex')`  
-- **Snowflake** → `LOWER(TO_HEX(SHA2(CONCAT_WS('|', ...), 256)))`  
+The concrete pepper value is resolved at runtime and is never persisted in portable metadata.
 
 ---
 
-## 🔧 3. DSL Syntax
+## 🔧 6. Core AST nodes
 
-### 🧩 3.1 Supported core functions
+The Expression AST contains typed nodes rather than SQL fragments. Core node families include:
 
-| DSL Function | Description |  
-|--------------|-------------|  
-| `HASH256(expr)` | Vendor-neutral SHA‑256 hash wrapper |  
-| `CONCAT(a,b,...)` | Null-propagating concatenation |  
-| `CONCAT_WS(sep,a,b,...)` | Null-safe concatenation with separator |  
-| `COALESCE(a,b)` | Standard SQL coalesce |  
-| `COL(name)` | Column reference |  
-| `{expr:column}` | Reference to upstream expression column |  
+- `Literal`  
+- `ColumnRef`  
+- `ExprRef`  
+- arithmetic and unary arithmetic expressions  
+- comparison and boolean expressions  
+- null/between/in predicates  
+- `CaseWhen` / `CaseBranch`  
+- cast expressions  
+- controlled scalar-function expressions  
+- concat/coalesce/hash expressions  
+- `WindowFunctionExpr`  
+- raw SQL nodes only for non-portable compatibility/runtime boundaries  
 
-The DSL is intentionally minimal and safe.
-
-`{runtime:pepper}` is a symbolic runtime binding used by generated SK/FK expressions. It is persisted in portable metadata and resolved to the environment-local secret when the DSL is parsed for runtime rendering. Concrete pepper secrets must not be embedded in portable DSL.
-
-### 🧩 3.2 Identifiers
-- `COL(bk1)` and `COL("bk1")` behave equivalently.  
-- Dialects re-apply proper quoting.  
-
-### 🧩 3.3 Literals
-String literals may be defined using `'...'` or `"..."`.
-
-### 🧩 3.4 Upstream Expression References
-Syntax:
-```
-{expr:column_name}
-```
-This refers to an upstream expression already defined in the execution graph.
+Portable metadata normalization never accepts RawSql as a portable expression.
 
 ---
 
-## 🔧 4. DSL Parser
+## 🔧 7. Window expressions
 
-Located in: `metadata/rendering/dsl.py`
+Window expressions combine a registered function contract with arguments, partitioning, ordering, and an optional explicit frame.
 
-Responsibilities:
-
-1. Normalize input  
-2. Detect function calls  
-3. Parse nested expressions  
-4. Parse literals  
-5. Split arguments respecting parentheses  
-6. Convert to AST nodes  
-
-Specialized rules:
-
-- `COL(name)` → `ColumnRef`  
-- `'literal'` → `Literal`  
-- `{expr:x}` → `ExprRef`  
-
----
-
-## 🔧 5. Expression AST Nodes
-
-All expression classes derive from a common base.
-
-### 🧩 5.1 Primitive Nodes
-#### 🔎 `Literal(value)`
-Represents a literal value in SQL.
-
-#### 🔎 `ColumnRef(column_name, table_alias=None)`
-Represents a reference to a column.
-
-#### 🔎 `ExprRef(name)`
-References an upstream-generated expression.
-
----
-
-### 🧩 5.2 Function Expression Nodes
-#### 🔎 `ConcatExpr(args)`
-Represents `CONCAT(a,b,...)`.
-
-#### 🔎 `ConcatWsExpr(separator, args)`
-Represents `CONCAT_WS(sep, ...)`.
-
-#### 🔎 `CoalesceExpr(a,b)`
-Represents `COALESCE(a,b)`.
-
-#### 🔎 `Hash256Expr(expr)`
-Vendor-neutral representation of SHA‑256 hashing.
-
-Each dialect chooses its own SQL form.
-
----
-
-## 🔧 6. Window Functions
-
-Represented by:
-```
+```text
 WindowFunctionExpr(
   function_name,
+  args=[...],
   partition_by=[...],
-  order_by=[OrderItem(expr, direction)]
+  order_by=[...],
+  frame=...
 )
 ```
 
-Example:
-```
-ROW_NUMBER() OVER (PARTITION BY src ORDER BY updated_at DESC)
-```
-
-Used primarily in multi-source Stage ranking mode.
+The Query Builder validates function-specific argument counts and types before rendering. Query-level window semantics are described in [Query Builder & Query Tree](query_builder_and_query_tree.md).
 
 ---
 
-## 🔧 7. Subqueries in the AST
+## 🔧 8. Dialect rendering
 
-Subqueries are modeled using:
-```
-SubquerySource(select, alias)
-```
+All supported dialects receive the same semantic AST and render platform-specific syntax for:
 
-Example pattern:
-```
-SELECT *
-FROM (
-  SELECT *, ROW_NUMBER() OVER (...) AS rn
-  FROM union_all
-) AS ranked
-WHERE rn = 1
-```
+- identifiers and literals  
+- arithmetic and comparison operators  
+- boolean logic and CASE  
+- logical casts  
+- controlled scalar functions  
+- CONCAT / CONCAT_WS / COALESCE  
+- hashing  
+- window functions and frames  
+- subqueries and UNIONs through the Logical Plan  
 
-The dialect handles parenthesis placement and alias rendering.
+This is the portability boundary: the metadata contract describes meaning, while the dialect describes SQL syntax.
 
 ---
 
-## 🔧 8. Dialect Rendering Responsibilities
+## 🔧 9. Fail-closed resolution
 
-Each SQL dialect must render:
+Portable expressions are validated against their owning input contract.
 
-- literals  
-- identifiers  
-- CONCAT / CONCAT_WS  
-- COALESCE  
-- HASH256  
-- window functions  
-- subqueries  
+- unknown column -> error  
+- ambiguous column -> error  
+- unsupported function -> error  
+- invalid argument shape -> error  
+- unsupported cast target -> error  
+- invalid runtime value -> error  
+- vendor-specific SQL or type inside a portable contract -> error  
 
-Consistency across dialects is ensured because all begin from the same AST.
-
-Examples:
-
-- **BigQuery**: `TO_HEX(SHA256(...))`  
-- **Databricks**: `SHA2(..., 256)`  
-- **DuckDB**: `SHA256(...)`  
-- **Fabric Warehouse**: `CONVERT(VARCHAR(64), HASHBYTES('SHA2_256', ...), 2)`  
-- **MSSQL**: `HASHBYTES('SHA2_256', ...)`  
-- **Postgres**: `ENCODE(DIGEST(...), 'hex')`  
-- **Snowflake**: `LOWER(TO_HEX(SHA2(..., 256)))`  
+No ambiguous expression is silently repaired or guessed.
 
 ---
 
-## 🔧 9. Use in Surrogate & Foreign Keys
+## 🔧 10. Deterministic keys
 
-The SK/FK hashing pipeline uses the DSL and AST exclusively.
+Surrogate-key and foreign-key hashing use the generated DSL and AST with deterministic component ordering, null handling, separators, and environment-local pepper resolution. Rawcore key propagation accepts only direct portable column references where a key component must remain traceable to one upstream field.
 
-Guarantees:
-
-- deterministic key generation  
-- lexicographically ordered BK parts  
-- proper literal separators: `'~'` (pair) and `'|'` (between pairs)  
-- null-protection using `COALESCE`  
-- dialect-consistent hashing algorithms  
-
----
-
-## 🔧 10. Benefits of the DSL & AST
-
-- deterministic and reproducible SQL  
-- clean abstraction from vendor SQL  
-- first-class testability  
-- enables multi-dialect rendering  
-- no SQL in metadata  
-- simple addition of new dialects  
-- supports window functions and subqueries  
+See [Hashing Architecture](hashing_architecture.md).
 
 ---
 

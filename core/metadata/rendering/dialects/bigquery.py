@@ -362,8 +362,23 @@ class BigQueryDialect(SqlDialect):
       return "INT64"
 
     if t == DECIMAL:
-      # BigQuery NUMERIC supports up to 38 digits, 9 decimal places
-      return "NUMERIC"
+      # BigQuery NUMERIC supports precision <= 38 and scale <= 9.
+      # Wider exact decimals use BIGNUMERIC so the physical type preserves
+      # the canonical elevata DECIMAL contract.
+      precision = decimal_precision if isinstance(decimal_precision, int) and decimal_precision > 0 else None
+      scale = decimal_scale if isinstance(decimal_scale, int) and decimal_scale >= 0 else None
+
+      use_bignumeric = bool(
+        (precision is not None and precision > 38)
+        or (scale is not None and scale > 9)
+      )
+      base = "BIGNUMERIC" if use_bignumeric else "NUMERIC"
+
+      if precision is not None and scale is not None:
+        return f"{base}({precision},{scale})"
+      if precision is not None:
+        return f"{base}({precision})"
+      return base
 
     if t == FLOAT:
       return "FLOAT64"
@@ -763,6 +778,15 @@ class BigQueryDialect(SqlDialect):
   # ---------------------------------------------------------------------------
   # 6. Expression / Select renderer
   # ---------------------------------------------------------------------------
+  def render_arithmetic_expression(self, expr) -> str:
+    operator = str(expr.operator or "").strip()
+    if operator == "%":
+      left_sql = self.render_expr(expr.left)
+      right_sql = self.render_expr(expr.right)
+      return f"MOD({left_sql}, {right_sql})"
+    return super().render_arithmetic_expression(expr)
+
+
   def render_expr(self, expr: Expr) -> str:
     """
     Intercept vendor-neutral DSL function calls that DuckDBDialect doesn't map correctly for BigQuery.
@@ -844,6 +868,9 @@ class BigQueryDialect(SqlDialect):
     if base == "INT64":
       return f"CAST({expr_sql} AS INT64)"
     if base == "NUMERIC":
+      # BigQuery does not allow parameterized exact numeric types in CAST
+      # expressions. Precision/scale still select the correct physical family
+      # during logical type mapping and remain part of DDL contracts.
       return f"CAST({expr_sql} AS NUMERIC)"
     if base == "BIGNUMERIC":
       return f"CAST({expr_sql} AS BIGNUMERIC)"

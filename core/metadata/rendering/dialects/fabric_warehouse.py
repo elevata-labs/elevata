@@ -132,6 +132,11 @@ class FabricWarehouseDialect(SqlDialect):
   DIALECT_NAME = "fabric_warehouse"
   RESERVED_KEYWORDS = FABRIC_RESERVED_KEYWORDS
 
+  FUNCTION_NAME_OVERRIDES = {
+    "CEIL": "CEILING",
+    "LENGTH": "LEN",
+  }
+
   # Default lengths (Fabric supports VARCHAR(MAX); keep deterministic defaults but allow MAX where required)
   DEFAULT_VARCHAR_LEN = 4000
   # Keep conservative, deterministic lengths to avoid platform-specific limits.
@@ -1001,6 +1006,25 @@ CREATE TABLE {target} (
   # ---------------------------------------------------------------------------
   # 6. Expression / Select renderer
   # ---------------------------------------------------------------------------
+  def render_function_call(self, name: str, args) -> str:
+    normalized = str(name or "").strip().upper()
+
+    if normalized == "LENGTH":
+      if len(args) != 1:
+        raise ValueError("LENGTH requires exactly one argument.")
+      value_sql = self.render_expr(args[0])
+      sentinel_sql = self.render_literal("#")
+      return (
+        f"(CASE WHEN {value_sql} IS NULL THEN NULL "
+        f"ELSE LEN({value_sql} + {sentinel_sql}) - 1 END)"
+      )
+
+    if normalized == "ROUND" and len(args) == 1:
+      return f"ROUND({self.render_expr(args[0])}, 0)"
+
+    return super().render_function_call(name, args)
+
+
   def render_literal(self, value):
     if value is None:
       return "NULL"
@@ -1019,6 +1043,21 @@ CREATE TABLE {target} (
       return f"CAST('{ts}' AS DATETIME2)"
     s = str(value).replace("'", "''")
     return f"'{s}'"
+
+  def render_string_agg(self, args) -> str:
+    if len(args) < 2:
+      raise ValueError("STRING_AGG requires at least 2 arguments: value, delimiter.")
+
+    value_sql = self.render_expr(args[0])
+    string_lob_type = self.render_physical_type(canonical=STRING, max_length=None)
+    value_sql = self.cast_expression(value_sql, string_lob_type)
+    delim_sql = self.render_expr(args[1])
+
+    if len(args) >= 3 and args[2] is not None:
+      order_by_sql = self.render_expr(args[2])
+      return f"STRING_AGG({value_sql}, {delim_sql}) WITHIN GROUP (ORDER BY {order_by_sql})"
+    return f"STRING_AGG({value_sql}, {delim_sql})"
+
 
   def concat_expression(self, parts: Sequence[str]) -> str:
     if not parts:

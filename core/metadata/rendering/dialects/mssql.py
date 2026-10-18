@@ -138,6 +138,11 @@ class MssqlDialect(SqlDialect):
   DIALECT_NAME = "mssql"
   RESERVED_KEYWORDS = MSSQL_RESERVED_KEYWORDS
 
+  FUNCTION_NAME_OVERRIDES = {
+    "CEIL": "CEILING",
+    "LENGTH": "LEN",
+  }
+
   @property
   def supports_merge(self) -> bool:
     """SQL Server supports native MERGE statements."""
@@ -763,6 +768,25 @@ class MssqlDialect(SqlDialect):
   # ---------------------------------------------------------------------------
   # 6. Expression / Select renderer
   # ---------------------------------------------------------------------------
+  def render_function_call(self, name: str, args) -> str:
+    normalized = str(name or "").strip().upper()
+
+    if normalized == "LENGTH":
+      if len(args) != 1:
+        raise ValueError("LENGTH requires exactly one argument.")
+      value_sql = self.render_expr(args[0])
+      sentinel_sql = self.render_literal("#")
+      return (
+        f"(CASE WHEN {value_sql} IS NULL THEN NULL "
+        f"ELSE LEN({value_sql} + {sentinel_sql}) - 1 END)"
+      )
+
+    if normalized == "ROUND" and len(args) == 1:
+      return f"ROUND({self.render_expr(args[0])}, 0)"
+
+    return super().render_function_call(name, args)
+
+
   def render_literal(self, value):
     if value is None:
       return "NULL"
@@ -798,8 +822,12 @@ class MssqlDialect(SqlDialect):
   def render_string_agg(self, args) -> str:
     if len(args) < 2:
       raise ValueError("STRING_AGG requires at least 2 arguments: value, delimiter.")
+
     value_sql = self.render_expr(args[0])
+    string_lob_type = self.render_physical_type(canonical=STRING, max_length=None)
+    value_sql = self.cast_expression(value_sql, string_lob_type)
     delim_sql = self.render_expr(args[1])
+
     if len(args) >= 3 and args[2] is not None:
       order_by_sql = self.render_expr(args[2])
       return f"STRING_AGG({value_sql}, {delim_sql}) WITHIN GROUP (ORDER BY {order_by_sql})"

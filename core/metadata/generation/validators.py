@@ -36,6 +36,13 @@ from metadata.generation.policies import (
 )
 from metadata.generation.query_contract import infer_query_node_contract
 from metadata.generation.window_fn_registry import get_window_fn_spec
+from metadata.rendering.expr import ColumnRef
+from metadata.rendering.portable_expression import (
+  PortableExpressionError,
+  normalize_expression_contract,
+  predicate_contract_to_ast,
+)
+from metadata.rendering.column_expression import column_expression_contract_to_ast
 
 Severity = Literal["error", "warning"]
 Issue = Tuple[Severity, str]
@@ -680,6 +687,44 @@ def validate_all_materialization() -> Dict[int, List[str]]:
   return result
 
 
+def validate_portable_expression_integrity(td: "TargetDataset") -> List[str]:
+  """Validate structured column expressions and their explicit lineage references."""
+  issues: List[str] = []
+
+  try:
+    columns = list(
+      td.target_columns
+      .filter(active=True)
+      .prefetch_related(
+        "input_links__upstream_target_column",
+        "input_links__source_column",
+      )
+      .order_by("ordinal_position", "id")
+    )
+  except Exception:
+    return issues
+
+  for tcol in columns:
+    links = [link for link in tcol.input_links.all() if getattr(link, "active", True)]
+    owners = [("column", tcol)] + [("input", link) for link in links]
+
+    for owner_kind, owner in owners:
+      contract = getattr(owner, "portable_expression", None)
+      if contract is None:
+        continue
+      try:
+        normalize_expression_contract(contract)
+        column_expression_contract_to_ast(contract, links=links)
+      except (PortableExpressionError, ValueError) as exc:
+        if owner_kind == "column":
+          label = f"column '{tcol.target_column_name}'"
+        else:
+          label = f"input '{owner}' for column '{tcol.target_column_name}'"
+        issues.append(f"{label} has invalid portable expression: {exc}")
+
+  return issues
+
+
 def summarize_targetdataset_health(td: "TargetDataset") -> tuple[str, List[str]]:
   """
   Aggregate health information for a single TargetDataset.
@@ -708,6 +753,12 @@ def summarize_targetdataset_health(td: "TargetDataset") -> tuple[str, List[str]]
   if sk_issues:
     has_error = True
     issues.extend(f"Surrogate key: {msg}" for msg in sk_issues)
+
+  # Portable column expressions
+  expr_issues = validate_portable_expression_integrity(td)
+  if expr_issues:
+    has_error = True
+    issues.extend(f"Expression: ERROR: {msg}" for msg in expr_issues)
 
   # BizCore semantics
   biz_issues = validate_bizcore_target_dataset(td)
@@ -754,6 +805,24 @@ def summarize_targetdataset_health(td: "TargetDataset") -> tuple[str, List[str]]
 # ------------------------------------------------------------------------------
 # QueryTree validation (blocking correctness checks)
 # ------------------------------------------------------------------------------
+def _window_frame_boundary_position(boundary: str, offset: int | None) -> tuple[int, int]:
+  """Return a sortable logical position for a validated window-frame boundary."""
+  kind = (boundary or "").strip().upper()
+  if kind == "UNBOUNDED_PRECEDING":
+    return (-2, 0)
+  if kind == "PRECEDING":
+    value = int(offset or 0)
+    return (0, 0) if value == 0 else (-1, -value)
+  if kind == "CURRENT_ROW":
+    return (0, 0)
+  if kind == "FOLLOWING":
+    value = int(offset or 0)
+    return (0, 0) if value == 0 else (1, value)
+  if kind == "UNBOUNDED_FOLLOWING":
+    return (2, 0)
+  raise ValueError(f"Unsupported window frame boundary: {boundary!r}.")
+
+
 def validate_query_tree_integrity(td: "TargetDataset") -> List[str]:
   """
   Validate query graph definition attached to a TargetDataset (if present).
@@ -940,6 +1009,12 @@ def validate_query_tree_integrity(td: "TargetDataset") -> List[str]:
                     f"ORDER BY '{ob.name}' references missing input column '{col}' (used by measure '{out_name}')."
                   ))
 
+      if getattr(m, "distinct", False) and fn.strip().upper() == "STRING_AGG":
+        issues.append((
+          "error",
+          f"Aggregate measure '{out_name}' cannot combine DISTINCT with STRING_AGG portably."
+        ))
+
       # COUNT(*) allowed via empty input column; otherwise require arg
       in_col = (getattr(m, "input_column_name", "") or "").strip()
       if fn.strip().upper() != "COUNT" and not in_col:
@@ -1041,6 +1116,35 @@ def validate_query_tree_integrity(td: "TargetDataset") -> List[str]:
         for b in un.branches.all():
           if getattr(b, "input_node", None):
             _walk(b.input_node)
+    elif ntype == "filter":
+      flt = getattr(n, "filter", None)
+      if not flt:
+        issues.append(("error", f"Filter node '{_node_label(n)}' has no filter details."))
+      else:
+        if not getattr(flt, "input_node_id", None):
+          issues.append(("error", f"Filter node '{_node_label(n)}' has no input_node."))
+        else:
+          input_cols = _infer_output_cols(flt.input_node)
+          by_lower = {name.lower(): name for name in input_cols}
+
+          def _resolve_filter_column(name: str) -> ColumnRef:
+            key = (name or "").strip().lower()
+            if not key or key not in by_lower:
+              raise PortableExpressionError(
+                f"Filter predicate references unknown input column: {name!r}."
+              )
+            return ColumnRef(table_alias=None, column_name=by_lower[key])
+
+          try:
+            predicate_contract_to_ast(
+              getattr(flt, "predicate", None),
+              column_resolver=_resolve_filter_column,
+            )
+          except (PortableExpressionError, ValueError) as exc:
+            issues.append(("error", f"Filter node '{_node_label(n)}' has invalid predicate: {exc}"))
+
+          _walk(flt.input_node)
+
     elif ntype == "window":
       w = getattr(n, "window", None)
       if not w:
@@ -1050,7 +1154,7 @@ def validate_query_tree_integrity(td: "TargetDataset") -> List[str]:
           issues.append(("error", f"Window node '{_node_label(n)}' has no input_node."))
         input_cols = _infer_output_cols(w.input_node) if getattr(w, "input_node", None) else set()
 
-        cols = list(w.columns.all().order_by("ordinal_position", "id"))
+        cols = list(w.columns.filter(active=True).order_by("ordinal_position", "id"))
         if not cols:
           issues.append(("error", f"Window node '{_node_label(n)}' has no window output columns."))
 
@@ -1060,9 +1164,6 @@ def validate_query_tree_integrity(td: "TargetDataset") -> List[str]:
           if not out_name:
             issues.append(("error", f"Window column in '{_node_label(n)}' has empty output_name."))
             continue
-          if fn == "ROW_NUMBER":
-            if not c.order_by:
-              issues.append(("warning", f"Window column '{out_name}' uses ROW_NUMBER without ORDER BY; results may be non-deterministic."))
 
           spec = get_window_fn_spec(fn)
           if not spec:
@@ -1092,8 +1193,6 @@ def validate_query_tree_integrity(td: "TargetDataset") -> List[str]:
             # extra numeric constraints
             if fn == "NTILE" and at == "int" and a.int_value is not None and a.int_value <= 0:
               issues.append(("error", f"Window function NTILE requires n > 0 (column '{out_name}')."))
-            if fn == "NTH_VALUE" and idx == 1 and at == "int" and a.int_value is not None and a.int_value <= 0:
-              issues.append(("error", f"Window function NTH_VALUE requires n > 0 (column '{out_name}')."))
             if fn in ("LAG", "LEAD") and idx == 1 and at == "int" and a.int_value is not None and a.int_value < 0:
               issues.append(("error", f"Window function {fn} offset must be >= 0 (column '{out_name}')."))
 
@@ -1106,7 +1205,7 @@ def validate_query_tree_integrity(td: "TargetDataset") -> List[str]:
                 issues.append(("error", f"Window function {fn} arg references missing input column '{nm}' (used by '{out_name}')."))
 
           if spec.requires_order_by and not c.order_by:
-            issues.append(("warning", f"Window column '{out_name}' uses {fn} without ORDER BY; results may be non-deterministic."))
+            issues.append(("error", f"Window function {fn} requires ORDER BY (column '{out_name}')."))
 
           if c.order_by:
             items = list(c.order_by.items.all())
@@ -1124,6 +1223,50 @@ def validate_query_tree_integrity(td: "TargetDataset") -> List[str]:
               nm = (it.input_column_name or "").strip()
               if input_cols and nm.lower() not in input_cols:
                 issues.append(("error", f"PARTITION BY '{c.partition_by.name}' references missing input column '{nm}' (used by window column '{out_name}')."))
+
+          frame_type = (getattr(c, "frame_type", "") or "").strip().upper()
+          frame_start = (getattr(c, "frame_start", "") or "").strip().upper()
+          frame_end = (getattr(c, "frame_end", "") or "").strip().upper()
+          start_offset = getattr(c, "frame_start_offset", None)
+          end_offset = getattr(c, "frame_end_offset", None)
+          frame_defined = bool(frame_type or frame_start or frame_end or start_offset is not None or end_offset is not None)
+
+          if frame_defined and not frame_type:
+            issues.append(("error", f"Window column '{out_name}' defines frame boundaries without a frame type."))
+          elif frame_type:
+            if not c.order_by:
+              issues.append(("error", f"Window column '{out_name}' defines an explicit frame but has no ORDER BY."))
+            if not frame_start or not frame_end:
+              issues.append(("error", f"Window column '{out_name}' explicit frame requires both start and end boundaries."))
+            if spec.frame_policy == "forbidden":
+              issues.append(("error", f"Window function {fn} does not accept an explicit frame in elevata."))
+            if frame_type == "RANGE" and (frame_start in {"PRECEDING", "FOLLOWING"} or frame_end in {"PRECEDING", "FOLLOWING"}):
+              issues.append(("error", f"Window column '{out_name}' uses RANGE with an offset boundary, which is not portable across supported platforms."))
+
+            for label, boundary, offset in (
+              ("start", frame_start, start_offset),
+              ("end", frame_end, end_offset),
+            ):
+              needs_offset = boundary in {"PRECEDING", "FOLLOWING"}
+              if needs_offset and offset is None:
+                issues.append(("error", f"Window column '{out_name}' frame {label} '{boundary}' requires an offset."))
+              if not needs_offset and offset is not None:
+                issues.append(("error", f"Window column '{out_name}' frame {label} offset is only valid for PRECEDING/FOLLOWING."))
+
+            if frame_start and frame_end:
+              try:
+                start_position = _window_frame_boundary_position(frame_start, start_offset)
+                end_position = _window_frame_boundary_position(frame_end, end_offset)
+              except ValueError as exc:
+                issues.append(("error", f"Window column '{out_name}' has invalid frame boundaries: {exc}"))
+              else:
+                if start_position > end_position:
+                  issues.append(("error", f"Window column '{out_name}' frame start must not be after its frame end."))
+
+          if spec.frame_policy == "required" and not frame_type:
+            issues.append(("error", f"Window function {fn} requires an explicit frame (column '{out_name}')."))
+          if fn in {"SUM", "AVG", "MIN", "MAX", "COUNT"} and c.order_by and not frame_type:
+            issues.append(("error", f"Ordered window aggregate {fn} requires an explicit frame (column '{out_name}')."))
 
         _walk(w.input_node)
     else:

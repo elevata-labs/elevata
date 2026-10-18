@@ -49,7 +49,7 @@ From these definitions, elevata derives deterministic Target Generation Plans an
 Target metadata generation, schema evolution, incremental loads, historization, approvals, and execution evidence are planned, validated, and applied deterministically.
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/elevata-labs/elevata/main/docs/elevata_v3_1_0.png" alt="elevata UI preview" width="900"/>
+  <img src="https://raw.githubusercontent.com/elevata-labs/elevata/main/docs/elevata_v3_2_0.png" alt="elevata UI preview" width="900"/>
   <br/>
   <em>elevata user interface spanning metadata management, Architecture Control, and controlled Environment Promotion.</em>
 </p>
@@ -279,11 +279,22 @@ See [Environment Promotion](https://github.com/elevata-labs/elevata/blob/main/do
 
 ## 📐 Query Builder
 
-elevata models transformations explicitly using **Query Trees**.
+elevata keeps complex transformation logic **explicit in metadata instead of hiding it in platform-specific SQL**.
 
-Each TargetDataset may define a query tree composed of well-defined operators such as SELECT, JOIN, AGGREGATE, UNION and WINDOW. These operators are represented as metadata objects, not as opaque SQL fragments.
+The Query Builder models relational query shape through typed operators such as **FILTER, AGGREGATE, UNION, and WINDOW**, while **Portable Expressions** describe calculated values through platform-neutral metadata contracts. Joins remain explicit dataset relationships so lineage and execution dependencies stay visible.
 
-The Query Builder produces deterministic SQL with stable contracts, field-level lineage, and transparent query semantics.
+Together, these capabilities make advanced Bizcore and Serving transformations reviewable, reproducible, and portable across supported warehouses:
+
+- filters are modeled as portable predicates rather than embedded SQL conditions  
+- calculated columns can use arithmetic, comparisons, boolean logic, CASE, CAST, controlled scalar functions, CONCAT, COALESCE, and hashing  
+- aggregates define explicit group keys and measures, including ordered `STRING_AGG`, `COUNT(*)`, `SUM`, `AVG`, `MIN`, and `MAX`  
+- window functions support partitioning, ordering, explicit frames, ranking, navigation, and windowed aggregates  
+- UNION and UNION ALL compose independently shaped query branches under one explicit output contract  
+- query-derived output contracts are synchronized with the physical materialization contract  
+
+The same metadata-defined logic is compiled into a vendor-neutral Logical Plan and rendered by the active dialect. SQL remains inspectable, but it is the **artifact of the architecture - not the place where the architecture is defined**.
+
+See [Query Builder & Query Tree](https://github.com/elevata-labs/elevata/blob/main/docs/query_builder_and_query_tree.md) and [Expression DSL & AST](https://github.com/elevata-labs/elevata/blob/main/docs/expression_dsl_and_ast.md).
 
 ---
 

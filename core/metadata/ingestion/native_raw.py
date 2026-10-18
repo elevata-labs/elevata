@@ -36,7 +36,10 @@ from sqlalchemy import text
 
 from metadata.rendering.dialects.dialect_factory import get_active_dialect
 from metadata.ingestion.connectors import engine_for_source_system
-from metadata.rendering.builder import qualify_source_filter
+from metadata.rendering.builder import (
+  build_source_dataset_select_sql,
+  source_increment_filter_uses_delta_cutoff,
+)
 from metadata.rendering.placeholders import (
   resolve_delta_cutoff_for_source_dataset,
   apply_delta_cutoff_placeholder,
@@ -323,38 +326,20 @@ def ingest_raw_relational(
       "batch_run_id": batch_run_id,
     }
 
-  # Build SELECT against source
+  # Keep the physical source identity available for ingestion audit logging.
+  # SQL rendering itself is delegated to build_source_dataset_select_sql().
   src_schema = source_dataset.schema_name
   src_table = source_dataset.source_dataset_name
 
-  src_select_cols = ", ".join(f"s.{source_dialect.render_identifier(c)}" for c in src_col_names)
-  src_from = source_dialect.render_table_identifier(src_schema, src_table)
+  portable_increment = getattr(source_dataset, "portable_increment_filter", None)
+  legacy_increment = (getattr(source_dataset, "increment_filter", None) or "").strip()
+  apply_increment = bool(
+    getattr(source_dataset, "incremental", False)
+    and (portable_increment or legacy_increment)
+  )
 
-  # Use a stable alias for filtering
-  src_sql = f"SELECT {src_select_cols} FROM {src_from} AS s"
-
-  static_filter = (getattr(source_dataset, "static_filter", None) or "").strip()
-  increment_filter = (getattr(source_dataset, "increment_filter", None) or "").strip()
-
-  where_parts = []
-
-  # Static filter applies to ingestion only (RAW extraction)
-  if static_filter:
-    where_parts.append(f"({qualify_source_filter(source_dataset, static_filter, source_alias='s')})")
-
-  # Increment filter applies to ingestion only when dataset is incremental
-  apply_increment = bool(getattr(source_dataset, "incremental", False) and increment_filter)
-  if apply_increment:
-    where_parts.append(f"({qualify_source_filter(source_dataset, increment_filter, source_alias='s')})")
-
-  if where_parts:
-    src_sql += " WHERE " + " AND ".join(where_parts)
-
-  src_sql += ";"
-
-  # Replace {{DELTA_CUTOFF}} for incremental extraction on the SOURCE side
   cutoff = None
-  if apply_increment and "{{DELTA_CUTOFF" in src_sql:
+  if apply_increment and source_increment_filter_uses_delta_cutoff(source_dataset):
     cutoff = resolve_delta_cutoff_for_source_dataset(
       source_dataset=source_dataset,
       profile=profile,
@@ -362,11 +347,20 @@ def ingest_raw_relational(
     )
     if cutoff is None:
       raise ValueError(
-        f"increment_filter uses {{DELTA_CUTOFF}} but no active increment policy exists "
+        "Increment filter requires the Delta cutoff but no active increment policy exists "
         f"for SourceDataset={source_dataset} in environment '{getattr(profile, 'name', None)}'."
       )
 
-    # IMPORTANT: render literal using SOURCE dialect
+  src_sql = build_source_dataset_select_sql(
+    source_dataset,
+    dialect=source_dialect,
+    source_column_names=src_col_names,
+    source_alias="s",
+    delta_cutoff=cutoff,
+  )
+
+  # Legacy SQL fallback keeps its existing placeholder contract.
+  if apply_increment and not portable_increment and "{{DELTA_CUTOFF" in src_sql:
     src_sql = apply_delta_cutoff_placeholder(
       src_sql,
       dialect=source_dialect,

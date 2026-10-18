@@ -246,12 +246,12 @@ Examples of functions requiring ORDER BY:
 
 - ROW_NUMBER, RANK, DENSE_RANK  
 - LAG, LEAD  
-- FIRST_VALUE, LAST_VALUE, NTH_VALUE  
+- FIRST_VALUE, LAST_VALUE  
 - NTILE
 
-Windowed aggregates (SUM/AVG/…) may not require ORDER BY:
+Windowed aggregates (`SUM`, `AVG`, `MIN`, `MAX`, `COUNT`) do not require ordering when used as unordered window aggregates. When an ORDER BY is supplied, an explicit frame is required so cumulative/windowed semantics remain portable and reviewable.
 
-- missing ORDER BY is usually ok → optional warning depending on policy
+`FIRST_VALUE` and `LAST_VALUE` require an explicit frame. Numeric PRECEDING/FOLLOWING offsets on RANGE frames are rejected because backend semantics are not portable.
 
 ---
 
@@ -268,7 +268,23 @@ Other aggregates (SUM, COUNT, MIN, MAX, AVG) are deterministic without ordering.
 
 ---
 
-## 🔧 8. Contract stability and collisions
+
+## 🔧 8. Portable expression determinism
+
+Portable expressions and predicates are normalized and validated before they participate in a Logical Plan. Determinism requires explicit resolution of every semantic reference.
+
+Rules:
+
+- unknown column references -> **ERROR**  
+- ambiguous column references -> **ERROR**  
+- unsupported functions or function signatures -> **ERROR**  
+- unsupported logical cast targets -> **ERROR**  
+- vendor-specific functions, types, or raw SQL inside a portable contract -> **ERROR**  
+- invalid runtime-value references -> **ERROR**  
+
+Input-specific TargetColumn expressions are validated against their concrete input mapping. Query FILTER predicates are validated against the output contract of their input QueryNode.
+
+## 🔧 9. Contract stability and collisions
 
 The output contract must be stable and unambiguous.
 
@@ -280,7 +296,7 @@ Rules:
 
 ---
 
-## 🔧 9. Why elevata is not a semantic layer
+## 🔧 10. Why elevata is not a semantic layer
 
 elevata does not implement query-time semantics (like BI semantic layers or metric stores). Instead, elevata materializes semantics into datasets deterministically:
 
@@ -292,7 +308,7 @@ This avoids tool-specific logic and ensures reproducible pipelines.
 
 ---
 
-## 🔧 10. References
+## 🔧 11. References
 
 - [Query Tree & Query Builder](query_builder_and_query_tree.md)    
 - [Lineage Model & Logical Plan](logical_plan.md)   

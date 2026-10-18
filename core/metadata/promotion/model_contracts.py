@@ -135,7 +135,8 @@ MODEL_CONTRACTS = {
     ),
     fields=(
       "source_system", "schema_name", "source_dataset_name", "description",
-      "integrate", "static_filter", "incremental", "increment_filter",
+      "integrate", "static_filter", "portable_static_filter",
+      "incremental", "increment_filter", "portable_increment_filter",
       "manual_model", "distinct_select", "generate_raw_table",
       "ingestion_config", "active",
     ),
@@ -226,7 +227,7 @@ MODEL_CONTRACTS = {
       "target_schema", "target_dataset_name", "description", "handle_deletes",
       "historize", "combination_mode", "biz_entity_role", "biz_grain_note",
       "incremental_strategy", "incremental_source", "manual_model",
-      "distinct_select", "static_filter", "query_root", "query_head",
+      "distinct_select", "query_root", "query_head",
       "materialization_type", "sensitivity", "access_intent", "active",
       "lineage_key", "former_names", "is_system_managed",
     ),
@@ -249,6 +250,12 @@ MODEL_CONTRACTS = {
     "QuerySelectNode",
     identity=_identity("node_key"),
     fields=("node", "use_dataset_definition"),
+    phase=Phase.QUERY_DEFINITION,
+  ),
+  "QueryFilterNode": _contract(
+    "QueryFilterNode",
+    identity=_identity("node_key"),
+    fields=("node", "input_node", "predicate"),
     phase=Phase.QUERY_DEFINITION,
   ),
   "QueryAggregateNode": _contract(
@@ -342,7 +349,8 @@ MODEL_CONTRACTS = {
     identity=_identity("window_node_key", "ordinal_position"),
     fields=(
       "window_node", "output_name", "function", "partition_by",
-      "order_by", "ordinal_position", "active",
+      "order_by", "frame_type", "frame_start", "frame_start_offset",
+      "frame_end", "frame_end_offset", "ordinal_position", "active",
     ),
     phase=Phase.QUERY_CHILD,
     lifecycle=Lifecycle.DEACTIVATE,
@@ -405,7 +413,7 @@ MODEL_CONTRACTS = {
     fields=(
       "target_dataset", "target_column_name", "ordinal_position", "datatype",
       "max_length", "decimal_precision", "decimal_scale", "nullable",
-      "system_role", "manual_expression", "description", "pii_level",
+      "system_role", "manual_expression", "portable_expression", "description", "pii_level",
       "remark", "sensitivity", "lineage_origin", "surrogate_expression",
       "active", "lineage_key", "former_names", "is_system_managed",
     ),
@@ -420,7 +428,7 @@ MODEL_CONTRACTS = {
     identity=_identity("target_column_key", "upstream_kind", "upstream_key"),
     fields=(
       "target_column", "source_column", "upstream_target_column",
-      "manual_expression", "ordinal_position", "active",
+      "manual_expression", "portable_expression", "ordinal_position", "active",
     ),
     phase=Phase.TARGET_COLUMN_RELATION,
     lifecycle=Lifecycle.DEACTIVATE,

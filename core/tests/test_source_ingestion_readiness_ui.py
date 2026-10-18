@@ -46,6 +46,15 @@ def test_source_dataset_detail_context_builds_readiness(monkeypatch):
     return readiness
 
   monkeypatch.setattr(views, "build_source_ingestion_readiness", fake_build)
+  monkeypatch.setattr(
+    views,
+    "_source_dataset_extraction_preview",
+    lambda instance: {
+      "source_extraction_sql": "SELECT 1;",
+      "source_extraction_dialect": "mssql",
+      "source_extraction_sql_error": None,
+    },
+  )
 
   context = views.source_dataset_detail_context(
     request=RequestFactory().get("/metadata/source-datasets/1/detail/"),
@@ -53,7 +62,10 @@ def test_source_dataset_detail_context_builds_readiness(monkeypatch):
   )
 
   assert calls["instance"] is source_dataset
-  assert context == {"source_ingestion_readiness": readiness}
+  assert context["source_ingestion_readiness"] is readiness
+  assert context["source_extraction_sql"] == "SELECT 1;"
+  assert context["source_extraction_dialect"] == "mssql"
+  assert context["source_extraction_sql_error"] is None
 
 
 def test_dynamic_source_dataset_view_registers_detail_context_provider():
@@ -216,3 +228,22 @@ def test_source_ingestion_readiness_partial_uses_explicit_overflow_control():
   assert html.count("Signal 1") == 1
   assert html.count("Signal 4") == 1
   assert "Signal 5" in html
+
+
+def test_source_extraction_sql_partial_renders_symbolic_runtime_value():
+  html = render_to_string(
+    "metadata/partials/_source_dataset_sql_preview_panel.html",
+    {
+      "source_extraction_sql": (
+        "SELECT s.ModifiedDate FROM Sales.SalesOrderHeader AS s "
+        "WHERE s.ModifiedDate >= {{DELTA_CUTOFF}};"
+      ),
+      "source_extraction_dialect": "mssql",
+      "source_extraction_sql_error": None,
+    },
+  )
+
+  assert "Source Extraction SQL" in html
+  assert "DELTA_CUTOFF" in html
+  assert "mssql" in html
+

@@ -55,6 +55,7 @@ from metadata.models import (
   # Query-side (bizcore/serving)
   QueryNode,
   QuerySelectNode,
+  QueryFilterNode,
   QueryAggregateNode,
   QueryAggregateGroupKey,
   QueryAggregateMeasure,
@@ -83,6 +84,7 @@ from metadata.models import (
 QUERY_SCOPED_MODEL_NAMES = {
   "QueryNode",
   "QuerySelectNode",
+  "QueryFilterNode",
   "QueryAggregateNode",
   "QueryAggregateGroupKey",
   "QueryAggregateMeasure",
@@ -128,7 +130,7 @@ def _get_query_builder_dataset(parent_obj):
   if isinstance(parent_obj, QueryNode):
     return getattr(parent_obj, "target_dataset", None)
 
-  if isinstance(parent_obj, (QuerySelectNode, QueryAggregateNode, QueryUnionNode, QueryWindowNode)):
+  if isinstance(parent_obj, (QuerySelectNode, QueryFilterNode, QueryAggregateNode, QueryUnionNode, QueryWindowNode)):
     node = getattr(parent_obj, "node", None)
     return getattr(node, "target_dataset", None) if node is not None else None
 
@@ -238,35 +240,16 @@ def _first_attr(obj, names):
 
 def _candidate_column_names_for_targetdataset(td, query_node=None):
   """
-  Best-effort list of column names to help users pick input_column_name fields.
-  Prefers inferred query contract if available; falls back to dataset columns.
-  If query_node is provided, infer columns from that node's *input* contract (preferred).
+  Return selectable column names for query authoring.
+
+  When query_node is provided, its output contract is the exact input contract
+  seen by the operator being configured. Falling back to the dataset query root
+  keeps legacy/scoped screens usable when no concrete input node is available.
   """
-  # 1) Prefer inferred contract for the relevant node (best UX for input_column_name fields)
+  # 1) Prefer inferred contract for the exact node exposed to the editor.
   try:
     import metadata.generation.query_contract as query_contract
-    # ------------------------------------------------------------
-    # Determine which node defines the INPUT contract
-    # ------------------------------------------------------------
-    root = None
-
-    if query_node is not None:
-
-      # AGGREGATE nodes must use their input node contract
-      agg = getattr(query_node, "aggregate", None)
-      if agg and getattr(agg, "input_node", None):
-        root = agg.input_node
-
-      else:
-        # WINDOW nodes also operate on input node output
-        wnd = getattr(query_node, "window", None)
-        if wnd and getattr(wnd, "input_node", None):
-          root = wnd.input_node
-        else:
-          root = query_node
-
-    else:
-      root = getattr(td, "query_root", None)
+    root = query_node if query_node is not None else getattr(td, "query_root", None)
 
     if root is not None:
       contract = query_contract.infer_query_node_contract(root)
@@ -357,8 +340,8 @@ def _td_from_query_instance(obj):
     if td is not None:
       return td
 
-  # WindowColumnArg -> column -> window_node -> node -> td
-  col = getattr(obj, "column", None)
+  # WindowColumnArg -> window_column -> window_node -> node -> td
+  col = getattr(obj, "window_column", None)
   if col is not None:
     wn = getattr(col, "window_node", None)
     node = getattr(wn, "node", None) if wn is not None else None
@@ -392,6 +375,42 @@ def _maybe_trigger_query_contract_sync(instance):
 
   # Run after commit so contract inference sees the final state.
   transaction.on_commit(lambda: trigger_query_contract_column_sync(td, actor=actor))
+
+
+def _reactivate_authored_columns_for_aggregate_rewind(td, actor=None) -> None:
+  """
+  Reactivate authored columns when deleting the current AGGREGATE head.
+
+  AGGREGATE is a projection boundary: authored SELECT-level columns that are not
+  part of the aggregate output are kept as inactive metadata so their portable
+  expressions and lineage remain available. If the aggregate head is removed,
+  those authored definitions become the SELECT output again. Query-derived and
+  system-managed columns are deliberately excluded; normal contract sync removes
+  obsolete query-derived aggregate outputs after the head rewind.
+  """
+  if td is None:
+    return
+
+  qs = (
+    TargetColumn.objects
+    .filter(target_dataset=td, active=False, is_system_managed=False)
+    .exclude(lineage_origin="query_derived")
+    .order_by("ordinal_position", "id")
+  )
+
+  for col in qs:
+    col.active = True
+    update_fields = ["active"]
+
+    if hasattr(col, "retired_at"):
+      col.retired_at = None
+      update_fields.append("retired_at")
+
+    if getattr(actor, "is_authenticated", False) and hasattr(col, "updated_by"):
+      col.updated_by = actor
+      update_fields.append("updated_by")
+
+    col.save(update_fields=list(dict.fromkeys(update_fields)))
 
 
 def _backfill_target_column_inputs(instance, actor):
@@ -1090,6 +1109,9 @@ class _ScopedChildView(GenericCRUDView):
           if ntype == "window":
             w = getattr(obj, "window", None)
             next_root = getattr(w, "input_node", None) if w is not None else None
+          elif ntype == "filter":
+            flt = getattr(obj, "filter", None)
+            next_root = getattr(flt, "input_node", None) if flt is not None else None
           elif ntype == "aggregate":
             a = getattr(obj, "aggregate", None)
             next_root = getattr(a, "input_node", None) if a is not None else None
@@ -1115,6 +1137,17 @@ class _ScopedChildView(GenericCRUDView):
 
             if update_fields:
               td.save(update_fields=update_fields)
+
+            # AGGREGATE temporarily retires authored SELECT-level columns that are
+            # outside its projected output. If the current aggregate head is
+            # deleted, those authored definitions become visible again before
+            # contract sync runs. The delete signals then reconcile the rewound
+            # head and remove stale query-derived aggregate outputs.
+            if is_head and ntype == "aggregate":
+              actor = get_current_user() or getattr(request, "user", None)
+              if not getattr(actor, "is_authenticated", False):
+                actor = None
+              _reactivate_authored_columns_for_aggregate_rewind(td, actor=actor)
 
     return super().row_delete(request, pk)
 
@@ -1612,7 +1645,7 @@ class QueryNodeScopedView(_ScopedChildView):
     return (
       self.model.objects
       .filter(target_dataset_id=self.get_parent_pk())
-      .select_related("window", "aggregate", "union", "select")
+      .select_related("window", "filter", "aggregate", "union", "select")
       .order_by("id")
     )
 
@@ -1668,6 +1701,9 @@ class QueryNodeScopedView(_ScopedChildView):
                   parts.append(f"e.g. {out}")
           if not parts:
             parts.append("window")
+
+        elif nt == "filter":
+          parts.append("row filter")
 
         elif nt == "aggregate":
           a = _first_attr(n, ["aggregate", "aggregate_node", "aggregatenode", "queryaggregatenode"])
@@ -1778,6 +1814,18 @@ class QueryAggregateMeasureScopedView(_ScopedChildView):
         if td and fname in form.fields:
           cols = _candidate_column_names_for_targetdataset(td, query_node=input_node)
           form.fields[fname].widget = _select_widget_from_columns(cols)
+
+      if td is not None:
+        order_by_field = form.fields.get("order_by")
+        if order_by_field is not None:
+          order_by_field.queryset = (
+            OrderByExpression.objects
+            .filter(target_dataset=td, active=True)
+            .order_by("name", "id")
+          )
+          order_by_field.help_text = (
+            "Select a reusable ORDER BY definition for this dataset."
+          )
     except Exception:
       pass
     return form
@@ -2131,6 +2179,46 @@ class QueryWindowColumnScopedView(_ScopedChildView):
   def get_queryset(self):
     return self.model.objects.filter(window_node_id=self.get_parent_pk()).select_related("order_by", "partition_by").order_by("ordinal_position", "id")
 
+  def enhance_form(self, form):
+    """Scope reusable window definitions and explain the separate argument editor."""
+    form = super().enhance_form(form)
+
+    try:
+      parent = self.get_parent_object()  # QueryWindowNode
+      td = _get_query_builder_dataset(parent)
+      if td is not None:
+        order_by_field = form.fields.get("order_by")
+        if order_by_field is not None:
+          order_by_field.queryset = (
+            OrderByExpression.objects
+            .filter(target_dataset=td, active=True)
+            .order_by("name", "id")
+          )
+          order_by_field.help_text = (
+            "Select a reusable ORDER BY definition for this dataset."
+          )
+
+        partition_by_field = form.fields.get("partition_by")
+        if partition_by_field is not None:
+          partition_by_field.queryset = (
+            PartitionByExpression.objects
+            .filter(target_dataset=td, active=True)
+            .order_by("name", "id")
+          )
+          partition_by_field.help_text = (
+            "Select a reusable PARTITION BY definition for this dataset."
+          )
+    except Exception:
+      pass
+
+    function_field = form.fields.get("function")
+    if function_field is not None:
+      function_field.help_text = (
+        "Window function. After saving, use Arguments for functions that take values "
+        "such as LAG, LEAD, FIRST_VALUE, LAST_VALUE, NTILE, and window aggregates."
+      )
+    return form
+
 
 class QueryWindowColumnArgScopedView(_ScopedChildView):
   model = QueryWindowColumnArg
@@ -2142,3 +2230,18 @@ class QueryWindowColumnArgScopedView(_ScopedChildView):
 
   def get_queryset(self):
     return self.model.objects.filter(window_column_id=self.get_parent_pk()).order_by("ordinal_position", "id")
+
+  def enhance_form(self, form):
+    """Offer window input columns as explicit choices for column arguments."""
+    form = super().enhance_form(form)
+    try:
+      parent = self.get_parent_object()  # QueryWindowColumn
+      window_node = getattr(parent, "window_node", None)
+      input_node = getattr(window_node, "input_node", None) if window_node is not None else None
+      td = _get_query_builder_dataset(parent)
+      if td and input_node is not None and "column_name" in form.fields:
+        cols = _candidate_column_names_for_targetdataset(td, query_node=input_node)
+        form.fields["column_name"].widget = _select_widget_from_columns(cols)
+    except Exception:
+      pass
+    return form
