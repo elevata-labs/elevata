@@ -197,10 +197,8 @@ def _build_incremental_scope_filter_for_target(
   """
   Build a target-side WHERE fragment for delete detection.
 
-  Increment predicates are taken from the SourceDataset with portable-first
-  fallback semantics, matching source extraction behavior:
-    - portable_increment_filter is preferred when present
-    - legacy increment_filter remains supported as a fallback
+  Increment predicates are taken from the SourceDataset portable increment
+  filter, matching source extraction behavior.
 
   Source column references are mapped to rawcore target columns through the
   immediate stage lineage. The Delta cutoff remains a runtime placeholder and
@@ -285,27 +283,7 @@ def _build_incremental_scope_filter_for_target(
     )
     return dialect.render_expr(expr)
 
-  # Legacy SQL filter fallback.
-  inc_filter = (getattr(src, "increment_filter", None) or "").strip()
-  if not inc_filter:
-    return None
-
-  expr = re.sub(r"col\(\s*['\"]([^'\"]+)['\"]\s*\)", r"\1", inc_filter)
-  ident_pattern = re.compile(r"\b[a-zA-Z_][a-zA-Z0-9_]*\b")
-
-  def replace_identifier(match: re.Match) -> str:
-    token = match.group(0)
-    if token.upper() == "DELTA_CUTOFF":
-      return token
-
-    target_col = mapping.get(_norm(token))
-    if target_col is None:
-      return token
-
-    return f"{target_alias}.{dialect.render_identifier(target_col)}"
-
-  expr = ident_pattern.sub(replace_identifier, expr)
-  return " ".join(expr.split())
+  return None
 
 def get_rawcore_name_from_hist(hist_name: str) -> str:
   if hist_name and hist_name.endswith("_hist"):

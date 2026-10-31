@@ -141,6 +141,20 @@ from metadata.rendering.sql_service import (
   render_merge_sql,
   render_delete_detection_sql,
 )
+from metadata.services.query_graph_mutation import (
+  QueryGraphMutationError,
+  insert_unary_node_after,
+  insert_unary_node_before,
+  insert_unary_node_into_union_branch,
+  insert_union_node_after,
+  insert_union_node_before,
+  insert_union_node_into_union_branch,
+  move_unary_node_after,
+  move_unary_node_before,
+  move_unary_node_into_union_branch,
+  remove_unary_node,
+)
+from metadata.services.query_contract_sync_trigger import trigger_query_contract_column_sync
 from metadata.services.lineage_analysis import collect_upstream_targets_extra, collect_downstream_targets_extra
 from metadata.services.source_ingestion_readiness import (
   build_source_ingestion_readiness,
@@ -2253,6 +2267,147 @@ def targetdataset_query_tree_view(request, pk: int):
   }
   return render(request, "metadata/query/targetdataset_query_tree.html", ctx)
 
+def _query_builder_structure(node, path=None):
+  """
+  Build the read-only Query Builder canvas structure from a query head.
+
+  The structure mirrors query semantics rather than database row order. Unary
+  operators expose one input, while UNION exposes ordered branch inputs. Cycles
+  are represented defensively instead of recursing indefinitely.
+  """
+  if node is None:
+    return None
+
+  path = set(path or ())
+  node_id = int(getattr(node, "pk", 0) or 0)
+  node_type = (getattr(node, "node_type", "") or "").strip().lower()
+  name = (getattr(node, "name", "") or "").strip()
+
+  if node_id and node_id in path:
+    return {
+      "node": node,
+      "type": node_type,
+      "name": name,
+      "cycle": True,
+      "input": None,
+      "branches": [],
+    }
+
+  next_path = set(path)
+  if node_id:
+    next_path.add(node_id)
+
+  item = {
+    "node": node,
+    "type": node_type,
+    "name": name,
+    "cycle": False,
+    "input": None,
+    "branches": [],
+  }
+
+  if node_type == "select":
+    item["summary"] = "Base dataset definition"
+    return item
+
+  if node_type == "filter":
+    operator = getattr(node, "filter", None)
+    item["summary"] = "Row filter"
+    item["operator"] = operator
+    item["input"] = _query_builder_structure(
+      getattr(operator, "input_node", None),
+      next_path,
+    ) if operator else None
+    return item
+
+  if node_type == "aggregate":
+    operator = getattr(node, "aggregate", None)
+    group_key_count = operator.group_keys.count() if operator else 0
+    measure_count = operator.measures.count() if operator else 0
+    item["summary"] = f"{group_key_count} group keys · {measure_count} measures"
+    item["operator"] = operator
+    item["group_key_count"] = group_key_count
+    item["measure_count"] = measure_count
+    item["input"] = _query_builder_structure(
+      getattr(operator, "input_node", None),
+      next_path,
+    ) if operator else None
+    return item
+
+  if node_type == "window":
+    operator = getattr(node, "window", None)
+    column_count = operator.columns.count() if operator else 0
+    item["summary"] = f"{column_count} window columns"
+    item["operator"] = operator
+    item["column_count"] = column_count
+    item["input"] = _query_builder_structure(
+      getattr(operator, "input_node", None),
+      next_path,
+    ) if operator else None
+    return item
+
+  if node_type == "union":
+    operator = getattr(node, "union", None)
+    branches = list(operator.branches.all().order_by("ordinal_position", "id")) if operator else []
+    output_count = operator.output_columns.count() if operator else 0
+    mode = (getattr(operator, "mode", "") or "union_all").replace("_", " ").upper()
+    item["summary"] = f"{len(branches)} branches · {output_count} output columns"
+    item["operator"] = operator
+    item["mode_label"] = mode
+    item["branch_count"] = len(branches)
+    item["output_count"] = output_count
+
+    reconciliation = {
+      "valid": 0,
+      "safe_matches": 0,
+      "attention": 0,
+      "status": "ok",
+    }
+    branch_items = []
+    if operator:
+      from metadata.services.union_reconciliation import assess_union_branch_reconciliation
+      for branch in branches:
+        try:
+          report = assess_union_branch_reconciliation(branch)
+          branch_valid = sum(1 for value in report.assessments if value.status == "valid")
+          branch_safe = sum(1 for value in report.assessments if value.status == "automap_candidate")
+          branch_attention = sum(
+            1 for value in report.assessments
+            if value.status not in {"valid", "automap_candidate"}
+          )
+        except Exception:
+          branch_valid = 0
+          branch_safe = 0
+          branch_attention = max(output_count, 1)
+
+        reconciliation["valid"] += branch_valid
+        reconciliation["safe_matches"] += branch_safe
+        reconciliation["attention"] += branch_attention
+        branch_items.append({
+          "branch": branch,
+          "position": branch.ordinal_position,
+          "structure": _query_builder_structure(branch.input_node, next_path),
+          "reconciliation": {
+            "valid": branch_valid,
+            "safe_matches": branch_safe,
+            "attention": branch_attention,
+          },
+        })
+
+    if reconciliation["attention"]:
+      reconciliation["status"] = "review"
+    elif reconciliation["safe_matches"]:
+      reconciliation["status"] = "safe_matches"
+
+    item["reconciliation"] = reconciliation
+    item["branches"] = branch_items
+    return item
+
+  item["summary"] = "Query step"
+  return item
+
+
+
 @login_required
 @permission_required("metadata.view_targetdataset", raise_exception=True)
 def targetdataset_query_builder(request, pk: int):
@@ -2274,6 +2429,23 @@ def targetdataset_query_builder(request, pk: int):
   OrderByExpression = apps.get_model("metadata", "OrderByExpression")
   PartitionByExpression = apps.get_model("metadata", "PartitionByExpression")
 
+  move_node = None
+  move_node_id = None
+  raw_move_node_id = (request.GET.get("move_node") or "").strip()
+  if raw_move_node_id.isdigit():
+    QueryNode = apps.get_model("metadata", "QueryNode")
+    move_node = (
+      QueryNode.objects
+      .filter(
+        pk=int(raw_move_node_id),
+        target_dataset=td,
+        active=True,
+        node_type__in=("filter", "aggregate", "window"),
+      )
+      .first()
+    )
+    move_node_id = move_node.pk if move_node else None
+
   ctx = {
     "title": "Query builder",
     "object": td,
@@ -2287,6 +2459,9 @@ def targetdataset_query_builder(request, pk: int):
     "contract_columns": (cr.columns if cr else []),
     "contract_issues": (cr.issues if cr else []),
     "contract_diff": diff,
+    "query_structure": _query_builder_structure(query_head),
+    "move_node_id": move_node_id,
+    "move_node": move_node,
     "order_by_def_count": OrderByExpression.objects.filter(target_dataset=td).count(),
     "partition_by_def_count": PartitionByExpression.objects.filter(target_dataset=td).count(),
   }
@@ -2419,10 +2594,228 @@ def targetdataset_reset_query_root(request, pk: int):
   messages.success(request, "Custom query logic has been disabled and reset.")
   return redirect("targetdataset_query_builder", pk=td.pk)
 
-def _query_filter_column_names(input_node) -> list[str]:
+def _query_builder_placement(request) -> tuple[str, int | None, int | None]:
+  """Read one explicit Query Builder canvas placement from GET or POST."""
+  source = request.POST if request.method == "POST" else request.GET
+  placement = (source.get("placement") or "after_head").strip().lower()
+
+  def _int_value(name):
+    value = source.get(name)
+    if value in (None, ""):
+      return None
+    try:
+      return int(value)
+    except (TypeError, ValueError):
+      raise QueryGraphMutationError(f"Invalid {name} value.")
+
+  if placement not in {"after_head", "before_node", "union_branch"}:
+    raise QueryGraphMutationError(f"Unsupported query placement: {placement!r}.")
+  return placement, _int_value("target_node_id"), _int_value("branch_id")
+
+
+def _query_builder_placement_input(
+  td,
+  *,
+  placement: str,
+  target_node_id: int | None,
+  branch_id: int | None,
+):
+  """Resolve the input contract visible at one canvas insertion point."""
+  QueryNode = apps.get_model("metadata", "QueryNode")
+  QueryUnionBranch = apps.get_model("metadata", "QueryUnionBranch")
+
+  if placement == "after_head":
+    node = getattr(td, "query_head", None) or getattr(td, "query_root", None)
+    if node is None:
+      raise QueryGraphMutationError("No query head is configured.")
+    return node
+
+  if placement == "union_branch":
+    if branch_id is None:
+      raise QueryGraphMutationError("A UNION branch must be selected for this position.")
+    branch = get_object_or_404(
+      QueryUnionBranch.objects.select_related("union_node__node", "input_node"),
+      pk=branch_id,
+      union_node__node__target_dataset=td,
+    )
+    return branch.input_node
+
+  if target_node_id is None:
+    raise QueryGraphMutationError("A target query step must be selected for this position.")
+  target = get_object_or_404(QueryNode, pk=target_node_id, target_dataset=td)
+  node_type = (target.node_type or "").strip().lower()
+  detail = getattr(target, node_type, None) if node_type in {"filter", "aggregate", "window"} else None
+  input_node = getattr(detail, "input_node", None) if detail is not None else None
+  if input_node is None:
+    raise QueryGraphMutationError("This query position cannot accept a step before it.")
+  return input_node
+
+
+def _insert_query_builder_node(
+  td,
+  node,
+  *,
+  placement: str,
+  target_node_id: int | None,
+  branch_id: int | None,
+  is_union: bool = False,
+):
+  """Insert one detached node at a concrete canvas position."""
+  QueryNode = apps.get_model("metadata", "QueryNode")
+  QueryUnionBranch = apps.get_model("metadata", "QueryUnionBranch")
+
+  if placement == "after_head":
+    target = getattr(td, "query_head", None) or getattr(td, "query_root", None)
+    if target is None:
+      raise QueryGraphMutationError("No query head is configured.")
+    if is_union:
+      return insert_union_node_after(td, node, target)
+    insert_unary_node_after(td, node, target)
+    return None
+
+  if placement == "union_branch":
+    if branch_id is None:
+      raise QueryGraphMutationError("A UNION branch must be selected for this position.")
+    branch = get_object_or_404(
+      QueryUnionBranch,
+      pk=branch_id,
+      union_node__node__target_dataset=td,
+    )
+    if is_union:
+      return insert_union_node_into_union_branch(td, node, branch)
+    insert_unary_node_into_union_branch(td, node, branch)
+    return None
+
+  if target_node_id is None:
+    raise QueryGraphMutationError("A target query step must be selected for this position.")
+  target = get_object_or_404(QueryNode, pk=target_node_id, target_dataset=td)
+  if is_union:
+    return insert_union_node_before(td, node, target)
+  insert_unary_node_before(td, node, target)
+  return None
+
+
+def _move_query_builder_node(
+  td,
+  node,
+  *,
+  placement: str,
+  target_node_id: int | None,
+  branch_id: int | None,
+):
+  """Move one unary query step to a concrete canvas position."""
+  QueryNode = apps.get_model("metadata", "QueryNode")
+  QueryUnionBranch = apps.get_model("metadata", "QueryUnionBranch")
+
+  if placement == "after_head":
+    target = getattr(td, "query_head", None) or getattr(td, "query_root", None)
+    if target is None:
+      raise QueryGraphMutationError("No query head is configured.")
+    if target.pk == node.pk:
+      raise QueryGraphMutationError("This step is already at the final dataset output.")
+    move_unary_node_after(td, node, target)
+    return
+
+  if placement == "union_branch":
+    if branch_id is None:
+      raise QueryGraphMutationError("A UNION branch must be selected for this position.")
+    branch = get_object_or_404(
+      QueryUnionBranch,
+      pk=branch_id,
+      union_node__node__target_dataset=td,
+    )
+    move_unary_node_into_union_branch(td, node, branch)
+    return
+
+  if target_node_id is None:
+    raise QueryGraphMutationError("A target query step must be selected for this position.")
+  target = get_object_or_404(QueryNode, pk=target_node_id, target_dataset=td)
+  move_unary_node_before(td, node, target)
+
+
+@login_required
+@permission_required("metadata.change_targetdataset", raise_exception=True)
+@require_POST
+def targetdataset_move_query_node(request, pk: int) -> HttpResponse:
+  """Move one FILTER, AGGREGATE or WINDOW step to a selected canvas position."""
+  td = get_object_or_404(TargetDataset, pk=pk)
+  if not query_tree_allowed_for_dataset(td):
+    messages.error(request, "Custom query logic is only allowed in bizcore/serving.")
+    return redirect("targetdataset_query_builder", pk=td.pk)
+  if not query_tree_mutations_allowed_for_dataset(td):
+    messages.error(request, query_tree_mutation_block_reason(td))
+    return redirect("targetdataset_query_builder", pk=td.pk)
+
+  QueryNode = apps.get_model("metadata", "QueryNode")
+  try:
+    node_id = int(request.POST.get("node_id") or "")
+    node = get_object_or_404(
+      QueryNode,
+      pk=node_id,
+      target_dataset=td,
+      node_type__in=("filter", "aggregate", "window"),
+    )
+    placement, target_node_id, branch_id = _query_builder_placement(request)
+    _move_query_builder_node(
+      td,
+      node,
+      placement=placement,
+      target_node_id=target_node_id,
+      branch_id=branch_id,
+    )
+  except (TypeError, ValueError, QueryGraphMutationError) as exc:
+    messages.error(request, str(exc))
+    return redirect(f"{reverse('targetdataset_query_builder', args=[td.pk])}?move_node={request.POST.get('node_id', '')}")
+
+  messages.success(request, "Query step moved. The resulting query contract is valid.")
+  return redirect("targetdataset_query_builder", pk=td.pk)
+
+
+@login_required
+@permission_required("metadata.change_targetdataset", raise_exception=True)
+@require_POST
+def targetdataset_remove_query_node(request, pk: int) -> HttpResponse:
+  """Remove one FILTER, AGGREGATE or WINDOW step from the active query graph."""
+  td = get_object_or_404(TargetDataset, pk=pk)
+  if not query_tree_allowed_for_dataset(td):
+    messages.error(request, "Custom query logic is only allowed in bizcore/serving.")
+    return redirect("targetdataset_query_builder", pk=td.pk)
+  if not query_tree_mutations_allowed_for_dataset(td):
+    messages.error(request, query_tree_mutation_block_reason(td))
+    return redirect("targetdataset_query_builder", pk=td.pk)
+
+  QueryNode = apps.get_model("metadata", "QueryNode")
+  try:
+    node_id = int(request.POST.get("node_id") or "")
+    node = get_object_or_404(
+      QueryNode,
+      pk=node_id,
+      target_dataset=td,
+      node_type__in=("filter", "aggregate", "window"),
+    )
+    remove_unary_node(td, node)
+  except (TypeError, ValueError, QueryGraphMutationError) as exc:
+    messages.error(request, str(exc))
+    return redirect("targetdataset_query_builder", pk=td.pk)
+
+  trigger_query_contract_column_sync(td, actor=request.user)
+  messages.success(request, "Query step removed. The resulting query contract is valid.")
+  return redirect("targetdataset_query_builder", pk=td.pk)
+
+
+def _query_filter_column_names(input_node, target_dataset=None) -> list[str]:
   """Return columns the FILTER predicate may reference from its input node."""
   contract = infer_query_node_contract(input_node)
-  selectable = getattr(contract, "available_input_columns", None) or contract.columns or []
+  input_dataset_id = getattr(input_node, "target_dataset_id", None)
+  target_dataset_id = getattr(target_dataset, "pk", None) if target_dataset is not None else input_dataset_id
+  if (
+    input_dataset_id is not None
+    and target_dataset_id is not None
+    and input_dataset_id != target_dataset_id
+  ):
+    selectable = contract.columns or []
+  else:
+    selectable = getattr(contract, "available_input_columns", None) or contract.columns or []
   return [str(name) for name in selectable]
 
 
@@ -2437,7 +2830,7 @@ def _render_query_filter_editor(
   """Render the shared create/edit page for a Query FILTER predicate."""
   return render(
     request,
-    "metadata/query/query_filter_editor.html",
+    "metadata/query/targetdataset_query_filter_editor.html",
     {
       "title": "Query filter",
       "object": target_dataset,
@@ -2451,7 +2844,7 @@ def _render_query_filter_editor(
 @login_required
 @permission_required("metadata.change_targetdataset", raise_exception=True)
 def targetdataset_add_filter_node(request, pk: int) -> HttpResponse:
-  """Create a FILTER node only after a valid portable predicate is defined."""
+  """Create a FILTER node at one explicit Query Builder canvas position."""
   td = get_object_or_404(TargetDataset, pk=pk)
   actor = _get_actor_from_request(request)
 
@@ -2464,11 +2857,22 @@ def targetdataset_add_filter_node(request, pk: int) -> HttpResponse:
     return redirect("targetdataset_query_builder", pk=td.pk)
 
   query_root = getattr(td, "query_root", None)
-  query_head = getattr(td, "query_head", None) or query_root
-  if not query_root or not query_head:
+  if not query_root:
     return HttpResponseBadRequest("No query root configured. Enable custom query logic first.")
 
-  column_names = _query_filter_column_names(query_head)
+  try:
+    placement, target_node_id, branch_id = _query_builder_placement(request)
+    input_node = _query_builder_placement_input(
+      td,
+      placement=placement,
+      target_node_id=target_node_id,
+      branch_id=branch_id,
+    )
+  except QueryGraphMutationError as exc:
+    messages.error(request, str(exc))
+    return redirect("targetdataset_query_builder", pk=td.pk)
+
+  column_names = _query_filter_column_names(input_node, td)
   form = QueryFilterAuthoringForm(
     request.POST or None,
     column_names=column_names,
@@ -2478,35 +2882,42 @@ def targetdataset_add_filter_node(request, pk: int) -> HttpResponse:
     QueryNode = apps.get_model("metadata", "QueryNode")
     QueryFilterNode = apps.get_model("metadata", "QueryFilterNode")
 
-    with transaction.atomic():
-      new_node = QueryNode(
-        target_dataset=td,
-        node_type="filter",
-        name="Filter",
-        active=True,
-      )
-      _save_with_actor(new_node, actor)
+    try:
+      with transaction.atomic():
+        new_node = QueryNode(
+          target_dataset=td,
+          node_type="filter",
+          name="Filter",
+          active=True,
+        )
+        _save_with_actor(new_node, actor)
 
-      filter_node = QueryFilterNode(
-        node=new_node,
-        input_node=query_head,
-        predicate=form.cleaned_data["predicate"],
-      )
-      _save_with_actor(filter_node, actor)
+        filter_node = QueryFilterNode(
+          node=new_node,
+          input_node=input_node,
+          predicate=form.cleaned_data["predicate"],
+        )
+        _save_with_actor(filter_node, actor)
 
-      td.query_head = new_node
-      _save_with_actor(td, actor, update_fields=["query_head"])
-
-    messages.success(request, "FILTER node created. The dataset head now applies this row filter.")
-    return redirect("queryfilter_edit", pk=filter_node.pk)
+        _insert_query_builder_node(
+          td,
+          new_node,
+          placement=placement,
+          target_node_id=target_node_id,
+          branch_id=branch_id,
+        )
+    except QueryGraphMutationError as exc:
+      messages.error(request, str(exc))
+    else:
+      messages.success(request, "FILTER step created at the selected query position.")
+      return redirect("queryfilter_edit", pk=filter_node.pk)
 
   return _render_query_filter_editor(
     request,
     target_dataset=td,
-    input_node=query_head,
+    input_node=input_node,
     form=form,
   )
-
 
 @login_required
 @permission_required("metadata.change_targetdataset", raise_exception=True)
@@ -2532,7 +2943,7 @@ def queryfilter_edit(request, pk: int) -> HttpResponse:
     messages.error(request, query_tree_mutation_block_reason(td))
     return redirect("targetdataset_query_builder", pk=td.pk)
 
-  column_names = _query_filter_column_names(filter_node.input_node)
+  column_names = _query_filter_column_names(filter_node.input_node, td)
   form = QueryFilterAuthoringForm(
     request.POST or None,
     column_names=column_names,
@@ -2561,68 +2972,62 @@ def targetdataset_add_window_node(request, pk: int) -> HttpResponse:
   td = get_object_or_404(TargetDataset, pk=pk)
   actor = _get_actor_from_request(request)
 
-  # Only bizcore/serving may define custom query logic
   if not query_tree_allowed_for_dataset(td):
     messages.error(request, "Custom query logic is only allowed in bizcore/serving.")
     return redirect("targetdataset_query_builder", td.pk)
-
-  # Block contract-changing actions if downstream depends on this dataset
   if not query_tree_mutations_allowed_for_dataset(td):
     messages.error(request, query_tree_mutation_block_reason(td))
     return redirect("targetdataset_query_builder", pk=td.pk)
-
-  query_root = getattr(td, "query_root", None)
-  query_head = getattr(td, "query_head", None) or query_root
-  if not query_root:
+  if not getattr(td, "query_root", None):
     return HttpResponseBadRequest("No query root configured. Enable custom query logic first.")
 
-  # Resolve models lazily (avoids import tangles)
-  QueryNode = apps.get_model("metadata", "QueryNode")
-  QueryWindowNode = apps.get_model("metadata", "QueryWindowNode")
-  QueryWindowColumn = apps.get_model("metadata", "QueryWindowColumn")
-
-  # Wrap existing root: new window node becomes the new root
-  new_node = QueryNode(
-    target_dataset=td,
-    node_type="window",
-    name="Window",
-    active=True,
-  )
-  _save_with_actor(new_node, actor)
-
-  w = QueryWindowNode(
-    node=new_node,
-    input_node=query_head,
-  )
-  _save_with_actor(w, actor)
-
-  # Create one default output column so the tree is immediately "valid-ish"
-  # (validator will only WARN about missing ORDER BY, not ERROR about missing columns)
-  default_col = QueryWindowColumn(
-    window_node=w,
-    output_name="row_number",
-    function="ROW_NUMBER",
-    ordinal_position=1,
-    active=True,
-  )
-  _save_with_actor(default_col, actor)
-
-  td.query_head = new_node
-  _save_with_actor(td, actor, update_fields=["query_head"])
-
-  # After creating the node, jump straight into the operator-specific editor.
-  # For window nodes, the best next step is configuring window columns.
   try:
-    messages.success(
-      request,
-      "Window node created with a default row_number column. Next, configure window columns and ordering "
-      "(or delete row_number if you don’t need it)."
+    placement, target_node_id, branch_id = _query_builder_placement(request)
+    input_node = _query_builder_placement_input(
+      td,
+      placement=placement,
+      target_node_id=target_node_id,
+      branch_id=branch_id,
     )
-  except Exception:
-    pass
 
-  return redirect("querywindowcolumn_list", parent_pk=w.pk)
+    QueryNode = apps.get_model("metadata", "QueryNode")
+    QueryWindowNode = apps.get_model("metadata", "QueryWindowNode")
+    QueryWindowColumn = apps.get_model("metadata", "QueryWindowColumn")
 
+    with transaction.atomic():
+      new_node = QueryNode(
+        target_dataset=td,
+        node_type="window",
+        name="Window",
+        active=True,
+      )
+      _save_with_actor(new_node, actor)
+      window = QueryWindowNode(node=new_node, input_node=input_node)
+      _save_with_actor(window, actor)
+      default_col = QueryWindowColumn(
+        window_node=window,
+        output_name="row_number",
+        function="ROW_NUMBER",
+        ordinal_position=1,
+        active=True,
+      )
+      _save_with_actor(default_col, actor)
+      _insert_query_builder_node(
+        td,
+        new_node,
+        placement=placement,
+        target_node_id=target_node_id,
+        branch_id=branch_id,
+      )
+  except QueryGraphMutationError as exc:
+    messages.error(request, str(exc))
+    return redirect("targetdataset_query_builder", pk=td.pk)
+
+  messages.success(
+    request,
+    "Window step created at the selected query position. Configure its columns and ordering next."
+  )
+  return redirect("querywindowcolumn_list", parent_pk=window.pk)
 
 @login_required
 @permission_required("metadata.change_targetdataset", raise_exception=True)
@@ -2631,52 +3036,52 @@ def targetdataset_add_aggregate_node(request, pk: int) -> HttpResponse:
   td = get_object_or_404(TargetDataset, pk=pk)
   actor = _get_actor_from_request(request)
 
-  # Only bizcore/serving may define custom query logic
   if not query_tree_allowed_for_dataset(td):
     messages.error(request, "Custom query logic is only allowed in bizcore/serving.")
     return redirect("targetdataset_query_builder", td.pk)
-
   if not query_tree_mutations_allowed_for_dataset(td):
     messages.error(request, query_tree_mutation_block_reason(td))
     return redirect("targetdataset_query_builder", pk=td.pk)
-
-  query_root = getattr(td, "query_root", None)
-  query_head = getattr(td, "query_head", None) or query_root
-  if not query_root:
+  if not getattr(td, "query_root", None):
     return HttpResponseBadRequest("No query root configured. Enable custom query logic first.")
-  
-  # Resolve models lazily (avoids import tangles)
-  QueryNode = apps.get_model("metadata", "QueryNode")
-  QueryAggregateNode = apps.get_model("metadata", "QueryAggregateNode")
-
-  # Wrap existing root: new aggregate node becomes the new root
-  new_node = QueryNode(
-    target_dataset=td,
-    node_type="aggregate",
-    name="Aggregate",
-    active=True,
-  )
-  _save_with_actor(new_node, actor)
-
-  agg = QueryAggregateNode(node=new_node, input_node=query_head)
-  _save_with_actor(agg, actor)
-
-  # IMPORTANT: root stays stable; head moves.
-  td.query_head = new_node
-  _save_with_actor(td, actor, update_fields=["query_head"])
 
   try:
-    messages.success(
-      request,
-      "Aggregate node created. Next, add measures (and optional group keys) in the scoped editor."
+    placement, target_node_id, branch_id = _query_builder_placement(request)
+    input_node = _query_builder_placement_input(
+      td,
+      placement=placement,
+      target_node_id=target_node_id,
+      branch_id=branch_id,
     )
-  except Exception:
-    pass
 
-  # Land in Group Keys first (better UX for schema-changing operator)
-  # Reason: output contract of AGGREGATE = group keys + measures.
-  return redirect("queryaggregategroupkey_list", parent_pk=agg.pk)
+    QueryNode = apps.get_model("metadata", "QueryNode")
+    QueryAggregateNode = apps.get_model("metadata", "QueryAggregateNode")
+    with transaction.atomic():
+      new_node = QueryNode(
+        target_dataset=td,
+        node_type="aggregate",
+        name="Aggregate",
+        active=True,
+      )
+      _save_with_actor(new_node, actor)
+      aggregate = QueryAggregateNode(node=new_node, input_node=input_node)
+      _save_with_actor(aggregate, actor)
+      _insert_query_builder_node(
+        td,
+        new_node,
+        placement=placement,
+        target_node_id=target_node_id,
+        branch_id=branch_id,
+      )
+  except QueryGraphMutationError as exc:
+    messages.error(request, str(exc))
+    return redirect("targetdataset_query_builder", pk=td.pk)
 
+  messages.success(
+    request,
+    "Aggregate step created at the selected query position. Add group keys and measures next."
+  )
+  return redirect("queryaggregategroupkey_list", parent_pk=aggregate.pk)
 
 @login_required
 @permission_required("metadata.change_targetdataset", raise_exception=True)
@@ -2685,63 +3090,47 @@ def targetdataset_add_union_node(request, pk: int) -> HttpResponse:
   td = get_object_or_404(TargetDataset, pk=pk)
   actor = _get_actor_from_request(request)
 
-  # Only bizcore/serving may define custom query logic
   if not query_tree_allowed_for_dataset(td):
     messages.error(request, "Custom query logic is only allowed in bizcore/serving.")
     return redirect("targetdataset_query_builder", td.pk)
-
   if not query_tree_mutations_allowed_for_dataset(td):
     messages.error(request, query_tree_mutation_block_reason(td))
     return redirect("targetdataset_query_builder", pk=td.pk)
-
-  query_root = getattr(td, "query_root", None)
-  query_head = getattr(td, "query_head", None) or query_root
-  if not query_root:
+  if not getattr(td, "query_root", None):
     return HttpResponseBadRequest("No query root configured. Enable custom query logic first.")
 
-  # Resolve models lazily (avoids import tangles)
-  QueryNode = apps.get_model("metadata", "QueryNode")
-  QueryUnionNode = apps.get_model("metadata", "QueryUnionNode")
-  QueryUnionBranch = apps.get_model("metadata", "QueryUnionBranch")
-
-  # Wrap existing root: new union node becomes the new root
-  new_node = QueryNode(
-    target_dataset=td,
-    node_type="union",
-    name="UNION",
-    active=True,
-  )
-  _save_with_actor(new_node, actor)
-
-  # Default to UNION ALL (explicitly)
-  un = QueryUnionNode(
-    node=new_node,
-    mode="union_all",
-  )
-  _save_with_actor(un, actor)
-
-  # Create a first branch pointing to the previous root so the union is not empty.
-  first_branch = QueryUnionBranch(
-    union_node=un,
-    input_node=query_head,
-    ordinal_position=1,
-  )
-  _save_with_actor(first_branch, actor)
-
-  td.query_head = new_node
-  _save_with_actor(td, actor, update_fields=["query_head"])
-
   try:
-    messages.success(
-      request,
-      "UNION node created (UNION ALL). Next, define output columns and add additional branches."
-    )
-  except Exception:
-    pass
+    placement, target_node_id, branch_id = _query_builder_placement(request)
+    QueryNode = apps.get_model("metadata", "QueryNode")
+    QueryUnionNode = apps.get_model("metadata", "QueryUnionNode")
 
-  # Jump to output columns (users need this early)
-  return redirect("queryunionoutputcolumn_list", parent_pk=un.pk)
+    with transaction.atomic():
+      new_node = QueryNode(
+        target_dataset=td,
+        node_type="union",
+        name="UNION",
+        active=True,
+      )
+      _save_with_actor(new_node, actor)
+      union = QueryUnionNode(node=new_node, mode="union_all")
+      _save_with_actor(union, actor)
+      _insert_query_builder_node(
+        td,
+        new_node,
+        placement=placement,
+        target_node_id=target_node_id,
+        branch_id=branch_id,
+        is_union=True,
+      )
+  except QueryGraphMutationError as exc:
+    messages.error(request, str(exc))
+    return redirect("targetdataset_query_builder", pk=td.pk)
 
+  messages.success(
+    request,
+    "UNION step created at the selected query position. Define its output columns and additional branches next."
+  )
+  return redirect("queryunionoutputcolumn_list", parent_pk=union.pk)
 
 @login_required
 @permission_required("metadata.change_targetdataset", raise_exception=True)
@@ -2814,117 +3203,123 @@ def queryunion_copy_output_schema_from_branch(request, parent_pk: int) -> HttpRe
   return redirect("queryunionoutputcolumn_list", parent_pk=union_node.pk)
 
 
+
+@login_required
+@permission_required("metadata.view_targetdataset", raise_exception=True)
+def queryunion_reconciliation(request, pk: int):
+  """Review deterministic UNION branch reconciliation without changing mappings."""
+  union_node = get_object_or_404(
+    QueryUnionNode.objects.select_related("node", "node__target_dataset"),
+    pk=pk,
+  )
+  from metadata.services.union_reconciliation import assess_union_branch_reconciliation
+
+  branch_reports = []
+  total_valid = 0
+  total_safe = 0
+  total_attention = 0
+  for branch in union_node.branches.select_related("input_node").all().order_by("ordinal_position", "id"):
+    try:
+      report = assess_union_branch_reconciliation(branch)
+      assessments = list(report.assessments)
+      error = ""
+    except Exception as exc:
+      assessments = []
+      error = str(exc)
+
+    valid = sum(1 for item in assessments if item.status == "valid")
+    safe = sum(1 for item in assessments if item.status == "automap_candidate")
+    attention = sum(1 for item in assessments if item.status not in {"valid", "automap_candidate"})
+    if error:
+      attention = max(union_node.output_columns.count(), 1)
+
+    total_valid += valid
+    total_safe += safe
+    total_attention += attention
+    branch_reports.append({
+      "branch": branch,
+      "assessments": assessments,
+      "valid": valid,
+      "safe_matches": safe,
+      "attention": attention,
+      "error": error,
+    })
+
+  ctx = {
+    "title": "UNION reconciliation",
+    "union_node": union_node,
+    "dataset": union_node.node.target_dataset,
+    "branch_reports": branch_reports,
+    "total_valid": total_valid,
+    "total_safe_matches": total_safe,
+    "total_attention": total_attention,
+  }
+  return render(request, "metadata/query/targetdataset_union_reconciliation.html", ctx)
+
+
+@login_required
+@permission_required("metadata.change_targetdataset", raise_exception=True)
+@require_POST
+def queryunionbranch_apply_safe_matches(request, parent_pk: int) -> HttpResponse:
+  """Apply only deterministic missing UNION mappings and return to reconciliation review."""
+  branch = get_object_or_404(QueryUnionBranch.objects.select_related("union_node"), pk=parent_pk)
+  actor = _get_actor_from_request(request)
+  try:
+    from metadata.services.union_reconciliation import apply_safe_union_branch_automap
+    before = branch.mappings.count()
+    report = apply_safe_union_branch_automap(branch, actor=actor)
+    created = max(branch.mappings.count() - before, 0)
+  except Exception as exc:
+    messages.error(request, f"Could not apply safe UNION matches: {exc}")
+    return redirect("queryunion_reconciliation", pk=branch.union_node_id)
+
+  if created:
+    messages.success(request, f"Applied {created} safe mapping(s). Explicit mappings were preserved.")
+  else:
+    messages.info(request, "No safe missing mappings were available to apply.")
+
+  attention = sum(
+    1 for item in report.assessments
+    if item.status not in {"valid", "automap_candidate"}
+  )
+  if attention:
+    messages.warning(request, f"{attention} mapping(s) still require review.")
+  return redirect("queryunion_reconciliation", pk=branch.union_node_id)
+
 @login_required
 @permission_required("metadata.change_targetdataset", raise_exception=True)
 @require_POST
 def queryunionbranch_automap_by_name(request, parent_pk: int) -> HttpResponse:
-  """
-  Auto-map UNION branch mappings by column name.
-  For each UNION output column, tries to find a same-named column in the branch input contract.
-  Creates/updates QueryUnionBranchMapping rows.
-  """
+  """Safely auto-map missing UNION branch mappings by exact column name."""
   branch = get_object_or_404(QueryUnionBranch, pk=parent_pk)
   actor = _get_actor_from_request(request)
-  union_node = getattr(branch, "union_node", None)
-  if not union_node:
-    messages.error(request, "Branch has no union_node.")
-    return redirect("queryunionbranchmapping_list", parent_pk=branch.pk)
 
-  input_node = getattr(branch, "input_node", None)
-  if not input_node:
-    messages.error(request, "Branch has no input node.")
-    return redirect("queryunionbranchmapping_list", parent_pk=branch.pk)
-
-  # Infer branch input contract
   try:
-    from metadata.generation.query_contract import infer_query_node_contract
-    contract = infer_query_node_contract(input_node)
-    in_cols = getattr(contract, "columns", None) or getattr(contract, "output_columns", None) or []
-    in_cols = [str(c) for c in in_cols if str(c).strip()]
+    from metadata.services.union_reconciliation import apply_safe_union_branch_automap
+    before = branch.mappings.count()
+    report = apply_safe_union_branch_automap(branch, actor=actor)
+    after = branch.mappings.count()
   except Exception as e:
-    messages.error(request, f"Could not infer branch contract: {e}")
+    messages.error(request, f"Could not auto-map UNION branch: {e}")
     return redirect("queryunionbranchmapping_list", parent_pk=branch.pk)
 
-  if not in_cols:
-    messages.warning(request, "No columns inferred from branch input.")
-    return redirect("queryunionbranchmapping_list", parent_pk=branch.pk)
-
-  in_by_norm = {_normalize_colname(c): c for c in in_cols}
-
-  out_cols = list(union_node.output_columns.all().order_by("ordinal_position", "id"))
-  if not out_cols:
-    messages.warning(request, "UNION has no output columns yet. Create output schema first.")
-    return redirect("queryunionbranchmapping_list", parent_pk=branch.pk)
-
-  updated = 0
-  created = 0
-  skipped = 0
-
-  with transaction.atomic():
-    for outc in out_cols:
-      out_name = getattr(outc, "output_name", "") or ""
-      key = _normalize_colname(out_name)
-      if not key:
-        skipped += 1
-        continue
-
-      match = in_by_norm.get(key)
-      if not match:
-        skipped += 1
-        continue
-
-      obj, is_new = QueryUnionBranchMapping.objects.get_or_create(
-        branch=branch,
-        output_column=outc,
-        defaults={
-          "input_column_name": match,
-          **(
-            {"created_by": actor, "updated_by": actor}
-            if actor is not None else {}
-          ),
-        },
-      )
-      if is_new:
-        created += 1
-        if actor is not None and (
-          not getattr(obj, "created_by_id", None) or not getattr(obj, "updated_by_id", None)
-        ):
-          if not getattr(obj, "created_by_id", None):
-            obj.created_by = actor
-          if not getattr(obj, "updated_by_id", None):
-            obj.updated_by = actor
-          obj.save(update_fields=[
-            *(
-              ["created_by"] if not getattr(obj, "created_by_id", None) else []
-            ),
-            *(
-              ["updated_by"] if not getattr(obj, "updated_by_id", None) else []
-            ),
-          ])
-      else:
-        # Only overwrite if empty or different (safe default: overwrite to match)
-        if (getattr(obj, "input_column_name", "") or "").strip() != match:
-          obj.input_column_name = match
-          _save_with_actor(obj, actor, update_fields=["input_column_name"])
-          updated += 1
-        elif actor is not None and (
-          not getattr(obj, "created_by_id", None) or not getattr(obj, "updated_by_id", None)
-        ):
-          fields = []
-          if not getattr(obj, "created_by_id", None):
-            obj.created_by = actor
-            fields.append("created_by")
-          if not getattr(obj, "updated_by_id", None):
-            obj.updated_by = actor
-            fields.append("updated_by")
-          if fields:
-            obj.save(update_fields=fields)
-
-  messages.success(
-    request,
-    f"Auto-map done. created={created}, updated={updated}, skipped={skipped}."
+  created = max(after - before, 0)
+  attention = sum(
+    1 for item in report.assessments
+    if item.status not in {"valid", "automap_candidate"}
   )
+  if created:
+    messages.success(request, f"Auto-map created {created} deterministic mapping(s).")
+  else:
+    messages.info(request, "Auto-map found no missing deterministic mappings to create.")
+  if attention:
+    messages.warning(
+      request,
+      f"{attention} mapping(s) require review. Existing explicit mappings were preserved."
+    )
+
   return redirect("queryunionbranchmapping_list", parent_pk=branch.pk)
+
 
 def _normalize_issues(raw: Any) -> list[tuple[str, str]]:
   """

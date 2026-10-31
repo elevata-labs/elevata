@@ -17,7 +17,7 @@ The preview pipeline uses the **same generator** that produces the actual load S
 When the user opens a TargetDataset detail page and clicks **“Show SQL Preview”**, the following pipeline runs:
 
 ```
-Metadata → Logical Plan → Expression AST → Dialect Renderer → Beautifier → UI
+Metadata → Logical Plan → Expression AST → Dialect Renderer → Presentation Formatter → UI
 ```
 
 Step-by-step:
@@ -46,8 +46,10 @@ Step-by-step:
      - The dialect walks the Logical Plan and Expression AST.  
      - Identifiers, literals, CONCAT, COALESCE, hashing, window functions, and subqueries are rendered.
 
-6. **Optional beautification**  
-     - SQL is passed through an optional formatter for consistency.
+6. **Presentation formatting**  
+     - UI preview SQL is formatted deterministically after dialect rendering.  
+     - The formatter respects quoted identifiers and literals, nested subqueries, function arguments, runtime tokens, JOIN structure, predicates, windows, and UNION boundaries.  
+     - Formatting changes presentation only; canonical execution SQL is not rewritten by the preview formatter.
 
 7. **HTMX response**  
      - Only the SQL preview fragment is returned.  
@@ -67,14 +69,15 @@ Key node types rendered by SQL Preview:
 - `ColumnRef`, `Literal`, `ExprRef`  
 - window functions and other expressions  
 
-The preview does not simplify or truncate SQL. It always shows:
+The preview does not simplify or truncate the generated query. It shows the complete rendered structure, including:
 
-- full SELECT list, including surrogate keys and foreign key expressions  
-- complete UNION trees  
+- full SELECT lists, including surrogate keys and foreign key expressions  
+- nested query levels and complete UNION trees  
 - generated technical fields (e.g. `__src_rank_ord`)  
 - CASE/COALESCE/CONCAT logic  
+- JOIN predicates, filters, window expressions, and aggregate structure  
 
-This ensures that the preview accurately reflects the actual SQL generator.
+The UI may reformat whitespace and line breaks for readability, but the query semantics come from the same Logical Plan and dialect renderer used by execution.
 
 ### 🧩 Bizcore in SQL Preview
 
@@ -85,11 +88,11 @@ This means:
 - business rules are shown as real SQL  
 - joins and calculations are fully expanded  
 - aliases and lineage are explicit  
-- preview SQL matches execution SQL exactly
+- preview SQL is derived from the same execution renderer before presentation-only formatting
 
-There is no abstraction or simplification for Bizcore previews.
+There is no alternate Bizcore query model for preview.
 
-If a Bizcore SQL preview looks correct, the executed SQL will be correct.
+The preview is derived from the same Logical Plan and dialect renderer used by execution; presentation formatting does not change query semantics.
 
 This property is intentional and foundational:  
 Bizcore semantics are **transparent, inspectable, and executable** - not inferred or resolved at query time.
@@ -161,58 +164,71 @@ No full page reloads occur.
 
 ---
 
-## 🔧 5. Caching Considerations
+## 🔧 5. Presentation formatting
+
+SQL Preview uses a deterministic, structure-aware formatter after dialect rendering.
+
+The formatter:
+
+- indents nested subqueries consistently  
+- aligns source tables and JOIN clauses below `FROM`  
+- keeps `ON` attached to its JOIN while indenting the predicate  
+- separates WHERE/HAVING boolean conditions predictably  
+- keeps commas inside functions and string literals intact  
+- preserves window expressions and runtime tokens  
+- separates UNION / UNION ALL branches clearly  
+- formats MERGE and delete-detection previews only when presentation output is requested  
+
+Canonical SQL used outside presentation paths remains unchanged.
+
+---
+
+## 🔧 6. Caching Considerations
 
 SQL preview is regenerated from the authoritative metadata contract on each request. In practice:
 
 - Logical Plan generation is lightweight  
-- SQL rendering is fast even for large DAGs  
+- SQL rendering and presentation formatting are deterministic  
 
 ---
 
-## 🔧 6. Error Handling
+## 🔧 7. Error Handling
 
 If SQL generation fails (rare), the preview area displays:
 
 - a message indicating the error  
 - the exception message in development  
 
-Errors are never swallowed silently.
+Errors are never swallowed silently. Query-backed previews also fail closed when the effective query contract is invalid instead of rendering SQL from stale or inconsistent mappings.
 
 ---
 
-## 🔧 7. Why Preview and Load Use the Same Engine
+## 🔧 8. Why Preview and Load Use the Same Engine
 
-elevata does **not** generate a separate preview version of the SQL.
+elevata does **not** maintain a separate semantic SQL generator for preview.
 
-The SQL preview shows the *exact* SQL that the Load Runner will execute.
+Preview and execution use the same metadata, Logical Plan, and dialect renderer. The UI applies presentation-only formatting after canonical SQL generation.
 
 This ensures:
 
-- consistency  
+- semantic consistency  
 - testability  
-- predictability  
+- predictable dialect behavior  
 - easier debugging  
 
-If the preview looks correct, the actual load SQL is correct.
+The preview therefore reflects the same generated query semantics that execution consumes, while remaining optimized for human review.
 
 ---
 
-## 🔧 8. Summary
+## 🔧 9. Summary
 
 The SQL Preview pipeline provides:
 
-- real SQL from real metadata  
-- real dialect rendering  
+- real SQL derived from authoritative metadata  
+- the same Logical Plan and dialect rendering semantics used by execution  
 - fast feedback through HTMX  
-- stable formatting via the Logical Plan and AST  
-
-This architecture enables accurate previews today and paves the way for:
-
-- cross-dialect comparisons  
-- diff views  
-- preview caching  
-- incremental preview of specific pipeline sections  
+- deterministic, structure-aware presentation formatting  
+- fail-closed behavior for invalid query contracts  
 
 The preview pipeline is a key part of elevata’s transparency and usability.
 

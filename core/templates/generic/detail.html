@@ -31,9 +31,9 @@ Contact: <https://github.com/elevata-labs/elevata>.
   <div class="d-flex align-items-center gap-2 flex-wrap">
     <h1 class="h4 mb-0">{{ title }}</h1>
 
-    {% if scoped_parent_is_query_builder and scoped_parent_url %}
+    {% if scoped_parent_is_query_builder and scoped_query_dataset_pk %}
       <a
-        href="{{ scoped_parent_url }}"
+        href="{% url 'targetdataset_query_builder' scoped_query_dataset_pk %}"
         class="btn btn-outline-secondary btn-sm d-inline-flex align-items-center gap-1"
         title="Back to Query Builder"
       >

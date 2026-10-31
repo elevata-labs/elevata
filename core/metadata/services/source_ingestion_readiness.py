@@ -413,11 +413,8 @@ def _relational_config_signals(
     return signals
 
   portable_increment_filter = getattr(source_dataset, "portable_increment_filter", None)
-  legacy_increment_filter = str(
-    getattr(source_dataset, "increment_filter", "") or ""
-  ).strip()
 
-  if not portable_increment_filter and not legacy_increment_filter:
+  if not portable_increment_filter:
     signals.append(_signal(
       "increment_filter_missing",
       "warning",
@@ -426,13 +423,10 @@ def _relational_config_signals(
     ))
     return signals
 
-  if portable_increment_filter:
-    uses_delta_cutoff = "delta_cutoff" in expression_runtime_value_names(
-      portable_increment_filter,
-      allowed_runtime_values=("delta_cutoff",),
-    )
-  else:
-    uses_delta_cutoff = "{{DELTA_CUTOFF" in legacy_increment_filter
+  uses_delta_cutoff = "delta_cutoff" in expression_runtime_value_names(
+    portable_increment_filter,
+    allowed_runtime_values=("delta_cutoff",),
+  )
 
   if uses_delta_cutoff and not _has_active_increment_policy(source_dataset):
     signals.append(_signal(

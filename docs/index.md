@@ -96,7 +96,7 @@ This index gives you an overview of all major topics and how they fit together.
   High-level view of elevata’s architecture: metadata, lineage, Logical Plan, rendering and execution.
 
 - [Query Builder & Query Tree](query_builder_and_query_tree.md)  
-  Reference for explicit Query Tree semantics, including FILTER, AGGREGATE, UNION, WINDOW, query contracts, join-aware inputs, and the boundary between relational query shape and Portable Expressions.
+  Reference for visual Query Structure authoring, position-aware graph mutations, FILTER, AGGREGATE, UNION reconciliation, WINDOW, query contracts, join-aware inputs, and the boundary between relational query shape and Expressions.
 
 - [Determinism & Execution Semantics](determinism_and_execution_semantics.md)  
   Rules and guarantees for deterministic SQL generation, including ORDER BY requirements, window functions, aggregation semantics and error vs warning classification.

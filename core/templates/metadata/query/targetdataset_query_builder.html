@@ -160,54 +160,31 @@ Contact: <https://github.com/elevata-labs/elevata>.
             </div>            
           {% endif %}
 
-          <!-- --- Guided steps (keep buttons, add structure + guidance) --- -->
-
           {% if is_query_schema and has_query_root %}
-            <div class="mb-3">
-              <div class="fw-semibold mb-1">Step 2 — Define the query structure</div>
-              <div class="small text-muted mb-2">
-                Create and connect query nodes (SELECT, FILTER, AGGREGATE, UNION, WINDOW). Start here to change how the dataset is computed.
-              </div>
-              <div class="badge-row">
-                <a href="{% url 'querynode_list' object.pk %}" class="btn btn-sm btn-primary">
-                  <i class="bi bi-sliders"></i> Configure query nodes
-                </a>
-
-                <a href="{% url 'targetdataset_add_filter_node' object.pk %}" class="btn btn-sm btn-primary">
-                  <i class="bi bi-funnel"></i> Add filter node
-                </a>
-
-                <form method="post" action="{% url 'targetdataset_add_aggregate_node' object.pk %}" class="d-inline">
-                  {% csrf_token %}
-                  <button type="submit" class="btn btn-sm btn-primary">
-                    <i class="bi bi-calculator"></i> Add aggregate node
-                  </button>
-                </form>
-
-                <form method="post" action="{% url 'targetdataset_add_union_node' object.pk %}" class="d-inline">
-                  {% csrf_token %}
-                  <button type="submit" class="btn btn-sm btn-primary">
-                    <i class="bi bi-intersect"></i> Add UNION node
-                  </button>
-                </form>
-
-                <form method="post" action="{% url 'targetdataset_add_window_node' object.pk %}" class="d-inline">
-                  {% csrf_token %}
-                  <button type="submit" class="btn btn-sm btn-primary">
-                    <i class="bi bi-layers"></i> Add window node
-                  </button>
-                </form>
-              </div>
-              <div class="small text-muted mt-2">
-                Tip: In the node list, use <strong>Details</strong> to configure operator-specific settings.
-              </div>
-              {% if query_head.node_type == "filter" and query_head.filter %}
-                <div class="mt-2">
-                  <a href="{% url 'queryfilter_edit' query_head.filter.pk %}" class="btn btn-sm btn-outline-primary">
-                    <i class="bi bi-funnel"></i> Edit current filter
-                  </a>
+            <div class="mb-4">
+              <div class="d-flex align-items-start justify-content-between gap-3 mb-2">
+                <div>
+                  <div class="fw-semibold mb-1">Step 2 — Query structure</div>
+                  <div class="small text-muted">
+                    Follow the transformation from its starting point to the dataset output. UNION branches are shown separately before they merge.
+                  </div>
+                  {% if move_node %}
+                    <div class="query-structure-move-banner mt-2">
+                      <i class="bi bi-arrow-down-up"></i>
+                      Moving <strong>{{ move_node.node_type|upper }}</strong>. Choose a highlighted destination, or cancel on the selected step.
+                    </div>
+                  {% endif %}
                 </div>
-              {% endif %}
+                <a href="{% url 'querynode_list' object.pk %}" class="btn btn-sm btn-outline-secondary flex-shrink-0">
+                  <i class="bi bi-sliders"></i> Advanced view
+                </a>
+              </div>
+
+              <div class="query-structure-canvas">
+                {% include "metadata/partials/_query_structure_node.html" with structure=query_structure dataset=object move_node_id=move_node_id csrf_token=csrf_token only %}
+                {% include "metadata/partials/_query_structure_insert_point.html" with dataset=object placement="after_head" target_node_id=query_head.pk move_node_id=move_node_id csrf_token=csrf_token only %}
+              </div>
+
             </div>
 
             <div class="mb-3">
@@ -244,62 +221,9 @@ Contact: <https://github.com/elevata-labs/elevata>.
             </div>
           {% endif %}
 
-          <div class="mb-2">
-            <div class="fw-semibold mb-1">Review and iterate</div>
-            <div class="small text-muted mb-2">
-              Use contract, query tree, lineage and SQL preview to validate the result.
-            </div>
-            <div class="badge-row">
-              <a href="{% url 'targetdataset_query_contract' object.pk %}" class="btn btn-sm btn-outline-secondary">
-                <i class="bi bi-clipboard-check"></i> Query contract
-              </a>
-              <a href="{% url 'targetdataset_query_tree' object.pk %}" class="btn btn-sm btn-outline-secondary">
-                <i class="bi bi-diagram-3"></i> Query tree
-              </a>
-              <a href="{% url 'targetdataset_lineage' object.pk %}" class="btn btn-sm btn-outline-secondary">
-                <i class="bi bi-share"></i> Lineage
-              </a>
-            </div>
-          </div>
         </div>
-
-        <hr class="my-3">
-
-        <div class="fw-semibold mb-1">Next steps</div>
-        {% if not is_query_schema %}
-          <div class="text-muted small">
-            Switch to <code>bizcore</code> or <code>serving</code> to enable query operators.
-          </div>
-        {% elif not has_query_root %}
-          <div class="text-muted small">
-            No query root configured yet.
-            <br>
-            Enable custom query logic to start defining an explicit query structure.
-          </div>
-        {% else %}
-          {% if governance.issue_counts.errors %}
-            <div class="text-muted small">
-              Fix blocking errors first (see Query contract).
-            </div>
-          {% elif not governance.deterministic %}
-            <div class="text-muted small">
-              Add ORDER BY to non-deterministic aggregates/window functions (see Policy explanations in Query contract).
-            </div>
-          {% else %}
-            <div class="text-muted small">
-              Query looks healthy. You can now refine presentation logic (serving) or business logic (bizcore).
-            </div>
-          {% endif %}
-        {% endif %}
       </div>
     </div>
-      <div class="card mt-3">
-        <div class="card-body">
-          <div class="fw-semibold mb-2">SQL preview</div>
-          <!-- Reuse the exact same HTMX panel as on TargetDataset detail -->
-          {% include "metadata/partials/_targetdataset_sql_preview_panel.html" with show_hr=False %}
-        </div>
-      </div>
   </div>
   <div class="col-lg-6">
     <div class="card">
@@ -358,6 +282,63 @@ Contact: <https://github.com/elevata-labs/elevata>.
               <li>{{ m }}</li>
             {% endfor %}
           </ul>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="card mt-3">
+      <div class="card-body">
+        <div class="fw-semibold mb-2">SQL preview</div>
+        <!-- Reuse the exact same HTMX panel as on TargetDataset detail -->
+        {% include "metadata/partials/_targetdataset_sql_preview_panel.html" with show_hr=False %}
+      </div>
+    </div>
+
+    <div class="card mt-3">
+      <div class="card-body">
+        <div class="fw-semibold mb-1">Review and iterate</div>
+        <div class="small text-muted mb-2">
+          Use contract, query tree, lineage and SQL preview to validate the result.
+        </div>
+        <div class="badge-row">
+          <a href="{% url 'targetdataset_query_contract' object.pk %}" class="btn btn-sm btn-outline-secondary">
+            <i class="bi bi-clipboard-check"></i> Query contract
+          </a>
+          <a href="{% url 'targetdataset_query_tree' object.pk %}" class="btn btn-sm btn-outline-secondary">
+            <i class="bi bi-diagram-3"></i> Query tree
+          </a>
+          <a href="{% url 'targetdataset_lineage' object.pk %}" class="btn btn-sm btn-outline-secondary">
+            <i class="bi bi-share"></i> Lineage
+          </a>
+        </div>
+
+        <hr class="my-3">
+
+        <div class="fw-semibold mb-1">Next steps</div>
+        {% if not is_query_schema %}
+          <div class="text-muted small">
+            Switch to <code>bizcore</code> or <code>serving</code> to enable query operators.
+          </div>
+        {% elif not has_query_root %}
+          <div class="text-muted small">
+            No query root configured yet.
+            <br>
+            Enable custom query logic to start defining an explicit query structure.
+          </div>
+        {% else %}
+          {% if governance.issue_counts.errors %}
+            <div class="text-muted small">
+              Fix blocking errors first (see Query contract).
+            </div>
+          {% elif not governance.deterministic %}
+            <div class="text-muted small">
+              Add ORDER BY to non-deterministic aggregates/window functions (see Policy explanations in Query contract).
+            </div>
+          {% else %}
+            <div class="text-muted small">
+              Query looks healthy. You can now refine presentation logic (serving) or business logic (bizcore).
+            </div>
+          {% endif %}
         {% endif %}
       </div>
     </div>

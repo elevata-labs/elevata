@@ -1,0 +1,180 @@
+<!--
+elevata - Metadata-driven Data Platform Framework
+Copyright © 2025-2026 Ilona Tag
+
+This file is part of elevata.
+
+elevata is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of
+the License, or (at your option) any later version.
+
+elevata is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with elevata. If not, see <https://www.gnu.org/licenses/>.
+
+Contact: <https://github.com/elevata-labs/elevata>.
+-->
+
+{% extends "base.html" %}
+
+{% block title %}{{ title }} · elevata{% endblock %}
+
+{% block content %}
+<h1 class="h4 mb-3 d-flex align-items-center justify-content-between">
+  <span>
+    UNION reconciliation
+    <span class="badge badge-lineage-layer ms-2">{{ dataset.target_schema.short_name }}</span>
+    <span class="badge text-bg-secondary ms-2">{{ dataset.target_dataset_name }}</span>
+  </span>
+  <div class="page-actions">
+    <a href="{% url 'targetdataset_query_builder' dataset.pk %}" class="btn btn-sm btn-outline-primary">
+      <i class="bi bi-arrow-left"></i> Back to query builder
+    </a>
+  </div>
+</h1>
+
+<div class="card mb-3">
+  <div class="card-body">
+    <div class="d-flex flex-wrap align-items-center justify-content-between gap-3">
+      <div>
+        <h2 class="h6 mb-1">Mapping review</h2>
+        <p class="small text-muted mb-0">
+          Review how each UNION output column is populated by every branch. Safe matches can be added automatically; existing explicit mappings are never changed.
+        </p>
+      </div>
+      <div class="d-flex flex-wrap gap-2">
+        <span class="badge badge-health-ok">Unchanged: {{ total_valid }}</span>
+        {% if total_safe_matches %}
+          <span class="badge badge-health-warning">Safe matches: {{ total_safe_matches }}</span>
+        {% endif %}
+        {% if total_attention %}
+          <span class="badge badge-health-error">Needs attention: {{ total_attention }}</span>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+{% for item in branch_reports %}
+  <div class="card mb-3">
+    <div class="card-body">
+      <div class="d-flex flex-wrap align-items-start justify-content-between gap-3 mb-3">
+        <div>
+          <h2 class="h6 mb-1">Branch {{ item.branch.ordinal_position }}</h2>
+          <div class="small text-muted">
+            {{ item.branch.input_node.name|default:item.branch.input_node.node_type }}
+          </div>
+        </div>
+        <div class="d-flex flex-wrap align-items-center gap-2">
+          <span class="badge badge-health-ok">Unchanged: {{ item.valid }}</span>
+          {% if item.safe_matches %}
+            <span class="badge badge-health-warning">Safe matches: {{ item.safe_matches }}</span>
+          {% endif %}
+          {% if item.attention %}
+            <span class="badge badge-health-error">Needs attention: {{ item.attention }}</span>
+          {% endif %}
+        </div>
+      </div>
+
+      {% if item.error %}
+        <div class="alert alert-danger mb-3">{{ item.error }}</div>
+      {% else %}
+        <div class="table-responsive">
+          <table class="table table-sm align-middle mb-3">
+            <colgroup>
+              <col style="width: 30%;">
+              <col style="width: 30%;">
+              <col style="width: 20%;">
+              <col style="width: 20%;">
+            </colgroup>
+            <thead>
+              <tr>
+                <th>UNION output</th>
+                <th>Branch input</th>
+                <th>Type</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for assessment in item.assessments %}
+                <tr>
+                  <td><code>{{ assessment.output_name }}</code></td>
+                  <td>
+                    {% if assessment.status == "stale_mapping" %}
+                      <span class="text-muted">—</span>
+                    {% elif assessment.existing_input_name %}
+                      <code>{{ assessment.existing_input_name }}</code>
+                    {% elif assessment.suggested_input_name %}
+                      <code>{{ assessment.suggested_input_name }}</code>
+                    {% else %}
+                      <span class="text-muted">—</span>
+                    {% endif %}
+                  </td>
+                  <td class="small text-muted">
+                    {% if assessment.status == "stale_mapping" and assessment.expected_datatype %}
+                      — → {{ assessment.expected_datatype }}
+                    {% elif assessment.actual_datatype or assessment.expected_datatype %}
+                      {{ assessment.actual_datatype|default:"?" }} → {{ assessment.expected_datatype|default:"?" }}
+                    {% else %}
+                      —
+                    {% endif %}
+                  </td>
+                  <td>
+                    {% if assessment.status == "valid" %}
+                      <span class="badge badge-health-ok">Unchanged</span>
+                    {% elif assessment.status == "automap_candidate" %}
+                      <span class="badge badge-health-warning">Safe match available</span>
+                    {% elif assessment.status == "stale_mapping" %}
+                      <span class="badge badge-health-error">Existing mapping needs review</span>
+                    {% elif assessment.status == "type_mismatch" %}
+                      <span class="badge badge-health-error">Type mismatch</span>
+                    {% elif assessment.status == "ambiguous" %}
+                      <span class="badge badge-health-error">Ambiguous</span>
+                    {% else %}
+                      <span class="badge badge-health-error">Missing mapping</span>
+                    {% endif %}
+                  </td>
+                </tr>
+                {% if assessment.message %}
+                  <tr class="border-0">
+                    <td colspan="4" class="border-0 pt-0 pb-2 small text-muted">
+                      {% if assessment.status == "stale_mapping" and assessment.existing_input_name %}
+                        Previously mapped: <code>{{ assessment.existing_input_name }}</code>. This column is no longer available in the branch output.
+                      {% else %}
+                        {{ assessment.message }}
+                      {% endif %}
+                    </td>
+                  </tr>
+                {% endif %}
+              {% empty %}
+                <tr><td colspan="4" class="text-muted">No UNION output columns configured.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% endif %}
+
+      <div class="d-flex flex-wrap gap-2">
+        {% if item.safe_matches %}
+          <form method="post" action="{% url 'queryunionbranch_apply_safe_matches' item.branch.pk %}" class="d-inline">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-sm btn-primary">
+              <i class="bi bi-check2-circle"></i> Apply safe matches
+            </button>
+          </form>
+        {% endif %}
+        <a href="{% url 'queryunionbranchmapping_list' item.branch.pk %}" class="btn btn-sm btn-outline-secondary">
+          <i class="bi bi-pencil-square"></i> Edit mappings
+        </a>
+      </div>
+    </div>
+  </div>
+{% empty %}
+  <div class="alert alert-info">No UNION branches configured.</div>
+{% endfor %}
+{% endblock %}

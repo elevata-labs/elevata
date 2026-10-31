@@ -89,7 +89,15 @@ def test_environment_metadata_snapshot_is_portable_complete_and_stable():
       "pagination": {"mode": "page", "size": 100},
     },
     incremental=True,
-    increment_filter="updated_at >= {{DELTA_CUTOFF}}",
+    portable_increment_filter={
+      "version": 1,
+      "expression": {
+        "type": "comparison",
+        "operator": ">=",
+        "left": {"type": "column", "name": "updated_at"},
+        "right": {"type": "runtime_value", "name": "delta_cutoff"},
+      },
+    },
   )
   active_policy = SourceDatasetIncrementPolicy.objects.create(
     source_dataset=source_dataset,

@@ -22,23 +22,48 @@ Contact: <https://github.com/elevata-labs/elevata>.
 
 import re
 
+from metadata.rendering.dialects.duckdb import DuckDBDialect
 from metadata.rendering.load_sql import _build_incremental_scope_filter_for_target
+
+
+def _increment_contract(*, include_deleted_flag: bool = False):
+  parts = [
+    {
+      "type": "comparison",
+      "operator": ">=",
+      "left": {"type": "column", "name": "ModifiedDate"},
+      "right": {"type": "runtime_value", "name": "delta_cutoff"},
+    },
+  ]
+  if include_deleted_flag:
+    parts.append({
+      "type": "comparison",
+      "operator": "=",
+      "left": {"type": "column", "name": "is_deleted_flag"},
+      "right": {"type": "literal", "value": 0},
+    })
+  expression = parts[0] if len(parts) == 1 else {
+    "type": "boolean",
+    "operator": "AND",
+    "parts": parts,
+  }
+  return {"version": 1, "expression": expression}
 
 
 # ─────────────────────────────────────────────────────────────
 # Fakes / Test Doubles
 # ─────────────────────────────────────────────────────────────
 
-class FakeDialect:
+class FakeDialect(DuckDBDialect):
   def render_identifier(self, name: str) -> str:
     return f'"{name}"'
 
 
 class FakeSourceDataset:
-  def __init__(self, *, id, incremental, increment_filter):
+  def __init__(self, *, id, incremental, portable_increment_filter):
     self.id = id
     self.incremental = incremental
-    self.increment_filter = increment_filter
+    self.portable_increment_filter = portable_increment_filter
 
 
 class FakeUpstreamTargetColumn:
@@ -104,7 +129,7 @@ def test_scope_filter_maps_source_cols_to_qualified_target_cols_and_keeps_delta_
   src = FakeSourceDataset(
     id=1,
     incremental=True,
-    increment_filter='ModifiedDate >= {{DELTA_CUTOFF}} AND is_deleted_flag = 0',
+    portable_increment_filter=_increment_contract(include_deleted_flag=True),
   )
 
   # Stage → Rawcore lineage
@@ -140,8 +165,8 @@ def test_scope_filter_maps_source_cols_to_qualified_target_cols_and_keeps_delta_
   assert out is not None
 
   # Rawcore rename must be applied and qualified
-  assert 't."upd_date"' in out
-  assert 't."is_deleted_flag"' in out
+  assert '"t"."upd_date"' in out
+  assert '"t"."is_deleted_flag"' in out
 
   # Placeholder must remain untouched at render-time
   assert "{{DELTA_CUTOFF}}" in out
@@ -156,7 +181,7 @@ def test_scope_filter_returns_none_if_no_stage_to_rawcore_mapping_exists():
   src = FakeSourceDataset(
     id=1,
     incremental=True,
-    increment_filter='ModifiedDate >= {{DELTA_CUTOFF}}',
+    portable_increment_filter=_increment_contract(),
   )
 
   # Rawcore column WITHOUT upstream_target_column

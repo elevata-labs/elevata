@@ -52,10 +52,8 @@ class _SourceColumns:
 def _source_dataset(**overrides):
   values = {
     "source_columns": _SourceColumns("created_at", "updated_at", "year_no"),
-    "static_filter": "",
     "portable_static_filter": None,
     "incremental": True,
-    "increment_filter": "",
     "portable_increment_filter": None,
   }
   values.update(overrides)
@@ -106,9 +104,8 @@ def test_delta_cutoff_can_be_resolved_to_a_runtime_literal():
   assert all(isinstance(part.right, Literal) for part in expr.parts)
 
 
-def test_source_increment_filter_prefers_portable_metadata_over_sql_fallback():
+def test_source_increment_filter_uses_portable_metadata():
   dataset = _source_dataset(
-    increment_filter="created_at > {{DELTA_CUTOFF}}",
     portable_increment_filter=_increment_contract(),
   )
 
@@ -165,9 +162,8 @@ def test_source_static_and_increment_filters_are_combined_with_and():
   assert isinstance(expr.parts[1], BooleanOp)
 
 
-def test_source_static_filter_prefers_portable_metadata_over_sql_fallback():
+def test_source_static_filter_uses_portable_metadata():
   dataset = _source_dataset(
-    static_filter="year_no = 1999",
     portable_static_filter={
       "version": 1,
       "expression": {
@@ -241,7 +237,6 @@ def test_delta_cutoff_resolver_accepts_portable_increment_filter_without_legacy_
   )
   policies = _PolicyQuery(policy)
   dataset = _source_dataset(
-    increment_filter="",
     portable_increment_filter=_increment_contract(),
     increment_policies=policies,
   )
@@ -257,26 +252,4 @@ def test_delta_cutoff_resolver_accepts_portable_increment_filter_without_legacy_
   assert cutoff == datetime(2022, 10, 18, 6, 30, tzinfo=timezone.utc)
   assert policies.filter_kwargs == {"active": True, "environment": "dev"}
 
-
-def test_delta_cutoff_resolver_keeps_legacy_increment_filter_fallback():
-  policy = SimpleNamespace(
-    increment_interval_length=2,
-    increment_interval_unit="month",
-  )
-  policies = _PolicyQuery(policy)
-  dataset = _source_dataset(
-    increment_filter="created_at > {{DELTA_CUTOFF}}",
-    portable_increment_filter=None,
-    increment_policies=policies,
-  )
-  profile = SimpleNamespace(name="dev")
-  now_ts = datetime(2026, 10, 18, 6, 30, tzinfo=timezone.utc)
-
-  cutoff = resolve_delta_cutoff_for_source_dataset(
-    source_dataset=dataset,
-    profile=profile,
-    now_ts=now_ts,
-  )
-
-  assert cutoff == datetime(2026, 8, 18, 6, 30, tzinfo=timezone.utc)
 

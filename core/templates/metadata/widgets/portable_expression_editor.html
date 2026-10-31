@@ -30,7 +30,6 @@ Contact: <https://github.com/elevata-labs/elevata>.
   data-column-label="{{ widget.column_label|escape }}"
   data-runtime-values='{{ widget.runtime_values_json|escape }}'
   data-empty-text="{{ widget.empty_text|escape }}"
-  data-manual-expression-present="{% if widget.manual_expression_present %}1{% else %}0{% endif %}"
 >
   <input
     type="hidden"
@@ -55,24 +54,13 @@ Contact: <https://github.com/elevata-labs/elevata>.
     </div>
   </div>
 
-  {% if widget.manual_expression_present %}
-    <div class="alert alert-secondary py-2 px-3 mb-2 small" data-manual-expression-note>
-      A target-specific manual expression is also stored. The portable expression takes precedence when present; clearing it restores the manual fallback.
-    </div>
-  {% endif %}
-  {% if widget.fallback_present %}
-    <div class="alert alert-secondary py-2 px-3 mb-2 small" data-portable-fallback-note>
-      {{ widget.fallback_note }}
-    </div>
-  {% endif %}
-
   {% if widget.attrs.disabled %}
     <div class="small text-muted mb-2">This expression is managed by layer rules and cannot be edited here.</div>
   {% endif %}
 
   <div class="small mb-2" data-expression-summary>
     {% if widget.value %}
-      <span class="badge text-bg-success">Portable expression defined</span>
+      <span class="badge text-bg-success">Expression defined</span>
     {% else %}
       <span class="text-muted">{{ widget.empty_text }}</span>
     {% endif %}

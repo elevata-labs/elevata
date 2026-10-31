@@ -215,9 +215,9 @@ Keep list.html readable; keep UNION logic in one place. -->
     {% csrf_token %}
     <button type="submit"
             class="btn btn-primary btn-sm d-inline-flex align-items-center gap-1"
-            title="Auto-fill mappings by matching output column names to branch input contract columns">
+            title="Create missing mappings only where an exact, compatible column-name match is available">
       <i class="bi bi-magic"></i>
-      Auto-map by name
+      Match available columns
     </button>
   </form>
 {% endif %}

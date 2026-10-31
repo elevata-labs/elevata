@@ -23,7 +23,13 @@ Contact: <https://github.com/elevata-labs/elevata>.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Set
+from typing import Dict, Hashable, List, Optional, Set
+
+from metadata.rendering.expr import ColumnRef
+from metadata.rendering.portable_expression import (
+  PortableExpressionError,
+  predicate_contract_to_ast,
+)
 
 @dataclass(frozen=True)
 class ContractResult:
@@ -40,8 +46,8 @@ class ContractResult:
 
 def infer_query_node_contract(
   node,
-  cache: Optional[Dict[int, ContractResult]] = None,
-  visiting: Optional[Set[int]] = None,
+  cache: Optional[Dict[Hashable, ContractResult]] = None,
+  visiting: Optional[Set[Hashable]] = None,
 ) -> ContractResult:
   """
   Compute the output contract (column names) of a QueryNode.
@@ -50,6 +56,60 @@ def infer_query_node_contract(
   cache = cache or {}
   visiting = visiting or set()
   return _infer_node(node, cache, visiting)
+
+
+
+def query_node_selectable_input_columns(
+  consumer_node,
+  input_node,
+  contract: ContractResult | None = None,
+) -> List[str]:
+  """Return columns one query node may legally reference from its input.
+
+  Query nodes may consume a node owned by another TargetDataset, for example
+  when a UNION branch applies local logic to a reusable foreign query output.
+  That cross-dataset edge is an interface boundary: only the foreign node's
+  published output columns are visible. Within one TargetDataset, the extended
+  selectable-input contract remains available for required-input pushdown.
+  """
+  if input_node is None:
+    return []
+
+  resolved = contract or infer_query_node_contract(input_node)
+  consumer_dataset_id = getattr(consumer_node, "target_dataset_id", None)
+  input_dataset_id = getattr(input_node, "target_dataset_id", None)
+
+  if (
+    consumer_dataset_id is not None
+    and input_dataset_id is not None
+    and consumer_dataset_id != input_dataset_id
+  ):
+    raw = resolved.columns or []
+  else:
+    raw = getattr(resolved, "available_input_columns", None) or resolved.columns or []
+
+  return [str(name).strip() for name in raw if str(name).strip()]
+
+def union_branch_selectable_columns(branch, contract: ContractResult | None = None) -> List[str]:
+  """Return columns a UNION branch may legally map from.
+
+  A branch whose input belongs to the UNION's own TargetDataset keeps the
+  Query Builder's extended selectable-input semantics. This preserves
+  required-input pushdown to source columns without forcing users to create
+  TargetColumns first. A branch that points at another TargetDataset is an
+  interface boundary and may map only from that branch's actual output.
+
+  Projection boundaries such as AGGREGATE already constrain
+  ``available_input_columns`` to their output contract.
+  """
+  input_node = getattr(branch, "input_node", None)
+  if input_node is None:
+    return []
+
+  resolved = contract or infer_query_node_contract(input_node)
+  union_node = getattr(branch, "union_node", None)
+  union_query_node = getattr(union_node, "node", None) if union_node is not None else None
+  return query_node_selectable_input_columns(union_query_node, input_node, resolved)
 
 
 def _select_upstream_column_names(td) -> List[str]:
@@ -249,21 +309,40 @@ def _select_authored_column_names(td) -> List[str]:
   except Exception:
     return []
 
-def _infer_node(node, cache: Dict[int, ContractResult], visiting: Set[int]) -> ContractResult:
-  if node.id in cache:
-    return cache[node.id]
-  if node.id in visiting:
+def _query_node_identity(node) -> Hashable:
+  """Return a stable recursion key without requiring a persisted Django ID.
+
+  Persisted QueryNodes use their database ID so separately loaded instances of
+  the same node share one contract-cache entry. Lightweight test/adaptor nodes
+  may intentionally have no database ID; object identity is sufficient for
+  cycle detection within one inference call.
+  """
+  node_id = getattr(node, "id", None)
+  if node_id is not None:
+    return ("db", node_id)
+  return ("object", id(node))
+
+
+def _infer_node(
+  node,
+  cache: Dict[Hashable, ContractResult],
+  visiting: Set[Hashable],
+) -> ContractResult:
+  node_key = _query_node_identity(node)
+  if node_key in cache:
+    return cache[node_key]
+  if node_key in visiting:
     # Cycle in query graph -> contract cannot be inferred safely.
     res = ContractResult(
       columns=[],
-      issues=[f"ERROR: Query graph cycle detected at node {node.id}."],
+      issues=[f"ERROR: Query graph cycle detected at node {getattr(node, 'id', 'unpersisted')}."],
       available_input_columns=[],
     )
 
-    cache[node.id] = res
+    cache[node_key] = res
     return res
 
-  visiting.add(node.id)
+  visiting.add(node_key)
   issues: List[str] = []
   cols: List[str] = []
   inp: Optional[ContractResult] = None
@@ -287,7 +366,7 @@ def _infer_node(node, cache: Dict[int, ContractResult], visiting: Set[int]) -> C
     else:
       inp = _infer_node(agg.input_node, cache, visiting)
       issues.extend(inp.issues)
-      selectable_inputs = list(getattr(inp, "available_input_columns", None) or inp.columns or [])
+      selectable_inputs = query_node_selectable_input_columns(node, agg.input_node, inp)
       inp_set = {c.lower() for c in selectable_inputs}
 
       # Output = group keys + measures (ordinal order)
@@ -325,12 +404,18 @@ def _infer_node(node, cache: Dict[int, ContractResult], visiting: Set[int]) -> C
       if len(cols) != len(out_cols):
         issues.append("ERROR: Union output columns contain empty names.")
 
-      # Governance: every branch must map all output columns, and mappings must reference existing input cols.
+      # Governance: every branch must map all output columns, mappings must
+      # reference existing input columns, and known logical datatypes must agree.
       expected = {c.id for c in out_cols}
       for b in un.branches.all().order_by("ordinal_position", "id"):
         inp = _infer_node(b.input_node, cache, visiting)
         issues.extend(inp.issues)
-        inp_set = {c.lower() for c in inp.columns}
+        selectable_columns = union_branch_selectable_columns(b, inp)
+        inp_set = {c.lower() for c in selectable_columns}
+
+        from metadata.services.query_contract_column_sync import QueryContractColumnSyncService
+        type_service = QueryContractColumnSyncService()
+        type_map = type_service.infer_query_node_output_types(b.input_node)
 
         mappings = list(b.mappings.all().select_related("output_column"))
         seen_out: Set[int] = set()
@@ -343,6 +428,16 @@ def _infer_node(node, cache: Dict[int, ContractResult], visiting: Set[int]) -> C
           if in_name and inp_set and in_name.lower() not in inp_set:
             issues.append(
               f"ERROR: Union branch references missing input column '{in_name}' for output '{mp.output_column.output_name}'."
+            )
+            continue
+
+          expected_meta = type_service.resolve_union_output_type(un, mp.output_column)
+          expected_type = (expected_meta.get("datatype", "") or "").strip().upper()
+          actual_type = (type_map.get(in_name.lower(), {}).get("datatype", "") or "").strip().upper()
+          if expected_type and actual_type and expected_type != actual_type:
+            issues.append(
+              f"ERROR: Union branch input column '{in_name}' has datatype {actual_type}, "
+              f"but output '{mp.output_column.output_name}' requires {expected_type}."
             )
 
         missing = expected - seen_out
@@ -362,6 +457,25 @@ def _infer_node(node, cache: Dict[int, ContractResult], visiting: Set[int]) -> C
       inp = _infer_node(flt.input_node, cache, visiting)
       issues.extend(inp.issues)
       cols = list(inp.columns)
+
+      selectable_inputs = query_node_selectable_input_columns(node, flt.input_node, inp)
+      by_lower = {name.lower(): name for name in selectable_inputs}
+
+      def _resolve_filter_column(name: str) -> ColumnRef:
+        key = (name or "").strip().lower()
+        if not key or key not in by_lower:
+          raise PortableExpressionError(
+            f"Filter predicate references unknown input column: {name!r}."
+          )
+        return ColumnRef(table_alias=None, column_name=by_lower[key])
+
+      try:
+        predicate_contract_to_ast(
+          getattr(flt, "predicate", None),
+          column_resolver=_resolve_filter_column,
+        )
+      except (PortableExpressionError, ValueError) as exc:
+        issues.append(f"ERROR: Filter node {node.id} has invalid predicate: {exc}")
 
   elif ntype == "window":
     w = getattr(node, "window", None)
@@ -416,12 +530,12 @@ def _infer_node(node, cache: Dict[int, ContractResult], visiting: Set[int]) -> C
     # FILTER does not change row shape. Keep the visible output contract, but also
     # preserve selectable upstream columns so downstream operators can request
     # non-projected inputs through required-input pushdown.
-    upstream_available = list(getattr(inp, "available_input_columns", None) or []) if inp is not None else []
+    upstream_available = query_node_selectable_input_columns(node, flt.input_node, inp) if inp is not None else []
     available_inputs = list(dict.fromkeys(list(deduped) + upstream_available))
   elif ntype == "window":
     # WINDOW adds columns without forming a projection boundary. Its own outputs and
     # selectable upstream columns remain available to downstream operators.
-    upstream_available = list(getattr(inp, "available_input_columns", None) or []) if inp is not None else []
+    upstream_available = query_node_selectable_input_columns(node, w.input_node, inp) if inp is not None else []
     available_inputs = list(dict.fromkeys(list(deduped) + upstream_available))
   elif ntype == "union":
     # Union downstream sees only union output schema.
@@ -455,6 +569,6 @@ def _infer_node(node, cache: Dict[int, ContractResult], visiting: Set[int]) -> C
     available_input_columns=available_inputs,
   )
 
-  cache[node.id] = res
-  visiting.remove(node.id)
+  cache[node_key] = res
+  visiting.remove(node_key)
   return res

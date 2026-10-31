@@ -1,0 +1,135 @@
+<!--
+elevata - Metadata-driven Data Platform Framework
+Copyright © 2025-2026 Ilona Tag
+
+This file is part of elevata.
+
+elevata is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of
+the License, or (at your option) any later version.
+
+elevata is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with elevata. If not, see <https://www.gnu.org/licenses/>.
+
+Contact: <https://github.com/elevata-labs/elevata>.
+-->
+
+{% if structure %}
+  {% if structure.cycle %}
+    <div class="query-structure-card query-structure-card--error">
+      <div class="fw-semibold">Invalid query structure</div>
+      <div class="small text-muted">A circular query dependency was detected at this step.</div>
+    </div>
+  {% elif structure.type == "union" %}
+    <div class="query-structure-union-branches">
+      {% for branch_item in structure.branches %}
+        <div class="query-structure-branch">
+          <div class="query-structure-branch-label">
+            Branch {{ branch_item.position }}
+          </div>
+          {% include "metadata/partials/_query_structure_node.html" with structure=branch_item.structure dataset=dataset move_node_id=move_node_id csrf_token=csrf_token only %}
+          {% include "metadata/partials/_query_structure_insert_point.html" with dataset=dataset placement="union_branch" branch_id=branch_item.branch.pk target_node_id=branch_item.branch.input_node_id move_node_id=move_node_id csrf_token=csrf_token only %}
+          <div class="query-structure-branch-end">
+            <span>Branch output</span>
+          </div>
+        </div>
+      {% empty %}
+        <div class="query-structure-empty">
+          No UNION branches configured.
+        </div>
+      {% endfor %}
+    </div>
+
+    <div class="query-structure-merge" aria-hidden="true">
+      <span></span>
+      <i class="bi bi-chevron-down"></i>
+    </div>
+
+    <div class="query-structure-card query-structure-card--union">
+      <div class="query-structure-card-header">
+        <div>
+          <div class="query-structure-type">{{ structure.mode_label }}</div>
+          {% if structure.name %}<div class="query-structure-name">{{ structure.name }}</div>{% endif %}
+          <div class="small text-muted">{{ structure.summary }}</div>
+        </div>
+        <span class="badge badge-lineage-ref">Merge</span>
+      </div>
+      {% if structure.operator %}
+        <div class="query-structure-actions">
+          <a href="{% url 'queryunionnode_list' structure.node.pk %}" class="btn btn-sm btn-outline-secondary">Settings</a>
+          <a href="{% url 'queryunionbranch_list' structure.operator.pk %}" class="btn btn-sm btn-outline-secondary">Branches</a>
+          <a href="{% url 'queryunionoutputcolumn_list' structure.operator.pk %}" class="btn btn-sm btn-outline-secondary">Output columns</a>
+          <a href="{% url 'queryunion_reconciliation' structure.operator.pk %}" class="btn btn-sm btn-outline-secondary">
+            <i class="bi bi-check2-square"></i> {% if structure.reconciliation.status == "safe_matches" %}Review safe matches{% else %}Review mappings{% endif %}
+          </a>
+        </div>
+        <div class="small mt-2">
+          {% if structure.reconciliation.status == "review" %}
+            <span class="badge badge-health-error">Mappings need review</span>
+            <span class="text-muted ms-1">{{ structure.reconciliation.attention }} item{{ structure.reconciliation.attention|pluralize }}</span>
+          {% elif structure.reconciliation.status == "safe_matches" %}
+            <span class="badge badge-health-warning">Safe matches available</span>
+            <span class="text-muted ms-1">{{ structure.reconciliation.safe_matches }} item{{ structure.reconciliation.safe_matches|pluralize }} · review to apply</span>
+          {% else %}
+            <span class="badge badge-health-ok">Mappings OK</span>
+          {% endif %}
+        </div>
+      {% endif %}
+    </div>
+  {% else %}
+    {% if structure.input %}
+      {% include "metadata/partials/_query_structure_node.html" with structure=structure.input dataset=dataset move_node_id=move_node_id csrf_token=csrf_token only %}
+      {% include "metadata/partials/_query_structure_insert_point.html" with dataset=dataset placement="before_node" target_node_id=structure.node.pk occupied_node_id=structure.input.node.pk move_node_id=move_node_id csrf_token=csrf_token only %}
+      <div class="query-structure-connector" aria-hidden="true">
+        <span></span>
+        <i class="bi bi-chevron-down"></i>
+      </div>
+    {% endif %}
+
+    <div class="query-structure-card query-structure-card--{{ structure.type }}{% if move_node_id == structure.node.pk %} query-structure-card--moving{% endif %}"{% if move_node_id == structure.node.pk %} aria-current="true"{% endif %}>
+      <div class="query-structure-card-header">
+        <div>
+          <div class="query-structure-type">{{ structure.type|upper }}</div>
+          {% if structure.name %}<div class="query-structure-name">{{ structure.name }}</div>{% endif %}
+          <div class="small text-muted">{{ structure.summary }}</div>
+        </div>
+        {% if structure.type == "select" %}
+          <span class="badge badge-health-ok">Starting point</span>
+        {% endif %}
+      </div>
+
+      <div class="query-structure-actions">
+        {% if structure.type != "select" and structure.type != "union" %}
+          {% if move_node_id == structure.node.pk %}
+            <a href="{% url 'targetdataset_query_builder' dataset.pk %}" class="btn btn-sm btn-primary"><i class="bi bi-x-lg"></i> Cancel move</a>
+          {% else %}
+            <a href="{% url 'targetdataset_query_builder' dataset.pk %}?move_node={{ structure.node.pk }}" class="btn btn-sm btn-outline-primary"><i class="bi bi-arrow-down-up"></i> Move</a>
+            <form method="post" action="{% url 'targetdataset_remove_query_node' dataset.pk %}" class="d-inline" onsubmit="return window.confirm('Remove this query step?');">
+              {% csrf_token %}
+              <input type="hidden" name="node_id" value="{{ structure.node.pk }}">
+              <button type="submit" class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i> Remove</button>
+            </form>
+          {% endif %}
+        {% endif %}
+        {% if structure.type == "select" %}
+          <a href="{% url 'queryselectnode_list' structure.node.pk %}" class="btn btn-sm btn-outline-secondary">Settings</a>
+        {% elif structure.type == "filter" and structure.operator %}
+          <a href="{% url 'queryfilter_edit' structure.operator.pk %}" class="btn btn-sm btn-outline-secondary">Filter</a>
+        {% elif structure.type == "aggregate" and structure.operator %}
+          <a href="{% url 'queryaggregatenode_list' structure.node.pk %}" class="btn btn-sm btn-outline-secondary">Settings</a>
+          <a href="{% url 'queryaggregategroupkey_list' structure.operator.pk %}" class="btn btn-sm btn-outline-secondary">Group keys</a>
+          <a href="{% url 'queryaggregatemeasure_list' structure.operator.pk %}" class="btn btn-sm btn-outline-secondary">Measures</a>
+        {% elif structure.type == "window" and structure.operator %}
+          <a href="{% url 'querywindownode_list' structure.node.pk %}" class="btn btn-sm btn-outline-secondary">Settings</a>
+          <a href="{% url 'querywindowcolumn_list' structure.operator.pk %}" class="btn btn-sm btn-outline-secondary">Columns</a>
+        {% endif %}
+      </div>
+    </div>
+  {% endif %}
+{% endif %}

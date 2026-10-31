@@ -1,0 +1,72 @@
+<!--
+elevata - Metadata-driven Data Platform Framework
+Copyright © 2025-2026 Ilona Tag
+
+This file is part of elevata.
+
+elevata is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of
+the License, or (at your option) any later version.
+
+elevata is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with elevata. If not, see <https://www.gnu.org/licenses/>.
+
+Contact: <https://github.com/elevata-labs/elevata>.
+-->
+
+<div class="query-structure-position">
+  {% if move_node_id %}
+    {% if move_node_id != target_node_id and move_node_id != occupied_node_id %}
+      <form method="post" action="{% url 'targetdataset_move_query_node' dataset.pk %}" class="query-structure-move-target">
+        {% csrf_token %}
+        <input type="hidden" name="node_id" value="{{ move_node_id }}">
+        <input type="hidden" name="placement" value="{{ placement }}">
+        {% if target_node_id %}<input type="hidden" name="target_node_id" value="{{ target_node_id }}">{% endif %}
+        {% if branch_id %}<input type="hidden" name="branch_id" value="{{ branch_id }}">{% endif %}
+        <button type="submit" class="btn btn-sm btn-outline-primary">
+          <i class="bi bi-arrow-down-up"></i> Move here
+        </button>
+      </form>
+    {% endif %}
+  {% else %}
+    <details class="query-structure-add-menu">
+      <summary class="query-structure-add-trigger" title="Add a query step at this position">
+        <i class="bi bi-plus-lg"></i>
+        <span>Add step</span>
+      </summary>
+      <div class="query-structure-add-actions">
+        <a href="{% url 'targetdataset_add_filter_node' dataset.pk %}?placement={{ placement }}{% if target_node_id %}&target_node_id={{ target_node_id }}{% endif %}{% if branch_id %}&branch_id={{ branch_id }}{% endif %}"
+           class="btn btn-sm btn-outline-primary">
+          <i class="bi bi-funnel"></i> Filter
+        </a>
+        <form method="post" action="{% url 'targetdataset_add_aggregate_node' dataset.pk %}">
+          {% csrf_token %}
+          <input type="hidden" name="placement" value="{{ placement }}">
+          {% if target_node_id %}<input type="hidden" name="target_node_id" value="{{ target_node_id }}">{% endif %}
+          {% if branch_id %}<input type="hidden" name="branch_id" value="{{ branch_id }}">{% endif %}
+          <button type="submit" class="btn btn-sm btn-outline-primary"><i class="bi bi-calculator"></i> Aggregate</button>
+        </form>
+        <form method="post" action="{% url 'targetdataset_add_union_node' dataset.pk %}">
+          {% csrf_token %}
+          <input type="hidden" name="placement" value="{{ placement }}">
+          {% if target_node_id %}<input type="hidden" name="target_node_id" value="{{ target_node_id }}">{% endif %}
+          {% if branch_id %}<input type="hidden" name="branch_id" value="{{ branch_id }}">{% endif %}
+          <button type="submit" class="btn btn-sm btn-outline-primary"><i class="bi bi-intersect"></i> UNION</button>
+        </form>
+        <form method="post" action="{% url 'targetdataset_add_window_node' dataset.pk %}">
+          {% csrf_token %}
+          <input type="hidden" name="placement" value="{{ placement }}">
+          {% if target_node_id %}<input type="hidden" name="target_node_id" value="{{ target_node_id }}">{% endif %}
+          {% if branch_id %}<input type="hidden" name="branch_id" value="{{ branch_id }}">{% endif %}
+          <button type="submit" class="btn btn-sm btn-outline-primary"><i class="bi bi-layers"></i> Window</button>
+        </form>
+      </div>
+    </details>
+  {% endif %}
+</div>

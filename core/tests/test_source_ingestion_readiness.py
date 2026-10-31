@@ -97,7 +97,6 @@ def _dataset(
   columns=None,
   output_links=None,
   incremental: bool = False,
-  increment_filter: str | None = None,
   portable_increment_filter=None,
   increment_policies=None,
 ):
@@ -122,7 +121,6 @@ def _dataset(
       output_links if output_links is not None else [_raw_link()]
     ),
     incremental=incremental,
-    increment_filter=increment_filter,
     portable_increment_filter=portable_increment_filter,
     increment_policies=_Manager(increment_policies or []),
   )
@@ -227,7 +225,15 @@ def test_semi_structured_integrated_columns_require_json_paths():
 def test_delta_cutoff_requires_active_increment_policy():
   readiness = build_source_ingestion_readiness(_dataset(
     incremental=True,
-    increment_filter="changed_at >= {{DELTA_CUTOFF}}",
+    portable_increment_filter={
+      "version": 1,
+      "expression": {
+        "type": "comparison",
+        "operator": ">=",
+        "left": {"type": "column", "name": "customer_id"},
+        "right": {"type": "runtime_value", "name": "delta_cutoff"},
+      },
+    },
     increment_policies=[],
   ))
 

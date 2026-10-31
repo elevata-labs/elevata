@@ -24,7 +24,7 @@ from django import forms
 from django.apps import apps
 from django.contrib import messages
 from django.db import transaction
-from django.db.models import Count
+from django.db.models import Count, Max
 from django.forms import widgets as wdg
 from django.http import HttpResponse, HttpResponseNotFound, Http404
 from django.shortcuts import render, get_object_or_404, redirect
@@ -254,12 +254,17 @@ def _candidate_column_names_for_targetdataset(td, query_node=None):
     if root is not None:
       contract = query_contract.infer_query_node_contract(root)
       
-      raw = (
-        getattr(contract, "available_input_columns", None)
-        or getattr(contract, "output_columns", None)
-        or getattr(contract, "columns", None)
-        or []
-      )
+      input_dataset_id = getattr(root, "target_dataset_id", None)
+      target_dataset_id = getattr(td, "pk", None)
+      if input_dataset_id is not None and target_dataset_id is not None and input_dataset_id != target_dataset_id:
+        raw = getattr(contract, "columns", None) or []
+      else:
+        raw = (
+          getattr(contract, "available_input_columns", None)
+          or getattr(contract, "output_columns", None)
+          or getattr(contract, "columns", None)
+          or []
+        )
 
       out = []
       for c in raw:
@@ -294,6 +299,22 @@ def _candidate_column_names_for_targetdataset(td, query_node=None):
     pass
 
   return cols
+
+
+def _query_node_output_column_names(query_node):
+  """Return only columns physically exposed by one query-node output contract."""
+  if query_node is None:
+    return []
+  try:
+    import metadata.generation.query_contract as query_contract
+    contract = query_contract.infer_query_node_contract(query_node)
+    return [
+      str(name).strip()
+      for name in (getattr(contract, "columns", None) or [])
+      if str(name).strip()
+    ]
+  except Exception:
+    return []
 
 
 def _select_widget_from_columns(cols):
@@ -929,6 +950,7 @@ class _ScopedChildView(GenericCRUDView):
         "meta": self.model._meta,
         "parent_pk": self.get_parent_pk(),
       }
+      ctx.update(self.get_row_context_extra(instance))
       return render(request, "generic/row.html", ctx, status=200)
 
     # form invalid -> show row_form again with errors, keep inline editor open
@@ -1057,6 +1079,7 @@ class _ScopedChildView(GenericCRUDView):
           "meta": self.model._meta,
           "parent_pk": self.get_parent_pk(),
         }
+        ctx.update(self.get_row_context_extra(updated))
         return render(request, "generic/row.html", ctx, status=200)
 
       # invalid -> send edit form with errors
@@ -1207,6 +1230,10 @@ class _ScopedChildView(GenericCRUDView):
     }
     return render(request, "generic/row.html", ctx, status=200)
   
+  def get_row_context_extra(self, instance):
+    """Return model-specific context required when rendering one static scoped row."""
+    return {}
+
   def row(self, request, pk):
     """
     Return a single <tr> (row.html) for this object in a scoped list.
@@ -1226,6 +1253,7 @@ class _ScopedChildView(GenericCRUDView):
       "meta": self.model._meta,
       "parent_pk": self.get_parent_pk(),
     }
+    ctx.update(self.get_row_context_extra(instance))
 
     # pass detail_route_name into row context, if defined
     detail_route_name = getattr(self, "detail_route_name", None)
@@ -1264,6 +1292,20 @@ class TargetColumnScopedView(_ScopedChildView):
   parent_model = TargetDataset
   route_name = "targetcolumn_list"
   form_class = TargetColumnForm
+
+  def enhance_form(self, form):
+    form = super().enhance_form(form)
+    if not form.is_bound and not getattr(form.instance, "pk", None):
+      field = form.fields.get("ordinal_position")
+      if field is not None and not field.initial:
+        highest = (
+          TargetColumn.objects
+          .filter(target_dataset_id=self.get_parent_pk())
+          .aggregate(max_position=Max("ordinal_position"))
+          .get("max_position")
+        )
+        field.initial = int(highest or 0) + 1
+    return form
 
   def get_queryset(self):
     return (
@@ -1980,6 +2022,55 @@ class QueryUnionBranchScopedView(_ScopedChildView):
       .order_by("ordinal_position", "id")
     )
 
+  def _mapping_counts_for_branches(self, branches, union_node):
+    total_out = union_node.output_columns.count() if union_node else 0
+    mapped_rows = (
+      QueryUnionBranchMapping.objects
+      .filter(branch_id__in=[b.pk for b in branches])
+      .values("branch_id")
+      .annotate(mapped=Count("output_column", distinct=True))
+    ) if branches else []
+    mapped_by_branch = {r["branch_id"]: r["mapped"] for r in mapped_rows}
+
+    from metadata.services.union_reconciliation import assess_union_branch_reconciliation
+
+    counts = {}
+    for branch in branches:
+      mapped = int(mapped_by_branch.get(branch.pk, 0) or 0)
+      status = "ok"
+      safe_matches = 0
+      attention = 0
+      try:
+        report = assess_union_branch_reconciliation(branch)
+        safe_matches = len(report.automap_candidates)
+        attention = sum(
+          1 for item in report.assessments
+          if item.status not in {"valid", "automap_candidate"}
+        )
+        if attention:
+          status = "review"
+        elif safe_matches:
+          status = "safe_matches"
+      except Exception:
+        status = "review"
+        attention = 1
+
+      counts[branch.pk] = {
+        "mapped": mapped,
+        "missing": max(0, total_out - mapped),
+        "total": total_out,
+        "status": status,
+        "safe_matches": safe_matches,
+        "attention": attention,
+      }
+    return counts
+
+  def get_row_context_extra(self, instance):
+    union_node = getattr(instance, "union_node", None)
+    return {
+      "branch_mapping_counts": self._mapping_counts_for_branches([instance], union_node),
+    }
+
   def get_context_base(self, request):
     ctx = super().get_context_base(request)
     try:
@@ -1988,31 +2079,9 @@ class QueryUnionBranchScopedView(_ScopedChildView):
       branches = list(un.branches.all().order_by("ordinal_position", "id")) if un else []
       ctx["union_branches"] = branches
 
-      # Guardrail counts: mappings completeness per branch
-      total_out = 0
-      try:
-        total_out = un.output_columns.count() if un else 0        
-      except Exception:
-        total_out = 0
+      total_out = un.output_columns.count() if un else 0
       ctx["union_output_count"] = total_out
-
-      # mapped count per branch (distinct output_column)
-      mapped_rows = (
-        QueryUnionBranchMapping.objects
-        .filter(branch_id__in=[b.pk for b in branches])
-        .values("branch_id")
-        .annotate(mapped=Count("output_column", distinct=True))
-      ) if branches else []
-      mapped_by_branch = {r["branch_id"]: r["mapped"] for r in mapped_rows}
-
-      counts = {}
-      for b in branches:
-        mapped = int(mapped_by_branch.get(b.pk, 0) or 0)
-        missing = total_out - mapped
-        if missing < 0:
-          missing = 0
-        counts[b.pk] = {"mapped": mapped, "missing": missing, "total": total_out}
-      ctx["branch_mapping_counts"] = counts
+      ctx["branch_mapping_counts"] = self._mapping_counts_for_branches(branches, un)
 
     except Exception:
       ctx["union_parent_pk"] = None
@@ -2041,25 +2110,51 @@ class QueryUnionBranchMappingScopedView(_ScopedChildView):
   def get_context_base(self, request):
     ctx = super().get_context_base(request)
     # Provide union_node id for navigation (Mappings -> Branches / Output columns)
+    # and expose reconciliation state for the static mapping rows.
     try:
       br = self.get_parent_object()
       un = getattr(br, "union_node", None)
       ctx["union_parent_pk"] = getattr(un, "pk", None)
+      if un is not None:
+        ctx["scoped_parent_label"] = "UNION branches"
+        ctx["scoped_parent_url"] = reverse("queryunionbranch_list", args=[un.pk])
+
+      from metadata.services.union_reconciliation import assess_union_branch_reconciliation
+
+      report = assess_union_branch_reconciliation(br)
+      ctx["union_mapping_review_by_output_id"] = {
+        assessment.output_column_id: assessment
+        for assessment in report.assessments
+      }
     except Exception:
       ctx["union_parent_pk"] = None
+      ctx["union_mapping_review_by_output_id"] = {}
     return ctx
   
   def enhance_form(self, form):
     form = super().enhance_form(form)
     try:
       parent = self.get_parent_object()  # QueryUnionBranch
-      td = _get_query_builder_dataset(parent)
       input_node = getattr(parent, "input_node", None)
-      if td:
-        for fname in ("input_column_name", "source_column_name"):
-          if fname in form.fields:
-            cols = _candidate_column_names_for_targetdataset(td, query_node=input_node)
-            form.fields[fname].widget = _select_widget_from_columns(cols)
+      from metadata.generation.query_contract import (
+        infer_query_node_contract,
+        union_branch_selectable_columns,
+      )
+      contract = infer_query_node_contract(input_node)
+      cols = union_branch_selectable_columns(parent, contract)
+      for fname in ("input_column_name", "source_column_name"):
+        if fname in form.fields:
+          field = form.fields[fname]
+          field.widget = _select_widget_from_columns(cols)
+
+          stored_value = str(getattr(getattr(form, "instance", None), fname, "") or "").strip()
+          if stored_value and stored_value not in cols:
+            base_help = str(field.help_text or "").strip()
+            warning = (
+              f"The stored mapping '{stored_value}' is no longer available for this branch. "
+              "Choose a replacement."
+            )
+            field.help_text = f"{base_help} {warning}".strip()
     except Exception:
       pass
     return form

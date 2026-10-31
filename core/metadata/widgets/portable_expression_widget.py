@@ -40,15 +40,12 @@ class PortableExpressionWidget(forms.Widget):
     *,
     editor_kind="expression",
     column_label="Upstream column",
-    intro_text="Build platform-neutral transformation logic from the selected upstream columns.",
-    empty_text="No portable expression defined.",
+    intro_text="Define the expression using the selected upstream columns.",
+    empty_text="No expression defined.",
     runtime_values=(),
   ):
     super().__init__(attrs)
     self.column_names: list[str] = []
-    self.manual_expression_present = False
-    self.fallback_present = False
-    self.fallback_note = ""
     self.editor_kind = editor_kind
     self.column_label = column_label
     self.intro_text = intro_text
@@ -70,9 +67,6 @@ class PortableExpressionWidget(forms.Widget):
       ensure_ascii=False,
       separators=(",", ":"),
     )
-    context["widget"]["manual_expression_present"] = self.manual_expression_present
-    context["widget"]["fallback_present"] = self.fallback_present
-    context["widget"]["fallback_note"] = self.fallback_note
     context["widget"]["editor_kind"] = self.editor_kind
     context["widget"]["column_label"] = self.column_label
     context["widget"]["intro_text"] = self.intro_text

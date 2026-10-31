@@ -876,7 +876,7 @@ class TargetGenerationPlanner:
     inputs.append({
       "kind": kind,
       key_name: lookup_key,
-      "manual_expression": None,
+      "portable_expression": None,
       "ordinal_position": 1,
       "active": True,
     })
@@ -1279,7 +1279,7 @@ class TargetGenerationPlanner:
               if base_column.current is not None
               else base_column.object_key
             ),
-            "manual_expression": None,
+            "portable_expression": None,
             "ordinal_position": 1,
             "active": True,
           }],
@@ -1912,7 +1912,7 @@ class TargetGenerationPlanner:
       "upstream_target_column__target_dataset__target_schema",
     ).all():
       common = {
-        "manual_expression": item.manual_expression,
+        "portable_expression": item.portable_expression,
         "ordinal_position": item.ordinal_position,
         "active": bool(item.active),
       }

@@ -45,7 +45,7 @@ from utils.db import build_metadata_database_url
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(find_dotenv(filename=".env", raise_error_if_not_found=False))
 
-ELEVATA_VERSION = "3.2.0"
+ELEVATA_VERSION = "3.3.0"
 
 ELEVATA_RUNTIME_MODE = env_str("ELEVATA_RUNTIME_MODE", "authoring").strip().lower()
 if ELEVATA_RUNTIME_MODE not in {"authoring", "promotion_target"}:
@@ -415,7 +415,6 @@ ELEVATA_CRUD = {
         "decimal_scale",
         "nullable",
         "system_role",
-        "manual_expression",
         "portable_expression",
         "lineage_origin",
         "surrogate_expression",
@@ -456,7 +455,6 @@ ELEVATA_CRUD = {
               "decimal_precision",
               "decimal_scale",
               "nullable",
-              "manual_expression",
               "portable_expression",
               "active",
             ],
@@ -665,32 +663,6 @@ ELEVATA_CRUD = {
             "default": "",
           },
         },
-        {
-          "field": "has_static_filter_sql_fallback",
-          "class_map": {
-            "True": "badge badge-health-warning",
-            "False": "",
-            "default": "",
-          },
-          "label_map": {
-            "True": "Static SQL fallback",
-            "False": "",
-            "default": "",
-          },
-        },
-        {
-          "field": "has_increment_filter_sql_fallback",
-          "class_map": {
-            "True": "badge badge-health-warning",
-            "False": "",
-            "default": "",
-          },
-          "label_map": {
-            "True": "Increment SQL fallback",
-            "False": "",
-            "default": "",
-          },
-        },
       ],
       "SourceColumn": [
         {
@@ -867,20 +839,7 @@ ELEVATA_CRUD = {
             "default": "",
           },
           "label_map": {
-            "True": "Portable",
-            "False": "",
-            "default": "",
-          },
-        },
-        {
-          "field": "has_manual_expression",
-          "class_map": {
-            "True": "badge bg-secondary",
-            "False": "",
-            "default": "",
-          },
-          "label_map": {
-            "True": "SQL fallback",
+            "True": "Expression",
             "False": "",
             "default": "",
           },
@@ -951,9 +910,7 @@ ELEVATA_CRUD = {
         "SourceDataset": {
           "list": {
             "exclude_fields": [
-              "static_filter",
               "portable_static_filter",
-              "increment_filter",
               "portable_increment_filter",
             ],
           },
@@ -1066,7 +1023,6 @@ ELEVATA_CRUD = {
               "decimal_precision",
               "decimal_scale",
               "nullable",
-              "manual_expression",
               "portable_expression",
               "description",
               "pii_level",

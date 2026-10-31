@@ -9,7 +9,7 @@ The **Metadata Health Check** is a central quality assurance mechanism in *eleva
 - dependencies that do not logically fit together  
 - incomplete incremental setups  
 - incorrect handling of deletes  
-- Missing increment policies for SourceDatasets using increment_filter  
+- Missing increment policies for SourceDatasets whose Portable increment filter uses the Delta cutoff runtime value  
 
 The Health Check runs **purely on metadata** and **does not require an active database**.
 

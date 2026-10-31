@@ -4,7 +4,7 @@ import pytest
 
 from metadata.rendering.builder import _configured_column_expression
 from metadata.rendering.column_expression import column_expression_contract_to_ast
-from metadata.rendering.expr import Arithmetic, ColumnRef, FuncCall, RawSql
+from metadata.rendering.expr import Arithmetic, ColumnRef, FuncCall
 from metadata.rendering.portable_expression import PortableExpressionError
 
 
@@ -14,17 +14,15 @@ class _UpstreamColumn:
 
 
 class _Link:
-  def __init__(self, name, *, portable_expression=None, manual_expression=None):
+  def __init__(self, name, *, portable_expression=None):
     self.upstream_target_column = _UpstreamColumn(name)
     self.source_column = None
     self.portable_expression = portable_expression
-    self.manual_expression = manual_expression
 
 
 class _TargetColumn:
-  def __init__(self, *, portable_expression=None, manual_expression=None):
+  def __init__(self, *, portable_expression=None):
     self.portable_expression = portable_expression
-    self.manual_expression = manual_expression
 
 
 def _contract(expression):
@@ -59,29 +57,6 @@ def test_input_portable_expression_overrides_column_expression():
   assert expr.args[0].column_name == "source_name"
 
 
-def test_historical_input_manual_expression_overrides_column_portable_expression():
-  link = _Link("amount", manual_expression="amount * 2")
-  tcol = _TargetColumn(
-    portable_expression=_contract({
-      "type": "arithmetic",
-      "operator": "+",
-      "left": _column("amount"),
-      "right": {"type": "literal", "value": 1},
-    })
-  )
-
-  expr = _configured_column_expression(
-    tcol,
-    selected_input=link,
-    available_links=[link],
-    alias_resolver=lambda _link: "s",
-    manual_qualifier=lambda value: value.replace("amount", "s.amount"),
-  )
-
-  assert isinstance(expr, RawSql)
-  assert expr.sql == "s.amount * 2"
-
-
 def test_column_portable_expression_is_used_without_input_override():
   link = _Link("amount")
   tcol = _TargetColumn(
@@ -103,20 +78,6 @@ def test_column_portable_expression_is_used_without_input_override():
   assert isinstance(expr, Arithmetic)
   assert isinstance(expr.left, ColumnRef)
   assert expr.left.table_alias == "s"
-
-
-def test_historical_column_manual_expression_remains_supported():
-  link = _Link("amount")
-  tcol = _TargetColumn(manual_expression="{{ amount + 1 }}")
-
-  expr = _configured_column_expression(
-    tcol,
-    selected_input=link,
-    available_links=[link],
-  )
-
-  assert isinstance(expr, RawSql)
-  assert expr.sql == "amount + 1"
 
 
 def test_portable_expression_rejects_unknown_lineage_column():

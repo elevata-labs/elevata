@@ -22,15 +22,8 @@ Contact: <https://github.com/elevata-labs/elevata>.
 
 from __future__ import annotations
 
-import re
 from datetime import timedelta
 from dateutil.relativedelta import relativedelta
-
-def _render_literal_for_dialect(dialect, value):
-  fn = getattr(dialect, "render_literal", None)
-  if callable(fn):
-    return fn(value)
-  return dialect.literal(value)
 
 def resolve_delta_cutoff_for_source_dataset(*, source_dataset, profile, now_ts):
   """
@@ -42,8 +35,7 @@ def resolve_delta_cutoff_for_source_dataset(*, source_dataset, profile, now_ts):
     return None
 
   portable_increment = getattr(source_dataset, "portable_increment_filter", None)
-  legacy_increment = (getattr(source_dataset, "increment_filter", None) or "").strip()
-  if not portable_increment and not legacy_increment:
+  if not portable_increment:
     return None
 
   env = (getattr(profile, "name", None) or "dev").strip()
@@ -70,15 +62,3 @@ def resolve_delta_cutoff_for_source_dataset(*, source_dataset, profile, now_ts):
     return now_ts - relativedelta(years=length)
 
   return None
-
-def apply_delta_cutoff_placeholder(sql: str, *, dialect, delta_cutoff) -> str:
-  """
-  Replace {{DELTA_CUTOFF}} / {DELTA_CUTOFF} in SQL with a dialect-rendered literal.
-  """
-  if not sql or delta_cutoff is None:
-    return sql
-
-  cutoff_sql = _render_literal_for_dialect(dialect, delta_cutoff)
-  sql = re.sub(r"\{\{\s*DELTA_CUTOFF\s*\}\}", cutoff_sql, sql)
-  sql = re.sub(r"\{\s*DELTA_CUTOFF\s*\}", cutoff_sql, sql)
-  return sql

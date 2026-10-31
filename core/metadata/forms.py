@@ -74,7 +74,7 @@ class PortableExpressionFormField(forms.CharField):
     try:
       contract = json.loads(raw) if isinstance(raw, str) else raw
     except (TypeError, ValueError) as exc:
-      raise ValidationError("Portable contract contains invalid JSON.") from exc
+      raise ValidationError("The expression definition is invalid.") from exc
 
     try:
       if self.predicate_only:
@@ -142,32 +142,16 @@ class PortableExpressionFormMixin:
       return
     field.initial = _portable_expression_initial(self.instance)
     field.widget.column_names = sorted({str(name) for name in column_names if str(name).strip()})
-    posted_manual = ""
-    if getattr(self, "data", None):
-      posted_manual = str(self.data.get("manual_expression") or "").strip()
-    field.widget.manual_expression_present = bool(
-      posted_manual
-      or str(getattr(self.instance, "manual_expression", "") or "").strip()
-    )
-
-    manual_field = self.fields.get("manual_expression")
-    if manual_field is not None:
-      manual_field.label = "Target-specific SQL fallback"
-      manual_field.help_text = (
-        "Use only when the transformation cannot be expressed as a portable expression. "
-        "A portable expression takes precedence when both are defined."
-      )
 
   def _order_portable_expression_fields(self, anchor_names):
     """Place portable authoring directly after the relevant lineage fields."""
     portable_name = "portable_expression_editor"
-    manual_name = "manual_expression"
     if portable_name not in self.fields:
       return
 
     ordered_names = [
       name for name in self.fields
-      if name not in (portable_name, manual_name)
+      if name != portable_name
     ]
     anchor_positions = [
       ordered_names.index(name)
@@ -176,8 +160,6 @@ class PortableExpressionFormMixin:
     ]
     insert_at = max(anchor_positions) + 1 if anchor_positions else len(ordered_names)
     ordered_names.insert(insert_at, portable_name)
-    if manual_name in self.fields:
-      ordered_names.insert(insert_at + 1, manual_name)
     self.order_fields(ordered_names)
 
   def _validate_expression_columns(self, cleaned, allowed_names):
@@ -190,7 +172,7 @@ class PortableExpressionFormMixin:
     if unknown:
       self.add_error(
         "portable_expression_editor",
-        "Portable expression references columns outside the selected input lineage: "
+        "Expression references columns outside the selected input lineage: "
         + ", ".join(unknown)
         + ".",
       )
@@ -218,7 +200,7 @@ class QueryFilterAuthoringForm(forms.Form):
     widget=PortableExpressionWidget(
       editor_kind="filter",
       column_label="Input column",
-      intro_text="Build a platform-neutral row filter from columns exposed by the input query node.",
+      intro_text="Define the condition used to filter rows from the input query node.",
       empty_text="No filter defined.",
     ),
   )
@@ -257,7 +239,7 @@ class QueryFilterAuthoringForm(forms.Form):
     unknown = sorted(_expression_column_names(contract) - self.column_names)
     if unknown:
       raise ValidationError(
-        "Portable filter references columns outside the input query contract: "
+        "Filter references columns outside the input query contract: "
         + ", ".join(unknown)
         + "."
       )
@@ -268,26 +250,26 @@ class SourceDatasetForm(forms.ModelForm):
   """SourceDataset form with structured static and incremental filter editors."""
 
   portable_static_filter_editor = PortableExpressionFormField(
-    label="Portable static filter",
+    label="Static filter",
     predicate_only=True,
     widget=PortableExpressionWidget(
       editor_kind="filter",
       column_label="Source column",
-      intro_text="Build a platform-neutral filter from columns of this source dataset.",
-      empty_text="No portable static filter defined.",
+      intro_text="Define the condition applied to every extraction from this source dataset.",
+      empty_text="No static filter defined.",
     ),
   )
   portable_increment_filter_editor = PortableExpressionFormField(
-    label="Portable increment filter",
+    label="Increment filter",
     predicate_only=True,
     allowed_runtime_values=("delta_cutoff",),
     widget=PortableExpressionWidget(
       editor_kind="filter",
       column_label="Source column",
       intro_text=(
-        "Build a platform-neutral incremental filter from source columns and the Delta cutoff runtime value."
+        "Define the condition used to identify rows for incremental extraction using source columns and the Delta cutoff runtime value."
       ),
-      empty_text="No portable increment filter defined.",
+      empty_text="No increment filter defined.",
       runtime_values=(("delta_cutoff", "Delta cutoff"),),
     ),
   )
@@ -311,30 +293,13 @@ class SourceDatasetForm(forms.ModelForm):
     self._configure_source_filter_editor(
       "portable_static_filter_editor",
       "portable_static_filter",
-      "static_filter",
       source_names,
-      (
-        "A deprecated source-specific SQL static filter is also stored. "
-        "The portable filter takes precedence when present; clearing it restores the SQL fallback."
-      ),
     )
     self._configure_source_filter_editor(
       "portable_increment_filter_editor",
       "portable_increment_filter",
-      "increment_filter",
       source_names,
-      (
-        "A deprecated source-specific SQL increment filter is also stored. "
-        "The portable filter takes precedence when present; clearing it restores the SQL fallback."
-      ),
     )
-
-    static_sql = self.fields.get("static_filter")
-    if static_sql is not None:
-      static_sql.label = "Deprecated static SQL fallback"
-    increment_sql = self.fields.get("increment_filter")
-    if increment_sql is not None:
-      increment_sql.label = "Deprecated increment SQL fallback"
 
     self._order_source_filter_fields()
 
@@ -342,9 +307,7 @@ class SourceDatasetForm(forms.ModelForm):
     self,
     editor_name,
     model_field_name,
-    fallback_field_name,
     source_names,
-    fallback_note,
   ):
     field = self.fields.get(editor_name)
     if field is None:
@@ -352,17 +315,8 @@ class SourceDatasetForm(forms.ModelForm):
     field.initial = _portable_contract_initial(self.instance, model_field_name)
     field.widget.column_names = sorted({str(name) for name in source_names if str(name).strip()})
 
-    posted_fallback = ""
-    if getattr(self, "data", None):
-      posted_fallback = str(self.data.get(fallback_field_name) or "").strip()
-    field.widget.fallback_present = bool(
-      posted_fallback
-      or str(getattr(self.instance, fallback_field_name, "") or "").strip()
-    )
-    field.widget.fallback_note = fallback_note
-
   def _order_source_filter_fields(self):
-    """Keep each portable filter immediately before its deprecated SQL fallback."""
+    """Keep portable source filters next to their related extraction settings."""
     preferred_order = [
       "source_system",
       "schema_name",
@@ -370,10 +324,8 @@ class SourceDatasetForm(forms.ModelForm):
       "description",
       "integrate",
       "portable_static_filter_editor",
-      "static_filter",
       "incremental",
       "portable_increment_filter_editor",
-      "increment_filter",
       "manual_model",
       "distinct_select",
       "owner",
@@ -395,7 +347,7 @@ class SourceDatasetForm(forms.ModelForm):
     if unknown:
       self.add_error(
         editor_name,
-        "Portable filter references columns outside this SourceDataset: "
+        "Filter references columns outside this SourceDataset: "
         + ", ".join(unknown)
         + ".",
       )
@@ -549,7 +501,14 @@ class TargetColumnForm(PortableExpressionFormMixin, forms.ModelForm):
   """Validation and portable-expression authoring form for TargetColumn."""
 
   portable_expression_editor = PortableExpressionFormField(
-    label="Portable expression",
+    label="Expression",
+    widget=PortableExpressionWidget(
+      intro_text=(
+        "Define the expression used to calculate this target column. "
+        "If the column already receives a direct input value, the expression result replaces it."
+      ),
+      empty_text="No expression defined.",
+    ),
   )
 
   def __init__(self, *args, **kwargs):
@@ -637,6 +596,29 @@ class TargetColumnForm(PortableExpressionFormMixin, forms.ModelForm):
     model = TargetColumn
     fields = "__all__"
 
+  def clean_ordinal_position(self):
+    position = self.cleaned_data.get("ordinal_position")
+    if position is None:
+      return position
+
+    dataset = getattr(self.instance, "target_dataset", None)
+    if dataset is None:
+      dataset = self.cleaned_data.get("target_dataset")
+    if dataset is None:
+      return position
+
+    qs = TargetColumn.objects.filter(
+      target_dataset=dataset,
+      ordinal_position=position,
+    )
+    if getattr(self.instance, "pk", None):
+      qs = qs.exclude(pk=self.instance.pk)
+    if qs.exists():
+      raise ValidationError(
+        f"Ordinal position {position} is already used in this target dataset."
+      )
+    return position
+
   def clean_target_column_name(self):
     """
     Validate 'target_column_name' using shared rules and collision checks.
@@ -720,8 +702,7 @@ class TargetColumnForm(PortableExpressionFormMixin, forms.ModelForm):
     )
 
     portable_expr = cleaned.get("portable_expression_editor")
-    manual_expr = (cleaned.get("manual_expression") or "").strip()
-    if portable_expr is not None or manual_expr or len(upstream_list) != 1:
+    if portable_expr is not None or len(upstream_list) != 1:
       return cleaned
 
     src = upstream_list[0]
@@ -745,7 +726,14 @@ class TargetColumnInputForm(PortableExpressionFormMixin, forms.ModelForm):
   """Form for source-specific column lineage with portable-expression editing."""
 
   portable_expression_editor = PortableExpressionFormField(
-    label="Portable expression",
+    label="Expression",
+    widget=PortableExpressionWidget(
+      intro_text=(
+        "Define the expression used for this specific input mapping. "
+        "Its result replaces the value from this input and takes precedence over the target column expression."
+      ),
+      empty_text="No expression defined.",
+    ),
   )
 
   class Meta:

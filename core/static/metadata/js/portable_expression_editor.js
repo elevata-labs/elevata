@@ -405,7 +405,7 @@
   }
 
   function humanSummary(node, editor) {
-    if (!node) return "No portable expression defined.";
+    if (!node) return "No expression defined.";
     switch (node.type) {
       case "column": return node.name ? editor.columnLabel + ": " + node.name : editor.columnLabel;
       case "literal": return "Literal";
@@ -438,7 +438,7 @@
       this.editorKind = root.dataset.editorKind || "expression";
       this.predicateOnly = this.editorKind === "filter";
       this.columnLabel = root.dataset.columnLabel || "Upstream column";
-      this.emptyText = root.dataset.emptyText || "No portable expression defined.";
+      this.emptyText = root.dataset.emptyText || "No expression defined.";
       this.noColumnsText = this.columnLabel === "Source column"
         ? "No source columns are available for this SourceDataset yet."
         : "Select an upstream column first. The expression editor uses the selected lineage columns.";
@@ -490,7 +490,7 @@
         const parsed = JSON.parse(raw);
         if (parsed && parsed.version === VERSION && parsed.expression) return parsed;
       } catch (_) {
-        this.showError("The stored portable expression could not be read by the editor.");
+        this.showError("The stored expression could not be read by the editor.");
       }
       return null;
     }

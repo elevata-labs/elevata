@@ -969,6 +969,32 @@ class QueryContractColumnSyncService:
     return None
 
   
+  def infer_query_node_output_types(self, node) -> dict[str, dict[str, Any]]:
+    """Return deterministic logical type metadata for one query-node output."""
+    return self._infer_types_from_node(node)
+
+
+  def resolve_union_output_type(self, union_node, output_column) -> dict[str, Any]:
+    """Return the logical type contract for one UNION output column.
+
+    Explicit UNION output metadata wins. If that optional metadata is absent,
+    fall back to the owning dataset's persisted TargetColumn with the same name.
+    """
+    datatype = (getattr(output_column, "datatype", "") or "").strip()
+    if datatype:
+      return {
+        "datatype": datatype,
+        "max_length": getattr(output_column, "max_length", None),
+        "decimal_precision": getattr(output_column, "decimal_precision", None),
+        "decimal_scale": getattr(output_column, "decimal_scale", None),
+      }
+
+    node = getattr(union_node, "node", None)
+    target_dataset = getattr(node, "target_dataset", None) if node is not None else None
+    output_name = (getattr(output_column, "output_name", "") or "").strip()
+    return self._infer_type_from_target_dataset(target_dataset, output_name) or {}
+
+
   def _infer_types_from_node(self, node) -> dict[str, dict[str, Any]]:
     """
     Recursively infer output column types from query nodes.
@@ -1096,12 +1122,19 @@ class QueryContractColumnSyncService:
       if not un:
         return {}
 
-      # union inherits from first branch (all branches must be compatible)
-      first_branch = un.branches.first()
-      if first_branch and first_branch.input_node:
-        return self._infer_types_from_node(first_branch.input_node)
+      try:
+        output_columns = list(un.output_columns.all().order_by("ordinal_position", "id"))
+      except Exception:
+        output_columns = []
 
-      return {}
+      for output_column in output_columns:
+        output_name = (getattr(output_column, "output_name", "") or "").strip()
+        if not output_name:
+          continue
+        inferred = self.resolve_union_output_type(un, output_column)
+        if inferred:
+          out[_norm(output_name)] = inferred
+      return out
 
     # -----------------------------
     # SELECT or fallback

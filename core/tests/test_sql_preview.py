@@ -68,7 +68,7 @@ class DummyTargetColumn:
     self.target_column_name = target_column_name
     self.system_role = system_role
     self.surrogate_expression = None
-    self.manual_expression = None
+    self.portable_expression = None
     # builder.py expects tcol.input_links to exist (queryset-like)
     self.input_links = EmptyQS()
 
@@ -89,26 +89,24 @@ class DummyTargetColumnsQS:
 
 class DummySourceColumn:
   def __init__(self, name: str):
-    # builder.qualify_source_filter() expects "source_column_name"
     self.source_column_name = name
-    # Keep "column_name" as a convenience alias (harmless)
     self.column_name = name
 
 class DummySourceDataset:
   def __init__(
     self,
     *,
-    static_filter: str = "",
+    portable_static_filter=None,
     incremental: bool = False,
-    increment_filter: str = "",
+    portable_increment_filter=None,
     source_columns: list[DummySourceColumn] | None = None,
     schema_name: str = "Sales",
     table_name: str = "SalesOrderHeader",    
     source_dataset_name: str | None = None,
   ):
-    self.static_filter = static_filter
+    self.portable_static_filter = portable_static_filter
     self.incremental = incremental
-    self.increment_filter = increment_filter
+    self.portable_increment_filter = portable_increment_filter
     self.source_columns = source_columns or []
     self.schema_name = schema_name
     self.table_name = table_name
@@ -173,86 +171,29 @@ def test_render_preview_sql_skips_renderer_for_hist(monkeypatch):
   assert "SQL preview for history dataset rc_customer_hist is not implemented yet." in sql
 
 
-def test_build_source_dataset_where_sql_static_only():
-  sd = DummySourceDataset(
-    static_filter="is_active = 1",
-    incremental=False,
-    source_columns=[
-      DummySourceColumn("is_active"),
-      DummySourceColumn("updated_at"),
-    ],
-  )
-
-  where_sql = builder_mod.build_source_dataset_where_sql(sd, source_alias="s")
-
-  # Identifier should be qualified if it matches known source columns.
-  assert "s.is_active" in where_sql
-  assert "WHERE" not in where_sql  # function returns expression only, not full clause
-  assert "AND" not in where_sql
+def _comparison_contract(column_name, operator, value):
+  return {
+    "version": 1,
+    "expression": {
+      "type": "comparison",
+      "operator": operator,
+      "left": {"type": "column", "name": column_name},
+      "right": {"type": "literal", "value": value},
+    },
+  }
 
 
-def test_build_source_dataset_where_sql_incremental_only_preserves_delta_cutoff():
-  sd = DummySourceDataset(
-    static_filter="",
-    incremental=True,
-    increment_filter="updated_at >= {{DELTA_CUTOFF}}",
-    source_columns=[
-      DummySourceColumn("is_active"),
-      DummySourceColumn("updated_at"),
-    ],
-  )
+def _delta_cutoff_contract(column_name):
+  return {
+    "version": 1,
+    "expression": {
+      "type": "comparison",
+      "operator": ">=",
+      "left": {"type": "column", "name": column_name},
+      "right": {"type": "runtime_value", "name": "delta_cutoff"},
+    },
+  }
 
-  where_sql = builder_mod.build_source_dataset_where_sql(sd, source_alias="s")
-
-  assert "s.updated_at" in where_sql
-  # Guard: DELTA_CUTOFF must remain untouched for runtime resolution.
-  assert "{{DELTA_CUTOFF}}" in where_sql
-  assert "AND" not in where_sql
-
-
-def test_build_source_dataset_where_sql_static_and_incremental_combined():
-  sd = DummySourceDataset(
-    static_filter="is_active = 1",
-    incremental=True,
-    increment_filter="updated_at >= {{DELTA_CUTOFF}}",
-    source_columns=[
-      DummySourceColumn("is_active"),
-      DummySourceColumn("updated_at"),
-    ],
-  )
-
-  where_sql = builder_mod.build_source_dataset_where_sql(sd, source_alias="s")
-
-  # Both parts should be qualified and combined.
-  assert "s.is_active" in where_sql
-  assert "s.updated_at" in where_sql
-  assert "{{DELTA_CUTOFF}}" in where_sql
-  assert " AND " in where_sql
-  # We expect parentheses for safety when combining.
-  assert where_sql.count("(") >= 2
-  assert where_sql.count(")") >= 2
-
-def test_build_source_dataset_where_sql_does_not_double_qualify_existing_alias():
-  sd = DummySourceDataset(
-    static_filter="s.is_active = 1",
-    incremental=True,
-    increment_filter="s.updated_at >= {{DELTA_CUTOFF}}",
-    source_columns=[
-      DummySourceColumn("is_active"),
-      DummySourceColumn("updated_at"),
-    ],
-  )
-
-  where_sql = builder_mod.build_source_dataset_where_sql(sd, source_alias="s")
-
-  # Must not become "s.s.<col>"
-  assert "s.s.is_active" not in where_sql
-  assert "s.s.updated_at" not in where_sql
-
-  # Must keep already qualified references intact.
-  assert "s.is_active" in where_sql
-  assert "s.updated_at" in where_sql
-  assert "{{DELTA_CUTOFF}}" in where_sql
 
 def test_raw_select_applies_filters_and_renders_tech_placeholders(monkeypatch):
   """RAW selecting from SourceDataset must:
@@ -272,11 +213,11 @@ def test_raw_select_applies_filters_and_renders_tech_placeholders(monkeypatch):
   ]
   td.target_columns = DummyTargetColumnsQS(cols)
 
-  # SourceDataset with both filters
+  # SourceDataset with both portable filters
   sd = DummySourceDataset(
-    static_filter="OnlineOrderFlag = 0",
+    portable_static_filter=_comparison_contract("OnlineOrderFlag", "=", 0),
     incremental=True,
-    increment_filter="ModifiedDate >= {{DELTA_CUTOFF}}",
+    portable_increment_filter=_delta_cutoff_contract("ModifiedDate"),
     source_columns=[
       DummySourceColumn("OnlineOrderFlag"),
       DummySourceColumn("ModifiedDate"),
@@ -315,3 +256,120 @@ def test_raw_select_applies_filters_and_renders_tech_placeholders(monkeypatch):
   rendered = " ".join(str(x) for x in select_list)
   assert "{{ load_run_id }}" in rendered
   assert "{{ load_timestamp }}" in rendered
+
+
+def test_render_preview_sql_fails_closed_for_invalid_query_contract(monkeypatch):
+  td = DummyTargetDataset("bc_invalid_union", schema_short="bizcore")
+  td.query_head = object()
+  td.query_root = None
+  dialect = object()
+
+  from metadata.generation import query_contract as query_contract_mod
+
+  monkeypatch.setattr(
+    query_contract_mod,
+    "infer_query_node_contract",
+    lambda _node: type("Contract", (), {
+      "issues": ["ERROR: Union branch references missing input column 'catalog_desc'."]
+    })(),
+  )
+  monkeypatch.setattr(
+    sql_service_mod,
+    "render_select_for_target",
+    lambda *_args, **_kwargs: (_ for _ in ()).throw(
+      AssertionError("Invalid query contracts must not be rendered.")
+    ),
+  )
+
+  with pytest.raises(ValueError, match="Query contract is invalid"):
+    sql_service_mod.render_preview_sql(td, dialect)
+
+
+def test_beautify_sql_formats_nested_union_readably():
+  raw = (
+    "SELECT b.id AS id, b.name AS name FROM "
+    "(SELECT s.id AS id, s.name AS name FROM rawcore.source_a AS s) AS b "
+    "UNION ALL "
+    "SELECT b.id AS id, b.name AS name FROM "
+    "(SELECT s.id AS id, s.name AS name FROM rawcore.source_b AS s) AS b"
+  )
+
+  formatted = sql_service_mod.beautify_sql(raw)
+
+  assert "\nUNION ALL\n" in formatted
+  assert "FROM\n  (\n    SELECT" in formatted
+  assert "      s.id AS id," in formatted
+  assert "  ) AS b" in formatted
+
+
+def test_beautify_sql_keeps_function_commas_and_literal_commas_inline():
+  raw = (
+    "SELECT CONCAT(first_name, ', ', last_name) AS label, "
+    "COALESCE(account_no, 'none') AS account_no FROM customer"
+  )
+
+  formatted = sql_service_mod.beautify_sql(raw)
+
+  assert "CONCAT(first_name, ', ', last_name) AS label," in formatted
+  assert "COALESCE(account_no, 'none') AS account_no" in formatted
+  assert "', ',\n" not in formatted
+
+
+def test_beautify_sql_formats_join_predicate_and_where_conditions():
+  raw = (
+    "SELECT a.id AS id, b.name AS name FROM alpha AS a "
+    "LEFT JOIN beta AS b ON a.id = b.alpha_id "
+    "WHERE a.active = 1 AND b.deleted_at IS NULL"
+  )
+
+  formatted = sql_service_mod.beautify_sql(raw)
+
+  assert "\n  LEFT JOIN beta AS b ON\n" in formatted
+  assert "\n    a.id = b.alpha_id\n" in formatted
+  assert "WHERE\n  a.active = 1\n  AND b.deleted_at IS NULL" in formatted
+
+
+def test_beautify_sql_preserves_runtime_tokens_and_window_expression():
+  raw = (
+    "SELECT ROW_NUMBER() OVER (PARTITION BY customer_id ORDER BY created_at DESC, id) AS rn "
+    "FROM customer WHERE changed_at >= {{DELTA_CUTOFF}}"
+  )
+
+  formatted = sql_service_mod.beautify_sql(raw)
+
+  assert "{{DELTA_CUTOFF}}" in formatted
+  assert "ROW_NUMBER() OVER(PARTITION BY customer_id ORDER BY created_at DESC, id) AS rn" in formatted
+
+
+def test_beautify_sql_preserves_comment_lines():
+  raw = "-- first line\n-- second line\n"
+
+  formatted = sql_service_mod.beautify_sql(raw)
+
+  assert formatted == "-- first line\n-- second line"
+
+
+def test_render_merge_sql_formats_only_presentation_output(monkeypatch):
+  canonical = "MERGE INTO target AS t USING source AS s ON t.id = s.id WHEN MATCHED THEN UPDATE SET t.name = s.name"
+  monkeypatch.setattr(sql_service_mod, "_render_merge_sql", lambda *_args, **_kwargs: canonical)
+
+  assert sql_service_mod.render_merge_sql(object(), object(), presentation=False) == canonical
+  presented = sql_service_mod.render_merge_sql(object(), object(), presentation=True)
+  assert presented != canonical
+  assert "MERGE" in presented
+  assert "t.id = s.id" in presented
+
+
+def test_render_delete_detection_sql_formats_only_presentation_output(monkeypatch):
+  canonical = "DELETE FROM target WHERE id NOT IN (SELECT id FROM source)"
+  monkeypatch.setattr(
+    sql_service_mod,
+    "_render_delete_missing_rows_sql",
+    lambda *_args, **_kwargs: canonical,
+  )
+
+  assert sql_service_mod.render_delete_detection_sql(object(), object(), presentation=False) == canonical
+  presented = sql_service_mod.render_delete_detection_sql(object(), object(), presentation=True)
+  assert presented != canonical
+  assert "DELETE" in presented
+  assert "SELECT" in presented

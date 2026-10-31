@@ -7,7 +7,7 @@
 **elevata® is an Architecture Runtime for modern data platforms.**
 
 It turns **metadata into deterministic, executable data architecture**.
-Architecture is defined declaratively and executed consistently across warehouses.
+Architecture is defined declaratively and executed consistently across data warehouses and lakehouses.
 
 SQL becomes an artifact. Architecture becomes metadata.
 
@@ -44,12 +44,12 @@ elevata is an **Architecture Runtime** for metadata-defined data platforms.
 
 It models datasets, lineage, contracts, governance, and execution semantics as explicit metadata.
 
-From these definitions, elevata derives deterministic Target Generation Plans and SQL Logical Plans, creates immutable architecture releases for controlled Environment Promotion, renders dialect-owned SQL, reviews architecture changes, and executes warehouse-native pipelines through controlled runtime scopes.
+From these definitions, elevata derives deterministic Target Generation Plans and SQL Logical Plans, creates immutable architecture releases for controlled Environment Promotion, renders dialect-owned SQL, reviews architecture changes, and executes platform-native pipelines through controlled runtime scopes.
 
 Target metadata generation, schema evolution, incremental loads, historization, approvals, and execution evidence are planned, validated, and applied deterministically.
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/elevata-labs/elevata/main/docs/elevata_v3_2_0.png" alt="elevata UI preview" width="900"/>
+  <img src="https://raw.githubusercontent.com/elevata-labs/elevata/main/docs/elevata_v3_3_0.png" alt="elevata UI preview" width="900"/>
   <br/>
   <em>elevata user interface spanning metadata management, Architecture Control, and controlled Environment Promotion.</em>
 </p>
@@ -95,7 +95,7 @@ The core elevata architecture pipeline consists of five explicitly separated lay
 2. **Controlled Target Metadata Generation**  
 3. **Deterministic SQL Logical Plan**  
 4. **Dialect Rendering**  
-5. **Warehouse-Native Execution**
+5. **Platform-Native Execution**
 
 Each layer has its own contract. A Target Generation Plan describes metadata mutation; a SQL Logical Plan describes the query that is rendered and executed. Environment Promotion is a separate cross-environment control boundary that moves immutable portable metadata releases between authoritative metadata environments.
 
@@ -113,7 +113,7 @@ Each layer has its own contract. A Target Generation Plan describes metadata mut
 8. Inspect generated SQL, lineage, contracts, health, quality review, reference integrity, and execution evidence  
 9. Review the target environment's resulting physical architecture changes through Architecture Review Briefing and approve them through Architecture Control  
 10. Bind scheduler-managed runs to an immutable Execution Run Plan and Planned Architecture State  
-11. Execute approved or unchanged active scopes deterministically on your target warehouse  
+11. Execute approved or unchanged active scopes deterministically on your target platform  
 12. Finalize structured outcomes so recorded Architecture State advances only after successful execution  
 13. Audit execution through Run Plan evidence, Architecture Execution Records, load logs, snapshots, and target-side Promotion History
 
@@ -181,31 +181,15 @@ Readiness is deterministic and read-only. It does not connect to sources, resolv
 
 ## 🧭 Architecture Catalog
 
-elevata provides a read-only Architecture Catalog for discovering metadata-defined executable architecture from Source Systems through Target Datasets to Data Products.
+elevata provides a read-only Architecture Catalog for discovering metadata-defined executable architecture from **Source Systems through Target Datasets to Data Products**.
 
-The Catalog shows what exists, how sources enter the platform, how datasets are defined and connected, how architecture is controlled, where execution evidence is available, how portfolio posture looks, and which readiness, quality and governance signals need attention.
+Catalog, Portfolio, Insights and Map views bring together ownership, lineage, contracts, readiness, lifecycle, health, execution evidence and Architecture Control state. Source views expose ingestion readiness and RAW landing intent; Target Dataset views expose architecture and runtime posture; Data Product views derive trusted-consumption readiness from serving-layer metadata and evidence.
 
-The Source Systems view groups SourceDatasets by their owning Source System and shows source type, declared ingestion mode, lifecycle posture, readiness distribution, diagnostic counts, RAW landing intent and linked RAW TargetDatasets. Search and filters support readiness state, Source System, source type and ingestion mode.
+Catalog Detail also provides bounded, read-only **Architecture Quality Review** and **Reference Integrity Review**. These diagnostics inspect loaded target data against metadata-defined expectations without repairing data, creating reference members or mutating architecture. Controlled load execution remains responsible for enabled reference-member handling.
 
-The Target Datasets view supports search and filtering by schema, owner, lifecycle status, system-managed status, materialization type, incremental strategy and query logic.
+The Catalog does not edit metadata or execute loads. It is the discovery and trust surface for the architecture managed elsewhere by Target Generation, Environment Promotion, Architecture Control and runtime execution.
 
-Catalog detail pages summarize architecture metadata, ownership, health, upstream inputs, downstream consumers, column contract signals and the latest Architecture Execution Record for the dataset scope. SourceDataset detail pages expose the same Source Ingestion Readiness semantics used by the global Catalog views.
-
-Catalog Detail also provides an on-demand Architecture Quality Review. It checks loaded target data against metadata-defined expectations such as non-nullable columns, duplicate surrogate or business keys, empty datasets and blank string business keys. The review is read-only, bounded and dialect-owned.
-
-For datasets with modeled outgoing references, Catalog Detail also provides an on-demand Reference Integrity Review. It checks loaded target data for missing parent examples and keeps the review read-only, bounded and dialect-owned.
-
-Reference Integrity Review is diagnostic. It does not create inferred members, apply Default Member Fallback, or repair data automatically. Controlled Reference Members are part of load execution and run only when the modeled reference explicitly enables the relevant behavior.
-
-Catalog Portfolio places Source ingestion readiness beside Data Product readiness while keeping TargetDataset ownership, contracts, health, review state, execution evidence and layer distribution as separate posture signals. Readiness groups and actionable Portfolio KPIs open filtered Catalog worklists for focused drill-down.
-
-Catalog Data Products show which serving-layer datasets are ready for trusted consumption. Readiness is derived from ownership, metadata health, query contracts, lineage, Architecture Control review state and execution evidence.
-
-Catalog Insights highlight ownership gaps, metadata health findings, custom query logic, downstream consumer visibility, inactive datasets with consumers, missing execution evidence, and dataset-specific Architecture Control review status summaries.
-
-Catalog Maps show the end-to-end entry path from Source Systems through SourceDatasets into RAW TargetDatasets, followed by the target-layer flow, dependency matrix and expandable direct dependency examples.
-
-The Catalog does not edit metadata and does not execute loads. Architecture Quality Review and Reference Integrity Review do not persist review history, create inferred members or repair data automatically. Controlled load execution remains responsible for any enabled reference member handling. Architecture Control remains responsible for approval, execution, execution records and retention workflows.
+See the [Architecture Catalog documentation](https://github.com/elevata-labs/elevata/blob/main/docs/architecture_catalog.md).
 
 ---
 
@@ -213,7 +197,7 @@ The Catalog does not edit metadata and does not execute loads. Architecture Qual
 
 elevata makes target metadata generation and physical architecture changes reviewable before mutation or execution.
 
-**Controlled Target Generation** turns the existing source-to-target generator semantics into an immutable, inspectable contract:
+**Controlled Target Generation** turns source-to-target generation into an immutable, inspectable contract:
 
 ```text
 Source Metadata
@@ -231,25 +215,15 @@ Architecture Approval
 Controlled or Scheduler Execution
 ```
 
-The all-dataset view guides users through `RAW → STAGE → RAWCORE`. Only the first pending layer is actionable; later layers are recalculated after the preceding layer converges. The SourceDataset action **Review target generation** opens this controlled workflow instead of mutating target metadata directly.
+Generation Approval and Architecture Approval remain intentionally separate: one authorizes the reviewed metadata mutation, the other authorizes the resulting physical architecture change.
 
-Generation Approval and Architecture Approval are intentionally separate. Generation Approval authorizes the exact reviewed metadata mutation. Architecture Approval authorizes the resulting physical architecture change reported afterwards.
+Architecture State, Change Reports, Approval Artifacts, Execution Impact Plans, immutable Execution Run Plans, Planned Architecture State snapshots, structured outcomes and Execution Records expose deterministic fingerprints, policy decisions, review decisions and execution evidence. Architecture Review Briefing summarizes scope, change volume, policy posture, blocking signals and reviewer focus before approval or execution.
 
-Architecture State, Change Reports, Architecture State Comparisons (legacy `Architecture Promotion Report` artifacts), Approval Artifacts, Execution Impact Plans, immutable Execution Run Plans, Planned Architecture State snapshots, structured outcomes, and Execution Records expose deterministic fingerprints, MigrationPlan actions, policy decisions, review decisions, and execution evidence.
- 
-This supports controlled review, CI checks, scheduler integration, explicit architecture-state comparison, and exact state finalization while keeping execution guardrails inside the load runner.
- 
-The Architecture Control UI makes approval state, scope, policy status, change summary, Execution Impact decisions, execution preview, dependency mode, controlled reference readiness, captured output, and execution records visible for controlled scopes.
- 
-Architecture Review Briefing adds compact reviewer guidance directly inside Architecture Control. It summarizes the selected scope, review state, change volume, policy evaluation, destructive or blocking signals, execution readiness and suggested reviewer focus before approval or execution. Allowed and metadata-only policy decisions are shown as evaluated outcomes, while preflight and blocked decisions remain reviewer attention.
+Generated TargetDatasets that leave the eligible source scope are retained as inactive architecture history rather than being deleted. If they become eligible again, the same metadata objects are reactivated. Execution manifests, Run Plans and runtime tasks remain active-only.
 
-Generated TargetDataset lifecycle is controlled rather than destructive. Generator-owned targets that leave the complete eligible source scope are retained but marked inactive and retired. If they become eligible again, the same metadata objects are reactivated in place. Retirement is represented atomically as `DATASET_REMOVED → RETIRE_DATASET → METADATA_ONLY`; it does not imply an automatic physical drop.
+This keeps CI checks, scheduler integration, approvals, execution guardrails, architecture-state comparison and exact state finalization inside one controlled runtime model.
 
-For schema reviews, Architecture Control combines active datasets from the current state with matching datasets from the previous state so a retirement remains visible and approvable. Execution Preview, Execution Impact, manifests, and Run Plans remain strictly active-only.
-
-A first recorded Architecture State can be established only by a verified full-scope initial deployment whose managed target was discovered as empty. An explicitly guarded recovery path exists for legacy interrupted initial deployments that completed physically before Planned Architecture State snapshots were introduced.
-
-Users can inspect reports, open the Review Briefing details on demand, download report JSON, create Approval Artifacts, verify approvals, inspect Execution Impact, execute approved or no-change scopes, create immutable scheduler Run Plans, inspect the resulting Architecture Execution Record, review stored execution history, download record JSON, and apply execution record retention.
+See [Architecture Control](https://github.com/elevata-labs/elevata/blob/main/docs/architecture_control_plane.md) and [Controlled Target Generation](https://github.com/elevata-labs/elevata/blob/main/docs/controlled_target_generation.md).
 
 ---
 
@@ -281,20 +255,24 @@ See [Environment Promotion](https://github.com/elevata-labs/elevata/blob/main/do
 
 elevata keeps complex transformation logic **explicit in metadata instead of hiding it in platform-specific SQL**.
 
-The Query Builder models relational query shape through typed operators such as **FILTER, AGGREGATE, UNION, and WINDOW**, while **Portable Expressions** describe calculated values through platform-neutral metadata contracts. Joins remain explicit dataset relationships so lineage and execution dependencies stay visible.
+The Query Builder separates relational query shape from calculated values: **FILTER, AGGREGATE, UNION, and WINDOW** define transformation steps, while structured Expressions define calculated values and predicates through platform-neutral contracts. Joins remain explicit dataset relationships so lineage and execution dependencies stay visible.
 
-Together, these capabilities make advanced Bizcore and Serving transformations reviewable, reproducible, and portable across supported warehouses:
+The visual Query Structure canvas follows the actual graph order and supports position-aware **Add, Move, and Remove** operations. Every graph mutation is validated against downstream query contracts and fails closed when a change would make the transformation invalid.
 
-- filters are modeled as portable predicates rather than embedded SQL conditions  
-- calculated columns can use arithmetic, comparisons, boolean logic, CASE, CAST, controlled scalar functions, CONCAT, COALESCE, and hashing  
-- aggregates define explicit group keys and measures, including ordered `STRING_AGG`, `COUNT(*)`, `SUM`, `AVG`, `MIN`, and `MAX`  
+UNION branches converge through an explicit output contract. Reconciliation highlights valid mappings, safe same-name matches, stale mappings and datatype conflicts; safe matches add only missing deterministic mappings and never overwrite explicit user decisions.
+
+Advanced Bizcore and Serving logic remains portable and reviewable:
+
+- filters and calculated values use structured expression contracts rather than embedded SQL  
+- aggregates support explicit group keys and measures, including ordered `STRING_AGG`, `COUNT(*)`, `SUM`, `AVG`, `MIN`, and `MAX`  
 - window functions support partitioning, ordering, explicit frames, ranking, navigation, and windowed aggregates  
-- UNION and UNION ALL compose independently shaped query branches under one explicit output contract  
-- query-derived output contracts are synchronized with the physical materialization contract  
+- UNION and UNION ALL compose independently shaped branches under one stable output schema  
+- query-derived output contracts stay synchronized with physical materialization  
+- SQL Preview uses deterministic structure-aware formatting for nested queries, joins, predicates, windows and unions without changing executable SQL semantics  
 
-The same metadata-defined logic is compiled into a vendor-neutral Logical Plan and rendered by the active dialect. SQL remains inspectable, but it is the **artifact of the architecture - not the place where the architecture is defined**.
+The same metadata-defined logic compiles into a vendor-neutral Logical Plan and is rendered by the active dialect. SQL remains inspectable, but it is the **artifact of the architecture - not the place where the architecture is defined**.
 
-See [Query Builder & Query Tree](https://github.com/elevata-labs/elevata/blob/main/docs/query_builder_and_query_tree.md) and [Expression DSL & AST](https://github.com/elevata-labs/elevata/blob/main/docs/expression_dsl_and_ast.md).
+See [Query Builder & Query Tree](https://github.com/elevata-labs/elevata/blob/main/docs/query_builder_and_query_tree.md), [Expression DSL & AST](https://github.com/elevata-labs/elevata/blob/main/docs/expression_dsl_and_ast.md), and [SQL Preview Pipeline](https://github.com/elevata-labs/elevata/blob/main/docs/sql_preview_pipeline.md).
 
 ---
 
@@ -326,7 +304,7 @@ Strengthening controlled target metadata generation, cross-environment metadata 
 Keeping source onboarding, RAW landing intent, ingestion modes, file/API patterns, external ingestion and federated access explicit, inspectable and deterministic.
 
 **4. Platform Coverage & Runtime Hardening**  
-Improving backend coverage, dialect behavior, schema evolution safety, historization, logging and reproducible execution across supported warehouses.
+Improving backend coverage, dialect behavior, schema evolution safety, historization, logging and reproducible execution across supported platforms.
 
 See `/docs` for architectural depth.
 

@@ -206,7 +206,7 @@ class WindowFunction(Expr):
 class RawSql(Expr):
   """
   Raw SQL expression coming directly from metadata (e.g. surrogate_expression
-  or manual_expression).
+  or portable_expression).
 
   Two modes:
   - is_template = True:

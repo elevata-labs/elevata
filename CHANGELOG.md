@@ -12,6 +12,131 @@ This project adheres to [Semantic Versioning](https://semver.org/) and [Keep a C
 
 ---
 
+## [3.3.0] - 2026-10-31
+
+This release hardens the advanced transformation semantics introduced in 3.2.0 and makes non-trivial query logic easier to build, review, and maintain.
+
+The Query Builder now presents the effective query graph as an interactive structure canvas with position-aware Add, Move, and Remove operations. UNION authoring gains explicit reconciliation for branch mappings, and SQL Preview receives deterministic structure-aware formatting without changing canonical execution semantics.
+
+The 3.2 compatibility window is closed: deprecated SQL-text fallback fields are removed, leaving structured platform-neutral expression and predicate contracts as the authoritative transformation model.
+
+---
+
+### ✨ Added
+
+#### Interactive Query Structure
+
+- Added a visual Query Structure canvas that follows actual query-graph relationships rather than database ID order  
+- Added position-aware insertion before or after existing unary steps  
+- Added explicit insertion into UNION branches and after merged UNION results  
+- Added Move mode with valid destination targets derived from the active graph  
+- Added safe removal for FILTER, AGGREGATE, and WINDOW steps with automatic graph reconnection  
+- Added atomic graph validation and rollback when insertion, movement, or removal would invalidate downstream query contracts  
+
+#### UNION Reconciliation
+
+- Added read-only UNION mapping reconciliation across every branch and output column  
+- Added explicit statuses for valid mappings, safe matches, stale mappings, datatype mismatches, ambiguous matches, and missing candidates  
+- Added safe same-name matching that creates only missing, unique, type-compatible mappings  
+- Preserved all existing explicit mappings during reconciliation and safe matching  
+- Added reconciliation-aware status badges and review actions directly to the Query Structure canvas  
+
+---
+
+### 🔄 Improved
+
+#### Query Builder UX
+
+- Reorganized Query Builder authoring around a left-side transformation canvas and right-side review/control column  
+- Kept SQL Preview, Review and Iterate, and Next Steps visible alongside growing query structures  
+- Added stronger visual connectors and clear Starting Point / move-state presentation  
+- Added direct navigation between Query Builder, UNION branches, branch mappings, reconciliation, Query Contract, and lineage views  
+- Improved stale UNION mapping presentation and replacement guidance  
+- Improved safe-match discoverability without introducing automatic destructive remapping  
+
+#### Query Graph Semantics
+
+- Centralized query-graph mutation semantics in one deterministic service  
+- Kept SELECT as the stable query root while allowing FILTER, AGGREGATE, and WINDOW steps to move within valid graph positions  
+- Required explicit branch context for ambiguous operations before UNION  
+- Preserved merged-result semantics for steps placed after UNION  
+- Validated FILTER references against available input columns so legitimate predicate-only inputs remain usable  
+- Kept query graph ordering derived from relationships rather than introducing a second ordinal-position model  
+
+#### UNION Branch Contracts
+
+- Kept extended input availability for UNION branches owned by the same TargetDataset  
+- Restricted foreign TargetDataset branches to their published query output contracts  
+- Allowed branch-local FILTER, AGGREGATE, and WINDOW steps to extend reusable foreign-dataset branch outputs without modifying the source dataset  
+- Kept local branch steps constrained to the foreign dataset's published output boundary while exposing their newly derived branch columns to UNION mappings  
+- Applied the same branch-input rules consistently to mapping choices, reconciliation, and query-contract validation  
+- Used persisted TargetColumn datatype metadata when UNION output-type metadata is empty  
+- Made SQL Preview fail closed when stale or incompatible UNION mappings invalidate the effective query contract  
+
+#### SQL Preview
+
+- Replaced simple regex formatting with deterministic structure-aware presentation formatting  
+- Added stable indentation for nested SELECTs and UNION branches  
+- Aligned source tables and JOIN clauses below FROM and kept ON attached to its JOIN  
+- Added predictable WHERE/HAVING boolean-condition formatting  
+- Preserved function argument commas, string-literal commas, window expressions, comments, and runtime tokens  
+- Applied presentation-only formatting to SELECT, MERGE, and delete-detection previews without rewriting canonical execution SQL  
+
+#### Metadata Authoring
+
+- Automatically proposes the next TargetColumn ordinal position in the form  
+- Validates duplicate TargetColumn ordinal positions as form errors instead of surfacing database integrity failures  
+
+---
+
+### 🧹 Removed
+
+- Removed deprecated `SourceDataset.static_filter`  
+- Removed deprecated `SourceDataset.increment_filter`  
+- Removed deprecated `TargetColumn.manual_expression`  
+- Removed deprecated `TargetColumnInput.manual_expression`  
+- Removed the unused QueryNode CTE type; CTEs are not a user-authored query concept  
+
+Structured Expressions and portable source predicates are the authoritative transformation contracts after this release.
+
+---
+
+### 🛠️ Fixed
+
+- Fixed UNION status badges becoming inconsistent after branch edit/cancel flows  
+- Fixed UNION mapping screens exposing columns outside the effective foreign-branch output contract  
+- Fixed stale UNION mappings being presented as if their old source column were still valid  
+- Fixed SQL Preview rendering stale UNION references instead of rejecting an invalid query contract  
+- Fixed UNION output type display when the explicit UNION output datatype is empty but the persisted TargetColumn type is known  
+- Fixed Query Builder navigation so breadcrumb and Query Builder actions return to their intended destinations  
+- Fixed query-step removal allowing invalid downstream contracts instead of rolling the mutation back  
+- Fixed query-step movement allowing invalid aggregate/filter ordering instead of failing closed  
+- Fixed external TargetDataset consumers being treated as invalid internal downstream edges when extending a reusable query head  
+- Fixed UNION repair workflows being blocked by pre-existing mapping errors when a mutation introduces no additional contract errors  
+
+---
+
+### 🧪 Quality & Stability
+
+- Added regression coverage for graph insertion, movement, branch placement, UNION boundaries, removal, ambiguity handling, transactional rollback, and cross-dataset branch-local transformations  
+- Added regression coverage for Query Structure ordering and UNION reconciliation status  
+- Added regression coverage for safe matching, stale mappings, datatype mismatch, ambiguity, branch-input visibility, and persisted UNION output types  
+- Added regression coverage for TargetColumn ordinal-position validation  
+- Added SQL Preview formatting coverage for nested queries, UNION, JOIN/ON, predicates, function/literal commas, windows, runtime tokens, MERGE, and delete detection  
+
+---
+
+### ⬆️ Upgrade Notes
+
+- **Run `python manage.py migrate` after installing elevata 3.3.0.**  
+- The release uses one consolidated metadata migration: `0016_query_semantics_hardening_legacy_cleanup.py`.  
+- The deprecated 3.2 SQL-text compatibility fields are removed. Existing metadata must already use structured Expressions and portable SourceDataset filters before upgrade.  
+- Query Trees do not gain a CTE node. Existing FILTER, AGGREGATE, UNION, and WINDOW semantics remain the user-authored query model.  
+- Review UNION mappings after upstream branch-contract changes; reconciliation surfaces stale, incompatible, ambiguous, and safely matchable mappings without overwriting explicit decisions.  
+- Regenerate or re-review SQL Preview output where formatting is used in operational review workflows; formatting changes presentation only and does not change canonical execution semantics.  
+
+---
+
 ## [3.2.0] - 2026-10-18
 
 This release adds **Advanced Transformation Semantics** to the elevata Architecture Runtime.

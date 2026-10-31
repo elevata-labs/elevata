@@ -79,7 +79,7 @@ def test_relational_ingest_does_not_count_payload_role_as_business(monkeypatch):
     schema_name="dbo",
     source_dataset_name="t",
     incremental=False,
-    increment_filter=None,
+    portable_increment_filter=None,
   )
 
   # Target dataset columns:

@@ -42,7 +42,6 @@ from metadata.rendering.builder import (
 )
 from metadata.rendering.placeholders import (
   resolve_delta_cutoff_for_source_dataset,
-  apply_delta_cutoff_placeholder,
 )
 from metadata.materialization.logging import (
   build_load_run_log_row,
@@ -332,10 +331,9 @@ def ingest_raw_relational(
   src_table = source_dataset.source_dataset_name
 
   portable_increment = getattr(source_dataset, "portable_increment_filter", None)
-  legacy_increment = (getattr(source_dataset, "increment_filter", None) or "").strip()
   apply_increment = bool(
     getattr(source_dataset, "incremental", False)
-    and (portable_increment or legacy_increment)
+    and portable_increment
   )
 
   cutoff = None
@@ -358,14 +356,6 @@ def ingest_raw_relational(
     source_alias="s",
     delta_cutoff=cutoff,
   )
-
-  # Legacy SQL fallback keeps its existing placeholder contract.
-  if apply_increment and not portable_increment and "{{DELTA_CUTOFF" in src_sql:
-    src_sql = apply_delta_cutoff_placeholder(
-      src_sql,
-      dialect=source_dialect,
-      delta_cutoff=cutoff,
-    )
 
   # Build INSERT into RAW (DuckDB uses ? placeholders)
   # Target columns are derived from generated TargetColumns in RAW dataset.

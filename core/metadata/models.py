@@ -52,7 +52,6 @@ class QueryNodeType(models.TextChoices):
   UNION = "union", "Union"
   WINDOW = "window", "Window"
   FILTER = "filter", "Filter"
-  CTE = "cte", "CTE"
 
 
 class AggregateFunction(models.TextChoices):
@@ -247,16 +246,10 @@ class SourceDataset(AuditFields):
       "from automated target generation."
     )
   )
-  static_filter = models.CharField(max_length=255, blank=True, null=True,
-    help_text=(
-      "Deprecated source-specific SQL fallback for permanent source filtering. "
-      "Migrate this filter to Portable static filter before upgrading to elevata 3.3."
-    ),
-  )
   portable_static_filter = models.JSONField(blank=True, null=True, editable=False,
     help_text=(
-      "Platform-neutral structured filter applied to every extraction from this source dataset. "
-      "The filter can reference columns of this SourceDataset."
+      "Filter applied to every extraction from this source dataset. "
+      "It can reference columns of this SourceDataset."
     ),
   )
   incremental = models.BooleanField(default=False,
@@ -265,16 +258,10 @@ class SourceDataset(AuditFields):
       "In this case, appropriate increment parameters have to be provided."
     )
   )
-  increment_filter = models.CharField(max_length=255, blank=True, null=True,
-    help_text=(
-      "Deprecated source-specific SQL fallback for incremental source filtering. "
-      "Migrate this filter to Portable increment filter before upgrading to elevata 3.3."
-    )
-  )
   portable_increment_filter = models.JSONField(blank=True, null=True, editable=False,
     help_text=(
-      "Platform-neutral structured filter for incremental source extraction. "
-      "The filter can reference columns of this SourceDataset and the Delta cutoff runtime value."
+      "Filter that defines which rows are included in incremental extraction. "
+      "It can reference columns of this SourceDataset and the Delta cutoff runtime value."
     ),
   )
   manual_model = models.BooleanField(default=False,
@@ -360,17 +347,15 @@ class SourceDataset(AuditFields):
     if not getattr(self, "incremental", False):
       return []
 
-    portable_filter = getattr(self, "portable_increment_filter", None)
-    legacy_filter = (getattr(self, "increment_filter", None) or "").strip()
-    if portable_filter:
-      from metadata.rendering.portable_expression import expression_runtime_value_names
-      uses_delta_cutoff = "delta_cutoff" in expression_runtime_value_names(
-        portable_filter,
-        allowed_runtime_values=("delta_cutoff",),
-      )
-    else:
-      uses_delta_cutoff = "{{DELTA_CUTOFF" in legacy_filter
+    portable_filter = self.portable_increment_filter
+    if not portable_filter:
+      return []
 
+    from metadata.rendering.portable_expression import expression_runtime_value_names
+    uses_delta_cutoff = "delta_cutoff" in expression_runtime_value_names(
+      portable_filter,
+      allowed_runtime_values=("delta_cutoff",),
+    )
     if not uses_delta_cutoff:
       return []
 
@@ -396,17 +381,15 @@ class SourceDataset(AuditFields):
     if not getattr(self, "incremental", False):
       return True
 
-    portable_filter = getattr(self, "portable_increment_filter", None)
-    legacy_filter = (getattr(self, "increment_filter", None) or "").strip()
-    if portable_filter:
-      from metadata.rendering.portable_expression import expression_runtime_value_names
-      uses_delta_cutoff = "delta_cutoff" in expression_runtime_value_names(
-        portable_filter,
-        allowed_runtime_values=("delta_cutoff",),
-      )
-    else:
-      uses_delta_cutoff = "{{DELTA_CUTOFF" in legacy_filter
+    portable_filter = self.portable_increment_filter
+    if not portable_filter:
+      return True
 
+    from metadata.rendering.portable_expression import expression_runtime_value_names
+    uses_delta_cutoff = "delta_cutoff" in expression_runtime_value_names(
+      portable_filter,
+      allowed_runtime_values=("delta_cutoff",),
+    )
     if not uses_delta_cutoff:
       return True
 
@@ -445,16 +428,6 @@ class SourceDataset(AuditFields):
       self.portable_increment_filter,
       allowed_runtime_values=("delta_cutoff",),
     )
-
-  @property
-  def has_static_filter_sql_fallback(self) -> bool:
-    """Return whether the deprecated static SQL fallback is defined."""
-    return bool((self.static_filter or "").strip())
-
-  @property
-  def has_increment_filter_sql_fallback(self) -> bool:
-    """Return whether the deprecated incremental SQL fallback is defined."""
-    return bool((self.increment_filter or "").strip())
 
 
 # -------------------------------------------------------------------
@@ -842,9 +815,9 @@ class TargetDataset(AuditFields):
   )
   incremental_source = models.ForeignKey(SourceDataset, on_delete=models.SET_NULL, null=True, blank=True, related_name="incremental_targets",
     help_text=(
-      "If set, this target dataset inherits incremental window logic (and delete detection scope) "
-      "from the referenced SourceDataset. The referenced dataset's increment_filter "
-      "defines which records are considered 'in scope' for delta load & delete detection."
+      "If set, this target dataset inherits incremental window logic and delete detection scope "
+      "from the referenced SourceDataset. Its increment filter defines which records "
+      "are in scope for delta loading and delete detection."
     )
   )
   manual_model = models.BooleanField(default=False,
@@ -1266,10 +1239,11 @@ class QuerySelectNode(AuditFields):
     limit_choices_to={"node_type": QueryNodeType.SELECT},
     help_text="Query node header for this SELECT operator.",  
   )
-  # Optional: in future allow a select-node to reference a *different* dataset definition
-  # For now: always use node.target_dataset
   use_dataset_definition = models.BooleanField(default=True,
-    help_text="When true, build select from owning TargetDataset definition (joins/columns/manual expressions).",
+    help_text=(
+      "When true, build the SELECT from the owning TargetDataset definition, including joins, "
+      "columns, and expressions."
+    ),
   )
 
   class Meta:
@@ -1618,8 +1592,8 @@ class QueryUnionBranchMapping(AuditFields):
   output_column = models.ForeignKey(QueryUnionOutputColumn, on_delete=models.CASCADE, related_name="branch_mappings",
     help_text="Output column of the UNION schema contract that is being populated.",
   )
-  # Minimal: map by input column name from branch projection.
-  # Later: allow expressions/casts via QueryExpression.
+  # Branch mappings align existing branch output columns only.
+  # Transformations belong in the branch query definition before UNION alignment.
   input_column_name = models.CharField(max_length=255,
     help_text="Column name exposed by branch input node.",
   )
@@ -2312,19 +2286,10 @@ class TargetColumn(AuditFields):
       "and to support forensics without relying on naming conventions."
     ),
   )
-  manual_expression = models.TextField(blank=True, null=True,
-    help_text=(
-      "Optional expression for deriving this column.\n"
-      "- If you use elevata DSL, wrap it in {{ ... }}, e.g. {{ UPPER(customer_name) }}.\n"
-      "- If you enter plain SQL without {{ }}, it is treated as target-specific SQL and "
-      "used directly in generated SQL / SQL preview.\n"
-      "This default applies to all inputs unless overridden at source level."
-    )
-  )
   portable_expression = models.JSONField(blank=True, null=True, editable=False,
     help_text=(
-      "Platform-neutral structured expression contract used to derive this column. "
-      "Column references are resolved through explicit column-level lineage."
+      "Expression used to calculate this target column. Its result becomes the target column value "
+      "and replaces the original input value."
     ),
   )
   description = models.CharField(max_length=255, blank=True, null=True,
@@ -2414,11 +2379,6 @@ class TargetColumn(AuditFields):
     }
 
   @property
-  def has_manual_expression(self) -> bool:
-    """Return whether a target-specific manual expression is defined."""
-    return bool((self.manual_expression or "").strip())
-
-  @property
   def has_portable_expression(self) -> bool:
     """Return whether a portable expression contract is defined."""
     return self.portable_expression is not None
@@ -2484,19 +2444,10 @@ class TargetColumnInput(AuditFields):
   upstream_target_column = models.ForeignKey(TargetColumn, on_delete=models.PROTECT, null=True, blank=True, related_name="downstream_column_inputs",
     help_text="If set, this target column is fed from another target column instead of a raw source column."
   )
-  manual_expression = models.TextField(blank=True, null=True,
-    help_text=(
-      "Optional expression that applies ONLY when using this specific source column.\n"
-      "- Prefer elevata DSL wrapped in {{ ... }} for generation.\n"
-      "- If you enter plain SQL without {{ }}, it may be used directly in SQL preview "
-      "for this input.\n"
-      "If empty, the TargetColumn.manual_expression (or a direct column reference) is used."
-    ),
-  )
   portable_expression = models.JSONField(blank=True, null=True, editable=False,
     help_text=(
-      "Platform-neutral structured expression contract for this specific input mapping. "
-      "When set, it overrides the column-level expression for this input."
+      "Expression used to calculate this target column for this specific input mapping. "
+      "Its result replaces the value from this input and takes precedence over the target column expression."
     ),
   )
   ordinal_position = models.PositiveIntegerField(default=1, 

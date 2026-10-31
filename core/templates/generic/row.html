@@ -107,6 +107,36 @@ because there is no *_detail route under a parent. -->
           {% endif %}
         </td>
 
+      {% elif model_name == "queryunionbranchmapping" and f.name == "input_column_name" %}
+        <td class="align-middle">
+          {% if union_mapping_review_by_output_id %}
+            {% with review=union_mapping_review_by_output_id|get:object.output_column_id %}
+              {% if review and review.status == "stale_mapping" %}
+                <span class="text-muted">—</span>
+                <div class="mt-1">
+                  <span class="badge badge-health-error">Needs review</span>
+                  <span class="small text-muted ms-1">Previously mapped: {{ object|attr:f.name }}.</span>
+                  {% if review.message %}
+                    <span class="small text-muted ms-1">{{ review.message }}</span>
+                  {% endif %}
+                </div>
+              {% else %}
+                {{ object|attr:f.name }}
+                {% if review and review.status != "valid" %}
+                  <div class="mt-1">
+                    <span class="badge badge-health-error">Needs review</span>
+                    {% if review.message %}
+                      <span class="small text-muted ms-1">{{ review.message }}</span>
+                    {% endif %}
+                  </div>
+                {% endif %}
+              {% endif %}
+            {% endwith %}
+          {% else %}
+            {{ object|attr:f.name }}
+          {% endif %}
+        </td>
+
       {% elif f.get_internal_type == "TextField" or f.name in "description,remark" %}
         <td class="align-middle truncate">{{ object|attr:f.name }}</td>
 
@@ -325,14 +355,19 @@ because there is no *_detail route under a parent. -->
                     title="Define UNION output schema first">
                 No output schema
               </span>
-            {% elif c.missing > 0 %}
+            {% elif c.status == "review" %}
+              <span class="badge text-bg-danger ms-2"
+                    title="Mappings need review">
+                Review
+              </span>
+            {% elif c.status == "safe_matches" %}
               <span class="badge text-bg-warning ms-2"
-                    title="Missing mappings: {{ c.missing }} of {{ c.total }}">
-                Missing {{ c.missing }}/{{ c.total }}
+                    title="Safe mappings can be added from the reconciliation review">
+                Safe match
               </span>
             {% else %}
               <span class="badge text-bg-success ms-2"
-                    title="All mappings defined">
+                    title="Mappings are valid">
                 OK
               </span>
             {% endif %}

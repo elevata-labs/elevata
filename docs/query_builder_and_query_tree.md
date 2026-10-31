@@ -5,11 +5,11 @@ The Query Builder models advanced transformation structure as explicit metadata.
 The central separation is:
 
 ```text
-Portable Expression   -> What value does this expression produce?
-Query Tree            -> Which rows and relational shape does this dataset produce?
+Expression   -> What value does this expression produce?
+Query Tree   -> Which rows and relational shape does this dataset produce?
 ```
 
-Portable expressions therefore describe calculated values and predicates. Query nodes describe relational operations such as filtering, aggregation, union composition, and windowing.
+Expressions are stored as structured platform-neutral contracts and describe calculated values and predicates. Query nodes describe relational operations such as filtering, aggregation, union composition, and windowing.
 
 ---
 
@@ -41,7 +41,27 @@ The head changes as typed operators are added or selected. The root remains the 
 
 ---
 
-## 🔧 3. Query node semantics
+## 🔧 3. Query Structure and graph mutations
+
+The Query Builder presents the effective query graph as a visual **Query Structure** canvas. The canvas follows actual input relationships rather than database ID order.
+
+The Base select is the stable **Starting point**. FILTER, AGGREGATE, and WINDOW are unary steps that can be inserted, moved, or removed where their input contracts remain valid. UNION exposes explicit branches and a merged result.
+
+Position-aware authoring follows these rules:
+
+- **Add step** inserts a new operator at the selected edge rather than appending blindly  
+- **Move** exposes only valid destination positions for the selected step  
+- **Remove** reconnects the surrounding graph when the resulting contract remains valid  
+- inserting or moving before a UNION requires explicit branch context  
+- inserting or moving after a UNION operates on the merged result  
+- ambiguous graph rewrites fail closed rather than guessing a consumer or branch  
+- every mutation is atomic; invalid downstream contracts roll the graph back unchanged  
+
+This keeps authoring reversible without introducing a separate ordinal-position model for QueryNodes.
+
+---
+
+## 🔧 4. Query node semantics
 
 The Query Tree supports these relational operators:
 
@@ -76,11 +96,23 @@ Numeric SUM/AVG semantics use canonical result types and are rendered consistent
 
 ### 🧩 UNION
 
-UNION combines independent QueryNode branch outputs under one explicit output schema. Branch mappings bind each UNION output column to one input-column name exposed by that branch.
+UNION combines independent QueryNode branch outputs under one explicit output schema. Branch mappings align each UNION output column with one input-column name exposed by that branch; transformation logic belongs in the branch itself rather than in the mapping layer.
 
 A branch may reference a QueryNode owned by another TargetDataset. The branch plan is compiled inline, so the UNION consumes the referenced query definition rather than requiring that TargetDataset itself to be materialized first. Physical upstream dependencies remain governed by the underlying dataset inputs and joins.
 
-Both `UNION` and `UNION ALL` are supported. UNION validation checks output uniqueness, branch inputs, complete mappings, and mapped input columns.
+Branch input visibility is contract-driven. A branch owned by the same TargetDataset may keep the extended input columns available to that dataset definition. A branch owned by another TargetDataset is restricted to that branch's published query output contract.
+
+The **UNION Reconciliation** review compares every output column with every branch mapping and distinguishes:
+
+- mappings that remain valid  
+- safe same-name matches that can be added  
+- stale mappings whose source column is no longer available  
+- known datatype mismatches  
+- ambiguous or missing candidates  
+
+Safe matching creates only missing, unique, type-compatible same-name mappings. Existing explicit mappings are never overwritten automatically.
+
+Both `UNION` and `UNION ALL` are supported. UNION validation checks output uniqueness, branch inputs, complete mappings, mapped input columns, and known datatype compatibility.
 
 ### 🧩 WINDOW
 
@@ -97,7 +129,7 @@ Function signatures and argument types are validated fail-closed. Ordered window
 
 ---
 
-## 🔧 4. Portable predicates and expressions
+## 🔧 5. Portable predicates and expressions
 
 Query FILTER predicates and calculated TargetColumn expressions are represented as structured, platform-neutral contracts. They are converted into the same Expression AST used by Logical Plan rendering.
 
@@ -118,7 +150,7 @@ See [Expression DSL & AST](expression_dsl_and_ast.md).
 
 ---
 
-## 🔧 5. Query contracts and TargetColumns
+## 🔧 6. Query contracts and TargetColumns
 
 The Query Tree defines the effective output contract of the dataset. Query-derived outputs are synchronized into TargetColumn metadata with `lineage_origin="query_derived"`.
 
@@ -134,7 +166,7 @@ This separation keeps authoring metadata reversible while ensuring the physical 
 
 ---
 
-## 🔧 6. Join-aware input contracts
+## 🔧 7. Join-aware input contracts
 
 Joins remain part of the TargetDataset relationship model because they carry lineage and execution dependency semantics.
 
@@ -148,7 +180,7 @@ Duplicate names are de-duplicated deterministically with left-side precedence. T
 
 ---
 
-## 🔧 7. Determinism and validation
+## 🔧 8. Determinism and validation
 
 Query logic is validated as architecture, not as arbitrary SQL text.
 
@@ -163,24 +195,24 @@ Blocking conditions include:
 - Query Tree cycles  
 - same-layer TargetDataset dependency cycles  
 
-The Query Builder exposes deterministic/ordering status, query contract, Query Tree structure, SQL preview, and operator-specific validation.
+The Query Builder exposes deterministic/ordering status, query contract, visual Query Structure, SQL preview, UNION reconciliation, and operator-specific validation.
 
 See [Determinism & Execution Semantics](determinism_and_execution_semantics.md).
 
 ---
 
-## 🔧 8. UI workflow
+## 🔧 9. UI workflow
 
 A typical workflow is:
 
 1. Define the TargetDataset, inputs, joins, and TargetColumns.  
-2. Use portable expressions for calculated column values where required.  
+2. Use Expressions for calculated column values where required.  
 3. Enable explicit query logic for a Bizcore or Serving dataset.  
-4. Add FILTER, AGGREGATE, UNION, or WINDOW nodes.  
-5. Configure operator-specific contracts such as predicates, group keys, measures, mappings, arguments, ordering, partitioning, and frames.  
-6. Review the Query Contract and Query Tree.  
-7. Validate determinism and UNION integrity.  
-8. Inspect dialect-specific SQL Preview.  
+4. Build the transformation from the visual Query Structure using position-aware Add actions.  
+5. Move or remove FILTER, AGGREGATE, and WINDOW steps when the resulting query contract remains valid.  
+6. Configure operator-specific contracts such as predicates, group keys, measures, mappings, arguments, ordering, partitioning, and frames.  
+7. Review UNION reconciliation where branch mappings need attention or safe matches are available.  
+8. Review Query Contract, lineage, validation state, and dialect-specific SQL Preview.  
 9. Execute through the normal Architecture Runtime and execution-scope contracts.  
 
 Disabling/resetting explicit query logic returns the dataset to standard generation from its dataset definition.

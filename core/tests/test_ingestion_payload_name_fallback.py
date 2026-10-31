@@ -78,7 +78,7 @@ def test_relational_ingest_payload_name_fallback_counts_as_tech(monkeypatch):
     schema_name="dbo",
     source_dataset_name="t",
     incremental=False,
-    increment_filter=None,
+    portable_increment_filter=None,
   )
 
   # payload exists by name only; role is empty -> must still be treated as technical

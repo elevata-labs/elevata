@@ -57,7 +57,7 @@ from metadata.rendering.portable_expression import (
   predicate_contract_to_ast,
 )
 from metadata.rendering.column_expression import column_expression_contract_to_ast
-from metadata.generation.query_contract import infer_query_node_contract
+from metadata.generation.query_contract import infer_query_node_contract, query_node_selectable_input_columns
 from metadata.generation.window_fn_registry import get_window_fn_spec
 
 if TYPE_CHECKING:
@@ -78,137 +78,14 @@ EXPR_REF_PATTERN = re.compile(r"\{expr:([^}]+)\}")
 _IDENT_RE = re.compile(r"\b[A-Za-z_][A-Za-z0-9_]*\b")
 
 
-def _collect_input_column_names(tcol) -> set[str]:
-  """
-  Collect upstream column names for this TargetColumn from its active input_links.
-  These names are used to qualify bare identifiers in manual_expression.
-  """
-  names: set[str] = set()
-  for link in (
-    tcol.input_links
-    .select_related("upstream_target_column", "source_column")
-    .filter(active=True)
-  ):
-    if link.upstream_target_column_id:
-      names.add(link.upstream_target_column.target_column_name)
-    if link.source_column_id:
-      names.add(link.source_column.source_column_name)
-  return names
-
-
-def _qualify_expr_identifiers(expr_text: str, *, col_names: set[str], alias: str) -> str:
-  """
-  Heuristically qualify bare column identifiers with `<alias>.`.
-  - Only qualifies identifiers that match known input column names.
-  - Does NOT touch:
-      - already qualified identifiers (preceded by '.')
-      - placeholders like {{ ... }}
-      - quoted identifiers (best effort)
-  This keeps authoring simple: `CONCAT(a, b)` instead of `CONCAT(s.a, s.b)`.
-  """
-  if not expr_text or not col_names:
-    return expr_text
-
-  # Do not attempt to qualify runtime placeholders.
-  if "{{" in expr_text and "}}" in expr_text:
-    return expr_text
-
-  def repl(match: re.Match) -> str:
-    token = match.group(0)
-    if token not in col_names:
-      return token
-    i0 = match.start()
-    # If already qualified (e.g. s.col), keep as-is.
-    if i0 > 0 and expr_text[i0 - 1] == ".":
-      return token
-    # If in a quoted identifier (very rough guard), keep as-is.
-    if i0 > 0 and expr_text[i0 - 1] in ('"', "'"):
-      return token
-    return f"{alias}.{token}"
-
-  return _IDENT_RE.sub(repl, expr_text)
-
-def _collect_input_column_alias_map(tcol, *, ds_alias_by_dataset_id: dict[int, str]) -> dict[str, str]:
-  """
-  Build a mapping { column_name -> table_alias } from TargetColumn input_links.
-
-  We prefer upstream_target_column links because they provide a stable dataset_id.
-  If a column name appears from multiple upstream datasets, we mark it ambiguous
-  and do not qualify it automatically.
-  """
-  name_to_alias: dict[str, str] = {}
-  ambiguous: set[str] = set()
-
-  for link in (
-    tcol.input_links
-      .select_related("upstream_target_column", "source_column")
-      .filter(active=True)
-  ):
-    if link.upstream_target_column_id:
-      up_col = link.upstream_target_column
-      up_ds_id = up_col.target_dataset_id
-      alias = ds_alias_by_dataset_id.get(up_ds_id)
-      if not alias:
-        continue
-
-      name = up_col.target_column_name
-      if name in ambiguous:
-        continue
-      if name in name_to_alias and name_to_alias[name] != alias:
-        name_to_alias.pop(name, None)
-        ambiguous.add(name)
-        continue
-      name_to_alias[name] = alias
-
-    # NOTE: We deliberately do NOT map source_column_name here because
-    # bizcore/serving join path currently joins target datasets, not sources.
-
-  return name_to_alias
-
-def _qualify_expr_identifiers_by_map(expr_text: str, *, name_to_alias: dict[str, str]) -> str:
-  """
-  Qualify bare identifiers using a {name -> alias} map.
-  - Keeps already qualified identifiers (preceded by '.')
-  - Preserves placeholders like {{ ... }}
-  - Conservative: only touches tokens present in name_to_alias
-  """
-  if not expr_text or not name_to_alias:
-    return expr_text
-
-  if "{{" in expr_text and "}}" in expr_text:
-    return expr_text
-
-  def repl(match: re.Match) -> str:
-    token = match.group(0)
-    alias = name_to_alias.get(token)
-    if not alias:
-      return token
-    i0 = match.start()
-    if i0 > 0 and expr_text[i0 - 1] == ".":
-      return token
-    if i0 > 0 and expr_text[i0 - 1] in ('"', "'"):
-      return token
-    return f"{alias}.{token}"
-
-  return _IDENT_RE.sub(repl, expr_text)
-
-def _strip_manual_expression_wrapper(value: str) -> str:
-  """Return compatibility expression text without optional elevata braces."""
-  text = str(value or "").strip()
-  if text.startswith("{{") and text.endswith("}}"):
-    return text[2:-2].strip()
-  return text
-
-
 def _configured_column_expression(
   tcol,
   *,
   selected_input=None,
   available_links=None,
   alias_resolver=None,
-  manual_qualifier=None,
 ):
-  """Resolve structured/input-specific/default expression precedence for one target column."""
+  """Resolve input-specific and column-level portable expression precedence."""
   links = list(available_links or [])
 
   for owner in (selected_input, tcol):
@@ -223,14 +100,7 @@ def _configured_column_expression(
         alias_resolver=alias_resolver,
       )
 
-    manual = str(getattr(owner, "manual_expression", "") or "").strip()
-    if manual:
-      text = manual_qualifier(manual) if manual_qualifier is not None else manual
-      return raw(_strip_manual_expression_wrapper(text))
-
   return None
-
-
 
 
 def _target_columns_for_base_projection(target_dataset, required_input_columns: set[str] | None = None) -> list:
@@ -317,10 +187,6 @@ def _get_stage_expr_for_rawcore_col(col: TargetColumn) -> Optional[str]:
         "Reference key components must resolve to a direct input column."
       )
 
-    manual = str(getattr(owner, "manual_expression", "") or "").strip()
-    if manual:
-      return manual
-
   if selected_input and selected_input.upstream_target_column:
     stage_col = selected_input.upstream_target_column
     return f'col("{stage_col.target_column_name}")'
@@ -381,102 +247,13 @@ def _rewrite_parent_sk_expr(parent_expr_sql: str, mapping: dict[str, str]) -> st
   return "".join(result)
 
 
-def qualify_source_filter(
-  source_dataset,
-  filter_sql: str,
-  *,
-  source_alias: str = "s",
-) -> str:
-  """
-  Qualify identifiers in a SourceDataset filter with the given alias.
-
-  - Input filter is authored in terms of source column names.
-  - We prefix matching identifiers with "<alias>.".
-  - We keep {{DELTA_CUTOFF}} intact.
-  - Conservative rewrite: replaces only tokens that match known source columns.
-  """
-  if not filter_sql:
-    return ""
-
-  # Include ALL source columns (not only integrate=True),
-  # because filters often reference technical flags not integrated.
-  src_cols = getattr(source_dataset, "source_columns", None)
-  if not src_cols:
-    return filter_sql
-
-  cols = src_cols.all() if hasattr(src_cols, "all") else src_cols
-  known = {getattr(c, "source_column_name", "").lower() for c in cols if getattr(c, "source_column_name", None)}
-  if not known:
-    return filter_sql
-
-  # allow col("X") / col('X')
-  expr = re.sub(r"col\(\s*['\"]([^'\"]+)['\"]\s*\)", r"\1", filter_sql)
-
-  def repl(m: re.Match) -> str:
-    tok = m.group(0)
-
-    if tok.upper() == "DELTA_CUTOFF":
-      return tok
-
-    # Skip already-qualified tokens like "s.ModifiedDate"
-    # (We detect by checking the preceding char in original string via span.)
-    start = m.start()
-    if start > 0 and expr[start - 1] == ".":
-      return tok
-
-    if tok.lower() in known:
-      return f"{source_alias}.{tok}"
-    return tok
-
-  expr = _IDENT_RE.sub(repl, expr)
-  return " ".join(expr.split())
-
-
-def build_source_dataset_where_sql(
-  source_dataset,
-  *,
-  source_alias: str = "s",
-) -> str:
-  """Build a fully qualified WHERE clause for SourceDataset extraction.
-
-  Combines:
-    - static_filter (always, if present)
-    - increment_filter (only if source_dataset.incremental is True)
-
-  Notes:
-    - Uses qualify_source_filter() to conservatively qualify identifiers.
-    - Preserves runtime placeholders like {{DELTA_CUTOFF}}.
-  """
-  parts: list[str] = []
-
-  static_filter = (getattr(source_dataset, "static_filter", None) or "").strip()
-  if static_filter:
-    parts.append(
-      qualify_source_filter(source_dataset, static_filter, source_alias=source_alias)
-    )
-
-  if getattr(source_dataset, "incremental", False):
-    inc_filter = (getattr(source_dataset, "increment_filter", None) or "").strip()
-    if inc_filter:
-      parts.append(
-        qualify_source_filter(source_dataset, inc_filter, source_alias=source_alias)
-      )
-
-  if not parts:
-    return ""
-  if len(parts) == 1:
-    return parts[0]
-
-  return " AND ".join(f"({p})" for p in parts)
-
-
 def build_source_dataset_where_expr(
   source_dataset,
   *,
   source_alias: str = "s",
   delta_cutoff=None,
 ) -> Expr | None:
-  """Build one source-extraction filter with portable-first fallback semantics."""
+  """Build one source-extraction filter from portable source predicates."""
   source_columns_manager = getattr(source_dataset, "source_columns", None)
   if source_columns_manager is None:
     source_columns = []
@@ -508,12 +285,6 @@ def build_source_dataset_where_expr(
         column_resolver=resolve_column,
       )
     )
-  else:
-    static_filter = (getattr(source_dataset, "static_filter", None) or "").strip()
-    if static_filter:
-      parts.append(
-        raw(qualify_source_filter(source_dataset, static_filter, source_alias=source_alias))
-      )
 
   if getattr(source_dataset, "incremental", False):
     portable_increment = getattr(source_dataset, "portable_increment_filter", None)
@@ -533,18 +304,6 @@ def build_source_dataset_where_expr(
           runtime_value_resolver=resolve_runtime_value,
         )
       )
-    else:
-      increment_filter = (getattr(source_dataset, "increment_filter", None) or "").strip()
-      if increment_filter:
-        parts.append(
-          raw(
-            qualify_source_filter(
-              source_dataset,
-              increment_filter,
-              source_alias=source_alias,
-            )
-          )
-        )
 
   if not parts:
     return None
@@ -593,14 +352,13 @@ def source_increment_filter_uses_delta_cutoff(source_dataset) -> bool:
     return False
 
   portable_increment = getattr(source_dataset, "portable_increment_filter", None)
-  if portable_increment:
-    return "delta_cutoff" in expression_runtime_value_names(
-      portable_increment,
-      allowed_runtime_values=("delta_cutoff",),
-    )
+  if not portable_increment:
+    return False
 
-  increment_filter = (getattr(source_dataset, "increment_filter", None) or "").strip()
-  return "{{DELTA_CUTOFF" in increment_filter
+  return "delta_cutoff" in expression_runtime_value_names(
+    portable_increment,
+    allowed_runtime_values=("delta_cutoff",),
+  )
 
 
 def build_surrogate_fk_expression(reference: "TargetDatasetReference") -> Expr:
@@ -889,21 +647,11 @@ def _build_single_select_for_upstream(
         .order_by("ordinal_position", "id")
       )
       selected_input = branch_links[0] if branch_links else None
-      branch_names = {
-        link.upstream_target_column.target_column_name
-        for link in branch_links
-        if getattr(link, "upstream_target_column", None) is not None
-      }
       expr = _configured_column_expression(
         col_meta,
         selected_input=selected_input,
         available_links=branch_links,
         alias_resolver=lambda _link: "s",
-        manual_qualifier=lambda value: _qualify_expr_identifiers(
-          value,
-          col_names=branch_names,
-          alias="s",
-        ),
       )
       if expr is None:
         if col_meta.target_column_name in upstream_col_names:
@@ -993,21 +741,11 @@ def _build_single_select_for_source_stage(
         .order_by("ordinal_position", "id")
       )
       selected_input = branch_links[0] if branch_links else None
-      branch_names = {
-        link.source_column.source_column_name
-        for link in branch_links
-        if getattr(link, "source_column", None) is not None
-      }
       expr = _configured_column_expression(
         tcol,
         selected_input=selected_input,
         available_links=branch_links,
         alias_resolver=lambda _link: "s",
-        manual_qualifier=lambda value: _qualify_expr_identifiers(
-          value,
-          col_names=branch_names,
-          alias="s",
-        ),
       )
       if expr is None:
         # Normal mapping: try to find a source column with the same name
@@ -1302,7 +1040,7 @@ def _build_filter_plan_for_node(node, required_input_columns: set[str] | None = 
   if not columns:
     raise ValueError("Filter input contract has no output columns")
 
-  selectable = list(input_contract.available_input_columns or columns)
+  selectable = query_node_selectable_input_columns(node, input_node, input_contract)
   selectable_lower = {name.lower(): name for name in selectable}
 
   downstream_required = {
@@ -1429,6 +1167,22 @@ def _build_aggregate_plan_for_node(node):
     in_name = (m.input_column_name or "").strip()
     if in_name:
       required.add(in_name)
+
+  input_contract = infer_query_node_contract(agg.input_node)
+  selectable = query_node_selectable_input_columns(node, agg.input_node, input_contract)
+  selectable_lower = {name.lower() for name in selectable}
+  unavailable = sorted(name for name in required if name.lower() not in selectable_lower)
+
+  # Persisted QueryNodes have an authoritative dataset contract and must fail
+  # closed when an aggregate references a column outside that contract. Lightweight
+  # test/adaptor nodes intentionally may not expose target_dataset_id or enough
+  # metadata to infer selectable columns; for those, required-input pushdown remains
+  # the source of truth and the downstream SELECT builder performs the actual work.
+  input_contract_is_authoritative = hasattr(agg.input_node, "target_dataset_id")
+  if unavailable and input_contract_is_authoritative:
+    raise ValueError(
+      "Aggregate references unavailable input columns: " + ", ".join(unavailable)
+    )
 
   inner_plan = _build_plan_for_query_node(agg.input_node, required_input_columns=required)
 
@@ -1728,7 +1482,7 @@ def _build_window_plan_for_node(node, required_input_columns: set[str] | None = 
     raise ValueError("Window input contract is invalid: " + "; ".join(errors))
 
   visible_input_columns = list(input_contract.columns or [])
-  selectable = list(input_contract.available_input_columns or visible_input_columns)
+  selectable = query_node_selectable_input_columns(node, win.input_node, input_contract)
   selectable_lower = {name.lower(): name for name in selectable}
 
   window_columns = list(win.columns.filter(active=True).order_by("ordinal_position", "id"))
@@ -2014,19 +1768,11 @@ def _build_plan_from_dataset_definition(
             return None
           return ds_alias.get(up_col.target_dataset_id)
 
-        name_to_alias = _collect_input_column_alias_map(
-          tcol,
-          ds_alias_by_dataset_id=ds_alias,
-        )
         expr = _configured_column_expression(
           tcol,
           selected_input=col_input,
           available_links=links,
           alias_resolver=_joined_alias,
-          manual_qualifier=lambda value: _qualify_expr_identifiers_by_map(
-            value,
-            name_to_alias=name_to_alias,
-          ),
         )
 
         if expr is not None:
@@ -2255,17 +2001,11 @@ def _build_plan_from_dataset_definition(
     else:
       links = _active_input_links(tcol)
       col_input = links[0] if links else None
-      input_names = _collect_input_column_names(tcol)
       expr = _configured_column_expression(
         tcol,
         selected_input=col_input,
         available_links=links,
         alias_resolver=lambda _link: "s",
-        manual_qualifier=lambda value: _qualify_expr_identifiers(
-          value,
-          col_names=input_names,
-          alias="s",
-        ),
       )
 
       if expr is None:

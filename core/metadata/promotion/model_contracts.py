@@ -135,8 +135,8 @@ MODEL_CONTRACTS = {
     ),
     fields=(
       "source_system", "schema_name", "source_dataset_name", "description",
-      "integrate", "static_filter", "portable_static_filter",
-      "incremental", "increment_filter", "portable_increment_filter",
+      "integrate", "portable_static_filter",
+      "incremental", "portable_increment_filter",
       "manual_model", "distinct_select", "generate_raw_table",
       "ingestion_config", "active",
     ),
@@ -413,7 +413,7 @@ MODEL_CONTRACTS = {
     fields=(
       "target_dataset", "target_column_name", "ordinal_position", "datatype",
       "max_length", "decimal_precision", "decimal_scale", "nullable",
-      "system_role", "manual_expression", "portable_expression", "description", "pii_level",
+      "system_role", "portable_expression", "description", "pii_level",
       "remark", "sensitivity", "lineage_origin", "surrogate_expression",
       "active", "lineage_key", "former_names", "is_system_managed",
     ),
@@ -428,7 +428,7 @@ MODEL_CONTRACTS = {
     identity=_identity("target_column_key", "upstream_kind", "upstream_key"),
     fields=(
       "target_column", "source_column", "upstream_target_column",
-      "manual_expression", "portable_expression", "ordinal_position", "active",
+      "portable_expression", "ordinal_position", "active",
     ),
     phase=Phase.TARGET_COLUMN_RELATION,
     lifecycle=Lifecycle.DEACTIVATE,
