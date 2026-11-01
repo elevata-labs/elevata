@@ -2299,9 +2299,7 @@ def run_single_target_dataset(
       # --------------------------------------------------------------
       try:
         schema_short_local = td.target_schema.short_name
-        historize_enabled = bool(
-          getattr(td, "historize", False) or getattr(td.target_schema, "default_historize", False)
-        )
+        historize_enabled = bool(getattr(td, "historize", False))
 
         if (
           schema_short_local == "rawcore"

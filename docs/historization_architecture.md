@@ -267,6 +267,8 @@ WHERE NOT EXISTS (
 
 ## 🔧 9. Ordering Guarantees
 
+Automatic historization is a Rawcore capability. `TargetSchema.default_historize` initializes the `historize` value of newly created datasets; execution decisions for an existing dataset use `TargetDataset.historize` only. Non-Rawcore datasets do not expose the Rawcore historization switch.
+
 Historization is always executed as a downstream step of the Rawcore base load and relies on the Rawcore snapshot being fully materialized before the history step starts. The history step uses one consistent runtime load timestamp and load run ID across its four SCD2 statements. Whenever a historized Rawcore base dataset is part of a resolved execution scope, its existing `_hist` companion is included automatically and depends on successful completion of the base dataset.
 
 This dependency does not serialize unrelated downstream work. After the Rawcore base completes, the `_hist` companion and ordinary downstream datasets may execute in parallel when no additional execution dependency exists between them.

@@ -45,7 +45,7 @@ from utils.db import build_metadata_database_url
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(find_dotenv(filename=".env", raise_error_if_not_found=False))
 
-ELEVATA_VERSION = "3.3.0"
+ELEVATA_VERSION = "3.3.1"
 
 ELEVATA_RUNTIME_MODE = env_str("ELEVATA_RUNTIME_MODE", "authoring").strip().lower()
 if ELEVATA_RUNTIME_MODE not in {"authoring", "promotion_target"}:
@@ -423,6 +423,11 @@ ELEVATA_CRUD = {
       ],
       "schema_overrides": {
         "raw": {
+          "TargetDataset": {
+            "unlock": [
+              "manual_model",
+            ],
+          },
           "TargetColumn": {
             "unlock": [
               "active",
@@ -430,6 +435,11 @@ ELEVATA_CRUD = {
           },
         },
         "stage": {
+          "TargetDataset": {
+            "unlock": [
+              "manual_model",
+            ],
+          },
           "TargetColumn": {
             "unlock": [
               "active",
@@ -462,10 +472,26 @@ ELEVATA_CRUD = {
         },
       },
       # schema-level readonly fields (independent of is_system_managed)
+      "create_hidden": {
+        "TargetDataset": ["handle_deletes", "historize", "manual_model"],
+      },
+      "schema_hidden": {
+        "raw": {
+          "TargetDataset": ["handle_deletes", "historize"],
+        },
+        "stage": {
+          "TargetDataset": ["handle_deletes", "historize"],
+        },
+        "bizcore": {
+          "TargetDataset": ["handle_deletes", "historize", "manual_model"],
+        },
+        "serving": {
+          "TargetDataset": ["handle_deletes", "historize", "manual_model"],
+        },
+      },
       "schema_readonly": {
         "bizcore": {
           "TargetDataset": [
-            "manual_model",
             "incremental_source",
             "source_datasets",
           ],
@@ -475,7 +501,6 @@ ELEVATA_CRUD = {
         },
         "serving": {
           "TargetDataset": [
-            "manual_model",
             "incremental_source",
             "source_datasets",
           ],

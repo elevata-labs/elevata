@@ -688,8 +688,8 @@ class TargetSchema(AuditFields):
   default_materialization_type = models.CharField(max_length=30, choices=MATERIALIZATION_CHOICES, default="table",
     help_text="Default materialization strategy for datasets in this layer."
   )
-  default_historize = models.BooleanField(default=True, 
-    help_text="Whether datasets in this layer are expected to track history / SCD-style state."
+  default_historize = models.BooleanField(default=False, 
+    help_text="Default historize value assigned when a dataset is created in this layer."
   )
   incremental_strategy_default = models.CharField(max_length=20, choices=INCREMENTAL_STRATEGY_CHOICES, default="full",
     help_text=(
@@ -760,14 +760,14 @@ class TargetDataset(AuditFields):
   description = models.CharField(max_length=255, blank=True, null=True,
     help_text="Business description / semantic meaning of the dataset."
   )
-  handle_deletes = models.BooleanField(default=True, 
+  handle_deletes = models.BooleanField(default=False, 
     help_text=(
       "Whether deletes in the source should be reflected in this dataset. "
-      "Only relevant with incremental or historization tables."
+      "Only relevant for Rawcore merge-incremental datasets."
     )
   )
-  historize = models.BooleanField(default=True,
-    help_text="Track slowly changing state / valid_from / valid_to, etc."
+  historize = models.BooleanField(default=False,
+    help_text="Whether this dataset uses the history capability available for its layer."
   )
   source_datasets = models.ManyToManyField(SourceDataset, through="TargetDatasetInput", 
     through_fields=("target_dataset", "source_dataset"), related_name="target_datasets", blank=True,

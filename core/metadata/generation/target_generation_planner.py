@@ -324,7 +324,7 @@ class TargetGenerationPlanner:
         "target_schema_short_name": target_schema.short_name,
         "target_dataset_name": dataset_draft.target_dataset_name,
         "description": dataset_draft.description,
-        "handle_deletes": True,
+        "handle_deletes": target_schema.short_name == "rawcore",
         "historize": bool(
           getattr(target_schema, "default_historize", False)
         ),

@@ -71,12 +71,8 @@ def _same_dataset(left: TargetDataset, right: TargetDataset) -> bool:
 
 
 def _effective_historize(td: TargetDataset) -> bool:
-  """Return whether historization is enabled for a base dataset."""
-  schema = getattr(td, "target_schema", None)
-  return bool(
-    getattr(td, "historize", False)
-    or getattr(schema, "default_historize", False)
-  )
+  """Return whether historization is enabled for this dataset."""
+  return bool(getattr(td, "historize", False))
 
 
 def _is_rawcore_base_dataset(td: TargetDataset) -> bool:

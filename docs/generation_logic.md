@@ -102,7 +102,8 @@ This prevents the representative source from incorrectly imposing a stricter phy
 
 #### 🔎 RAWCORE:
 - historizable architecture layer and source for *_hist datasets.  
-- `historize=True` controls whether a `_hist` dataset is generated.
+- `historize=True` on a Rawcore base dataset controls whether a `_hist` dataset is generated.  
+- `TargetSchema.default_historize` is a creation default only; after dataset creation, `TargetDataset.historize` is authoritative.
 
 #### 🔎 HISTORY (*_hist):
 - lives in the same TargetSchema layer as rawcore.  

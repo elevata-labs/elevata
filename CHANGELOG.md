@@ -12,6 +12,32 @@ This project adheres to [Semantic Versioning](https://semver.org/) and [Keep a C
 
 ---
 
+## [3.3.1] - 2026-11-01
+
+This maintenance release aligns layer-scoped dataset controls with the implemented runtime contract. Rawcore remains the only layer with automatic system-managed `_hist` companions and merge-incremental delete handling; Bizcore and Serving no longer expose controls for capabilities that are not implemented in those layers.
+
+---
+
+### 🐛 Fixed
+
+#### Layer-scoped dataset control consistency
+
+- Changed the generic `TargetDataset.historize` default to `False`.  
+- Changed the generic `TargetDataset.handle_deletes` default to `False`; generated Rawcore datasets retain `handle_deletes=True` as their layer-specific creation default.  
+- Changed the Bizcore schema `default_historize` setting from `True` to `False`.  
+- Normalized existing non-Rawcore datasets to `historize=False` and `handle_deletes=False` during migration.  
+- Kept Rawcore historization metadata and system-managed `_hist` behavior unchanged.  
+- Made `TargetDataset.historize` authoritative for existing datasets instead of combining it with the schema default at load time.  
+- Kept `TargetSchema.default_historize` as a creation default used when new datasets are generated.  
+- Hid `Historize` outside Rawcore and hid `Handle Deletes` where Rawcore merge-incremental loading is not available.  
+- Kept `Manual Model` editable for Raw, Stage and Rawcore while hiding it from Bizcore and Serving, where automatic source-layer generation does not apply.
+
+### 🔧 Upgrade
+
+- **Run `python manage.py migrate` after installing elevata 3.3.1.**  
+
+---
+
 ## [3.3.0] - 2026-10-31
 
 This release hardens the advanced transformation semantics introduced in 3.2.0 and makes non-trivial query logic easier to build, review, and maintain.

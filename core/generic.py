@@ -328,6 +328,36 @@ class GenericCRUDView(LoginRequiredMixin, View):
     return base_locked
 
 
+  def get_create_hidden_fields(self):
+    """Return field names hidden while creating a new row for this model."""
+    meta_cfg = getattr(settings, "ELEVATA_CRUD", {}).get("metadata", {})
+    sysman_cfg_all = meta_cfg.get("system_managed", {})
+    create_hidden_cfg = sysman_cfg_all.get("create_hidden", {})
+    return set(create_hidden_cfg.get(self.model.__name__, []))
+
+
+  def get_schema_hidden_fields(self, instance):
+    """
+    Return field names that should be hidden for this instance based on its
+    TargetSchema. Visibility is configured in
+    settings.ELEVATA_CRUD["metadata"]["system_managed"]["schema_hidden"].
+    """
+    if not instance:
+      return set()
+
+    meta_cfg = getattr(settings, "ELEVATA_CRUD", {}).get("metadata", {})
+    sysman_cfg_all = meta_cfg.get("system_managed", {})
+
+    schema_short_name = self._get_schema_short_name_for_instance(instance)
+    if not schema_short_name:
+      return set()
+
+    schema_hidden_cfg = sysman_cfg_all.get("schema_hidden", {})
+    schema_cfg = schema_hidden_cfg.get(schema_short_name, {})
+    model_cfg = schema_cfg.get(self.model.__name__, [])
+    return set(model_cfg)
+
+
   def get_schema_readonly_fields(self, instance):
     """
     Return a set of field names that should be read-only for this instance
@@ -599,18 +629,27 @@ class GenericCRUDView(LoginRequiredMixin, View):
     - system-managed locked fields for rows where is_system_managed == True
     - hide is_system_managed itself from the form
     """
-    # 1) Always-readonly fields for this schema/model
+    # 1) Hide fields that are not applicable in this schema/model.
+    hidden_fields = (
+      self.get_schema_hidden_fields(instance)
+      if instance is not None
+      else self.get_create_hidden_fields()
+    )
+    for fname in hidden_fields:
+      form.fields.pop(fname, None)
+
+    # 2) Always-readonly fields for this schema/model
     readonly_fields = self.get_schema_readonly_fields(instance)
     for fname in readonly_fields:
       self._disable_form_field(form, fname)
 
-    # 2) System-managed locked fields (existing behavior)
+    # 3) System-managed locked fields (existing behavior)
     locked_fields = self.get_system_managed_locked_fields(instance)
     if self.is_instance_system_managed(instance):
       for fname in locked_fields:
         self._disable_form_field(form, fname)
 
-    # 3) Hide is_system_managed flag itself
+    # 4) Hide is_system_managed flag itself
     if "is_system_managed" in form.fields:
       form.fields["is_system_managed"].widget = djforms.HiddenInput()
 

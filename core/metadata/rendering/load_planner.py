@@ -66,9 +66,7 @@ def build_load_plan(target_dataset: TargetDataset) -> LoadPlan:
 
   # Historize is a property of the *base* dataset and must come through the plan
   # even for full refresh. Hist tables themselves are not "historized".
-  schema_default_hist = bool(getattr(schema, "default_historize", False)) if schema is not None else False
-  td_historize = bool(getattr(target_dataset, "historize", False))
-  historize_enabled = bool(td_historize or schema_default_hist)
+  historize_enabled = bool(getattr(target_dataset, "historize", False))
   is_hist = bool(getattr(target_dataset, "is_hist", False))
 
   # 1) Views / logical models: no separate load step, just SELECT/VIEW

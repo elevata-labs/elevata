@@ -26,8 +26,9 @@ from metadata.rendering.load_planner import build_load_plan, LoadPlan
 
 
 class DummySchema:
-  def __init__(self, short_name: str = "rawcore"):
+  def __init__(self, short_name: str = "rawcore", default_historize: bool = False):
     self.short_name = short_name
+    self.default_historize = default_historize
 
 
 class DummyTargetDataset:
@@ -41,9 +42,10 @@ class DummyTargetDataset:
     incremental_source=None,
     handle_deletes=False,
     historize=False,
+    schema_default_historize=False,
   ):
     self.target_dataset_name = name
-    self.target_schema = DummySchema(schema_short)
+    self.target_schema = DummySchema(schema_short, schema_default_historize)
     self.materialization_type = materialization_type
     self.incremental_strategy = incremental_strategy
     self.natural_key_fields = natural_key_fields or []
@@ -108,4 +110,18 @@ def test_build_load_plan_hist_dataset_never_uses_merge():
   # For now, history loads are not implemented and default to full.
   assert plan.mode == "full"
   assert plan.handle_deletes is False
+  assert plan.historize is False
+
+
+def test_build_load_plan_dataset_historize_overrides_schema_default():
+  td = DummyTargetDataset(
+    schema_short="rawcore",
+    incremental_strategy="full",
+    historize=False,
+    schema_default_historize=True,
+  )
+
+  plan = build_load_plan(td)
+
+  assert plan.mode == "full"
   assert plan.historize is False

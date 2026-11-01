@@ -336,9 +336,8 @@ def test_non_historized_rawcore_does_not_require_history_companion():
     short_name="rawcore",
     defaults={"schema_name": "rawcore"},
   )
-  if rawcore.default_historize:
-    rawcore.default_historize = False
-    rawcore.save(update_fields=["default_historize"])
+  rawcore.default_historize = True
+  rawcore.save(update_fields=["default_historize"])
 
   base = TargetDataset.objects.create(
     target_schema=rawcore,

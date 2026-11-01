@@ -929,6 +929,7 @@ class TargetGenerationService:
         "lineage_key": lineage_key,
         "incremental_strategy": incremental_strategy,
         "incremental_source": incremental_source,
+        "handle_deletes": target_schema.short_name == "rawcore",
         "historize": historize,
       }
       target_dataset_obj, created = self._get_or_create_instance(
